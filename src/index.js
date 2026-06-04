@@ -1,0 +1,638 @@
+#!/usr/bin/env node
+
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import crypto from "node:crypto";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+
+const APP_NAME = "ai-memory-hub";
+const DEFAULT_MEMORY_DIR = path.join(os.homedir(), ".ai-memory");
+const DEFAULT_CONFIG_PATH = path.join(DEFAULT_MEMORY_DIR, "config.json");
+
+const args = process.argv.slice(2);
+const command = args[0] || "help";
+const rest = args.slice(1);
+
+main().catch((error) => {
+  console.error(error.message || error);
+  process.exit(1);
+});
+
+async function main() {
+  switch (command) {
+    case "init":
+      return initCommand(rest);
+    case "detect":
+      return detectCommand();
+    case "status":
+      return statusCommand();
+    case "record":
+      return recordCommand(rest);
+    case "sync":
+      return syncCommand(rest);
+    case "pull":
+      return pullCommand(rest);
+    case "watch":
+      return watchCommand(rest);
+    case "install":
+      return installCommand(rest);
+    case "help":
+    case "--help":
+    case "-h":
+      return helpCommand();
+    default:
+      throw new Error(`Unknown command: ${command}\nRun "${APP_NAME} help".`);
+  }
+}
+
+function initCommand(argv) {
+  const memoryDir = getOption(argv, "--memory-dir") || DEFAULT_MEMORY_DIR;
+  ensureHub(memoryDir);
+
+  const configPath = path.join(memoryDir, "config.json");
+  if (!fs.existsSync(configPath) || hasFlag(argv, "--force")) {
+    writeJson(configPath, defaultConfig(memoryDir));
+  }
+
+  console.log(`Initialized shared memory directory: ${memoryDir}`);
+  console.log(`Config: ${configPath}`);
+}
+
+function detectCommand() {
+  const tools = detectTools();
+  console.log(JSON.stringify(tools, null, 2));
+}
+
+function statusCommand() {
+  const config = loadConfig();
+  const memoryDir = config.memoryDir;
+  ensureHub(memoryDir);
+
+  const pending = readEvents(path.join(memoryDir, "inbox", "events.jsonl")).length;
+  const synced = countJsonlFiles(path.join(memoryDir, "synced"));
+  const tools = detectTools();
+  const mem0 = mem0Status();
+
+  console.log(JSON.stringify({
+    memoryDir,
+    pendingEvents: pending,
+    syncedEventFiles: synced,
+    tools,
+    mem0
+  }, null, 2));
+}
+
+function recordCommand(argv) {
+  const text = positionalArgs(argv).join(" ").trim();
+  if (!text) {
+    throw new Error("Usage: ai-memory-hub record <text> [--source tool] [--kind preference]");
+  }
+
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+
+  const event = {
+    id: createId(text),
+    ts: new Date().toISOString(),
+    source: getOption(argv, "--source") || "manual",
+    text,
+    metadata: {
+      kind: getOption(argv, "--kind") || "note"
+    }
+  };
+
+  appendJsonl(path.join(config.memoryDir, "inbox", "events.jsonl"), event);
+  console.log(`Recorded memory event: ${event.id}`);
+}
+
+function syncCommand(argv) {
+  const dryRun = hasFlag(argv, "--dry-run");
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+
+  const inboxPath = path.join(config.memoryDir, "inbox", "events.jsonl");
+  const events = readEvents(inboxPath);
+  if (events.length === 0) {
+    console.log("No pending memory events.");
+    return;
+  }
+
+  const mem0Config = loadMem0Config(config);
+  if (!mem0Config.apiKey || !mem0Config.userId) {
+    throw new Error("Mem0 API key or user id is missing. Run `mem0 init --agent` or configure ai-memory-hub.");
+  }
+
+  let synced = 0;
+  for (const event of events) {
+    if (!event.text || looksSensitive(event.text)) {
+      console.log(`Skipped event ${event.id || "(no id)"}: missing text or looks sensitive.`);
+      continue;
+    }
+
+    const metadata = {
+      ...(event.metadata || {}),
+      source: event.source || "unknown",
+      local_event_id: event.id || createId(event.text),
+      synced_by: APP_NAME,
+      synced_at: new Date().toISOString()
+    };
+
+    if (dryRun) {
+      console.log(`[dry-run] Would sync: ${event.text}`);
+      synced++;
+      continue;
+    }
+
+    const result = runMem0([
+      "add",
+      event.text,
+      "--user-id",
+      mem0Config.userId,
+      "--metadata",
+      JSON.stringify(metadata),
+      "--categories",
+      JSON.stringify(config.sync.defaultCategories || ["ai-memory-hub"]),
+      "-o",
+      "json"
+    ], mem0Config);
+
+    if (result.status !== 0) {
+      throw new Error(`mem0 add failed for ${event.id || event.text}: ${result.stderr || result.stdout}`);
+    }
+    synced++;
+  }
+
+  if (!dryRun && config.sync.archiveSyncedInboxItems !== false) {
+    archiveInbox(config.memoryDir, inboxPath, events);
+  }
+
+  console.log(`Synced ${synced} memory event(s) to Mem0.`);
+}
+
+function pullCommand(argv) {
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const mem0Config = loadMem0Config(config);
+  if (!mem0Config.apiKey || !mem0Config.userId) {
+    throw new Error("Mem0 API key or user id is missing. Run `mem0 init --agent` or configure ai-memory-hub.");
+  }
+
+  const pageSize = getOption(argv, "--page-size") || String(config.sync.pullPageSize || 100);
+  const result = runMem0([
+    "list",
+    "--user-id",
+    mem0Config.userId,
+    "--page-size",
+    pageSize,
+    "-o",
+    "json"
+  ], mem0Config);
+
+  if (result.status !== 0) {
+    throw new Error(`mem0 list failed: ${result.stderr || result.stdout}`);
+  }
+
+  const memories = parseMem0List(result.stdout);
+  const snapshot = renderMemorySnapshot(memories);
+  fs.writeFileSync(path.join(config.memoryDir, "MEMORY.md"), snapshot, "utf8");
+  writeJson(path.join(config.memoryDir, "state", "last-pull.json"), {
+    pulledAt: new Date().toISOString(),
+    count: memories.length
+  });
+
+  console.log(`Pulled ${memories.length} Mem0 memories into ${path.join(config.memoryDir, "MEMORY.md")}`);
+}
+
+function watchCommand(argv) {
+  const intervalMs = Number(getOption(argv, "--interval-ms") || 30000);
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+
+  console.log(`Watching ${path.join(config.memoryDir, "inbox")} every ${intervalMs}ms. Press Ctrl+C to stop.`);
+  const tick = () => {
+    try {
+      const inboxPath = path.join(config.memoryDir, "inbox", "events.jsonl");
+      const events = readEvents(inboxPath);
+      if (events.length > 0) {
+        syncCommand([]);
+      }
+    } catch (error) {
+      console.error(`[watch] ${error.message || error}`);
+    }
+  };
+
+  tick();
+  setInterval(tick, intervalMs);
+}
+
+function installCommand(argv) {
+  const tool = getOption(argv, "--tool") || "all";
+  const apply = hasFlag(argv, "--apply");
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+
+  const targets = getInstallTargets(config.memoryDir).filter((target) => tool === "all" || target.tool === tool);
+  if (targets.length === 0) {
+    throw new Error(`No install targets found for tool: ${tool}`);
+  }
+
+  for (const target of targets) {
+    const snippet = renderTemplate(target.template, {
+      MEMORY_DIR: config.memoryDir,
+      TOOL: target.tool
+    });
+    if (!apply) {
+      console.log(`\n[dry-run] ${target.tool}: ${target.file}`);
+      console.log(snippet.trim());
+      continue;
+    }
+
+    ensureDir(path.dirname(target.file));
+    appendIfMissing(target.file, snippet, "Shared AI Memory");
+    console.log(`Installed shared memory instructions for ${target.tool}: ${target.file}`);
+  }
+}
+
+function helpCommand() {
+  console.log(`Usage: ${APP_NAME} <command> [options]
+
+Commands:
+  init       Create ~/.ai-memory and config.
+  detect     Detect installed AI tools.
+  status     Show hub, tool, and Mem0 status.
+  record     Append a local memory event.
+  sync       Push pending inbox events to Mem0.
+  pull       Pull Mem0 memories into MEMORY.md.
+  watch      Periodically sync pending inbox events.
+  install    Show or apply per-tool instruction snippets.
+  help       Show this help.
+
+Examples:
+  ${APP_NAME} init
+  ${APP_NAME} record "User prefers concise answers." --source codex --kind preference
+  ${APP_NAME} sync --dry-run
+  ${APP_NAME} sync
+  ${APP_NAME} pull
+  ${APP_NAME} watch --interval-ms 30000
+  ${APP_NAME} install --tool codex
+  ${APP_NAME} install --tool codex --apply
+`);
+}
+
+function defaultConfig(memoryDir) {
+  return {
+    memoryDir,
+    mem0: {
+      enabled: true,
+      configPath: path.join(os.homedir(), ".mem0", "config.json"),
+      userId: "",
+      baseUrl: ""
+    },
+    sync: {
+      archiveSyncedInboxItems: true,
+      pullPageSize: 100,
+      defaultCategories: ["ai-memory-hub"]
+    },
+    tools: {
+      codex: { enabled: true },
+      claude: { enabled: true },
+      gemini: { enabled: true },
+      qclaw: { enabled: true },
+      openclaw: { enabled: true }
+    }
+  };
+}
+
+function ensureHub(memoryDir) {
+  for (const dir of [
+    memoryDir,
+    path.join(memoryDir, "inbox"),
+    path.join(memoryDir, "synced"),
+    path.join(memoryDir, "memories"),
+    path.join(memoryDir, "tools"),
+    path.join(memoryDir, "state")
+  ]) {
+    ensureDir(dir);
+  }
+
+  const profilePath = path.join(memoryDir, "profile.md");
+  if (!fs.existsSync(profilePath)) {
+    fs.writeFileSync(profilePath, "# Profile\n\nAdd stable user preferences here.\n", "utf8");
+  }
+
+  const memoryPath = path.join(memoryDir, "MEMORY.md");
+  if (!fs.existsSync(memoryPath)) {
+    fs.writeFileSync(memoryPath, "# Shared AI Memory\n\nNo pulled Mem0 memories yet.\n", "utf8");
+  }
+}
+
+function loadConfig() {
+  if (!fs.existsSync(DEFAULT_CONFIG_PATH)) {
+    ensureHub(DEFAULT_MEMORY_DIR);
+    writeJson(DEFAULT_CONFIG_PATH, defaultConfig(DEFAULT_MEMORY_DIR));
+  }
+  const config = readJson(DEFAULT_CONFIG_PATH);
+  return {
+    ...defaultConfig(DEFAULT_MEMORY_DIR),
+    ...config,
+    mem0: { ...defaultConfig(DEFAULT_MEMORY_DIR).mem0, ...(config.mem0 || {}) },
+    sync: { ...defaultConfig(DEFAULT_MEMORY_DIR).sync, ...(config.sync || {}) },
+    tools: { ...defaultConfig(DEFAULT_MEMORY_DIR).tools, ...(config.tools || {}) }
+  };
+}
+
+function loadMem0Config(config) {
+  const mem0ConfigPath = expandPath(config.mem0.configPath || path.join(os.homedir(), ".mem0", "config.json"));
+  let fileConfig = {};
+  if (fs.existsSync(mem0ConfigPath)) {
+    fileConfig = readJson(mem0ConfigPath);
+  }
+
+  const platform = fileConfig.platform || {};
+  const defaults = fileConfig.defaults || {};
+  return {
+    apiKey: process.env.MEM0_API_KEY || platform.api_key || "",
+    baseUrl: config.mem0.baseUrl || platform.base_url || "",
+    userId: config.mem0.userId || defaults.user_id || platform.default_user_id || ""
+  };
+}
+
+function mem0Status() {
+  const result = spawnMem0(["--json", "status"]);
+  if (result.status !== 0) {
+    return {
+      connected: false,
+      error: (result.stderr || result.stdout || result.error || "mem0 status failed").trim()
+    };
+  }
+  try {
+    return JSON.parse(result.stdout).data || JSON.parse(result.stdout);
+  } catch {
+    return {
+      connected: true,
+      raw: result.stdout.trim()
+    };
+  }
+}
+
+function runMem0(args, mem0Config) {
+  const fullArgs = [...args];
+  if (mem0Config.apiKey) {
+    fullArgs.push("--api-key", mem0Config.apiKey);
+  }
+  if (mem0Config.baseUrl) {
+    fullArgs.push("--base-url", mem0Config.baseUrl);
+  }
+  const result = spawnMem0(fullArgs);
+  return {
+    status: result.status,
+    stdout: result.stdout,
+    stderr: result.stderr || result.error
+  };
+}
+
+function detectTools() {
+  const home = os.homedir();
+  const checks = [
+    ["codex", path.join(home, ".codex")],
+    ["claude", path.join(home, ".claude")],
+    ["gemini", path.join(home, ".gemini")],
+    ["qclaw", path.join(home, ".qclaw")],
+    ["openclaw", path.join(home, ".openclaw")],
+    ["cc-switch", path.join(home, ".cc-switch")]
+  ];
+
+  return checks.map(([name, dir]) => ({
+    name,
+    installed: fs.existsSync(dir),
+    dir
+  }));
+}
+
+function getInstallTargets(memoryDir) {
+  const home = os.homedir();
+  return [
+    {
+      tool: "codex",
+      file: path.join(home, ".codex", "AGENTS.md"),
+      template: readTemplate("AGENTS.md")
+    },
+    {
+      tool: "claude",
+      file: path.join(home, ".claude", "CLAUDE.md"),
+      template: readTemplate("CLAUDE.md")
+    },
+    {
+      tool: "gemini",
+      file: path.join(home, ".gemini", "GEMINI.md"),
+      template: readTemplate("GEMINI.md")
+    },
+    {
+      tool: "qclaw",
+      file: path.join(memoryDir, "tools", "qclaw-shared-memory.md"),
+      template: readTemplate("shared-instructions.md")
+    },
+    {
+      tool: "openclaw",
+      file: path.join(memoryDir, "tools", "openclaw-shared-memory.md"),
+      template: readTemplate("shared-instructions.md")
+    }
+  ];
+}
+
+function parseMem0List(stdout) {
+  const parsed = JSON.parse(stdout);
+  const candidates = [
+    parsed,
+    parsed.data,
+    parsed.data?.memories,
+    parsed.data?.results,
+    parsed.results,
+    parsed.memories
+  ];
+  const array = candidates.find(Array.isArray) || [];
+  return array.map((item) => ({
+    id: item.id || item.memory_id || "",
+    memory: item.memory || item.text || item.content || String(item),
+    metadata: item.metadata || {},
+    createdAt: item.created_at || item.createdAt || ""
+  })).filter((item) => item.memory);
+}
+
+function renderMemorySnapshot(memories) {
+  const lines = [
+    "# Shared AI Memory",
+    "",
+    `Pulled from Mem0 at ${new Date().toISOString()}.`,
+    ""
+  ];
+  if (memories.length === 0) {
+    lines.push("No memories found.");
+    lines.push("");
+    return lines.join("\n");
+  }
+
+  for (const memory of memories) {
+    lines.push(`- ${memory.memory}`);
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+
+function archiveInbox(memoryDir, inboxPath, events) {
+  const archiveName = `events-${new Date().toISOString().replace(/[:.]/g, "-")}.jsonl`;
+  const archivePath = path.join(memoryDir, "synced", archiveName);
+  fs.writeFileSync(archivePath, events.map((event) => JSON.stringify(event)).join("\n") + "\n", "utf8");
+  fs.writeFileSync(inboxPath, "", "utf8");
+}
+
+function looksSensitive(text) {
+  return /\b(sk-[A-Za-z0-9_-]{12,}|m0-[A-Za-z0-9_-]{12,}|api[_-]?key|password|secret|token)\b/i.test(text);
+}
+
+function readEvents(file) {
+  if (!fs.existsSync(file)) {
+    return [];
+  }
+  return fs.readFileSync(file, "utf8")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      try {
+        return JSON.parse(line);
+      } catch {
+        return {
+          id: createId(line),
+          ts: new Date().toISOString(),
+          source: "raw",
+          text: line,
+          metadata: { kind: "raw" }
+        };
+      }
+    });
+}
+
+function appendJsonl(file, value) {
+  ensureDir(path.dirname(file));
+  fs.appendFileSync(file, `${JSON.stringify(value)}\n`, "utf8");
+}
+
+function appendIfMissing(file, snippet, marker) {
+  const existing = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
+  if (existing.includes(marker)) {
+    return;
+  }
+  const prefix = existing.trim() ? `${existing.trimEnd()}\n\n` : "";
+  fs.writeFileSync(file, `${prefix}${snippet.trim()}\n`, "utf8");
+}
+
+function readTemplate(name) {
+  return fs.readFileSync(path.join(projectRoot(), "templates", name), "utf8");
+}
+
+function renderTemplate(template, values) {
+  return template.replace(/\{\{([A-Z_]+)\}\}/g, (_, key) => values[key] || "");
+}
+
+function projectRoot() {
+  return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+}
+
+function ensureDir(dir) {
+  fs.mkdirSync(dir, { recursive: true });
+}
+
+function readJson(file) {
+  return JSON.parse(fs.readFileSync(file, "utf8"));
+}
+
+function writeJson(file, value) {
+  ensureDir(path.dirname(file));
+  fs.writeFileSync(file, JSON.stringify(value, null, 2) + "\n", "utf8");
+}
+
+function createId(input) {
+  return crypto.createHash("sha256")
+    .update(`${Date.now()}:${input}`)
+    .digest("hex")
+    .slice(0, 16);
+}
+
+function getOption(argv, name) {
+  const index = argv.indexOf(name);
+  if (index === -1) {
+    return "";
+  }
+  return argv[index + 1] || "";
+}
+
+function hasFlag(argv, name) {
+  return argv.includes(name);
+}
+
+function positionalArgs(argv) {
+  const positional = [];
+  for (let index = 0; index < argv.length; index++) {
+    const arg = argv[index];
+    if (arg.startsWith("--")) {
+      index++;
+      continue;
+    }
+    positional.push(arg);
+  }
+  return positional;
+}
+
+function spawnMem0(argv) {
+  const entrypoint = findMem0Entrypoint();
+  if (entrypoint) {
+    const result = spawnSync(process.execPath, [entrypoint, ...argv], {
+      encoding: "utf8",
+      windowsHide: true
+    });
+    return {
+      status: result.status ?? 1,
+      stdout: result.stdout || "",
+      stderr: result.stderr || "",
+      error: result.error?.message || ""
+    };
+  }
+
+  const result = spawnSync(process.platform === "win32" ? "mem0.cmd" : "mem0", argv, {
+    encoding: "utf8",
+    windowsHide: true,
+    shell: process.platform === "win32"
+  });
+  return {
+    status: result.status ?? 1,
+    stdout: result.stdout || "",
+    stderr: result.stderr || "",
+    error: result.error?.message || ""
+  };
+}
+
+function findMem0Entrypoint() {
+  const candidates = [
+    path.join(path.dirname(process.execPath), "node_modules", "@mem0", "cli", "dist", "index.js"),
+    path.join(process.env.APPDATA || "", "npm", "node_modules", "@mem0", "cli", "dist", "index.js"),
+    path.join(projectRoot(), "node_modules", "@mem0", "cli", "dist", "index.js")
+  ].filter(Boolean);
+
+  return candidates.find((candidate) => fs.existsSync(candidate)) || "";
+}
+
+function expandPath(value) {
+  return value
+    .replace(/^~(?=$|[\\/])/, os.homedir())
+    .replace(/%USERPROFILE%/gi, os.homedir());
+}
+
+function countJsonlFiles(dir) {
+  if (!fs.existsSync(dir)) {
+    return 0;
+  }
+  return fs.readdirSync(dir).filter((file) => file.endsWith(".jsonl")).length;
+}

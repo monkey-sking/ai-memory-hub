@@ -1,0 +1,28 @@
+{
+  "memoryDir": "%USERPROFILE%\\.ai-memory",
+  "mem0": {
+    "enabled": true,
+    "configPath": "%USERPROFILE%\\.mem0\\config.json",
+    "userId": "",
+    "baseUrl": ""
+  },
+  "sync": {
+    "archiveSyncedInboxItems": true,
+    "pullPageSize": 100,
+    "defaultCategories": ["ai-memory-hub"]
+  },
+  "tools": {
+    "codex": {
+      "enabled": true
+    },
+    "claude": {
+      "enabled": true
+    },
+    "gemini": {
+      "enabled": true
+    },
+    "qclaw": {
+      "enabled": true
+    }
+  }
+}

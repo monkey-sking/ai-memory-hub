@@ -1,0 +1,11 @@
+node_modules/
+.env
+.DS_Store
+*.log
+coverage/
+dist/
+tmp/
+
+# Local runtime state. The generated shared memory directory should not be
+# committed when this project is used from inside a home directory.
+.ai-memory/

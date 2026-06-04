@@ -1,0 +1,31 @@
+{
+  "name": "ai-memory-hub",
+  "version": "0.1.0",
+  "description": "A local shared memory directory and Mem0 sync daemon for multiple AI coding assistants.",
+  "type": "module",
+  "bin": {
+    "ai-memory-hub": "./src/index.js",
+    "amh": "./src/index.js"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "status": "node src/index.js status",
+    "init:hub": "node src/index.js init",
+    "detect": "node src/index.js detect",
+    "sync": "node src/index.js sync",
+    "pull": "node src/index.js pull",
+    "watch": "node src/index.js watch"
+  },
+  "keywords": [
+    "ai",
+    "memory",
+    "mem0",
+    "claude",
+    "codex",
+    "gemini"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  }
+}

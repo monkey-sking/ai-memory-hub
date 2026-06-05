@@ -491,6 +491,7 @@ function defaultConfig(memoryDir) {
       gemini: { enabled: true },
       antigravity: { enabled: true },
       antigravityCockpit: { enabled: true },
+      marvis: { enabled: true },
       qclaw: { enabled: true },
       openclaw: { enabled: true }
     }
@@ -578,6 +579,11 @@ function detectTools() {
       dir: path.join(home, ".gemini", "antigravity")
     },
     {
+      name: "marvis",
+      kind: "app-state",
+      dir: path.join(home, "AppData", "Roaming", "Tencent", "Marvis")
+    },
+    {
       name: "qclaw",
       kind: "app-state",
       dir: path.join(home, ".qclaw")
@@ -629,6 +635,11 @@ function getInstallTargets(memoryDir) {
     {
       tool: "codex-app",
       file: path.join(memoryDir, "tools", "codex-app-shared-memory.md"),
+      template: readTemplate("shared-instructions.md")
+    },
+    {
+      tool: "marvis",
+      file: path.join(memoryDir, "tools", "marvis-shared-memory.md"),
       template: readTemplate("shared-instructions.md")
     },
     {

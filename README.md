@@ -151,6 +151,24 @@ ai-memory-hub watch --interval-ms 30000
 
 AI 工具写入长期记忆事件后，如果能执行命令，可以顺手运行 `ai-memory-hub sync`；如果不能执行命令，watcher 会在后台自动整理。
 
+### Token 成本控制
+
+本项目的本地记录、同步、备份和 watcher 不调用模型，因此本身不消耗模型 Token。
+
+真正消耗 Token 的地方，是某个 AI 工具在会话里读取 `MEMORY.md`，并把它放进自己的上下文。默认 `snapshotLimit` 是 200 条，但建议只保存长期有效的偏好、项目事实、工作流规则和纠错，不保存临时聊天、命令日志、失败堆栈或大段文档。
+
+如果记忆变多，可以在 `~/.ai-memory/config.json` 里调低：
+
+```json
+{
+  "sync": {
+    "snapshotLimit": 50
+  }
+}
+```
+
+`ledger.jsonl` 可以保留完整历史，`MEMORY.md` 只放最近或最重要的一小部分，降低每个 AI 工具启动时的上下文成本。
+
 ### Agent Radio
 
 Agent Radio 是 `ai-memory-hub` 内置的本地跨 Agent 消息总线。
@@ -246,6 +264,7 @@ ai-memory-hub install --tool openclaw --apply
 ```bash
 ai-memory-hub install --tool antigravity --apply
 ai-memory-hub install --tool codex-app --apply
+ai-memory-hub install --tool marvis --apply
 ```
 
 这些命令会创建类似下面的文件：
@@ -253,6 +272,7 @@ ai-memory-hub install --tool codex-app --apply
 ```text
 %USERPROFILE%\.ai-memory\tools\antigravity-shared-memory.md
 %USERPROFILE%\.ai-memory\tools\codex-app-shared-memory.md
+%USERPROFILE%\.ai-memory\tools\marvis-shared-memory.md
 ```
 
 这些是安全的适配说明，不会侵入式修改内部 App 数据库或不透明状态文件。
@@ -265,6 +285,7 @@ Claude         通过 ~/.claude/CLAUDE.md 直接注入指令
 Gemini         通过 ~/.gemini/GEMINI.md 直接注入指令
 Antigravity    已检测；在 ~/.ai-memory/tools 下生成适配说明
 Codex App      已检测；在 ~/.ai-memory/tools 下生成适配说明
+Marvis         已检测；在 ~/.ai-memory/tools 下生成适配说明；深度 MCP/知识库接入待验证
 QClaw          通过 ~/.qclaw/skills/ai-memory-hub/SKILL.md 安装为 QClaw Skill
 OpenClaw       通过 ~/.openclaw/skills/ai-memory-hub/SKILL.md 安装为 OpenClaw Skill
 CC Switch      已检测；暂未直接注入
@@ -442,6 +463,24 @@ ai-memory-hub watch --interval-ms 30000
 
 After an AI tool appends a durable memory event, it should run `ai-memory-hub sync` when command execution is available. If it cannot run commands, the watcher will index the event in the background.
 
+### Token Cost Control
+
+Local recording, syncing, backups, and the watcher do not call a model, so they do not consume model tokens by themselves.
+
+Tokens are consumed when an AI tool reads `MEMORY.md` and includes it in its own context. The default `snapshotLimit` is 200 records, but the intended use is to save only durable preferences, project facts, workflow rules, and corrections. Do not save temporary chat details, command logs, failure stacks, or long documents.
+
+If memory grows, lower this in `~/.ai-memory/config.json`:
+
+```json
+{
+  "sync": {
+    "snapshotLimit": 50
+  }
+}
+```
+
+`ledger.jsonl` can keep the full history while `MEMORY.md` stays small, which reduces context cost when AI tools start.
+
 ### Agent Radio
 
 Agent Radio is a local cross-agent message bus built into `ai-memory-hub`.
@@ -537,6 +576,7 @@ For app-style tools where a stable instruction injection point is not yet guaran
 ```bash
 ai-memory-hub install --tool antigravity --apply
 ai-memory-hub install --tool codex-app --apply
+ai-memory-hub install --tool marvis --apply
 ```
 
 These create files such as:
@@ -544,6 +584,7 @@ These create files such as:
 ```text
 %USERPROFILE%\.ai-memory\tools\antigravity-shared-memory.md
 %USERPROFILE%\.ai-memory\tools\codex-app-shared-memory.md
+%USERPROFILE%\.ai-memory\tools\marvis-shared-memory.md
 ```
 
 They are safe adapter notes, not invasive edits to internal app databases or opaque state files.
@@ -556,6 +597,7 @@ Claude         Direct instruction injection via ~/.claude/CLAUDE.md
 Gemini         Direct instruction injection via ~/.gemini/GEMINI.md
 Antigravity    Detected; adapter note generated under ~/.ai-memory/tools
 Codex App      Detected; adapter note generated under ~/.ai-memory/tools
+Marvis         Detected; adapter note generated under ~/.ai-memory/tools; deeper MCP/knowledgebase integration is not yet verified
 QClaw          Installed as a QClaw Skill via ~/.qclaw/skills/ai-memory-hub/SKILL.md
 OpenClaw       Installed as an OpenClaw Skill via ~/.openclaw/skills/ai-memory-hub/SKILL.md
 CC Switch      Detected; no direct injection yet

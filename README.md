@@ -122,6 +122,79 @@ The recommended integration is:
 
 This keeps each assistant's model token independent.
 
+## Configure AI Tools
+
+Use `install` to inject shared-memory instructions into supported tools. This does not write Mem0 keys into those tools and does not change their model provider configuration.
+
+Preview first:
+
+```bash
+ai-memory-hub install --tool codex
+ai-memory-hub install --tool claude
+ai-memory-hub install --tool gemini
+```
+
+Apply:
+
+```bash
+ai-memory-hub install --tool codex --apply
+ai-memory-hub install --tool claude --apply
+ai-memory-hub install --tool gemini --apply
+```
+
+On Windows, this writes:
+
+```text
+%USERPROFILE%\.codex\AGENTS.md
+%USERPROFILE%\.claude\CLAUDE.md
+%USERPROFILE%\.gemini\GEMINI.md
+```
+
+The injected instruction tells the assistant to read:
+
+```text
+%USERPROFILE%\.ai-memory\MEMORY.md
+```
+
+and append durable memory events to:
+
+```text
+%USERPROFILE%\.ai-memory\inbox\events.jsonl
+```
+
+For app-style tools where a stable instruction injection point is not yet guaranteed, `install` generates adapter notes under the shared memory directory:
+
+```bash
+ai-memory-hub install --tool antigravity --apply
+ai-memory-hub install --tool qclaw --apply
+ai-memory-hub install --tool openclaw --apply
+ai-memory-hub install --tool codex-app --apply
+```
+
+These create files such as:
+
+```text
+%USERPROFILE%\.ai-memory\tools\antigravity-shared-memory.md
+%USERPROFILE%\.ai-memory\tools\qclaw-shared-memory.md
+%USERPROFILE%\.ai-memory\tools\openclaw-shared-memory.md
+%USERPROFILE%\.ai-memory\tools\codex-app-shared-memory.md
+```
+
+They are safe adapter notes, not invasive edits to internal app databases or opaque state files.
+
+### Current Support Matrix
+
+```text
+Codex CLI      Direct instruction injection via ~/.codex/AGENTS.md
+Claude         Direct instruction injection via ~/.claude/CLAUDE.md
+Gemini         Direct instruction injection via ~/.gemini/GEMINI.md
+Antigravity    Detected; adapter note generated under ~/.ai-memory/tools
+Codex App      Detected; adapter note generated under ~/.ai-memory/tools
+QClaw          Detected; adapter note generated under ~/.ai-memory/tools
+OpenClaw       Detected; adapter note generated under ~/.ai-memory/tools
+CC Switch      Detected; no direct injection yet
+```
+
 ## Detected Apps
 
 The detector checks local state/config directories for:

@@ -9,12 +9,15 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const APP_NAME = "ai-memory-hub";
+const MEMORY_DIR_ENV = "AI_MEMORY_DIR";
 const DEFAULT_MEMORY_DIR = path.join(os.homedir(), ".ai-memory");
 const DEFAULT_CONFIG_PATH = path.join(DEFAULT_MEMORY_DIR, "config.json");
 
-const args = process.argv.slice(2);
-const command = args[0] || "help";
-const rest = args.slice(1);
+const rawArgs = process.argv.slice(2);
+const parsedArgs = parseCliArgs(rawArgs);
+const args = parsedArgs.args;
+const command = parsedArgs.command;
+const rest = parsedArgs.rest;
 
 main().catch((error) => {
   console.error(error.message || error);
@@ -63,8 +66,24 @@ async function main() {
   }
 }
 
+function parseCliArgs(argv) {
+  const args = Array.isArray(argv) ? [...argv] : [];
+  const command = args[0] || "help";
+  return {
+    args,
+    command,
+    rest: args.slice(1)
+  };
+}
+
+function resolveMemoryDir(argv = rawArgs) {
+  const fromArgs = getOption(argv, "--memory-dir");
+  const fromEnv = process.env[MEMORY_DIR_ENV];
+  return path.resolve(fromArgs || fromEnv || DEFAULT_MEMORY_DIR);
+}
+
 function initCommand(argv) {
-  const memoryDir = getOption(argv, "--memory-dir") || DEFAULT_MEMORY_DIR;
+  const memoryDir = resolveMemoryDir();
   ensureHub(memoryDir);
 
   const configPath = path.join(memoryDir, "config.json");
@@ -721,11 +740,18 @@ function appCommand(argv) {
       }
       if (req.method === "GET" && url.pathname === "/api/tasks") {
         const config = loadConfig();
+        const status = url.searchParams.get("status") || "all";
         return sendJson(res, {
           tasks: readTasks(config.memoryDir)
-            .filter((task) => !["done", "cancelled"].includes(task.status))
+            .filter((task) => status === "all" ? true : status === "active" ? !["done", "cancelled"].includes(task.status) : task.status === status)
             .sort((a, b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")))
-            .slice(0, 50)
+            .slice(0, 200)
+        });
+      }
+      if (req.method === "GET" && url.pathname === "/api/dispatch") {
+        const config = loadConfig();
+        return sendJson(res, {
+          logs: readDispatchLog(config.memoryDir).slice(-100).reverse()
         });
       }
       if (req.method === "POST" && url.pathname === "/api/record") {
@@ -780,6 +806,72 @@ function appCommand(argv) {
           writeTasks(config.memoryDir, tasks);
         }, config.sync.lockStaleMs);
         return sendJson(res, { ok: true, task, status: getStatusObject() });
+      }
+      if (req.method === "POST" && url.pathname === "/api/task/claim") {
+        const body = await readRequestJson(req);
+        if (!body.id || typeof body.id !== "string") {
+          return sendJson(res, { error: "id is required" }, 400);
+        }
+        const config = loadConfig();
+        let task;
+        withHubLock(config.memoryDir, "task-claim", () => {
+          const by = body.by || "dashboard";
+          task = updateTask(config.memoryDir, body.id, (current) => ({
+            ...current,
+            status: current.status === "open" ? "claimed" : current.status,
+            assignee: by,
+            updatedAt: new Date().toISOString(),
+            notes: [
+              ...(current.notes || []),
+              createTaskNote(by, `Claimed by ${by}.`)
+            ]
+          }));
+        }, config.sync.lockStaleMs);
+        return sendJson(res, { ok: true, task, status: getStatusObject() });
+      }
+      if (req.method === "POST" && url.pathname === "/api/task/status") {
+        const body = await readRequestJson(req);
+        if (!body.id || typeof body.id !== "string") {
+          return sendJson(res, { error: "id is required" }, 400);
+        }
+        if (!body.status || typeof body.status !== "string") {
+          return sendJson(res, { error: "status is required" }, 400);
+        }
+        assertTaskStatus(body.status);
+        const config = loadConfig();
+        let task;
+        withHubLock(config.memoryDir, "task-status", () => {
+          const by = body.by || "dashboard";
+          task = updateTask(config.memoryDir, body.id, (current) => {
+            const notes = [...(current.notes || [])];
+            if (body.note) {
+              notes.push(createTaskNote(by, body.note));
+            } else if (current.status !== body.status) {
+              notes.push(createTaskNote(by, `Status changed to ${body.status}.`));
+            }
+            return {
+              ...current,
+              status: body.status,
+              assignee: current.assignee || by,
+              updatedAt: new Date().toISOString(),
+              completedAt: body.status === "done" ? new Date().toISOString() : current.completedAt || "",
+              notes
+            };
+          });
+        }, config.sync.lockStaleMs);
+        return sendJson(res, { ok: true, task, status: getStatusObject() });
+      }
+      if (req.method === "POST" && url.pathname === "/api/dispatch/run") {
+        const body = await readRequestJson(req);
+        const config = loadConfig();
+        const results = executeDispatch(config.memoryDir, {
+          run: true,
+          force: Boolean(body.force),
+          to: body.to || "",
+          project: body.project || "",
+          limit: Number(body.limit || 10)
+        });
+        return sendJson(res, { ok: true, results, status: getStatusObject() });
       }
       if (req.method === "POST" && url.pathname === "/api/radio/promote") {
         const body = await readRequestJson(req);
@@ -958,18 +1050,22 @@ function ensureHub(memoryDir) {
 }
 
 function loadConfig() {
-  if (!fs.existsSync(DEFAULT_CONFIG_PATH)) {
-    ensureHub(DEFAULT_MEMORY_DIR);
-    writeJson(DEFAULT_CONFIG_PATH, defaultConfig(DEFAULT_MEMORY_DIR));
+  const memoryDir = resolveMemoryDir();
+  const configPath = path.join(memoryDir, "config.json");
+  if (!fs.existsSync(configPath)) {
+    ensureHub(memoryDir);
+    writeJson(configPath, defaultConfig(memoryDir));
   }
-  const config = readJson(DEFAULT_CONFIG_PATH);
+  const config = readJson(configPath);
   const cleanConfig = { ...config };
   delete cleanConfig["m" + "e" + "m" + "0"];
+  const base = defaultConfig(memoryDir);
   return {
-    ...defaultConfig(DEFAULT_MEMORY_DIR),
+    ...base,
     ...cleanConfig,
-    sync: { ...defaultConfig(DEFAULT_MEMORY_DIR).sync, ...(config.sync || {}) },
-    tools: { ...defaultConfig(DEFAULT_MEMORY_DIR).tools, ...(config.tools || {}) }
+    memoryDir,
+    sync: { ...base.sync, ...(config.sync || {}) },
+    tools: { ...base.tools, ...(config.tools || {}) }
   };
 }
 
@@ -1237,335 +1333,7 @@ function getInstallTargets(memoryDir) {
 }
 
 function renderDashboard() {
-  return `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>AI Memory Hub</title>
-  <style>
-    :root {
-      color-scheme: light;
-      --bg: #f6f7f9;
-      --panel: #ffffff;
-      --text: #17202a;
-      --muted: #667085;
-      --line: #d9dee7;
-      --accent: #1570ef;
-      --ok: #067647;
-      --warn: #b54708;
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      background: var(--bg);
-      color: var(--text);
-      font: 14px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    }
-    header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      padding: 16px 24px;
-      border-bottom: 1px solid var(--line);
-      background: var(--panel);
-      position: sticky;
-      top: 0;
-      z-index: 2;
-    }
-    h1 { font-size: 18px; margin: 0; }
-    main {
-      padding: 20px 24px 32px;
-      display: grid;
-      grid-template-columns: minmax(280px, 380px) 1fr;
-      gap: 16px;
-      max-width: 1400px;
-      margin: 0 auto;
-    }
-    section {
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 16px;
-      min-width: 0;
-    }
-    h2 {
-      font-size: 14px;
-      margin: 0 0 12px;
-      color: #344054;
-    }
-    .stack { display: grid; gap: 16px; }
-    .metrics {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 8px;
-    }
-    .metric {
-      border: 1px solid var(--line);
-      border-radius: 6px;
-      padding: 10px;
-      background: #fbfcfe;
-    }
-    .metric strong {
-      display: block;
-      font-size: 20px;
-      margin-bottom: 2px;
-    }
-    .muted { color: var(--muted); }
-    .status {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      font-weight: 600;
-    }
-    .dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 999px;
-      background: var(--warn);
-    }
-    .ok .dot { background: var(--ok); }
-    button {
-      border: 1px solid #b2c7ee;
-      background: #edf4ff;
-      color: #1849a9;
-      border-radius: 6px;
-      padding: 8px 10px;
-      font-weight: 600;
-      cursor: pointer;
-    }
-    button.primary {
-      border-color: var(--accent);
-      background: var(--accent);
-      color: white;
-    }
-    button:disabled { opacity: .55; cursor: wait; }
-    .actions { display: flex; gap: 8px; flex-wrap: wrap; }
-    textarea, input, select {
-      width: 100%;
-      border: 1px solid var(--line);
-      border-radius: 6px;
-      padding: 9px 10px;
-      font: inherit;
-      background: white;
-    }
-    textarea { min-height: 92px; resize: vertical; }
-    pre {
-      white-space: pre-wrap;
-      overflow: auto;
-      margin: 0;
-      background: #f8fafc;
-      border: 1px solid var(--line);
-      border-radius: 6px;
-      padding: 12px;
-      max-height: 520px;
-    }
-    table { width: 100%; border-collapse: collapse; }
-    th, td {
-      text-align: left;
-      border-bottom: 1px solid var(--line);
-      padding: 8px 4px;
-      vertical-align: top;
-    }
-    th { color: var(--muted); font-size: 12px; }
-    .path { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; word-break: break-all; }
-    @media (max-width: 900px) {
-      main { grid-template-columns: 1fr; padding: 12px; }
-      header { padding: 12px; align-items: flex-start; flex-direction: column; }
-      .metrics { grid-template-columns: 1fr; }
-    }
-  </style>
-</head>
-<body>
-  <header>
-    <div>
-      <h1>AI Memory Hub</h1>
-      <div class="muted">Shared local memory for AI apps. Model tokens stay separate.</div>
-    </div>
-    <div class="actions">
-      <button onclick="refresh()">Refresh</button>
-      <button onclick="pull()">Rebuild Snapshot</button>
-      <button class="primary" onclick="sync()">Sync Pending</button>
-    </div>
-  </header>
-  <main>
-    <div class="stack">
-      <section>
-        <h2>Status</h2>
-        <div id="statusLine" class="status"><span class="dot"></span><span>Loading</span></div>
-        <p class="path" id="memoryDir"></p>
-        <div class="metrics">
-          <div class="metric"><strong id="pending">0</strong><span class="muted">Pending</span></div>
-          <div class="metric"><strong id="ledger">0</strong><span class="muted">Ledger</span></div>
-          <div class="metric"><strong id="radioCount">0</strong><span class="muted">Radio</span></div>
-          <div class="metric"><strong id="taskCount">0</strong><span class="muted">Tasks</span></div>
-          <div class="metric"><strong id="backupCount">0</strong><span class="muted">Backups</span></div>
-          <div class="metric"><strong id="toolCount">0</strong><span class="muted">Apps found</span></div>
-        </div>
-      </section>
-      <section>
-        <h2>Shared Tasks</h2>
-        <div class="stack">
-          <textarea id="taskTitle" placeholder="Current task another AI can pick up or help with."></textarea>
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
-            <input id="taskFrom" value="dashboard" aria-label="from">
-            <input id="taskProject" value="default" aria-label="project">
-            <select id="taskPriority" aria-label="priority">
-              <option value="normal">normal</option>
-              <option value="high">high</option>
-              <option value="urgent">urgent</option>
-              <option value="low">low</option>
-            </select>
-          </div>
-          <button class="primary" onclick="addTask()">Add Task</button>
-        </div>
-      </section>
-      <section>
-        <h2>Agent Radio</h2>
-        <div class="stack">
-          <textarea id="radioText" placeholder="Short cross-agent message, handoff, review request, or risk note."></textarea>
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
-            <input id="radioFrom" value="dashboard" aria-label="from">
-            <input id="radioTo" value="all" aria-label="to">
-            <select id="radioType" aria-label="type">
-              <option value="note">note</option>
-              <option value="handoff">handoff</option>
-              <option value="review">review</option>
-              <option value="risk">risk</option>
-              <option value="done">done</option>
-            </select>
-          </div>
-          <button class="primary" onclick="sendRadio()">Send Radio Message</button>
-        </div>
-      </section>
-      <section>
-        <h2>Record Memory</h2>
-        <div class="stack">
-          <textarea id="recordText" placeholder="Durable preference, project fact, workflow rule, or correction."></textarea>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-            <input id="recordSource" value="dashboard" aria-label="source">
-            <select id="recordKind" aria-label="kind">
-              <option value="note">note</option>
-              <option value="preference">preference</option>
-              <option value="project">project</option>
-              <option value="workflow">workflow</option>
-              <option value="correction">correction</option>
-            </select>
-          </div>
-          <button class="primary" onclick="recordMemory()">Record</button>
-        </div>
-      </section>
-      <section>
-        <h2>Detected AI Apps</h2>
-        <table>
-          <thead><tr><th>App</th><th>Status</th></tr></thead>
-          <tbody id="tools"></tbody>
-        </table>
-      </section>
-    </div>
-    <div class="stack">
-      <section>
-        <h2>Shared Snapshot</h2>
-        <pre id="memory"></pre>
-      </section>
-      <section>
-        <h2>Pending Inbox</h2>
-        <pre id="pendingJson"></pre>
-      </section>
-      <section>
-        <h2>Active Tasks</h2>
-        <pre id="tasksJson"></pre>
-      </section>
-      <section>
-        <h2>Agent Radio Messages</h2>
-        <pre id="radioJson"></pre>
-      </section>
-    </div>
-  </main>
-  <script>
-    async function api(path, options) {
-      const res = await fetch(path, options);
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || res.statusText);
-      return json;
-    }
-    async function refresh() {
-      const [status, memory, radio, tasks] = await Promise.all([api('/api/status'), api('/api/memory'), api('/api/radio'), api('/api/tasks')]);
-      const line = document.getElementById('statusLine');
-      line.className = 'status ok';
-      line.querySelector('span:last-child').textContent = 'Local hub ready';
-      document.getElementById('memoryDir').textContent = status.memoryDir;
-      document.getElementById('pending').textContent = status.pendingEvents;
-      document.getElementById('ledger').textContent = status.ledgerEvents;
-      document.getElementById('radioCount').textContent = status.radioMessages;
-      document.getElementById('taskCount').textContent = (status.tasks && status.tasks.active) || 0;
-      document.getElementById('backupCount').textContent = status.backups || 0;
-      document.getElementById('toolCount').textContent = status.tools.filter(t => t.installed).length;
-      document.getElementById('memory').textContent = memory.memory || '';
-      document.getElementById('pendingJson').textContent = JSON.stringify(memory.pending || [], null, 2);
-      document.getElementById('radioJson').textContent = JSON.stringify(radio.messages || [], null, 2);
-      document.getElementById('tasksJson').textContent = JSON.stringify(tasks.tasks || [], null, 2);
-      document.getElementById('tools').innerHTML = status.tools.map(t =>
-        '<tr><td>' + escapeHtml(t.name) + '<div class="path">' + escapeHtml(t.dir) + '</div></td><td>' + (t.installed ? 'installed' : 'missing') + '</td></tr>'
-      ).join('');
-    }
-    async function recordMemory() {
-      const text = document.getElementById('recordText').value.trim();
-      if (!text) return;
-      await api('/api/record', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text,
-          source: document.getElementById('recordSource').value || 'dashboard',
-          kind: document.getElementById('recordKind').value || 'note'
-        })
-      });
-      document.getElementById('recordText').value = '';
-      await refresh();
-    }
-    async function sendRadio() {
-      const text = document.getElementById('radioText').value.trim();
-      if (!text) return;
-      await api('/api/radio/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text,
-          from: document.getElementById('radioFrom').value || 'dashboard',
-          to: document.getElementById('radioTo').value || 'all',
-          type: document.getElementById('radioType').value || 'note'
-        })
-      });
-      document.getElementById('radioText').value = '';
-      await refresh();
-    }
-    async function addTask() {
-      const title = document.getElementById('taskTitle').value.trim();
-      if (!title) return;
-      await api('/api/task/add', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title,
-          from: document.getElementById('taskFrom').value || 'dashboard',
-          project: document.getElementById('taskProject').value || 'default',
-          priority: document.getElementById('taskPriority').value || 'normal'
-        })
-      });
-      document.getElementById('taskTitle').value = '';
-      await refresh();
-    }
-    async function sync() { await api('/api/sync', { method: 'POST' }); await refresh(); }
-    async function pull() { await api('/api/pull', { method: 'POST' }); await refresh(); }
-    function escapeHtml(value) {
-      return String(value).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
-    }
-    refresh().catch(err => alert(err.message));
-  </script>
-</body>
-</html>`;
+  return readTemplate("dashboard.html");
 }
 
 function sendHtml(res, html) {
@@ -1869,22 +1637,51 @@ function renderMemoryLine(memory) {
 
 function searchMemories(records, query) {
   const queryTerms = extractKeywords(query);
+  const queryNgrams = extractSearchTerms(query);
+  const queryNormalized = normalizeSearchText(query);
   return records
     .map((memory) => {
+      const text = String(memory.text || "");
       const haystack = new Set([
-        ...extractKeywords(memory.text),
+        ...extractKeywords(text),
         ...(memory.keywords || []),
         ...(memory.topics || []),
         memory.source || "",
         memory.metadata?.kind || ""
       ]);
+      const searchTerms = new Set([
+        ...extractSearchTerms(text),
+        ...extractSearchTerms((memory.topics || []).join(" ")),
+        ...extractSearchTerms(memory.source || ""),
+        ...extractSearchTerms(memory.metadata?.kind || "")
+      ]);
+      const normalizedText = normalizeSearchText(text);
+      const normalizedJoinedKeywords = normalizeSearchText([
+        ...haystack,
+        ...searchTerms
+      ].join(" "));
       let score = 0;
       for (const term of queryTerms) {
         if (haystack.has(term)) {
+          score += 4;
+        } else if (searchTerms.has(term)) {
+          score += 3;
+        } else if (normalizedText.includes(normalizeSearchText(term))) {
           score += 2;
-        } else if (memory.text.toLowerCase().includes(term)) {
-          score += 1;
         }
+      }
+      for (const term of queryNgrams) {
+        if (!term) continue;
+        if (searchTerms.has(term)) {
+          score += term.length >= 4 ? 2.5 : 1.5;
+        } else if (normalizedText.includes(term) || normalizedJoinedKeywords.includes(term)) {
+          score += term.length >= 4 ? 2 : 1;
+        }
+      }
+      if (queryNormalized && normalizedText.includes(queryNormalized)) {
+        score += queryNormalized.length >= 6 ? 8 : 5;
+      } else if (queryNormalized && normalizedJoinedKeywords.includes(queryNormalized)) {
+        score += 3;
       }
       score += Number(memory.importance || 0) / 100;
       return { ...memory, score };
@@ -1947,11 +1744,53 @@ function inferTopics(memory) {
 }
 
 function extractKeywords(text) {
-  const normalized = String(text || "").toLowerCase();
+  const normalized = normalizeSearchText(text);
   const latin = normalized.match(/[a-z0-9][a-z0-9_.-]{1,}/g) || [];
   const cjk = normalized.match(/[\u4e00-\u9fff]{2,}/g) || [];
+  const ngrams = extractCjkNgrams(normalized);
   const stop = new Set(["the", "and", "for", "with", "when", "this", "that", "into", "from", "should", "memory", "local"]);
-  return [...new Set([...latin, ...cjk].filter((term) => !stop.has(term)).slice(0, 80))];
+  return [...new Set([...latin, ...cjk, ...ngrams].filter((term) => term && !stop.has(term)).slice(0, 120))];
+}
+
+function extractSearchTerms(text) {
+  const normalized = normalizeSearchText(text);
+  return [...new Set([
+    ...extractKeywords(normalized),
+    ...extractCompactVariants(normalized)
+  ])];
+}
+
+function normalizeSearchText(text) {
+  return String(text || "")
+    .toLowerCase()
+    .normalize("NFKC")
+    .replace(/[\u3000\s]+/g, " ")
+    .trim();
+}
+
+function extractCompactVariants(text) {
+  const normalized = normalizeSearchText(text);
+  if (!normalized) return [];
+  const compact = normalized.replace(/[\s`~!@#$%^&*()\-_=+\[\]{}\\|;:'",<.>/?。，、；：！？（）【】《》“”‘’]+/g, "");
+  return compact && compact !== normalized ? [compact] : [];
+}
+
+function extractCjkNgrams(text) {
+  const chunks = String(text || "").match(/[\u4e00-\u9fff]{2,}/g) || [];
+  const grams = [];
+  for (const chunk of chunks) {
+    if (chunk.length <= 4) {
+      grams.push(chunk);
+      continue;
+    }
+    for (let size = 2; size <= 3; size++) {
+      for (let index = 0; index <= chunk.length - size; index++) {
+        grams.push(chunk.slice(index, index + size));
+      }
+    }
+    grams.push(chunk);
+  }
+  return grams;
 }
 
 function countBy(values) {

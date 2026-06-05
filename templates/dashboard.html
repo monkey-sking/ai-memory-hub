@@ -1,0 +1,1863 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Memory Hub Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg-main: #090d16;
+      --bg-sidebar: #0f1423;
+      --bg-panel: #141b2f;
+      --bg-panel-hover: #1c253f;
+      --bg-input: #090d16;
+      --text-main: #f0f3f6;
+      --text-muted: #8b9bb4;
+      --border-color: #212c46;
+      --border-focus: #58a6ff;
+      --accent-blue: #388bfd;
+      --accent-purple: #bc8cff;
+      --accent-green: #3fb950;
+      --status-open: #8b9bb4;
+      --status-claimed: #e3b341;
+      --status-progress: #388bfd;
+      --status-blocked: #f85149;
+      --status-done: #56d364;
+      --status-cancelled: #484f58;
+      --shadow: 0 8px 24px rgba(0,0,0,0.5);
+      --font-sans: 'Outfit', system-ui, -apple-system, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg-main);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      line-height: 1.5;
+      display: flex;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: var(--bg-main); }
+    ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+    /* Layout structure */
+    aside {
+      width: 300px;
+      background: var(--bg-sidebar);
+      border-right: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+      position: fixed;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      z-index: 100;
+      padding: 24px;
+      transition: transform 0.3s ease;
+    }
+
+    .app-logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 32px;
+    }
+    .app-logo .icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, var(--accent-purple), var(--accent-blue));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 20px;
+      color: #fff;
+      box-shadow: 0 0 12px rgba(188,140,255,0.4);
+    }
+    .app-logo h1 {
+      font-size: 20px;
+      margin: 0;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      background: linear-gradient(to right, #fff, #c9d1d9);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    nav {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      flex: 1;
+    }
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      border-radius: 8px;
+      color: var(--text-muted);
+      text-decoration: none;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      border: 1px solid transparent;
+    }
+    .nav-item:hover {
+      color: var(--text-main);
+      background: var(--bg-panel-hover);
+    }
+    .nav-item.active {
+      color: #fff;
+      background: var(--bg-panel);
+      border-color: var(--border-color);
+    }
+    .nav-item .badge {
+      margin-left: auto;
+      background: var(--border-color);
+      color: var(--text-muted);
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 10px;
+      font-weight: 600;
+    }
+    .nav-item.active .badge {
+      background: var(--accent-blue);
+      color: #fff;
+    }
+
+    .tools-matrix {
+      border-top: 1px solid var(--border-color);
+      padding-top: 20px;
+      margin-top: auto;
+    }
+    .tools-matrix h3 {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-muted);
+      margin: 0 0 12px 4px;
+    }
+    .tools-list {
+      max-height: 200px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .tool-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 8px;
+      border-radius: 6px;
+      background: rgba(255,255,255,0.02);
+      font-size: 12px;
+    }
+    .tool-name { font-weight: 500; }
+    .tool-status {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--status-cancelled);
+    }
+    .tool-status.installed { background: var(--status-done); box-shadow: 0 0 8px var(--status-done); }
+
+    /* Main Content Area */
+    .container {
+      margin-left: 300px;
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      background: var(--bg-sidebar);
+      border-bottom: 1px solid var(--border-color);
+      padding: 18px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 90;
+    }
+    .header-left { display: flex; flex-direction: column; gap: 4px; }
+    .workspace-info {
+      font-size: 12px;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .workspace-info code {
+      font-family: var(--font-mono);
+      background: var(--bg-main);
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--border-color);
+    }
+    .header-actions { display: flex; align-items: center; gap: 12px; }
+
+    /* Layout grid container */
+    main {
+      padding: 32px;
+      flex: 1;
+    }
+
+    .tab-panel {
+      display: none;
+      animation: fadeIn 0.25s ease-out;
+    }
+    .tab-panel.active { display: block; }
+
+    /* Metrics Summary Widget */
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .summary-card {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      box-shadow: var(--shadow);
+    }
+    .summary-card span { font-size: 13px; color: var(--text-muted); font-weight: 500; }
+    .summary-card strong { font-size: 28px; font-weight: 700; color: #fff; }
+
+    /* General Panel styles */
+    .panel {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: var(--shadow);
+      margin-bottom: 24px;
+    }
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 12px;
+    }
+    .panel-title { font-size: 16px; font-weight: 600; margin: 0; color: #fff; }
+
+    /* Forms */
+    .form-group { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+    .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+    label { font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    input, select, textarea {
+      background: var(--bg-input);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      color: var(--text-main);
+      padding: 10px 14px;
+      font-family: inherit;
+      font-size: 14px;
+      width: 100%;
+      transition: border-color 0.2s;
+    }
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: var(--border-focus);
+    }
+    textarea { resize: vertical; min-height: 80px; }
+
+    /* Buttons */
+    button, .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-family: var(--font-sans);
+      font-size: 14px;
+      font-weight: 600;
+      padding: 10px 16px;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      background: var(--bg-panel-hover);
+      color: var(--text-main);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    button:hover, .btn:hover { background: var(--border-color); color: #fff; }
+    button.primary, .btn.primary {
+      background: var(--accent-blue);
+      border-color: var(--accent-blue);
+      color: #fff;
+    }
+    button.primary:hover, .btn.primary:hover { background: #006be6; border-color: #006be6; }
+    button.danger, .btn.danger {
+      background: rgba(248,81,73,0.15);
+      border-color: var(--status-blocked);
+      color: #ff7b72;
+    }
+    button.danger:hover, .btn.danger:hover { background: var(--status-blocked); color: #fff; }
+    button.small, .btn.small { padding: 6px 10px; font-size: 12px; border-radius: 6px; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* Badge styles */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .badge.priority-urgent { background: rgba(248,81,73,0.15); color: #ff7b72; }
+    .badge.priority-high { background: rgba(227,179,65,0.15); color: #e3b341; }
+    .badge.priority-normal { background: rgba(56,139,253,0.15); color: #58a6ff; }
+    .badge.priority-low { background: rgba(139,155,180,0.15); color: var(--text-muted); }
+
+    .badge.status-open { background: rgba(139,155,180,0.15); color: var(--text-muted); }
+    .badge.status-claimed { background: rgba(227,179,65,0.15); color: #e3b341; }
+    .badge.status-in_progress { background: rgba(56,139,253,0.15); color: #58a6ff; }
+    .badge.status-blocked { background: rgba(248,81,73,0.15); color: #ff7b72; }
+    .badge.status-done { background: rgba(86,211,100,0.15); color: #56d364; }
+    .badge.status-cancelled { background: rgba(72,79,88,0.15); color: #8b949e; }
+
+    /* Dashboard Layout */
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+
+    /* Message stream */
+    .stream {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      max-height: 500px;
+      overflow-y: auto;
+      padding-right: 8px;
+    }
+    .stream-card {
+      background: var(--bg-panel-hover);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      position: relative;
+    }
+    .stream-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+    }
+    .stream-meta { display: flex; align-items: center; gap: 8px; }
+    .stream-sender { font-weight: 600; color: #fff; }
+    .stream-project {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--border-color);
+      padding: 1px 6px;
+      border-radius: 4px;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+    .stream-body { font-size: 13.5px; white-space: pre-wrap; word-break: break-all; }
+    .stream-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      border-top: 1px solid rgba(255,255,255,0.04);
+      padding-top: 8px;
+    }
+
+    /* Tasks Board Layout */
+    .tasks-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      align-items: start;
+    }
+    .tasks-column {
+      background: var(--bg-sidebar);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 16px;
+      min-height: 400px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .column-header {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border-color);
+    }
+    .task-card {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      transition: transform 0.2s, border-color 0.2s;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+    .task-card:hover {
+      transform: translateY(-2px);
+      border-color: var(--border-focus);
+    }
+    .task-title { font-weight: 600; color: #fff; margin: 0; font-size: 14.5px; }
+    .task-meta { display: flex; align-items: center; justify-content: space-between; font-size: 11px; }
+    .task-assignee { display: flex; align-items: center; gap: 4px; font-weight: 500; }
+    .task-desc { font-size: 12.5px; color: var(--text-muted); word-break: break-all; }
+    .task-handoff {
+      background: rgba(255,255,255,0.02);
+      border-left: 2px solid var(--accent-purple);
+      padding: 6px 10px;
+      font-size: 12px;
+      font-style: italic;
+      color: var(--text-muted);
+    }
+    .task-notes {
+      border-top: 1px dashed var(--border-color);
+      padding-top: 8px;
+      margin-top: 4px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .task-note-item {
+      font-size: 11px;
+      color: var(--text-muted);
+      line-height: 1.3;
+    }
+    .task-note-item strong { color: #fff; }
+
+    /* Memory Hub Layout */
+    .memory-split {
+      display: grid;
+      grid-template-columns: 350px 1fr;
+      gap: 24px;
+    }
+    .markdown-container {
+      background: var(--bg-panel-hover);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 24px;
+      font-family: var(--font-sans);
+      font-size: 14px;
+      max-height: 700px;
+      overflow-y: auto;
+    }
+    .markdown-container h1 { font-size: 20px; font-weight: 700; margin-top: 0; color: #fff; border-bottom: 1px solid var(--border-color); padding-bottom: 8px; }
+    .markdown-container h2 { font-size: 16px; font-weight: 600; margin-top: 24px; color: var(--accent-blue); }
+    .markdown-container h3 { font-size: 14px; font-weight: 600; margin-top: 16px; }
+    .markdown-container ul { padding-left: 20px; }
+    .markdown-container li { margin-bottom: 8px; line-height: 1.6; }
+    .markdown-container code { font-family: var(--font-mono); background: rgba(255,255,255,0.06); padding: 2px 4px; border-radius: 4px; font-size: 12px; }
+    .markdown-container a { color: var(--accent-blue); text-decoration: none; }
+    .markdown-container a:hover { text-decoration: underline; }
+
+    /* Dispatch Log styles */
+    .dispatch-log-list { display: flex; flex-direction: column; gap: 12px; }
+    .dispatch-log-card {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 16px;
+    }
+    .dispatch-log-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+    }
+    .dispatch-log-meta { display: flex; align-items: center; gap: 16px; font-size: 13px; }
+    .dispatch-log-tool { font-weight: 600; color: #fff; }
+    .dispatch-log-project { font-family: var(--font-mono); color: var(--text-muted); }
+    .dispatch-log-details {
+      margin-top: 16px;
+      border-top: 1px solid var(--border-color);
+      padding-top: 12px;
+      display: none;
+    }
+    .dispatch-log-details.active { display: block; }
+    .dispatch-output-box {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      background: var(--bg-main);
+      padding: 12px;
+      border-radius: 6px;
+      border: 1px solid var(--border-color);
+      overflow-x: auto;
+      max-height: 250px;
+      margin-top: 8px;
+      white-space: pre-wrap;
+    }
+
+    /* Filter strip */
+    .filter-strip {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 16px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .filter-strip select, .filter-strip input {
+      width: auto;
+      min-width: 150px;
+      padding: 6px 12px;
+      font-size: 13px;
+      border-radius: 6px;
+    }
+
+    /* Auto refresh widget */
+    .refresh-widget {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 34px;
+      height: 20px;
+    }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-color: var(--border-color);
+      transition: .4s;
+      border-radius: 20px;
+    }
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 14px; width: 14px;
+      left: 3px; bottom: 3px;
+      background-color: white;
+      transition: .4s;
+      border-radius: 50%;
+    }
+    input:checked + .slider { background-color: var(--accent-blue); }
+    input:checked + .slider:before { transform: translateX(14px); }
+
+    /* Loading Spinner */
+    .spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255,255,255,0.1);
+      border-radius: 50%;
+      border-top-color: #fff;
+      animation: spin 1s ease-in-out infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* Responsive */
+    @media (max-width: 992px) {
+      aside {
+        transform: translateX(-100%);
+      }
+      aside.active {
+        transform: translateX(0);
+      }
+      .container { margin-left: 0; }
+      .dashboard-grid { grid-template-columns: 1fr; }
+      .tasks-grid { grid-template-columns: 1fr; }
+      .memory-split { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <aside id="sidebar">
+    <div class="app-logo">
+      <div class="icon">Ω</div>
+      <h1>AI Memory Hub</h1>
+    </div>
+    <nav>
+      <div class="nav-item active" onclick="switchTab('dashboard')" data-i18n="overview">📊 Overview</div>
+      <div class="nav-item" onclick="switchTab('memory')">🧠 <span data-i18n="memoryHub">Memory Hub</span> <span class="badge" id="sidebarPending">0</span></div>
+      <div class="nav-item" onclick="switchTab('radio')">📻 <span data-i18n="agentRadio">Agent Radio</span> <span class="badge" id="sidebarRadio">0</span></div>
+      <div class="nav-item" onclick="switchTab('tasks')">📋 <span data-i18n="tasksBoard">Tasks Board</span> <span class="badge" id="sidebarTasks">0</span></div>
+      <div class="nav-item" onclick="switchTab('dispatch')" data-i18n="dispatchLogs">⚡ Dispatch Logs</div>
+    </nav>
+
+    <div class="tools-matrix">
+      <h3 data-i18n="detectedTools">Detected Tools</h3>
+      <div class="tools-list" id="detectedTools">
+        <div class="muted" style="font-size:11px;padding:4px;" data-i18n="scanning">Scanning...</div>
+      </div>
+    </div>
+  </aside>
+
+  <div class="container">
+    <header>
+      <div class="header-left">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <button id="sidebarToggle" class="btn small" style="display:none;" onclick="toggleSidebar()">☰</button>
+          <h2 style="margin:0;font-size:18px;font-weight:600;" data-i18n="operations">Hub Operations</h2>
+        </div>
+        <div class="workspace-info">
+          <span data-i18n="storage">Storage:</span><code id="memoryDir">loading...</code>
+        </div>
+      </div>
+      <div class="header-actions">
+        <div class="refresh-widget">
+          <span data-i18n="autoRefresh">Auto-refresh:</span>
+          <label class="switch">
+            <input type="checkbox" id="autoRefreshCheckbox" checked onchange="toggleAutoRefresh(this.checked)">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <button onclick="toggleLanguage()" class="btn" id="btnLang">🌐 EN</button>
+        <button onclick="refreshData()" class="btn" id="btnRefresh" data-i18n="refresh">Refresh</button>
+        <button onclick="runPull()" class="btn" id="btnPull" data-i18n="rebuild">Rebuild Snapshot</button>
+        <button onclick="runSync()" class="primary" id="btnSync" data-i18n="syncInbox">Sync Inbox</button>
+      </div>
+    </header>
+
+    <main>
+      <!-- Dashboard Overview Tab -->
+      <div id="tab-dashboard" class="tab-panel active">
+        <div class="summary-grid">
+          <div class="summary-card">
+            <span data-i18n="activeTasks">Active Tasks</span>
+            <strong id="cardActiveTasks">0</strong>
+          </div>
+          <div class="summary-card">
+            <span data-i18n="pendingEvents">Pending Events</span>
+            <strong id="cardPending">0</strong>
+          </div>
+          <div class="summary-card">
+            <span data-i18n="radioMessages">Radio Messages</span>
+            <strong id="cardRadio">0</strong>
+          </div>
+          <div class="summary-card">
+            <span data-i18n="durableLedger">Durable Ledger</span>
+            <strong id="cardLedger">0</strong>
+          </div>
+          <div class="summary-card">
+            <span data-i18n="backups">Backups</span>
+            <strong id="cardBackups">0</strong>
+          </div>
+        </div>
+
+        <div class="dashboard-grid">
+          <div class="panel">
+            <div class="panel-header">
+              <h3 class="panel-title" data-i18n="activeTasksKanban">⭐ Active Tasks Kanban</h3>
+              <button class="btn small" onclick="switchTab('tasks')" data-i18n="fullBoard">Full Board</button>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:12px;" id="dashboardTasks">
+              <div class="muted" data-i18n="noActiveTasks">No active tasks found.</div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <h3 class="panel-title" data-i18n="liveRadioFeed">📻 Live Radio Feed</h3>
+              <button class="btn small" onclick="switchTab('radio')" data-i18n="agentRadio">Agent Radio</button>
+            </div>
+            <div class="stream" id="dashboardRadio">
+              <div class="muted" data-i18n="noRecentMessages">No recent messages.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Memory Hub Tab -->
+      <div id="tab-memory" class="tab-panel">
+        <div class="memory-split">
+          <div class="stack">
+            <div class="panel">
+              <div class="panel-header">
+                <h3 class="panel-title" data-i18n="recordMemory">Record Memory</h3>
+              </div>
+              <div class="form-group">
+                <label data-i18n="textLabel">Text</label>
+                <textarea id="memText" data-i18n-placeholder="placeholderMemText" placeholder="Record user preference, workflow rule, or important project fact."></textarea>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label data-i18n="kindLabel">Kind</label>
+                  <select id="memKind">
+                    <option value="preference" data-i18n="prefOpt">Preference</option>
+                    <option value="workflow" data-i18n="workOpt">Workflow</option>
+                    <option value="project" data-i18n="projOpt">Project</option>
+                    <option value="correction" data-i18n="corrOpt">Correction</option>
+                    <option value="note" selected data-i18n="noteOpt">Note</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label data-i18n="sourceLabel">Source</label>
+                  <input type="text" id="memSource" value="dashboard">
+                </div>
+              </div>
+              <button class="primary" onclick="submitMemory()" data-i18n="recordDurable">Record Durable Event</button>
+            </div>
+
+            <div class="panel">
+              <div class="panel-header">
+                <h3 class="panel-title" data-i18n="inboxPendingSync">Inbox Events (Pending Sync)</h3>
+              </div>
+              <div style="max-height:300px;overflow-y:auto;">
+                <table style="width:100%;font-size:12px;">
+                  <thead>
+                    <tr><th data-i18n="sourceLabel">Source</th><th data-i18n="textLabel">Event</th></tr>
+                  </thead>
+                  <tbody id="inboxTable">
+                    <tr><td colspan="2" class="muted" data-i18n="noPendingTable">No pending events.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <div style="display:flex;gap:12px;">
+                <button class="btn small primary" onclick="switchMemorySubTab('md')">MEMORY.md</button>
+                <button class="btn small" onclick="switchMemorySubTab('profile')">profile.md</button>
+              </div>
+              <button class="btn small" onclick="runPull()" data-i18n="pullIndex">Pull & Index</button>
+            </div>
+            <div id="memorySubTab-md" class="markdown-container">
+              <pre id="memoryRaw" class="muted">Loading MEMORY.md...</pre>
+            </div>
+            <div id="memorySubTab-profile" class="markdown-container" style="display:none;">
+              <pre id="profileRaw" class="muted">Loading profile.md...</pre>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Agent Radio Tab -->
+      <div id="tab-radio" class="tab-panel">
+        <div class="memory-split">
+          <div class="panel">
+            <div class="panel-header">
+              <h3 class="panel-title" data-i18n="broadcastMessage">Broadcast Message</h3>
+            </div>
+            <div class="form-group">
+              <label data-i18n="messageContent">Message Content</label>
+              <textarea id="radText" data-i18n-placeholder="placeholderRadText" placeholder="Broadcast a handoff note, review request, or risk flag."></textarea>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label data-i18n="fromLabel">From</label>
+                <input type="text" id="radFrom" value="dashboard">
+              </div>
+              <div class="form-group">
+                <label data-i18n="toLabel">To</label>
+                <input type="text" id="radTo" value="all">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label data-i18n="typeLabel">Type</label>
+                <select id="radType">
+                  <option value="note" selected data-i18n="noteOpt">Note</option>
+                  <option value="review" data-i18n="revOpt">Review</option>
+                  <option value="handoff" data-i18n="handOpt">Handoff</option>
+                  <option value="risk" data-i18n="riskOpt">Risk</option>
+                  <option value="done" data-i18n="doneOpt">Done</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label data-i18n="projectLabel">Project</label>
+                <input type="text" id="radProject" data-i18n-placeholder="projectLabel" placeholder="Project name">
+              </div>
+            </div>
+            <button class="primary" onclick="submitRadio()" data-i18n="broadcast">Broadcast Message</button>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <h3 class="panel-title" data-i18n="radioStream">Radio Stream</h3>
+            </div>
+            <div class="filter-strip">
+              <input type="text" id="filterRadioQuery" data-i18n-placeholder="searchText" placeholder="Search text..." oninput="applyRadioFilters()">
+              <select id="filterRadioFromOpt" onchange="applyRadioFilters()">
+                <option value="" data-i18n="senderAll">Sender: All</option>
+              </select>
+              <select id="filterRadioToOpt" onchange="applyRadioFilters()">
+                <option value="" data-i18n="recipientAll">Recipient: All</option>
+              </select>
+              <select id="filterRadioTypeOpt" onchange="applyRadioFilters()">
+                <option value="" data-i18n="typeAll">Type: All</option>
+                <option value="note" data-i18n="noteOpt">Note</option>
+                <option value="review" data-i18n="revOpt">Review</option>
+                <option value="handoff" data-i18n="handOpt">Handoff</option>
+                <option value="risk" data-i18n="riskOpt">Risk</option>
+                <option value="done" data-i18n="doneOpt">Done</option>
+              </select>
+            </div>
+            <div class="stream" id="radioFeed">
+              <div class="muted" data-i18n="noRadioMessages">No radio messages.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tasks Board Tab -->
+      <div id="tab-tasks" class="tab-panel">
+        <div class="panel">
+          <div class="panel-header">
+            <h3 class="panel-title" data-i18n="addTask">Add Shared Task</h3>
+          </div>
+          <div class="form-row">
+            <div class="form-group" style="grid-column: span 2;">
+              <label data-i18n="taskTitleLabel">Task Title</label>
+              <input type="text" id="tskTitle" data-i18n-placeholder="placeholderTskTitle" placeholder="Task summary or requirement">
+            </div>
+            <div class="form-group">
+              <label data-i18n="projectLabel">Project</label>
+              <input type="text" id="tskProject" value="default">
+            </div>
+            <div class="form-group">
+              <label data-i18n="priorityLabel">Priority</label>
+              <select id="tskPriority">
+                <option value="normal" selected data-i18n="normOpt">Normal</option>
+                <option value="low" data-i18n="lowOpt">Low</option>
+                <option value="high" data-i18n="highOpt">High</option>
+                <option value="urgent" data-i18n="urgOpt">Urgent</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group" style="grid-column: span 3;">
+              <label data-i18n="descriptionLabel">Description / Details</label>
+              <textarea id="tskDesc" data-i18n-placeholder="placeholderTskDesc" placeholder="Add detailed instructions, contextual parameters, or requirements..."></textarea>
+            </div>
+            <div class="form-group">
+              <label data-i18n="handoffStatusLabel">Handoff Status (Optional)</label>
+              <textarea id="tskHandoff" data-i18n-placeholder="placeholderTskHandoff" placeholder="Handoff details if transferring to another agent..."></textarea>
+            </div>
+          </div>
+          <button class="primary" onclick="submitTask()" data-i18n="addTaskButton">Add task to ledger</button>
+        </div>
+
+        <div class="filter-strip">
+          <span data-i18n="filterProject">Filter Project:</span>
+          <select id="filterTaskProject" onchange="renderTasksList()">
+            <option value="" data-i18n="allProjects">All Projects</option>
+          </select>
+          <span data-i18n="filterPriority">Filter Priority:</span>
+          <select id="filterTaskPriority" onchange="renderTasksList()">
+            <option value="" data-i18n="allPriorities">All Priorities</option>
+            <option value="low" data-i18n="lowOpt">Low</option>
+            <option value="normal" data-i18n="normOpt">Normal</option>
+            <option value="high" data-i18n="highOpt">High</option>
+            <option value="urgent" data-i18n="urgOpt">Urgent</option>
+          </select>
+        </div>
+
+        <div class="tasks-grid">
+          <!-- Column 1: Open -->
+          <div class="tasks-column">
+            <div class="column-header">
+              <span>OPEN</span>
+              <span class="badge status-open" id="countOpen">0</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:12px;" id="col-open"></div>
+          </div>
+
+          <!-- Column 2: Claimed & In Progress & Blocked -->
+          <div class="tasks-column">
+            <div class="column-header">
+              <span>ACTIVE</span>
+              <span class="badge status-in_progress" id="countActive">0</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:12px;" id="col-active"></div>
+          </div>
+
+          <!-- Column 3: Done & Cancelled -->
+          <div class="tasks-column">
+            <div class="column-header">
+              <span>COMPLETED</span>
+              <span class="badge status-done" id="countCompleted">0</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:12px;" id="col-completed"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Dispatch Logs Tab -->
+      <div id="tab-dispatch" class="tab-panel">
+        <div class="panel">
+          <div class="panel-header">
+            <h3 class="panel-title" data-i18n="automatedDispatcher">Automated Dispatcher (Cron / Watcher Dispatch Logs)</h3>
+            <button class="primary" onclick="triggerDispatcher()" id="btnTriggerDispatch" data-i18n="triggerDispatch">Trigger Dispatch Now</button>
+          </div>
+          <div class="dispatch-log-list" id="dispatchLogs">
+            <div class="muted" data-i18n="noDispatch">No dispatch logs found.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Compatibility & Raw JSON section for Scraper bots -->
+      <details class="panel" style="margin-top:24px;">
+        <summary style="cursor:pointer; font-weight:600; color:var(--text-muted);" data-i18n="rawCompatibility">🛠️ Raw JSON / Compatibility Data</summary>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:16px;">
+          <div>
+            <h4>Shared Snapshot (MEMORY.md)</h4>
+            <pre id="memory" style="font-family:var(--font-mono); font-size:12px; background:var(--bg-main); padding:12px; border:1px solid var(--border-color); border-radius:6px; max-height:300px; overflow:auto;"></pre>
+          </div>
+          <div>
+            <h4>Pending Inbox</h4>
+            <pre id="pendingJson" style="font-family:var(--font-mono); font-size:12px; background:var(--bg-main); padding:12px; border:1px solid var(--border-color); border-radius:6px; max-height:300px; overflow:auto;"></pre>
+          </div>
+          <div>
+            <h4>Active Tasks</h4>
+            <pre id="tasksJson" style="font-family:var(--font-mono); font-size:12px; background:var(--bg-main); padding:12px; border:1px solid var(--border-color); border-radius:6px; max-height:300px; overflow:auto;"></pre>
+          </div>
+          <div>
+            <h4>Agent Radio Messages</h4>
+            <pre id="radioJson" style="font-family:var(--font-mono); font-size:12px; background:var(--bg-main); padding:12px; border:1px solid var(--border-color); border-radius:6px; max-height:300px; overflow:auto;"></pre>
+          </div>
+        </div>
+      </details>
+      
+      <!-- Hidden backward-compatible DOM tags for scrapers -->
+      <div style="display:none;">
+        <div id="statusLine" class="status ok"><span class="dot"></span><span>Local hub ready</span></div>
+        <span id="pending">0</span>
+        <span id="ledger">0</span>
+        <span id="radioCount">0</span>
+        <span id="taskCount">0</span>
+        <span id="backupCount">0</span>
+        <span id="toolCount">0</span>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const i18n = {
+      en: {
+        overview: "📊 Overview",
+        memoryHub: "Memory Hub",
+        agentRadio: "Agent Radio",
+        tasksBoard: "Tasks Board",
+        dispatchLogs: "⚡ Dispatch Logs",
+        detectedTools: "Detected Tools",
+        scanning: "Scanning...",
+        operations: "Hub Operations",
+        storage: "Storage:",
+        autoRefresh: "Auto-refresh:",
+        refresh: "Refresh",
+        rebuild: "Rebuild Snapshot",
+        syncInbox: "Sync Inbox",
+        activeTasks: "Active Tasks",
+        pendingEvents: "Pending Events",
+        radioMessages: "Radio Messages",
+        durableLedger: "Durable Ledger",
+        backups: "Backups",
+        activeTasksKanban: "⭐ Active Tasks Kanban",
+        fullBoard: "Full Board",
+        liveRadioFeed: "📻 Live Radio Feed",
+        recordMemory: "Record Memory",
+        textLabel: "Text",
+        kindLabel: "Kind",
+        sourceLabel: "Source",
+        recordDurable: "Record Durable Event",
+        inboxPendingSync: "Inbox Events (Pending Sync)",
+        noPendingTable: "No pending events.",
+        pullIndex: "Pull & Index",
+        broadcastMessage: "Broadcast Message",
+        messageContent: "Message Content",
+        fromLabel: "From",
+        toLabel: "To",
+        typeLabel: "Type",
+        projectLabel: "Project",
+        broadcast: "Broadcast Message",
+        radioStream: "Radio Stream",
+        searchText: "Search text...",
+        addTask: "Add Shared Task",
+        taskTitleLabel: "Task Title",
+        priorityLabel: "Priority",
+        descriptionLabel: "Description / Details",
+        handoffStatusLabel: "Handoff Status (Optional)",
+        addTaskButton: "Add task to ledger",
+        filterProject: "Filter Project:",
+        filterPriority: "Filter Priority:",
+        allProjects: "All Projects",
+        allPriorities: "All Priorities",
+        automatedDispatcher: "Automated Dispatcher (Cron / Watcher logs)",
+        triggerDispatch: "Trigger Dispatch Now",
+        noDispatch: "No dispatch logs found.",
+        rawCompatibility: "🛠️ Raw JSON / Compatibility Data Panels",
+        
+        noActiveTasks: "No active tasks found.",
+        noRecentMessages: "No recent messages.",
+        noPendingEvents: "No pending events in inbox.",
+        noRadioMessages: "No radio messages.",
+        noOpenTasks: "No open tasks.",
+        noActiveClaimedTasks: "No active claimed tasks.",
+        noCompletedTasks: "No completed tasks.",
+        noDispatcherEvents: "No dispatcher events recorded yet.",
+        unassigned: "Unassigned",
+        defaultProj: "Default",
+        claimTask: "Claim Task",
+        startWork: "Start Work",
+        blockTask: "Block",
+        unblockTask: "Unblock",
+        completeTask: "Complete",
+        reopenTask: "Reopen",
+        successText: "Success",
+        failedText: "Failed",
+        runnableText: "Runnable",
+        notRunnableText: "No Runner",
+        addNotePlaceholder: "Add note...",
+        promptClaim: "Enter your name to claim task:",
+        promptBlock: "Enter reason for blocking task:",
+        promptNote: "Enter your name for note:",
+        promoteToMemory: "Promote to memory",
+        alertPromoted: "Message promoted to inbox. Run Sync Inbox to consolidate.",
+        confirmForceDispatch: "Force run dispatcher (ignores exit status cache)?",
+        alertDispatched: "Executed {n} dispatch jobs.",
+        
+        prefOpt: "Preference",
+        workOpt: "Workflow",
+        projOpt: "Project",
+        corrOpt: "Correction",
+        noteOpt: "Note",
+        revOpt: "Review",
+        handOpt: "Handoff",
+        riskOpt: "Risk",
+        doneOpt: "Done",
+        lowOpt: "Low",
+        normOpt: "Normal",
+        highOpt: "High",
+        urgOpt: "Urgent",
+        
+        senderAll: "Sender: All",
+        recipientAll: "Recipient: All",
+        typeAll: "Type: All",
+        
+        placeholderMemText: "Record user preference, workflow rule, or important project fact.",
+        placeholderRadText: "Broadcast a handoff note, review request, or risk flag.",
+        placeholderTskTitle: "Task summary or requirement",
+        placeholderTskDesc: "Add detailed instructions, contextual parameters, or requirements...",
+        placeholderTskHandoff: "Handoff details if transferring to another agent..."
+      },
+      zh: {
+        overview: "📊 概览看板",
+        memoryHub: "记忆中心",
+        agentRadio: "智能电台",
+        tasksBoard: "任务看板",
+        dispatchLogs: "⚡ 调度日志",
+        detectedTools: "已检测工具",
+        scanning: "扫描中...",
+        operations: "Hub 核心操作",
+        storage: "存储路径:",
+        autoRefresh: "自动刷新:",
+        refresh: "刷新数据",
+        rebuild: "重建快照",
+        syncInbox: "同步收件箱",
+        activeTasks: "活跃任务数",
+        pendingEvents: "待同步事件",
+        radioMessages: "电台消息数",
+        durableLedger: "长期记忆条",
+        backups: "备份文件数",
+        activeTasksKanban: "⭐ 当前活跃任务",
+        fullBoard: "完整看板",
+        liveRadioFeed: "📻 实时电台广播",
+        recordMemory: "记录长期记忆",
+        textLabel: "正文内容",
+        kindLabel: "记忆类型",
+        sourceLabel: "来源",
+        recordDurable: "追加长期记忆",
+        inboxPendingSync: "待整理收件箱事件",
+        noPendingTable: "暂无待同步事件。",
+        pullIndex: "拉取并索引",
+        broadcastMessage: "广播跨工具消息",
+        messageContent: "消息正文",
+        fromLabel: "发送方",
+        toLabel: "接收方",
+        typeLabel: "消息类型",
+        projectLabel: "所属项目",
+        broadcast: "发送广播消息",
+        radioStream: "电台广播流",
+        searchText: "搜索内容...",
+        addTask: "添加共享任务",
+        taskTitleLabel: "任务标题",
+        priorityLabel: "优先级",
+        descriptionLabel: "描述与详情",
+        handoffStatusLabel: "交接状态 (选填)",
+        addTaskButton: "将任务写入账本",
+        filterProject: "筛选项目:",
+        filterPriority: "筛选优先级:",
+        allProjects: "所有项目",
+        allPriorities: "所有优先级",
+        automatedDispatcher: "自动任务调度器执行日志",
+        triggerDispatch: "立即触发调度",
+        noDispatch: "暂无调度执行日志。",
+        rawCompatibility: "🛠️ 原始 JSON / 兼容性数据面板",
+        
+        noActiveTasks: "暂无活跃任务。",
+        noRecentMessages: "暂无最近消息。",
+        noPendingEvents: "收件箱中暂无待同步事件。",
+        noRadioMessages: "电台暂无广播消息。",
+        noOpenTasks: "暂无待认领任务。",
+        noActiveClaimedTasks: "暂无执行中的认领任务。",
+        noCompletedTasks: "暂无已完成任务。",
+        noDispatcherEvents: "暂无自动调度执行记录。",
+        unassigned: "未分配",
+        defaultProj: "默认项目",
+        claimTask: "认领任务",
+        startWork: "开始执行",
+        blockTask: "挂起",
+        unblockTask: "解挂",
+        completeTask: "已完成",
+        reopenTask: "重新打开",
+        successText: "执行成功",
+        failedText: "执行失败",
+        runnableText: "可执行",
+        notRunnableText: "无运行器",
+        addNotePlaceholder: "追加进展备注...",
+        promptClaim: "请输入您的名字以认领任务:",
+        promptBlock: "请输入挂起任务的原因:",
+        promptNote: "请输入发表备注者的名字:",
+        promoteToMemory: "提升为长期记忆",
+        alertPromoted: "消息已推广至收件箱。请运行“同步收件箱”以整理记忆。",
+        confirmForceDispatch: "是否强制运行调度器（将忽略退出状态缓存）？",
+        alertDispatched: "已成功执行 {n} 个调度任务。",
+        
+        prefOpt: "偏好设置",
+        workOpt: "工作流规则",
+        projOpt: "项目事实",
+        corrOpt: "纠错记录",
+        noteOpt: "普通备注",
+        revOpt: "请求评审",
+        handOpt: "交接进展",
+        riskOpt: "风险提示",
+        doneOpt: "完成汇报",
+        lowOpt: "低",
+        normOpt: "中",
+        highOpt: "高",
+        urgOpt: "紧急",
+        
+        senderAll: "发送方: 全部",
+        recipientAll: "接收方: 全部",
+        typeAll: "类型: 全部",
+        
+        placeholderMemText: "记录用户偏好、工作流规则或重要的项目事实。",
+        placeholderRadText: "广播交接便签、评审请求或风险标识。",
+        placeholderTskTitle: "任务简要总结或需求",
+        placeholderTskDesc: "添加详细说明、上下文参数或需求描述...",
+        placeholderTskHandoff: "如果是交接给另一个助手，请在此填写交接信息..."
+      }
+    };
+
+    const state = {
+      activeTab: 'dashboard',
+      memorySubTab: 'md',
+      status: {},
+      memory: {},
+      radio: [],
+      tasks: [],
+      dispatch: [],
+      autoRefresh: true,
+      refreshInterval: 5000,
+      searchRadio: '',
+      filterRadioType: '',
+      filterRadioFrom: '',
+      filterRadioTo: '',
+      filterRadioProject: '',
+      filterTaskProject: '',
+      filterTaskPriority: '',
+      lang: localStorage.getItem('hub_lang') || 'zh'
+    };
+
+    let timer = null;
+
+    // Translation utilities
+    function t(key, vars = {}) {
+      let val = (i18n[state.lang] && i18n[state.lang][key]) || i18n['en'][key] || key;
+      Object.keys(vars).forEach(k => {
+        val = val.replace('{' + k + '}', vars[k]);
+      });
+      return val;
+    }
+
+    function toggleLanguage() {
+      state.lang = state.lang === 'zh' ? 'en' : 'zh';
+      localStorage.setItem('hub_lang', state.lang);
+      translatePage();
+      renderAll();
+    }
+
+    function translatePage() {
+      document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        el.innerHTML = t(key);
+      });
+      document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+        const key = el.getAttribute('data-i18n-placeholder');
+        el.placeholder = t(key);
+      });
+      document.getElementById('btnLang').textContent = state.lang === 'zh' ? '🌐 English' : '🌐 中文';
+    }
+
+    // Helper: Escaping HTML safely
+    function escapeHtml(val) {
+      if (val === undefined || val === null) return '';
+      return String(val).replace(/[&<>"']/g, ch => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+      }[ch]));
+    }
+
+    // Lightweight markdown parser for memory.md
+    function formatMarkdown(text) {
+      if (!text) return '<div class="muted">No data available.</div>';
+      return escapeHtml(text)
+        .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+        .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+        .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+        .replace(/^\- (.*$)/gim, '<li>$1</li>')
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+    }
+
+    async function api(path, options = {}) {
+      const res = await fetch(path, options);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || res.statusText);
+      return json;
+    }
+
+    function switchTab(tabId) {
+      state.activeTab = tabId;
+      document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(el => el.classList.remove('active'));
+
+      const tabs = ['dashboard', 'memory', 'radio', 'tasks', 'dispatch'];
+      const index = tabs.indexOf(tabId);
+      if (index !== -1) {
+        document.querySelectorAll('.nav-item')[index].classList.add('active');
+      }
+      document.getElementById('tab-' + tabId).classList.add('active');
+      localStorage.setItem('hub_active_tab', tabId);
+      
+      document.getElementById('sidebar').classList.remove('active');
+    }
+
+    function switchMemorySubTab(sub) {
+      state.memorySubTab = sub;
+      document.getElementById('memorySubTab-md').style.display = sub === 'md' ? 'block' : 'none';
+      document.getElementById('memorySubTab-profile').style.display = sub === 'profile' ? 'block' : 'none';
+    }
+
+    function toggleSidebar() {
+      document.getElementById('sidebar').classList.toggle('active');
+    }
+
+    // Auto Refresh handlers
+    function toggleAutoRefresh(checked) {
+      state.autoRefresh = checked;
+      if (checked) {
+        startInterval();
+      } else {
+        clearInterval(timer);
+      }
+    }
+
+    function startInterval() {
+      clearInterval(timer);
+      timer = setInterval(refreshData, state.refreshInterval);
+    }
+
+    // Fetch API Data
+    async function refreshData() {
+      const btn = document.getElementById('btnRefresh');
+      if (btn) btn.disabled = true;
+      try {
+        const [statusRes, memoryRes, radioRes, tasksRes, dispatchRes] = await Promise.allSettled([
+          api('/api/status'),
+          api('/api/memory'),
+          api('/api/radio'),
+          api('/api/tasks'),
+          api('/api/dispatch')
+        ]);
+
+        if (statusRes.status === 'fulfilled') {
+          state.status = statusRes.value || {};
+        } else {
+          console.error('Failed to load /api/status', statusRes.reason);
+        }
+        if (memoryRes.status === 'fulfilled') {
+          state.memory = memoryRes.value || {};
+        } else {
+          console.error('Failed to load /api/memory', memoryRes.reason);
+        }
+        if (radioRes.status === 'fulfilled') {
+          state.radio = (radioRes.value && radioRes.value.messages) || [];
+        } else {
+          console.error('Failed to load /api/radio', radioRes.reason);
+          state.radio = [];
+        }
+        if (tasksRes.status === 'fulfilled') {
+          state.tasks = (tasksRes.value && tasksRes.value.tasks) || [];
+        } else {
+          console.error('Failed to load /api/tasks', tasksRes.reason);
+          state.tasks = [];
+        }
+        if (dispatchRes.status === 'fulfilled') {
+          state.dispatch = (dispatchRes.value && dispatchRes.value.logs) || [];
+        } else {
+          console.error('Failed to load /api/dispatch', dispatchRes.reason);
+          state.dispatch = [];
+        }
+
+        renderAll();
+      } catch (err) {
+        console.error(err);
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    // Render operations
+    function renderAll() {
+      const tools = Array.isArray(state.status.tools) ? state.status.tools : [];
+
+      // Top bar info
+      document.getElementById('memoryDir').textContent = state.status.memoryDir || 'unavailable';
+
+      // Sidebar badges
+      document.getElementById('sidebarPending').textContent = state.status.pendingEvents || 0;
+      document.getElementById('sidebarRadio').textContent = state.radio.length;
+      
+      const activeTasksCount = state.tasks.filter(t => ['claimed', 'in_progress', 'blocked'].includes(t.status)).length;
+      document.getElementById('sidebarTasks').textContent = activeTasksCount;
+
+      // Overview Metrics cards
+      document.getElementById('cardActiveTasks').textContent = activeTasksCount;
+      document.getElementById('cardPending').textContent = state.status.pendingEvents || 0;
+      document.getElementById('cardRadio').textContent = state.radio.length;
+      document.getElementById('cardLedger').textContent = state.status.ledgerEvents || 0;
+      document.getElementById('cardBackups').textContent = state.status.backups || 0;
+
+      // Compatibility variables population
+      document.getElementById('pending').textContent = state.status.pendingEvents || 0;
+      document.getElementById('ledger').textContent = state.status.ledgerEvents || 0;
+      document.getElementById('radioCount').textContent = state.radio.length;
+      document.getElementById('taskCount').textContent = activeTasksCount;
+      document.getElementById('backupCount').textContent = state.status.backups || 0;
+      document.getElementById('toolCount').textContent = tools.filter(t => t.installed).length;
+      
+      document.getElementById('memory').textContent = state.memory.memory || '';
+      document.getElementById('pendingJson').textContent = JSON.stringify(state.memory.pending || [], null, 2);
+      document.getElementById('radioJson').textContent = JSON.stringify(state.radio || [], null, 2);
+      document.getElementById('tasksJson').textContent = JSON.stringify(state.tasks || [], null, 2);
+
+      // Detected Tools Matrix
+      const toolsHtml = tools.map(t => `
+        <div class="tool-row">
+          <div class="tool-name">${escapeHtml(t.name)}</div>
+          <div class="tool-status ${t.installed ? 'installed' : ''}" title="${t.installed ? 'Installed' : 'Missing'}"></div>
+        </div>
+      `).join('');
+      document.getElementById('detectedTools').innerHTML = toolsHtml || `<div class="muted">${t('scanning')}</div>`;
+
+      // Dropdown filters logic
+      populateFilterOptions();
+
+      // Render tab components
+      renderDashboardOverview();
+      renderMemoryHub();
+      renderRadioFeed();
+      renderTasksList();
+      renderDispatchLogs();
+    }
+
+    function populateFilterOptions() {
+      const fromSet = new Set();
+      const toSet = new Set();
+      const projectSet = new Set();
+
+      state.radio.forEach(msg => {
+        if (msg.from) fromSet.add(msg.from);
+        if (msg.to) toSet.add(msg.to);
+        if (msg.project) projectSet.add(msg.project);
+      });
+
+      const tskProjSet = new Set();
+      state.tasks.forEach(tsk => {
+        if (tsk.project) tskProjSet.add(tsk.project);
+      });
+
+      updateSelectOptions('filterRadioFromOpt', Array.from(fromSet), t('senderAll'));
+      updateSelectOptions('filterRadioToOpt', Array.from(toSet), t('recipientAll'));
+      updateSelectOptions('filterRadioProject', Array.from(projectSet), t('allProjects'));
+      updateSelectOptions('filterTaskProject', Array.from(tskProjSet), t('allProjects'));
+    }
+
+    function updateSelectOptions(elementId, values, defaultLabel) {
+      const select = document.getElementById(elementId);
+      if (!select) return;
+      const current = select.value;
+      let html = `<option value="">${defaultLabel}</option>`;
+      values.sort().forEach(v => {
+        html += `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`;
+      });
+      select.innerHTML = html;
+      select.value = current;
+    }
+
+    // Dashboard Overview Tab Rendering
+    function renderDashboardOverview() {
+      // Render Active Tasks
+      const activeTasks = state.tasks.filter(task => ['claimed', 'in_progress', 'blocked'].includes(task.status));
+      const activeTskHtml = activeTasks.length > 0 ? activeTasks.map(task => `
+        <div class="task-card">
+          <div style="display:flex;justify-content:between;align-items:start;gap:8px;">
+            <div style="flex:1;">
+              <span class="badge priority-${task.priority}">${t(task.priority + 'Opt')}</span>
+              <h4 class="task-title">${escapeHtml(task.title)}</h4>
+            </div>
+            <span class="badge status-${task.status}">${t(task.status === 'in_progress' ? 'startWork' : task.status + 'Task')}</span>
+          </div>
+          ${task.description ? `<div class="task-desc">${escapeHtml(task.description)}</div>` : ''}
+          <div class="task-meta">
+            <span class="task-assignee">👤 ${escapeHtml(task.assignee || t('unassigned'))}</span>
+            <span>Project: ${escapeHtml(task.project || t('defaultProj'))}</span>
+          </div>
+          <div class="stream-actions">
+            <button class="primary small" onclick="updateTaskStatus('${task.id}', 'done')">${t('completeTask')}</button>
+          </div>
+        </div>
+      `).join('') : `<div class="muted">${t('noActiveTasks')}</div>`;
+      document.getElementById('dashboardTasks').innerHTML = activeTskHtml;
+
+      // Render Recent Radio Stream (last 5)
+      const recentRadio = state.radio.slice(-5).reverse();
+      const recentRadHtml = recentRadio.length > 0 ? recentRadio.map(renderRadioCardHTML).join('') : `<div class="muted">${t('noRecentMessages')}</div>`;
+      document.getElementById('dashboardRadio').innerHTML = recentRadHtml;
+    }
+
+    function renderRadioCardHTML(msg) {
+      return `
+        <div class="stream-card">
+          <div class="stream-header">
+            <div class="stream-meta">
+              <span class="stream-sender">${escapeHtml(msg.from)}</span>
+              <span>➡️</span>
+              <span class="stream-sender">${escapeHtml(msg.to)}</span>
+              <span class="badge status-open">${t(msg.type + 'Opt')}</span>
+            </div>
+            <span class="muted">${new Date(msg.ts || msg.createdAt).toLocaleTimeString()}</span>
+          </div>
+          <div class="stream-body">${escapeHtml(msg.text)}</div>
+          ${msg.project ? `<div style="font-size:11px;"><span class="stream-project">${escapeHtml(msg.project)}</span></div>` : ''}
+          <div class="stream-actions">
+            <button class="small" onclick="promoteRadio('${msg.id}')">${t('promoteToMemory')}</button>
+          </div>
+        </div>
+      `;
+    }
+
+    // Memory Hub Rendering
+    function renderMemoryHub() {
+      document.getElementById('memoryRaw').innerHTML = formatMarkdown(state.memory.memory);
+      document.getElementById('profileRaw').innerHTML = formatMarkdown(state.memory.profile);
+
+      const inboxRows = (state.memory.pending || []).map(event => `
+        <tr>
+          <td><strong style="color:var(--accent-purple);">${escapeHtml(event.source)}</strong></td>
+          <td style="word-break:break-all;">${escapeHtml(event.text)}</td>
+        </tr>
+      `).join('');
+      document.getElementById('inboxTable').innerHTML = inboxRows || `<tr><td colspan="2" class="muted">${t('noPendingTable')}</td></tr>`;
+    }
+
+    // Agent Radio Stream Rendering with filters
+    function applyRadioFilters() {
+      state.searchRadio = document.getElementById('filterRadioQuery').value.toLowerCase();
+      state.filterRadioFrom = document.getElementById('filterRadioFromOpt').value;
+      state.filterRadioTo = document.getElementById('filterRadioToOpt').value;
+      state.filterRadioType = document.getElementById('filterRadioTypeOpt').value;
+      renderRadioFeed();
+    }
+
+    function renderRadioFeed() {
+      let filtered = [...state.radio];
+
+      if (state.searchRadio) {
+        filtered = filtered.filter(m => String(m.text).toLowerCase().includes(state.searchRadio));
+      }
+      if (state.filterRadioFrom) {
+        filtered = filtered.filter(m => m.from === state.filterRadioFrom);
+      }
+      if (state.filterRadioTo) {
+        filtered = filtered.filter(m => m.to === state.filterRadioTo);
+      }
+      if (state.filterRadioType) {
+        filtered = filtered.filter(m => m.type === state.filterRadioType);
+      }
+
+      const feedHtml = filtered.reverse().map(renderRadioCardHTML).join('');
+      document.getElementById('radioFeed').innerHTML = feedHtml || `<div class="muted">${t('noRadioMessages')}</div>`;
+    }
+
+    // Tasks Board Rendering
+    function renderTasksList() {
+      state.filterTaskProject = document.getElementById('filterTaskProject').value;
+      state.filterTaskPriority = document.getElementById('filterTaskPriority').value;
+
+      let filtered = [...state.tasks];
+
+      if (state.filterTaskProject) {
+        filtered = filtered.filter(t => t.project === state.filterTaskProject);
+      }
+      if (state.filterTaskPriority) {
+        filtered = filtered.filter(t => t.priority === state.filterTaskPriority);
+      }
+
+      const colOpen = [];
+      const colActive = [];
+      const colCompleted = [];
+
+      filtered.forEach(t => {
+        if (['open'].includes(t.status)) {
+          colOpen.push(t);
+        } else if (['claimed', 'in_progress', 'blocked'].includes(t.status)) {
+          colActive.push(t);
+        } else if (['done', 'cancelled'].includes(t.status)) {
+          colCompleted.push(t);
+        }
+      });
+
+      document.getElementById('countOpen').textContent = colOpen.length;
+      document.getElementById('countActive').textContent = colActive.length;
+      document.getElementById('countCompleted').textContent = colCompleted.length;
+
+      document.getElementById('col-open').innerHTML = colOpen.map(renderTaskCardHTML).join('') || `<div class="muted" style="text-align:center;padding:20px;">${t('noOpenTasks')}</div>`;
+      document.getElementById('col-active').innerHTML = colActive.map(renderTaskCardHTML).join('') || `<div class="muted" style="text-align:center;padding:20px;">${t('noActiveClaimedTasks')}</div>`;
+      document.getElementById('col-completed').innerHTML = colCompleted.map(renderTaskCardHTML).join('') || `<div class="muted" style="text-align:center;padding:20px;">${t('noCompletedTasks')}</div>`;
+    }
+
+    function renderTaskCardHTML(tItem) {
+      const notesHtml = (tItem.notes || []).map(n => `
+        <div class="task-note-item">
+          <strong>[${escapeHtml(n.by)}]:</strong> ${escapeHtml(n.text)}
+          <span style="font-size:10px;display:block;" class="muted">${new Date(n.ts).toLocaleString()}</span>
+        </div>
+      `).join('');
+
+      let actionButtons = '';
+      if (tItem.status === 'open') {
+        actionButtons += `<button class="primary small" onclick="claimTask('${tItem.id}')">${t('claimTask')}</button>`;
+      } else if (['claimed', 'in_progress', 'blocked'].includes(tItem.status)) {
+        if (tItem.status !== 'in_progress') {
+          actionButtons += `<button class="small" onclick="updateTaskStatus('${tItem.id}', 'in_progress')">${t('startWork')}</button>`;
+        }
+        if (tItem.status !== 'blocked') {
+          actionButtons += `<button class="small danger" onclick="promptBlockTask('${tItem.id}')">${t('blockTask')}</button>`;
+        } else {
+          actionButtons += `<button class="small" onclick="updateTaskStatus('${tItem.id}', 'in_progress')">${t('unblockTask')}</button>`;
+        }
+        actionButtons += `<button class="primary small" onclick="updateTaskStatus('${tItem.id}', 'done')">${t('completeTask')}</button>`;
+      } else if (['done', 'cancelled'].includes(tItem.status)) {
+        actionButtons += `<button class="small" onclick="updateTaskStatus('${tItem.id}', 'open')">${t('reopenTask')}</button>`;
+      }
+
+      return `
+        <div class="task-card">
+          <div style="display:flex;justify-content:between;align-items:start;gap:8px;">
+            <div style="flex:1;">
+              <span class="badge priority-${tItem.priority}">${t(tItem.priority + 'Opt')}</span>
+              <h4 class="task-title">${escapeHtml(tItem.title)}</h4>
+            </div>
+            <span class="badge status-${tItem.status}">${t(tItem.status === 'in_progress' ? 'startWork' : tItem.status + 'Task')}</span>
+          </div>
+          ${tItem.description ? `<div class="task-desc">${escapeHtml(tItem.description)}</div>` : ''}
+          ${tItem.handoff ? `<div class="task-handoff"><strong>Handoff:</strong> ${escapeHtml(tItem.handoff)}</div>` : ''}
+          <div class="task-meta">
+            <span class="task-assignee">👤 ${escapeHtml(tItem.assignee || t('unassigned'))}</span>
+            <span>Proj: ${escapeHtml(tItem.project || t('defaultProj'))}</span>
+          </div>
+          ${notesHtml ? `<div class="task-notes"><h5>Notes:</h5>${notesHtml}</div>` : ''}
+          
+          <div style="display:flex;gap:6px;align-items:center;margin-top:8px;">
+            <input type="text" placeholder="${t('addNotePlaceholder')}" id="note-in-${tItem.id}" style="padding:6px;font-size:12px;" onkeydown="if(event.key==='Enter') submitTaskNote('${tItem.id}')">
+            <button class="small" onclick="submitTaskNote('${tItem.id}')">💬</button>
+          </div>
+
+          <div class="stream-actions" style="margin-top:8px;">
+            ${actionButtons}
+          </div>
+        </div>
+      `;
+    }
+
+    // Dispatch Logs tab rendering
+    function renderDispatchLogs() {
+      const logsHtml = state.dispatch.length > 0 ? state.dispatch.map(log => {
+        const exitText = log.exitCode === 0 ? t('successText') + ' (0)' : t('failedText') + ' (' + log.exitCode + ')';
+        const statusClass = log.exitCode === 0 ? 'status-done' : 'status-blocked';
+        const runnableText = log.runnable ? t('runnableText') : t('notRunnableText');
+        
+        return `
+          <div class="dispatch-log-card">
+            <div class="dispatch-log-header" onclick="toggleLogAccordion('${log.id}')">
+              <div class="dispatch-log-meta">
+                <span class="dispatch-log-tool">${escapeHtml(log.tool)}</span>
+                <span class="dispatch-log-project">${escapeHtml(log.project || 'no-project')}</span>
+                <span style="font-size:11px;" class="muted">${new Date(log.dispatchedAt || log.ts).toLocaleString()}</span>
+              </div>
+              <span class="badge ${statusClass}">${exitText}</span>
+            </div>
+            <div class="dispatch-log-details" id="acc-${log.id}">
+              <div style="font-size:13px;margin-bottom:8px;">
+                <strong>Trigger:</strong> ${escapeHtml(log.kind)} | <strong>Status:</strong> ${runnableText}
+              </div>
+              <div><strong>Command Payload:</strong></div>
+              <div class="dispatch-output-box">${escapeHtml(log.text)}</div>
+              ${log.stdout ? `<div><strong>Stdout:</strong></div><div class="dispatch-output-box">${escapeHtml(log.stdout)}</div>` : ''}
+              ${log.stderr ? `<div><strong>Stderr:</strong></div><div class="dispatch-output-box" style="color:#ff7b72;">${escapeHtml(log.stderr)}</div>` : ''}
+              ${log.error ? `<div><strong>Error:</strong></div><div class="dispatch-output-box" style="color:#ff7b72;">${escapeHtml(log.error)}</div>` : ''}
+            </div>
+          </div>
+        `;
+      }).join('') : `<div class="muted">${t('noDispatch')}</div>`;
+      
+      document.getElementById('dispatchLogs').innerHTML = logsHtml;
+    }
+
+    function toggleLogAccordion(id) {
+      document.getElementById('acc-' + id).classList.toggle('active');
+    }
+
+    // API Submit Actions
+    async function submitMemory() {
+      const text = document.getElementById('memText').value.trim();
+      if (!text) return;
+      await api('/api/record', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text,
+          source: document.getElementById('memSource').value || 'dashboard',
+          kind: document.getElementById('memKind').value
+        })
+      });
+      document.getElementById('memText').value = '';
+      await refreshData();
+    }
+
+    async function submitRadio() {
+      const text = document.getElementById('radText').value.trim();
+      if (!text) return;
+      await api('/api/radio/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text,
+          from: document.getElementById('radFrom').value || 'dashboard',
+          to: document.getElementById('radTo').value || 'all',
+          type: document.getElementById('radType').value,
+          project: document.getElementById('radProject').value
+        })
+      });
+      document.getElementById('radText').value = '';
+      document.getElementById('radProject').value = '';
+      await refreshData();
+    }
+
+    async function submitTask() {
+      const title = document.getElementById('tskTitle').value.trim();
+      if (!title) return;
+      await api('/api/task/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          description: document.getElementById('tskDesc').value,
+          handoff: document.getElementById('tskHandoff').value,
+          from: 'dashboard',
+          project: document.getElementById('tskProject').value || 'default',
+          priority: document.getElementById('tskPriority').value
+        })
+      });
+      document.getElementById('tskTitle').value = '';
+      document.getElementById('tskDesc').value = '';
+      document.getElementById('tskHandoff').value = '';
+      await refreshData();
+    }
+
+    async function claimTask(taskId) {
+      const namePromptText = t('promptClaim');
+      const byName = prompt(namePromptText, "user") || "user";
+      await api('/api/task/claim', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: taskId, by: byName })
+      });
+      await refreshData();
+    }
+
+    async function updateTaskStatus(taskId, statusValue) {
+      await api('/api/task/status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: taskId, status: statusValue })
+      });
+      await refreshData();
+    }
+
+    async function promptBlockTask(taskId) {
+      const blockPromptText = t('promptBlock');
+      const reason = prompt(blockPromptText);
+      if (!reason) return;
+      await api('/api/task/status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: taskId, status: 'blocked', note: 'Blocked: ' + reason })
+      });
+      await refreshData();
+    }
+
+    async function submitTaskNote(taskId) {
+      const input = document.getElementById('note-in-' + taskId);
+      const text = input.value.trim();
+      if (!text) return;
+      const notePromptText = t('promptNote');
+      const byName = prompt(notePromptText, "user") || "user";
+      
+      const currentTask = state.tasks.find(t => t.id === taskId);
+      await api('/api/task/status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: taskId, status: currentTask.status, by: byName, note: text })
+      });
+      input.value = '';
+      await refreshData();
+    }
+
+    async function promoteRadio(messageId) {
+      await api('/api/radio/promote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: messageId })
+      });
+      alert(t('alertPromoted'));
+      await refreshData();
+    }
+
+    // Top action handlers
+    async function runSync() {
+      const btn = document.getElementById('btnSync');
+      btn.innerHTML = '<span class="spinner"></span> Syncing...';
+      btn.disabled = true;
+      try {
+        await api('/api/sync', { method: 'POST' });
+        await refreshData();
+      } catch (err) {
+        alert(err.message);
+      } finally {
+        btn.innerHTML = t('syncInbox');
+        btn.disabled = false;
+      }
+    }
+
+    async function runPull() {
+      const btn = document.getElementById('btnPull');
+      btn.innerHTML = '<span class="spinner"></span> Rebuilding...';
+      btn.disabled = true;
+      try {
+        await api('/api/pull', { method: 'POST' });
+        await refreshData();
+      } catch (err) {
+        alert(err.message);
+      } finally {
+        btn.innerHTML = t('rebuild');
+        btn.disabled = false;
+      }
+    }
+
+    async function triggerDispatcher() {
+      const btn = document.getElementById('btnTriggerDispatch');
+      btn.innerHTML = '<span class="spinner"></span> Running...';
+      btn.disabled = true;
+      try {
+        const forceRun = confirm(t('confirmForceDispatch'));
+        const res = await api('/api/dispatch/run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ force: forceRun })
+        });
+        alert(t('alertDispatched', { n: (res.results ? res.results.length : 0) }));
+        await refreshData();
+      } catch (err) {
+        alert(err.message);
+      } finally {
+        btn.innerHTML = t('triggerDispatch');
+        btn.disabled = false;
+      }
+    }
+
+    // Initialization
+    const lastTab = localStorage.getItem('hub_active_tab') || 'dashboard';
+    switchTab(lastTab);
+    
+    // Check screen width to handle mobile side menu toggle
+    function checkWidth() {
+      const btn = document.getElementById('sidebarToggle');
+      if (window.innerWidth <= 992) {
+        btn.style.display = 'inline-flex';
+      } else {
+        btn.style.display = 'none';
+        document.getElementById('sidebar').classList.remove('active');
+      }
+    }
+    window.addEventListener('resize', checkWidth);
+    checkWidth();
+
+    // Initial translation and data fetch
+    translatePage();
+    refreshData().then(() => {
+      if (state.autoRefresh) startInterval();
+    });
+  </script>
+</body>
+</html>

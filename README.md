@@ -250,6 +250,7 @@ QClaw 支持通过自己的 Skill 目录接入：
 ```bash
 ai-memory-hub install --tool qclaw --apply
 ai-memory-hub install --tool openclaw --apply
+ai-memory-hub install --tool opencode --apply
 ```
 
 这会写入：
@@ -257,6 +258,7 @@ ai-memory-hub install --tool openclaw --apply
 ```text
 %USERPROFILE%\.qclaw\skills\ai-memory-hub\SKILL.md
 %USERPROFILE%\.openclaw\skills\ai-memory-hub\SKILL.md
+%USERPROFILE%\.config\opencode\skills\ai-memory-hub\SKILL.md
 ```
 
 对于还没有稳定指令注入点的 App 类型工具，`install` 会在共享记忆目录下生成安全的适配说明：
@@ -265,6 +267,9 @@ ai-memory-hub install --tool openclaw --apply
 ai-memory-hub install --tool antigravity --apply
 ai-memory-hub install --tool codex-app --apply
 ai-memory-hub install --tool marvis --apply
+ai-memory-hub install --tool cursor --apply
+ai-memory-hub install --tool windsurf --apply
+ai-memory-hub install --tool chatgpt --apply
 ```
 
 这些命令会创建类似下面的文件：
@@ -273,6 +278,9 @@ ai-memory-hub install --tool marvis --apply
 %USERPROFILE%\.ai-memory\tools\antigravity-shared-memory.md
 %USERPROFILE%\.ai-memory\tools\codex-app-shared-memory.md
 %USERPROFILE%\.ai-memory\tools\marvis-shared-memory.md
+%USERPROFILE%\.ai-memory\tools\cursor-shared-memory.md
+%USERPROFILE%\.ai-memory\tools\windsurf-shared-memory.md
+%USERPROFILE%\.ai-memory\tools\chatgpt-shared-memory.md
 ```
 
 这些是安全的适配说明，不会侵入式修改内部 App 数据库或不透明状态文件。
@@ -288,7 +296,30 @@ Codex App      已检测；在 ~/.ai-memory/tools 下生成适配说明
 Marvis         已检测；在 ~/.ai-memory/tools 下生成适配说明；深度 MCP/知识库接入待验证
 QClaw          通过 ~/.qclaw/skills/ai-memory-hub/SKILL.md 安装为 QClaw Skill
 OpenClaw       通过 ~/.openclaw/skills/ai-memory-hub/SKILL.md 安装为 OpenClaw Skill
+OpenCode       通过 ~/.config/opencode/skills/ai-memory-hub/SKILL.md 安装为 OpenCode Skill
 CC Switch      已检测；暂未直接注入
+Cursor         预支持；在 ~/.ai-memory/tools 下生成适配说明
+Windsurf       预支持；在 ~/.ai-memory/tools 下生成适配说明
+VS Code        预支持；在 ~/.ai-memory/tools 下生成适配说明
+Continue       预支持；在 ~/.ai-memory/tools 下生成适配说明
+Cline          预支持；在 ~/.ai-memory/tools 下生成适配说明
+Roo Code       预支持；在 ~/.ai-memory/tools 下生成适配说明
+Trae           预支持；在 ~/.ai-memory/tools 下生成适配说明
+Kiro           预支持；在 ~/.ai-memory/tools 下生成适配说明
+Zed            预支持；在 ~/.ai-memory/tools 下生成适配说明
+ChatGPT        预支持；在 ~/.ai-memory/tools 下生成适配说明
+Ollama         预支持；在 ~/.ai-memory/tools 下生成适配说明
+LM Studio      预支持；在 ~/.ai-memory/tools 下生成适配说明
+Jan            预支持；在 ~/.ai-memory/tools 下生成适配说明
+AnythingLLM    预支持；在 ~/.ai-memory/tools 下生成适配说明
+Cherry Studio  预支持；在 ~/.ai-memory/tools 下生成适配说明
+Dify           预支持；在 ~/.ai-memory/tools 下生成适配说明
+Open WebUI     预支持；在 ~/.ai-memory/tools 下生成适配说明
+Aider          预支持；在 ~/.ai-memory/tools 下生成适配说明
+Tabby          预支持；在 ~/.ai-memory/tools 下生成适配说明
+Codeium        预支持；在 ~/.ai-memory/tools 下生成适配说明
+Augment        预支持；在 ~/.ai-memory/tools 下生成适配说明
+Supermaven     预支持；在 ~/.ai-memory/tools 下生成适配说明
 ```
 
 ### 命令
@@ -562,6 +593,7 @@ QClaw can be connected through its own Skill directory:
 ```bash
 ai-memory-hub install --tool qclaw --apply
 ai-memory-hub install --tool openclaw --apply
+ai-memory-hub install --tool opencode --apply
 ```
 
 This writes:
@@ -569,6 +601,7 @@ This writes:
 ```text
 %USERPROFILE%\.qclaw\skills\ai-memory-hub\SKILL.md
 %USERPROFILE%\.openclaw\skills\ai-memory-hub\SKILL.md
+%USERPROFILE%\.config\opencode\skills\ai-memory-hub\SKILL.md
 ```
 
 For app-style tools where a stable instruction injection point is not yet guaranteed, `install` generates adapter notes under the shared memory directory:
@@ -577,6 +610,9 @@ For app-style tools where a stable instruction injection point is not yet guaran
 ai-memory-hub install --tool antigravity --apply
 ai-memory-hub install --tool codex-app --apply
 ai-memory-hub install --tool marvis --apply
+ai-memory-hub install --tool cursor --apply
+ai-memory-hub install --tool windsurf --apply
+ai-memory-hub install --tool chatgpt --apply
 ```
 
 These create files such as:
@@ -585,6 +621,9 @@ These create files such as:
 %USERPROFILE%\.ai-memory\tools\antigravity-shared-memory.md
 %USERPROFILE%\.ai-memory\tools\codex-app-shared-memory.md
 %USERPROFILE%\.ai-memory\tools\marvis-shared-memory.md
+%USERPROFILE%\.ai-memory\tools\cursor-shared-memory.md
+%USERPROFILE%\.ai-memory\tools\windsurf-shared-memory.md
+%USERPROFILE%\.ai-memory\tools\chatgpt-shared-memory.md
 ```
 
 They are safe adapter notes, not invasive edits to internal app databases or opaque state files.
@@ -600,7 +639,30 @@ Codex App      Detected; adapter note generated under ~/.ai-memory/tools
 Marvis         Detected; adapter note generated under ~/.ai-memory/tools; deeper MCP/knowledgebase integration is not yet verified
 QClaw          Installed as a QClaw Skill via ~/.qclaw/skills/ai-memory-hub/SKILL.md
 OpenClaw       Installed as an OpenClaw Skill via ~/.openclaw/skills/ai-memory-hub/SKILL.md
+OpenCode       Installed as an OpenCode Skill via ~/.config/opencode/skills/ai-memory-hub/SKILL.md
 CC Switch      Detected; no direct injection yet
+Cursor         Pre-supported; adapter note generated under ~/.ai-memory/tools
+Windsurf       Pre-supported; adapter note generated under ~/.ai-memory/tools
+VS Code        Pre-supported; adapter note generated under ~/.ai-memory/tools
+Continue       Pre-supported; adapter note generated under ~/.ai-memory/tools
+Cline          Pre-supported; adapter note generated under ~/.ai-memory/tools
+Roo Code       Pre-supported; adapter note generated under ~/.ai-memory/tools
+Trae           Pre-supported; adapter note generated under ~/.ai-memory/tools
+Kiro           Pre-supported; adapter note generated under ~/.ai-memory/tools
+Zed            Pre-supported; adapter note generated under ~/.ai-memory/tools
+ChatGPT        Pre-supported; adapter note generated under ~/.ai-memory/tools
+Ollama         Pre-supported; adapter note generated under ~/.ai-memory/tools
+LM Studio      Pre-supported; adapter note generated under ~/.ai-memory/tools
+Jan            Pre-supported; adapter note generated under ~/.ai-memory/tools
+AnythingLLM    Pre-supported; adapter note generated under ~/.ai-memory/tools
+Cherry Studio  Pre-supported; adapter note generated under ~/.ai-memory/tools
+Dify           Pre-supported; adapter note generated under ~/.ai-memory/tools
+Open WebUI     Pre-supported; adapter note generated under ~/.ai-memory/tools
+Aider          Pre-supported; adapter note generated under ~/.ai-memory/tools
+Tabby          Pre-supported; adapter note generated under ~/.ai-memory/tools
+Codeium        Pre-supported; adapter note generated under ~/.ai-memory/tools
+Augment        Pre-supported; adapter note generated under ~/.ai-memory/tools
+Supermaven     Pre-supported; adapter note generated under ~/.ai-memory/tools
 ```
 
 ### Commands

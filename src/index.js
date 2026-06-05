@@ -493,7 +493,30 @@ function defaultConfig(memoryDir) {
       antigravityCockpit: { enabled: true },
       marvis: { enabled: true },
       qclaw: { enabled: true },
-      openclaw: { enabled: true }
+      openclaw: { enabled: true },
+      opencode: { enabled: true },
+      cursor: { enabled: true },
+      windsurf: { enabled: true },
+      vscode: { enabled: true },
+      continue: { enabled: true },
+      cline: { enabled: true },
+      rooCode: { enabled: true },
+      trae: { enabled: true },
+      kiro: { enabled: true },
+      zed: { enabled: true },
+      chatgpt: { enabled: true },
+      ollama: { enabled: true },
+      lmstudio: { enabled: true },
+      jan: { enabled: true },
+      anythingllm: { enabled: true },
+      cherryStudio: { enabled: true },
+      dify: { enabled: true },
+      openWebui: { enabled: true },
+      aider: { enabled: true },
+      tabby: { enabled: true },
+      codeium: { enabled: true },
+      augment: { enabled: true },
+      supermaven: { enabled: true }
     }
   };
 }
@@ -597,6 +620,121 @@ function detectTools() {
       name: "cc-switch",
       kind: "app-state",
       dir: path.join(home, ".cc-switch")
+    },
+    {
+      name: "opencode",
+      kind: "skill-config",
+      dir: path.join(home, ".config", "opencode")
+    },
+    {
+      name: "cursor",
+      kind: "app-state",
+      dir: path.join(home, "AppData", "Roaming", "Cursor")
+    },
+    {
+      name: "windsurf",
+      kind: "app-state",
+      dir: path.join(home, "AppData", "Roaming", "Windsurf")
+    },
+    {
+      name: "vscode",
+      kind: "editor-state",
+      dir: path.join(home, "AppData", "Roaming", "Code")
+    },
+    {
+      name: "continue",
+      kind: "extension-state",
+      dir: path.join(home, ".continue")
+    },
+    {
+      name: "cline",
+      kind: "extension-state",
+      dir: path.join(home, "AppData", "Roaming", "Code", "User", "globalStorage", "saoudrizwan.claude-dev")
+    },
+    {
+      name: "roo-code",
+      kind: "extension-state",
+      dir: path.join(home, "AppData", "Roaming", "Code", "User", "globalStorage", "rooveterinaryinc.roo-cline")
+    },
+    {
+      name: "trae",
+      kind: "app-state",
+      dir: path.join(home, "AppData", "Roaming", "Trae")
+    },
+    {
+      name: "kiro",
+      kind: "app-state",
+      dir: path.join(home, ".kiro")
+    },
+    {
+      name: "zed",
+      kind: "app-state",
+      dir: path.join(home, "AppData", "Roaming", "Zed")
+    },
+    {
+      name: "chatgpt",
+      kind: "app-state",
+      dir: path.join(home, "AppData", "Roaming", "ChatGPT")
+    },
+    {
+      name: "ollama",
+      kind: "local-model-runtime",
+      dir: path.join(home, ".ollama")
+    },
+    {
+      name: "lmstudio",
+      kind: "local-model-runtime",
+      dir: path.join(home, ".lmstudio")
+    },
+    {
+      name: "jan",
+      kind: "local-model-runtime",
+      dir: path.join(home, "jan")
+    },
+    {
+      name: "anythingllm",
+      kind: "app-state",
+      dir: path.join(home, "AppData", "Roaming", "anythingllm-desktop")
+    },
+    {
+      name: "cherry-studio",
+      kind: "app-state",
+      dir: path.join(home, "AppData", "Roaming", "CherryStudio")
+    },
+    {
+      name: "dify",
+      kind: "app-state",
+      dir: path.join(home, "AppData", "Roaming", "Dify")
+    },
+    {
+      name: "open-webui",
+      kind: "app-state",
+      dir: path.join(home, ".open-webui")
+    },
+    {
+      name: "aider",
+      kind: "cli-config",
+      dir: path.join(home, ".aider")
+    },
+    {
+      name: "tabby",
+      kind: "extension-state",
+      dir: path.join(home, ".tabby")
+    },
+    {
+      name: "codeium",
+      kind: "extension-state",
+      dir: path.join(home, ".codeium")
+    },
+    {
+      name: "augment",
+      kind: "extension-state",
+      dir: path.join(home, ".augment")
+    },
+    {
+      name: "supermaven",
+      kind: "extension-state",
+      dir: path.join(home, ".supermaven")
     }
   ];
 
@@ -651,7 +789,40 @@ function getInstallTargets(memoryDir) {
       tool: "openclaw",
       file: path.join(home, ".openclaw", "skills", "ai-memory-hub", "SKILL.md"),
       template: readTemplate("OPENCLAW_SKILL.md")
-    }
+    },
+    {
+      tool: "opencode",
+      file: path.join(home, ".config", "opencode", "skills", "ai-memory-hub", "SKILL.md"),
+      template: readTemplate("OPENCODE_SKILL.md")
+    },
+    ...[
+      "cursor",
+      "windsurf",
+      "vscode",
+      "continue",
+      "cline",
+      "roo-code",
+      "trae",
+      "kiro",
+      "zed",
+      "chatgpt",
+      "ollama",
+      "lmstudio",
+      "jan",
+      "anythingllm",
+      "cherry-studio",
+      "dify",
+      "open-webui",
+      "aider",
+      "tabby",
+      "codeium",
+      "augment",
+      "supermaven"
+    ].map((tool) => ({
+      tool,
+      file: path.join(memoryDir, "tools", `${tool}-shared-memory.md`),
+      template: readTemplate("shared-instructions.md")
+    }))
   ];
 }
 

@@ -638,8 +638,8 @@ function getInstallTargets(memoryDir) {
     },
     {
       tool: "openclaw",
-      file: path.join(memoryDir, "tools", "openclaw-shared-memory.md"),
-      template: readTemplate("shared-instructions.md")
+      file: path.join(home, ".openclaw", "skills", "ai-memory-hub", "SKILL.md"),
+      template: readTemplate("OPENCLAW_SKILL.md")
     }
   ];
 }

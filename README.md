@@ -231,19 +231,20 @@ QClaw 支持通过自己的 Skill 目录接入：
 
 ```bash
 ai-memory-hub install --tool qclaw --apply
+ai-memory-hub install --tool openclaw --apply
 ```
 
 这会写入：
 
 ```text
 %USERPROFILE%\.qclaw\skills\ai-memory-hub\SKILL.md
+%USERPROFILE%\.openclaw\skills\ai-memory-hub\SKILL.md
 ```
 
 对于还没有稳定指令注入点的 App 类型工具，`install` 会在共享记忆目录下生成安全的适配说明：
 
 ```bash
 ai-memory-hub install --tool antigravity --apply
-ai-memory-hub install --tool openclaw --apply
 ai-memory-hub install --tool codex-app --apply
 ```
 
@@ -251,7 +252,6 @@ ai-memory-hub install --tool codex-app --apply
 
 ```text
 %USERPROFILE%\.ai-memory\tools\antigravity-shared-memory.md
-%USERPROFILE%\.ai-memory\tools\openclaw-shared-memory.md
 %USERPROFILE%\.ai-memory\tools\codex-app-shared-memory.md
 ```
 
@@ -266,7 +266,7 @@ Gemini         通过 ~/.gemini/GEMINI.md 直接注入指令
 Antigravity    已检测；在 ~/.ai-memory/tools 下生成适配说明
 Codex App      已检测；在 ~/.ai-memory/tools 下生成适配说明
 QClaw          通过 ~/.qclaw/skills/ai-memory-hub/SKILL.md 安装为 QClaw Skill
-OpenClaw       已检测；在 ~/.ai-memory/tools 下生成适配说明
+OpenClaw       通过 ~/.openclaw/skills/ai-memory-hub/SKILL.md 安装为 OpenClaw Skill
 CC Switch      已检测；暂未直接注入
 ```
 
@@ -522,19 +522,20 @@ QClaw can be connected through its own Skill directory:
 
 ```bash
 ai-memory-hub install --tool qclaw --apply
+ai-memory-hub install --tool openclaw --apply
 ```
 
 This writes:
 
 ```text
 %USERPROFILE%\.qclaw\skills\ai-memory-hub\SKILL.md
+%USERPROFILE%\.openclaw\skills\ai-memory-hub\SKILL.md
 ```
 
 For app-style tools where a stable instruction injection point is not yet guaranteed, `install` generates adapter notes under the shared memory directory:
 
 ```bash
 ai-memory-hub install --tool antigravity --apply
-ai-memory-hub install --tool openclaw --apply
 ai-memory-hub install --tool codex-app --apply
 ```
 
@@ -542,7 +543,6 @@ These create files such as:
 
 ```text
 %USERPROFILE%\.ai-memory\tools\antigravity-shared-memory.md
-%USERPROFILE%\.ai-memory\tools\openclaw-shared-memory.md
 %USERPROFILE%\.ai-memory\tools\codex-app-shared-memory.md
 ```
 
@@ -557,7 +557,7 @@ Gemini         Direct instruction injection via ~/.gemini/GEMINI.md
 Antigravity    Detected; adapter note generated under ~/.ai-memory/tools
 Codex App      Detected; adapter note generated under ~/.ai-memory/tools
 QClaw          Installed as a QClaw Skill via ~/.qclaw/skills/ai-memory-hub/SKILL.md
-OpenClaw       Detected; adapter note generated under ~/.ai-memory/tools
+OpenClaw       Installed as an OpenClaw Skill via ~/.openclaw/skills/ai-memory-hub/SKILL.md
 CC Switch      Detected; no direct injection yet
 ```
 

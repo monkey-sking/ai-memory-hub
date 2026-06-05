@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import http from "node:http";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const APP_NAME = "ai-memory-hub";
@@ -35,6 +36,8 @@ async function main() {
     case "task":
     case "todo":
       return taskCommand(rest);
+    case "dispatch":
+      return dispatchCommand(rest);
     case "sync":
       return syncCommand(rest);
     case "index":
@@ -378,6 +381,161 @@ function taskDoneCommand(argv) {
   }, config.sync.lockStaleMs);
 }
 
+function dispatchCommand(argv) {
+  const run = hasFlag(argv, "--run");
+  const force = hasFlag(argv, "--force");
+  const to = getOption(argv, "--to") || "";
+  const project = getOption(argv, "--project") || "";
+  const limit = Number(getOption(argv, "--limit") || 10);
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+
+  const jobs = buildDispatchJobs(config.memoryDir, { to, project, limit, force });
+  if (jobs.length === 0) {
+    console.log(JSON.stringify({ run, jobs: [], message: "No undispatched radio messages or active tasks matched." }, null, 2));
+    return;
+  }
+
+  const results = [];
+  for (const job of jobs) {
+    const runner = getToolRunner(job.tool);
+    if (!runner.available) {
+      const result = {
+        ...job,
+        runnable: false,
+        reason: runner.reason
+      };
+      if (run) {
+        appendDispatchLog(config.memoryDir, result);
+      }
+      results.push(result);
+      continue;
+    }
+    if (!run) {
+      results.push({
+        ...job,
+        runnable: true,
+        dryRun: true,
+        command: runner.preview
+      });
+      continue;
+    }
+    const result = runDispatchJob(config.memoryDir, job, runner);
+    appendDispatchLog(config.memoryDir, result);
+    results.push(result);
+  }
+
+  console.log(JSON.stringify({
+    run,
+    results
+  }, null, 2));
+}
+
+function buildDispatchJobs(memoryDir, { to, project, limit, force }) {
+  const dispatched = force ? new Set() : readDispatchLog(memoryDir)
+    .filter((item) => item.runnable && item.exitCode === 0)
+    .reduce((set, item) => set.add(item.id), new Set());
+  const messages = readRadioMessages(memoryDir)
+    .filter((message) => project ? message.project === project : true)
+    .filter((message) => to ? message.to === to || message.to === "all" : message.to !== "all")
+    .slice(-limit)
+    .map((message) => ({
+      id: `radio:${message.id}`,
+      kind: "radio",
+      tool: message.to === "all" ? to : message.to,
+      project: message.project || "",
+      text: message.text,
+      refId: message.id
+    }));
+  const tasks = readTasks(memoryDir)
+    .filter((task) => !["done", "cancelled"].includes(task.status))
+    .filter((task) => project ? task.project === project : true)
+    .filter((task) => to ? task.assignee === to : Boolean(task.assignee))
+    .slice(0, limit)
+    .map((task) => ({
+      id: `task:${task.id}`,
+      kind: "task",
+      tool: task.assignee,
+      project: task.project || "",
+      text: `${task.title}${task.handoff ? `\nHandoff: ${task.handoff}` : ""}`,
+      refId: task.id
+    }));
+  return [...messages, ...tasks]
+    .filter((job) => job.tool)
+    .filter((job) => !dispatched.has(job.id))
+    .slice(0, limit);
+}
+
+function getToolRunner(tool) {
+  if (tool === "codex") {
+    if (!commandExists("codex")) {
+      return { available: false, reason: "codex CLI not found in PATH" };
+    }
+    return {
+      available: true,
+      preview: "codex exec --ask-for-approval never <prompt>",
+      command: "codex",
+      args: ["exec", "--ask-for-approval", "never"]
+    };
+  }
+  if (tool === "claude") {
+    if (!commandExists("claude")) {
+      return { available: false, reason: "claude CLI not found or broken in PATH" };
+    }
+    return { available: false, reason: "claude runner is not enabled yet; command shape needs verification on this machine" };
+  }
+  return {
+    available: false,
+    reason: `${tool} has shared instructions but no verified CLI runner on this machine`
+  };
+}
+
+function runDispatchJob(memoryDir, job, runner) {
+  const prompt = renderDispatchPrompt(memoryDir, job);
+  const completed = spawnSync(runner.command, [...runner.args, prompt], {
+    cwd: process.cwd(),
+    encoding: "utf8",
+    timeout: 10 * 60 * 1000,
+    windowsHide: true
+  });
+  return {
+    ...job,
+    runnable: true,
+    exitCode: completed.status,
+    stdout: trimOutput(completed.stdout),
+    stderr: trimOutput(completed.stderr),
+    error: completed.error ? completed.error.message : ""
+  };
+}
+
+function renderDispatchPrompt(memoryDir, job) {
+  return [
+    `You are being dispatched by ai-memory-hub for ${job.kind} ${job.refId}.`,
+    `Shared memory dir: ${memoryDir}`,
+    `Project: ${job.project || "(none)"}`,
+    "",
+    "Instructions:",
+    "- Read MEMORY.md if useful.",
+    "- Check active tasks with `ai-memory-hub task list --status active`.",
+    "- Use Agent Radio or task notes to report progress.",
+    "- Do not store secrets or promote temporary game/chat details into durable memory.",
+    "",
+    "Payload:",
+    job.text
+  ].join("\n");
+}
+
+function readDispatchLog(memoryDir) {
+  return readEvents(path.join(memoryDir, "state", "dispatch-log.jsonl"));
+}
+
+function appendDispatchLog(memoryDir, result) {
+  appendJsonl(path.join(memoryDir, "state", "dispatch-log.jsonl"), {
+    ...result,
+    dispatchedAt: new Date().toISOString()
+  });
+}
+
 function syncCommand(argv) {
   const dryRun = hasFlag(argv, "--dry-run");
   const config = loadConfig();
@@ -691,6 +849,7 @@ Commands:
   index      Rebuild MEMORY.md, INDEX.md, and the structured local index.
   search     Search indexed local memories.
   task       Share task/todo state across AI tools.
+  dispatch   Dispatch pending radio/task work to verified CLI runners.
   pull       Rebuild MEMORY.md from the local memory ledger.
   backup     Back up MEMORY.md, ledger, inbox, profile, radio, and task files.
   watch      Periodically index pending inbox events.
@@ -713,6 +872,8 @@ Examples:
   ${APP_NAME} task claim --id <task-id> --by claude
   ${APP_NAME} task note --id <task-id> "Reviewed Chinese docs." --by qclaw
   ${APP_NAME} task done --id <task-id> --by codex
+  ${APP_NAME} dispatch --project ai-memory-hub
+  ${APP_NAME} dispatch --to codex --run
   ${APP_NAME} pull
   ${APP_NAME} backup --reason manual
   ${APP_NAME} watch --interval-ms 30000
@@ -2147,4 +2308,22 @@ function summarizeDir(dir) {
   } catch {
     return [];
   }
+}
+
+function commandExists(commandName) {
+  const checker = process.platform === "win32" ? "where" : "command";
+  const args = process.platform === "win32" ? [commandName] : ["-v", commandName];
+  const result = spawnSync(checker, args, {
+    encoding: "utf8",
+    windowsHide: true
+  });
+  return result.status === 0;
+}
+
+function trimOutput(value, limit = 4000) {
+  const text = String(value || "").trim();
+  if (text.length <= limit) {
+    return text;
+  }
+  return `${text.slice(0, limit)}\n...[truncated]`;
 }

@@ -172,7 +172,12 @@ ai-memory-hub backup --reason before-large-change
 
 ### 自动化
 
-最稳妥的自动化方式是长期运行 watcher：
+需要区分两种“自动”：
+
+- 自动整理记忆：watcher 看到 inbox 有新长期记忆事件后自动 `sync`。
+- 自动触发 AI 工具：dispatch 把 Radio/Task 变成 CLI 调用，但只支持有可验证 CLI runner 的工具。
+
+最稳妥的自动整理方式是长期运行 watcher：
 
 ```bash
 ai-memory-hub watch --interval-ms 30000
@@ -181,6 +186,25 @@ ai-memory-hub watch --interval-ms 30000
 AI 工具写入长期记忆后，如果能执行命令，可以顺手运行 `ai-memory-hub sync`；如果不能执行命令，watcher 会稍后整理。
 
 任务和 Radio 不需要 `sync` 才能被其他工具读取，它们写入后就是本地可见状态。
+
+自动触发 AI 工具使用 `dispatch`：
+
+```bash
+ai-memory-hub dispatch --to codex --project who-is-undercover-20260605-01
+ai-memory-hub dispatch --to codex --project who-is-undercover-20260605-01 --run
+```
+
+不加 `--run` 时只是 dry-run，显示哪些任务或消息可被触发。加 `--run` 才会真正调用对应工具的 CLI，并消耗该工具自己的模型 Token。成功调度过的 job 会写入 `~/.ai-memory/state/dispatch-log.jsonl`，默认不会重复触发；需要重跑时加 `--force`。
+
+当前本机已验证的自动 runner：
+
+```text
+codex    可通过 codex exec 触发
+claude   命令包装器存在但当前安装路径损坏，暂不启用
+qclaw/gemini/openclaw/opencode/app 类工具   已能共享状态，但没有已验证 CLI runner，不能自动拉起
+```
+
+所以“谁是卧底”这类测试，只有接到 `codex` 的消息可以被 `dispatch --run` 自动触发；发给 qclaw、gemini、openclaw 等工具的消息目前只能等它们自己读取，或者等我们拿到它们的 CLI/API 入口后再接 runner。
 
 ### 配置 AI 工具
 
@@ -243,6 +267,7 @@ status     显示 hub、工具、索引、Radio 和任务状态。
 record     追加一条长期记忆事件。
 radio      发送、列出和提升跨工具短消息。
 task       添加、列出、认领、备注、更新和完成共享任务。
+dispatch   把 Radio/Task 调度给已验证的 CLI runner。
 sync       把 inbox 事件整理进长期记忆账本。
 index      重建 MEMORY.md、INDEX.md 和 memories/index.json。
 search     搜索本地记忆索引。
@@ -430,7 +455,12 @@ Backups include `MEMORY.md`, `profile.md`, inbox, ledger, radio, tasks, and conf
 
 ### Automation
 
-The most reliable automation path is to keep the watcher running:
+There are two different kinds of automation:
+
+- Automatic memory indexing: the watcher sees new durable inbox events and runs `sync`.
+- Automatic AI triggering: `dispatch` turns Radio/Task work into CLI calls, but only for tools with verified CLI runners.
+
+The most reliable automatic indexing path is to keep the watcher running:
 
 ```bash
 ai-memory-hub watch --interval-ms 30000
@@ -439,6 +469,25 @@ ai-memory-hub watch --interval-ms 30000
 After an AI tool writes durable memory, it should run `ai-memory-hub sync` when command execution is available. If it cannot, the watcher will index the event later.
 
 Tasks and Radio do not require `sync`; once written, they are locally visible.
+
+Use `dispatch` to trigger AI tools:
+
+```bash
+ai-memory-hub dispatch --to codex --project who-is-undercover-20260605-01
+ai-memory-hub dispatch --to codex --project who-is-undercover-20260605-01 --run
+```
+
+Without `--run`, dispatch is a dry run and only reports what can be triggered. With `--run`, it calls the target tool CLI and spends that tool's own model tokens. Successful dispatches are logged in `~/.ai-memory/state/dispatch-log.jsonl` and are not repeated by default; use `--force` to rerun.
+
+Verified runner status on this machine:
+
+```text
+codex    Can be triggered through codex exec
+claude   Wrapper exists but the current install path is broken, so it is disabled
+qclaw/gemini/openclaw/opencode/app-style tools   Shared state works, but no verified CLI runner is available yet
+```
+
+For demos such as Who Is Undercover, messages addressed to `codex` can be auto-triggered with `dispatch --run`. Messages addressed to qclaw, gemini, openclaw, or app-style tools remain shared local state until those tools read them or a verified CLI/API runner is added.
 
 ### Configure AI Tools
 
@@ -501,6 +550,7 @@ status     Show hub, tool, index, Radio, and task status.
 record     Append a durable memory event.
 radio      Send, list, and promote cross-tool short messages.
 task       Add, list, claim, note, update, and complete shared tasks.
+dispatch   Dispatch Radio/Task work to verified CLI runners.
 sync       Index inbox events into the durable memory ledger.
 index      Rebuild MEMORY.md, INDEX.md, and memories/index.json.
 search     Search the local memory index.

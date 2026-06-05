@@ -25,7 +25,8 @@
     "agent-radio",
     "claude",
     "codex",
-    "gemini"
+    "gemini",
+    "marvis"
   ],
   "license": "MIT",
   "engines": {

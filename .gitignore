@@ -10,3 +10,16 @@ tmp/
 # committed or uploaded with this repository.
 .ai-memory/
 **/.ai-memory/
+
+# Local AI Memory Hub target rule files (environment-specific instructions)
+CLAUDE.md
+GEMINI.md
+AGENTS.md
+CHATGPT.md
+OLLAMA.md
+CHERRY_STUDIO.md
+.cursorrules
+.windsurfrules
+.clinerules
+.aider.instructions.md
+.github/copilot-instructions.md

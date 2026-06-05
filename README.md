@@ -24,6 +24,8 @@ Language: [中文](#中文说明) | [English](#english)
     messages.jsonl
   tasks/
     tasks.jsonl
+  workflows/
+    workflows.jsonl
   backups/
   locks/
   tools/
@@ -38,6 +40,7 @@ Language: [中文](#中文说明) | [English](#english)
 - `memories/index.json`：结构化索引，可用于搜索和后续扩展。
 - `radio/messages.jsonl`：AI 工具之间的短消息总线。
 - `tasks/tasks.jsonl`：AI 工具之间共享的当前任务和交接状态。
+- `workflows/workflows.jsonl`：多 AI、多角色协作工作流。
 - `locks/hub.lock`：本地写入锁，避免多个工具同时整理同一份状态。
 - `backups/`：同步、重建、备份前保存关键文件。
 
@@ -80,7 +83,7 @@ http://127.0.0.1:38787
 
 本项目的本地记录、同步、备份、索引和 watcher 不调用模型，所以它们本身不消耗模型 Token。
 
-真正消耗 Token 的地方，是某个 AI 工具读取 `MEMORY.md` 并放进自己的上下文。为避免越记越大，当前设计把记忆分成：
+Token 消耗实际发生在 AI 工具将 `MEMORY.md` 纳入自身上下文时。为避免记忆持续膨胀，当前设计把记忆分成：
 
 - `core`：长期稳定偏好、规则、纠错和高重要度事实。
 - `working`：近期项目事实、工作流、参考信息。
@@ -125,7 +128,32 @@ ai-memory-hub radio promote --id <message-id>
 ai-memory-hub sync
 ```
 
-### Shared Task List
+### 多对多工作流
+
+当一件事需要多个 AI 工具分工时，用 `workflow` 比单独的 Radio 或 Task 更清楚。一个工作流可以同时指定 `planner`、`executor`、`reviewer`、`observer`，也可以把多个工具放进同一个角色；它会记录计划、验收标准、风险、执行结果、评审意见、状态变化，并能自动生成角色任务和通知消息。
+
+这个设计参考了 [openai/codex-plugin-cc](https://github.com/openai/codex-plugin-cc) 的生命周期思路：创建/救援任务、查看状态、取结果、取消任务、做评审。但 `ai-memory-hub` 不做 Claude 到 Codex 的单向桥接，而是保持本地优先、工具中立、多对多协作。
+
+常用命令：
+
+```bash
+ai-memory-hub workflow create "实现共享工作流" --from codex --project ai-memory-hub --planner codex --executor claude --reviewer qclaw --observer gemini --spawn-tasks --notify
+ai-memory-hub workflow list --status active
+ai-memory-hub workflow start --id <workflow-id> --by codex
+ai-memory-hub workflow result --id <workflow-id> --role executor "已实现并通过本地测试。" --by claude
+ai-memory-hub workflow review --id <workflow-id> --role reviewer "评审通过。" --by qclaw
+ai-memory-hub workflow signal --id <workflow-id> --to reviewer "可以开始最终检查。" --by codex
+ai-memory-hub workflow done --id <workflow-id> --by codex
+```
+
+建议用法：
+
+- 多工具参与同一目标时，用 `workflow create --spawn-tasks --notify` 同时生成角色任务和 Radio 通知。
+- 执行方用 `workflow result` 汇报结果，评审方用 `workflow review` 留下评审意见。
+- 中途需要转交、提醒或补充上下文时，用 `workflow signal` 发给某个角色或具体工具。
+- 小的单人事项仍然用 `task`；短提醒仍然用 `radio`。
+
+### 共享任务表
 
 共享任务表用于“当前正在做什么、谁认领了、进展如何、如何交接”。它比 Radio 更持久，但又不应该进入长期记忆。
 
@@ -168,7 +196,7 @@ open | claimed | in_progress | blocked | done | cancelled
 ai-memory-hub backup --reason before-large-change
 ```
 
-备份会包含 `MEMORY.md`、`profile.md`、inbox、ledger、radio、tasks 和 config。
+备份会包含 `MEMORY.md`、`profile.md`、inbox、ledger、radio、tasks、workflows 和 config。
 
 ### 自动化
 
@@ -204,7 +232,7 @@ claude   命令包装器存在但当前安装路径损坏，暂不启用
 qclaw/gemini/openclaw/opencode/app 类工具   已能共享状态，但没有已验证 CLI runner，不能自动拉起
 ```
 
-所以“谁是卧底”这类测试，只有接到 `codex` 的消息可以被 `dispatch --run` 自动触发；发给 qclaw、gemini、openclaw 等工具的消息目前只能等它们自己读取，或者等我们拿到它们的 CLI/API 入口后再接 runner。
+所以“谁是卧底”这类测试，只有接到 `codex` 的消息可以被 `dispatch --run` 自动触发；发给 qclaw、gemini、openclaw 等工具的消息目前只能等它们自己读取，或者等我们拿到它们的 CLI/API 入口后再集成 runner。
 
 ### 配置 AI 工具
 
@@ -253,7 +281,7 @@ OpenClaw       通过 ~/.openclaw/skills/ai-memory-hub/SKILL.md 安装 Skill
 OpenCode       通过 ~/.config/opencode/skills/ai-memory-hub/SKILL.md 安装 Skill
 Antigravity    检测并生成 ~/.ai-memory/tools 适配说明
 Codex App      检测并生成 ~/.ai-memory/tools 适配说明
-Marvis         检测并生成 ~/.ai-memory/tools 适配说明，深度接入待验证
+Marvis         检测并生成 ~/.ai-memory/tools 适配说明，深度集成待验证
 Cursor/Windsurf/VS Code/Continue/Cline/Roo Code/Trae/Kiro/Zed/ChatGPT/Ollama/LM Studio/Jan/AnythingLLM/Cherry Studio/Dify/Open WebUI/Aider/Tabby/Codeium/Augment/Supermaven
                预支持，生成安全适配说明
 ```
@@ -267,10 +295,12 @@ status     显示 hub、工具、索引、Radio 和任务状态。
 record     追加一条长期记忆事件。
 radio      发送、列出和提升跨工具短消息。
 task       添加、列出、认领、备注、更新和完成共享任务。
+workflow   编排 planner/executor/reviewer/observer 多角色协作。
 dispatch   把 Radio/Task 调度给已验证的 CLI runner。
 sync       把 inbox 事件整理进长期记忆账本。
 index      重建 MEMORY.md、INDEX.md 和 memories/index.json。
 search     搜索本地记忆索引。
+diff       查看保存的 MEMORY.md 游标之间的差异。
 pull       从账本重建共享快照和索引。
 backup     备份关键本地状态文件。
 watch      定时整理待处理 inbox 事件。
@@ -284,6 +314,23 @@ help       显示 CLI 帮助。
 本项目不会复制、读取或统一管理各 AI 工具的模型 Token。长期记忆同步会跳过看起来像密钥、密码或 Token 的文本。
 
 本地记忆目录是个人运行时状态，不应上传到 GitHub 或公开仓库。仓库 `.gitignore` 已忽略 `.ai-memory/` 和 `**/.ai-memory/`。默认真实目录是 `~/.ai-memory`，位于仓库之外；如果把 `memoryDir` 改到项目目录内，也应保持该目录被忽略。
+
+### 新增高优先级功能
+
+- 备份保留策略：默认保留最近 50 份备份，`maxAgeDays` 默认关闭；可以通过 `sync.backupRetention` 调整。
+- 记忆诊断：`index` 会在 `memories/index.json` 和 `INDEX.md` 中显示重复记忆和潜在冲突，但不会修改 `memories/ledger.jsonl`。
+- 快照游标与差异：每次重建 `MEMORY.md` 都会写入稳定 cursor，并保存到 `state/memory-snapshots/`；用 `ai-memory-hub diff` 查看上次和当前快照差异。
+- 搜索相关性：搜索会过滤没有真实命中的结果，并支持少量中英同义词，例如 backup/备份、commit/提交、rules/规范、LAN/局域网、Internet/互联网。
+- 多对多工作流：`workflow` 支持 planner/executor/reviewer/observer 角色、结果/评审/风险记录、状态流转、角色任务生成和 Radio 通知。
+
+常用命令：
+
+```bash
+ai-memory-hub backup cleanup --dry-run
+ai-memory-hub diff --list
+ai-memory-hub diff --from previous --to current
+ai-memory-hub search "git commit rules" --limit 5
+```
 
 ## English
 
@@ -307,6 +354,8 @@ It does not proxy LLM traffic, does not require a shared model key, and does not
     messages.jsonl
   tasks/
     tasks.jsonl
+  workflows/
+    workflows.jsonl
   backups/
   locks/
   tools/
@@ -321,6 +370,7 @@ Key files:
 - `memories/index.json`: structured local search/index data.
 - `radio/messages.jsonl`: short cross-tool messages.
 - `tasks/tasks.jsonl`: shared current tasks and handoff state.
+- `workflows/workflows.jsonl`: many-to-many workflow orchestration state.
 - `locks/hub.lock`: a local write lock.
 - `backups/`: snapshots of key files before sync, rebuild, or backup actions.
 
@@ -408,6 +458,31 @@ ai-memory-hub radio promote --id <message-id>
 ai-memory-hub sync
 ```
 
+### Many-To-Many Workflows
+
+Use `workflow` when one goal needs several AI tools to coordinate instead of a single owner. A workflow can assign `planner`, `executor`, `reviewer`, and `observer` roles, including multiple tools per role. It stores the plan, acceptance criteria, risks, execution results, review notes, status transitions, linked tasks, and linked Radio messages.
+
+This borrows the useful lifecycle shape from [openai/codex-plugin-cc](https://github.com/openai/codex-plugin-cc): review, rescue/delegation, status, result, and cancel. The model is different: `ai-memory-hub` stays local-first, tool-neutral, and many-to-many instead of acting as a one-way Claude-to-Codex bridge.
+
+Common commands:
+
+```bash
+ai-memory-hub workflow create "Implement shared workflow support" --from codex --project ai-memory-hub --planner codex --executor claude --reviewer qclaw --observer gemini --spawn-tasks --notify
+ai-memory-hub workflow list --status active
+ai-memory-hub workflow start --id <workflow-id> --by codex
+ai-memory-hub workflow result --id <workflow-id> --role executor "Implemented and tested." --by claude
+ai-memory-hub workflow review --id <workflow-id> --role reviewer "Review passed." --by qclaw
+ai-memory-hub workflow signal --id <workflow-id> --to reviewer "Ready for final review." --by codex
+ai-memory-hub workflow done --id <workflow-id> --by codex
+```
+
+Recommended use:
+
+- Use `workflow create --spawn-tasks --notify` to create role tasks and Radio notifications together.
+- Executors report with `workflow result`; reviewers report with `workflow review`.
+- Use `workflow signal` for handoffs, reminders, or role-specific context.
+- Keep small single-owner items in `task`, and short pings in `radio`.
+
 ### Shared Task List
 
 The shared task list tracks what is currently being worked on, who claimed it, what progress exists, and how another tool can take over. It is more durable than Radio, but it should not become long-term memory.
@@ -451,7 +526,28 @@ Manual backup:
 ai-memory-hub backup --reason before-large-change
 ```
 
-Backups include `MEMORY.md`, `profile.md`, inbox, ledger, radio, tasks, and config.
+Backups include `MEMORY.md`, `profile.md`, inbox, ledger, radio, tasks, workflows, and config.
+
+Backup retention is configured under `sync.backupRetention`. By default, cleanup is enabled and keeps the newest 50 backup directories; age-based cleanup is disabled with `maxAgeDays: 0`.
+
+Preview backup cleanup:
+
+```bash
+ai-memory-hub backup cleanup --dry-run
+```
+
+### Memory Diagnostics And Diff
+
+`index`, `sync`, and `pull` rebuild the structured index with non-mutating diagnostics. Duplicate and potential-conflict groups are surfaced in `memories/index.json`, `INDEX.md`, and `status`, but the durable ledger is not changed.
+
+Each `MEMORY.md` rebuild writes a stable snapshot cursor and saves the snapshot under `state/memory-snapshots/`. Use `diff` to inspect changes between saved cursors:
+
+```bash
+ai-memory-hub diff --list
+ai-memory-hub diff --from previous --to current
+```
+
+Search ranking filters out records that only matched by importance and includes a small synonym map for common mixed Chinese/English queries such as `git commit rules`, `backup retention`, and `局域网 互联网`.
 
 ### Automation
 
@@ -550,10 +646,12 @@ status     Show hub, tool, index, Radio, and task status.
 record     Append a durable memory event.
 radio      Send, list, and promote cross-tool short messages.
 task       Add, list, claim, note, update, and complete shared tasks.
+workflow   Orchestrate planner/executor/reviewer/observer work across tools.
 dispatch   Dispatch Radio/Task work to verified CLI runners.
 sync       Index inbox events into the durable memory ledger.
 index      Rebuild MEMORY.md, INDEX.md, and memories/index.json.
 search     Search the local memory index.
+diff       Show MEMORY.md changes between saved cursors.
 pull       Rebuild the shared snapshot and index from the ledger.
 backup     Back up key local state files.
 watch      Periodically index pending inbox events.

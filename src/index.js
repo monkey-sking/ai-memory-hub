@@ -39,6 +39,12 @@ async function main() {
     case "task":
     case "todo":
       return taskCommand(rest);
+    case "workflow":
+    case "flow":
+      return workflowCommand(rest);
+    case "connect":
+    case "contact":
+      return connectCommand(rest);
     case "dispatch":
       return dispatchCommand(rest);
     case "sync":
@@ -117,9 +123,12 @@ function getStatusObject() {
   const radio = readRadioMessages(memoryDir).length;
   const tasks = readTasks(memoryDir);
   const activeTasks = tasks.filter((task) => !["done", "cancelled"].includes(task.status)).length;
+  const workflows = readWorkflows(memoryDir);
+  const activeWorkflows = workflows.filter((workflow) => !["done", "cancelled"].includes(workflow.status)).length;
   const backups = countBackupDirs(memoryDir);
   const lock = readLockStatus(memoryDir);
-  const tools = detectTools();
+  const tools = detectTools(memoryDir);
+  const toolSummary = summarizeToolConnections(tools);
 
   return {
     memoryDir,
@@ -137,10 +146,140 @@ function getStatusObject() {
       blocked: tasks.filter((task) => task.status === "blocked").length,
       done: tasks.filter((task) => task.status === "done").length
     },
+    workflows: {
+      total: workflows.length,
+      active: activeWorkflows,
+      open: workflows.filter((workflow) => workflow.status === "open").length,
+      inProgress: workflows.filter((workflow) => workflow.status === "in_progress").length,
+      review: workflows.filter((workflow) => workflow.status === "review").length,
+      blocked: workflows.filter((workflow) => workflow.status === "blocked").length,
+      done: workflows.filter((workflow) => workflow.status === "done").length
+    },
     backups,
     lock,
+    toolSummary,
     tools
   };
+}
+
+function connectCommand(argv) {
+  const action = argv[0] && !argv[0].startsWith("--") ? argv[0] : "status";
+  const actionArgs = action === "status" ? argv : argv.slice(1);
+  switch (action) {
+    case "status":
+    case "list":
+      return connectStatusCommand(actionArgs);
+    case "request":
+    case "ask":
+      return connectSendCommand(actionArgs, "request");
+    case "review":
+      return connectSendCommand(actionArgs, "review");
+    case "handoff":
+      return connectSendCommand(actionArgs, "handoff");
+    case "note":
+      return connectSendCommand(actionArgs, "note");
+    default:
+      throw new Error("Usage: ai-memory-hub connect [status|request|review|handoff|note] ...");
+  }
+}
+
+function connectStatusCommand(argv) {
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const apply = hasFlag(argv, "--apply");
+  const tools = detectTools(config.memoryDir);
+  const installedUnconfigured = tools.filter((tool) => tool.installed && !tool.configured);
+
+  if (apply) {
+    for (const tool of installedUnconfigured) {
+      const target = getInstallTargetForTool(config.memoryDir, tool.name);
+      if (!target) continue;
+      const snippet = renderTemplate(target.template, {
+        MEMORY_DIR: config.memoryDir,
+        TOOL: target.tool
+      });
+      ensureDir(path.dirname(target.file));
+      appendIfMissing(target.file, snippet, "Shared AI Memory");
+    }
+  }
+
+  const refreshed = apply ? detectTools(config.memoryDir) : tools;
+  const summary = summarizeToolConnections(refreshed);
+  console.log(JSON.stringify({
+    apply,
+    summary,
+    tools: refreshed.map((tool) => ({
+      name: tool.name,
+      installed: tool.installed,
+      configured: tool.configured,
+      connected: tool.connected,
+      connectionStatus: tool.connectionStatus,
+      action: tool.action,
+      instructionFile: tool.instructionFile
+    }))
+  }, null, 2));
+}
+
+function connectSendCommand(argv, defaultType) {
+  const text = getOption(argv, "--text") || positionalArgs(argv).join(" ").trim();
+  if (!text) {
+    throw new Error("Usage: ai-memory-hub connect request --from <tool> --to codex --project <project> --text <message> [--task] [--run]");
+  }
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const from = getOption(argv, "--from") || getOption(argv, "--by") || "manual";
+  const to = getOption(argv, "--to") || "codex";
+  const type = getOption(argv, "--type") || defaultType || "request";
+  const project = getOption(argv, "--project") || path.basename(process.cwd());
+  const priority = getOption(argv, "--priority") || (type === "review" ? "high" : "normal");
+  const shouldCreateTask = hasFlag(argv, "--task") || hasFlag(argv, "--create-task");
+  let task = null;
+
+  if (shouldCreateTask) {
+    withHubLock(config.memoryDir, "connect-task", () => {
+      const tasks = readTasks(config.memoryDir);
+      task = createTask({
+        title: getOption(argv, "--title") || `[${type}] ${summarizeText(text, 80)}`,
+        description: text,
+        handoff: `Contact request from ${from} to ${to}.`,
+        createdBy: from,
+        project,
+        priority
+      });
+      task.assignee = to;
+      task.status = "claimed";
+      tasks.push(task);
+      writeTasks(config.memoryDir, tasks);
+    }, config.sync.lockStaleMs);
+  }
+
+  const message = createRadioMessage({
+    from,
+    to,
+    type,
+    text,
+    thread: getOption(argv, "--thread") || task?.id || "",
+    project
+  });
+  appendJsonl(path.join(config.memoryDir, "radio", "messages.jsonl"), message);
+
+  const dispatch = hasFlag(argv, "--run")
+    ? executeDispatch(config.memoryDir, {
+      run: true,
+      force: hasFlag(argv, "--force"),
+      to,
+      project,
+      limit: Number(getOption(argv, "--limit") || 5)
+    })
+    : null;
+
+  console.log(JSON.stringify({
+    ok: true,
+    message,
+    task,
+    dispatch,
+    hint: dispatch ? "" : `Run ai-memory-hub dispatch --to ${to} --project ${project} --run to trigger a verified runner.`
+  }, null, 2));
 }
 
 function recordCommand(argv) {
@@ -409,12 +548,20 @@ function dispatchCommand(argv) {
   const config = loadConfig();
   ensureHub(config.memoryDir);
 
-  const jobs = buildDispatchJobs(config.memoryDir, { to, project, limit, force });
-  if (jobs.length === 0) {
+  const results = executeDispatch(config.memoryDir, { run, force, to, project, limit });
+  if (results.length === 0) {
     console.log(JSON.stringify({ run, jobs: [], message: "No undispatched radio messages or active tasks matched." }, null, 2));
     return;
   }
 
+  console.log(JSON.stringify({
+    run,
+    results
+  }, null, 2));
+}
+
+function executeDispatch(memoryDir, { run = false, force = false, to = "", project = "", limit = 10 }) {
+  const jobs = buildDispatchJobs(memoryDir, { to, project, limit, force });
   const results = [];
   for (const job of jobs) {
     const runner = getToolRunner(job.tool);
@@ -425,7 +572,7 @@ function dispatchCommand(argv) {
         reason: runner.reason
       };
       if (run) {
-        appendDispatchLog(config.memoryDir, result);
+        appendDispatchLog(memoryDir, result);
       }
       results.push(result);
       continue;
@@ -439,15 +586,11 @@ function dispatchCommand(argv) {
       });
       continue;
     }
-    const result = runDispatchJob(config.memoryDir, job, runner);
-    appendDispatchLog(config.memoryDir, result);
+    const result = runDispatchJob(memoryDir, job, runner);
+    appendDispatchLog(memoryDir, result);
     results.push(result);
   }
-
-  console.log(JSON.stringify({
-    run,
-    results
-  }, null, 2));
+  return results;
 }
 
 function buildDispatchJobs(memoryDir, { to, project, limit, force }) {
@@ -502,6 +645,14 @@ function getToolRunner(tool) {
       return { available: false, reason: "claude CLI not found or broken in PATH" };
     }
     return { available: false, reason: "claude runner is not enabled yet; command shape needs verification on this machine" };
+  }
+  if (tool === "marvis") {
+    return {
+      available: true,
+      preview: "Marvis reads Agent Radio messages and shared tasks at session start or when instructed by the user. Send a radio message or task addressed to marvis, and it will pick it up on the next check.",
+      command: "echo",
+      args: []
+    };
   }
   return {
     available: false,
@@ -873,6 +1024,53 @@ function appCommand(argv) {
         });
         return sendJson(res, { ok: true, results, status: getStatusObject() });
       }
+      if (req.method === "POST" && url.pathname === "/api/dispatch/marvis") {
+        const body = await readRequestJson(req);
+        if (!body.text || typeof body.text !== "string") {
+          return sendJson(res, { error: "text is required" }, 400);
+        }
+        const config = loadConfig();
+        const from = body.from || "unknown";
+        const project = body.project || path.basename(process.cwd());
+        const dispatchType = body.type || "handoff";
+
+        // Write to Agent Radio
+        const message = createRadioMessage({
+          from,
+          to: "marvis",
+          type: dispatchType,
+          text: body.text,
+          thread: body.thread || "",
+          project
+        });
+        appendJsonl(path.join(config.memoryDir, "radio", "messages.jsonl"), message);
+
+        // Also create a shared task
+        let task;
+        withHubLock(config.memoryDir, "task-add", () => {
+          const tasks = readTasks(config.memoryDir);
+          task = createTask({
+            title: body.text.slice(0, 120),
+            description: body.text,
+            handoff: `Dispatched by ${from}${body.thread ? ` (thread: ${body.thread})` : ""}`,
+            createdBy: from,
+            project,
+            priority: body.priority || "normal"
+          });
+          tasks.push(task);
+          writeTasks(config.memoryDir, tasks);
+        }, config.sync.lockStaleMs);
+
+        // Windows toast notification
+        notifyWindows(from, body.text, message.id);
+
+        return sendJson(res, {
+          ok: true,
+          message,
+          task,
+          hint: "Task sent to Marvis. It will be processed when the user asks Marvis to check AI Memory Hub."
+        });
+      }
       if (req.method === "POST" && url.pathname === "/api/radio/promote") {
         const body = await readRequestJson(req);
         if (!body.id || typeof body.id !== "string") {
@@ -889,6 +1087,56 @@ function appCommand(argv) {
         pullCommand([]);
         return sendJson(res, { ok: true, status: getStatusObject() });
       }
+      if (req.method === "GET" && url.pathname === "/api/install/preview") {
+        const toolName = url.searchParams.get("tool");
+        const isLocal = url.searchParams.get("scope") === "local";
+        const config = loadConfig();
+        const targets = (isLocal 
+          ? getLocalInstallTargets(process.cwd(), config.memoryDir) 
+          : getInstallTargets(config.memoryDir)
+        ).filter(t => t.tool === toolName);
+
+        if (targets.length === 0) {
+          return sendJson(res, { error: `No preview target for tool ${toolName}` }, 404);
+        }
+        const target = targets[0];
+        const snippet = renderTemplate(target.template, {
+          MEMORY_DIR: config.memoryDir,
+          TOOL: target.tool
+        });
+        return sendJson(res, {
+          tool: target.tool,
+          file: target.file,
+          snippet: snippet
+        });
+      }
+      if (req.method === "POST" && url.pathname === "/api/install/apply") {
+        const body = await readRequestJson(req);
+        const toolName = body.tool;
+        const isLocal = body.scope === "local";
+        if (!toolName) {
+          return sendJson(res, { error: "tool is required" }, 400);
+        }
+        const config = loadConfig();
+        const targets = (isLocal 
+          ? getLocalInstallTargets(process.cwd(), config.memoryDir) 
+          : getInstallTargets(config.memoryDir)
+        ).filter(t => t.tool === toolName);
+
+        if (targets.length === 0) {
+          return sendJson(res, { error: `No install targets for tool: ${toolName}` }, 404);
+        }
+        
+        const target = targets[0];
+        const snippet = renderTemplate(target.template, {
+          MEMORY_DIR: config.memoryDir,
+          TOOL: target.tool
+        });
+        
+        ensureDir(path.dirname(target.file));
+        appendIfMissing(target.file, snippet, "Shared AI Memory");
+        return sendJson(res, { success: true, file: target.file });
+      }
       return sendJson(res, { error: "not found" }, 404);
     } catch (error) {
       return sendJson(res, { error: error.message || String(error) }, 500);
@@ -903,10 +1151,15 @@ function appCommand(argv) {
 function installCommand(argv) {
   const tool = getOption(argv, "--tool") || "all";
   const apply = hasFlag(argv, "--apply");
+  const isLocal = hasFlag(argv, "--local");
   const config = loadConfig();
   ensureHub(config.memoryDir);
 
-  const targets = getInstallTargets(config.memoryDir).filter((target) => tool === "all" || target.tool === tool);
+  const targets = (isLocal
+    ? getLocalInstallTargets(process.cwd(), config.memoryDir)
+    : getInstallTargets(config.memoryDir)
+  ).filter((target) => tool === "all" || target.tool === tool);
+  
   if (targets.length === 0) {
     throw new Error(`No install targets found for tool: ${tool}`);
   }
@@ -941,12 +1194,14 @@ Commands:
   index      Rebuild MEMORY.md, INDEX.md, and the structured local index.
   search     Search indexed local memories.
   task       Share task/todo state across AI tools.
+  workflow   Coordinate planner/executor/reviewer/observer work across AI tools.
+  connect    Check tool connections or send a request/review/handoff to another tool.
   dispatch   Dispatch pending radio/task work to verified CLI runners.
   pull       Rebuild MEMORY.md from the local memory ledger.
-  backup     Back up MEMORY.md, ledger, inbox, profile, radio, and task files.
+  backup     Back up MEMORY.md, ledger, inbox, profile, radio, task, and workflow files.
   watch      Periodically index pending inbox events.
   app        Start the local dashboard app.
-  install    Show or apply per-tool instruction snippets.
+  install    Show or apply per-tool instruction snippets. Use --local to write rules in the current project directory.
   help       Show this help.
 
 Examples:
@@ -964,6 +1219,11 @@ Examples:
   ${APP_NAME} task claim --id <task-id> --by claude
   ${APP_NAME} task note --id <task-id> "Reviewed Chinese docs." --by qclaw
   ${APP_NAME} task done --id <task-id> --by codex
+  ${APP_NAME} connect
+  ${APP_NAME} connect --apply
+  ${APP_NAME} connect request --from gemini --to codex --project ai-memory-hub --text "Please inspect the current task list." --task
+  ${APP_NAME} workflow create "Review dashboard changes" --from codex --project ai-memory-hub --planner codex --executor opencode --reviewer qclaw --spawn-tasks --notify
+  ${APP_NAME} workflow list --status active
   ${APP_NAME} dispatch --project ai-memory-hub
   ${APP_NAME} dispatch --to codex --run
   ${APP_NAME} pull
@@ -972,6 +1232,7 @@ Examples:
   ${APP_NAME} app --port 38787
   ${APP_NAME} install --tool codex
   ${APP_NAME} install --tool codex --apply
+  ${APP_NAME} install --local --apply
 `);
 }
 
@@ -989,6 +1250,7 @@ function defaultConfig(memoryDir) {
       codex: { enabled: true },
       codexApp: { enabled: true },
       claude: { enabled: true },
+      claudeDesktop: { enabled: true },
       gemini: { enabled: true },
       antigravity: { enabled: true },
       antigravityCockpit: { enabled: true },
@@ -1030,6 +1292,7 @@ function ensureHub(memoryDir) {
     path.join(memoryDir, "memories"),
     path.join(memoryDir, "radio"),
     path.join(memoryDir, "tasks"),
+    path.join(memoryDir, "workflows"),
     path.join(memoryDir, "tools"),
     path.join(memoryDir, "backups"),
     path.join(memoryDir, "locks"),
@@ -1069,7 +1332,7 @@ function loadConfig() {
   };
 }
 
-function detectTools() {
+function detectTools(memoryDir = resolveMemoryDir()) {
   const home = os.homedir();
   const checks = [
     {
@@ -1086,6 +1349,11 @@ function detectTools() {
       name: "claude",
       kind: "cli-config",
       dir: path.join(home, ".claude")
+    },
+    {
+      name: "claude-desktop",
+      kind: "app-state",
+      dir: path.join(home, "AppData", "Roaming", "Claude")
     },
     {
       name: "gemini",
@@ -1244,13 +1512,315 @@ function detectTools() {
     }
   ];
 
-  return checks.map((check) => ({
+  return checks.map((check) => enrichToolConnection({
     name: check.name,
     kind: check.kind,
     installed: fs.existsSync(check.dir),
     dir: check.dir,
     files: fs.existsSync(check.dir) ? summarizeDir(check.dir) : []
-  }));
+  }, memoryDir));
+}
+
+function workflowCommand(argv) {
+  const action = argv[0] || "list";
+  const actionArgs = argv.slice(1);
+  switch (action) {
+    case "add":
+    case "create":
+      return workflowCreateCommand(actionArgs);
+    case "list":
+      return workflowListCommand(actionArgs);
+    case "start":
+      return workflowStatusCommand(["--status", "in_progress", ...actionArgs]);
+    case "status":
+      return workflowStatusCommand(actionArgs);
+    case "result":
+      return workflowAppendCommand(actionArgs, "results");
+    case "review":
+      return workflowAppendCommand(actionArgs, "reviews");
+    case "signal":
+      return workflowSignalCommand(actionArgs);
+    case "done":
+      return workflowStatusCommand(["--status", "done", ...actionArgs]);
+    default:
+      throw new Error("Usage: ai-memory-hub workflow <create|list|start|status|result|review|signal|done> ...");
+  }
+}
+
+function workflowCreateCommand(argv) {
+  const title = positionalArgs(argv).join(" ").trim();
+  if (!title) {
+    throw new Error("Usage: ai-memory-hub workflow create <title> [--from codex] [--project name] [--planner codex] [--executor claude] [--reviewer qclaw]");
+  }
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  return withHubLock(config.memoryDir, "workflow-create", () => {
+    const workflows = readWorkflows(config.memoryDir);
+    const workflow = createWorkflow({
+      title,
+      createdBy: getOption(argv, "--from") || getOption(argv, "--by") || "manual",
+      project: getOption(argv, "--project") || path.basename(process.cwd()),
+      priority: getOption(argv, "--priority") || "normal",
+      planner: getOption(argv, "--planner") || "",
+      executor: getOption(argv, "--executor") || "",
+      reviewer: getOption(argv, "--reviewer") || "",
+      observer: getOption(argv, "--observer") || "",
+      plan: getOption(argv, "--plan") || "",
+      acceptance: getOption(argv, "--acceptance") || ""
+    });
+    workflows.push(workflow);
+    writeWorkflows(config.memoryDir, workflows);
+    if (hasFlag(argv, "--spawn-tasks")) {
+      spawnWorkflowTasks(config.memoryDir, workflow);
+    }
+    if (hasFlag(argv, "--notify")) {
+      notifyWorkflowRoles(config.memoryDir, workflow);
+    }
+    console.log(JSON.stringify(workflow, null, 2));
+  }, config.sync.lockStaleMs);
+}
+
+function workflowListCommand(argv) {
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const status = getOption(argv, "--status") || "active";
+  const project = getOption(argv, "--project") || "";
+  const limit = Number(getOption(argv, "--limit") || 20);
+  const workflows = readWorkflows(config.memoryDir)
+    .filter((workflow) => status === "all" ? true : status === "active" ? !["done", "cancelled"].includes(workflow.status) : workflow.status === status)
+    .filter((workflow) => project ? workflow.project === project : true)
+    .sort((a, b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")))
+    .slice(0, limit);
+  console.log(JSON.stringify(workflows, null, 2));
+}
+
+function workflowStatusCommand(argv) {
+  const id = getOption(argv, "--id") || positionalArgs(argv)[0] || "";
+  const status = getOption(argv, "--status") || positionalArgs(argv)[1] || "";
+  const by = getOption(argv, "--by") || getOption(argv, "--from") || "manual";
+  if (!id || !status) {
+    throw new Error("Usage: ai-memory-hub workflow status --id <workflow-id> --status <open|planned|in_progress|review|blocked|done|cancelled> [--by codex]");
+  }
+  assertWorkflowStatus(status);
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  return withHubLock(config.memoryDir, "workflow-status", () => {
+    const workflow = updateWorkflow(config.memoryDir, id, (current) => ({
+      ...current,
+      status,
+      updatedAt: new Date().toISOString(),
+      completedAt: status === "done" ? new Date().toISOString() : current.completedAt || "",
+      notes: [
+        ...(current.notes || []),
+        createTaskNote(by, `Status changed to ${status}.`)
+      ]
+    }));
+    console.log(JSON.stringify(workflow, null, 2));
+  }, config.sync.lockStaleMs);
+}
+
+function workflowAppendCommand(argv, field) {
+  const id = getOption(argv, "--id") || positionalArgs(argv)[0] || "";
+  const args = positionalArgs(argv);
+  const text = getOption(argv, "--text") || (getOption(argv, "--id") ? args.join(" ") : args.slice(1).join(" ")).trim();
+  const by = getOption(argv, "--by") || getOption(argv, "--from") || "manual";
+  const role = getOption(argv, "--role") || "";
+  if (!id || !text) {
+    throw new Error(`Usage: ai-memory-hub workflow ${field === "results" ? "result" : "review"} --id <workflow-id> [--role executor] <text> [--by codex]`);
+  }
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  return withHubLock(config.memoryDir, `workflow-${field}`, () => {
+    const workflow = updateWorkflow(config.memoryDir, id, (current) => ({
+      ...current,
+      status: field === "reviews" ? "review" : current.status,
+      updatedAt: new Date().toISOString(),
+      [field]: [
+        ...(current[field] || []),
+        { ts: new Date().toISOString(), by, role, text }
+      ]
+    }));
+    console.log(JSON.stringify(workflow, null, 2));
+  }, config.sync.lockStaleMs);
+}
+
+function workflowSignalCommand(argv) {
+  const id = getOption(argv, "--id") || positionalArgs(argv)[0] || "";
+  const to = getOption(argv, "--to") || "";
+  const args = positionalArgs(argv);
+  const text = getOption(argv, "--text") || (getOption(argv, "--id") ? args.join(" ") : args.slice(1).join(" ")).trim();
+  const by = getOption(argv, "--by") || getOption(argv, "--from") || "manual";
+  if (!id || !to || !text) {
+    throw new Error("Usage: ai-memory-hub workflow signal --id <workflow-id> --to <tool-or-role> <text> [--by codex]");
+  }
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const workflow = readWorkflows(config.memoryDir).find((item) => item.id === id || item.id.startsWith(id));
+  if (!workflow) {
+    throw new Error(`Workflow not found: ${id}`);
+  }
+  const message = createRadioMessage({
+    from: by,
+    to,
+    type: "handoff",
+    text: `[workflow:${workflow.id}] ${text}`,
+    thread: workflow.id,
+    project: workflow.project
+  });
+  appendJsonl(path.join(config.memoryDir, "radio", "messages.jsonl"), message);
+  console.log(JSON.stringify(message, null, 2));
+}
+
+function enrichToolConnection(tool, memoryDir) {
+  const target = getInstallTargetForTool(memoryDir, tool.name);
+  const instructionFile = target?.file || path.join(memoryDir, "tools", `${tool.name}-shared-memory.md`);
+  const configured = hasSharedMemoryInstructions(instructionFile);
+  const runner = getToolRunner(tool.name);
+  const connected = Boolean(tool.installed && configured);
+  let connectionStatus = "missing";
+  let action = "Install the tool first, then run ai-memory-hub connect --apply.";
+
+  if (tool.installed && configured) {
+    connectionStatus = runner.available ? "connected-runnable" : "connected-shared-state";
+    action = runner.available
+      ? "Ready for shared memory and verified dispatch runner."
+      : "Ready for shared memory; no verified automatic runner yet.";
+  } else if (tool.installed) {
+    connectionStatus = "detected-unconfigured";
+    action = `Run ai-memory-hub connect --apply or ai-memory-hub install --tool ${tool.name} --apply.`;
+  } else if (configured) {
+    connectionStatus = "preconfigured-missing";
+    action = "Adapter note exists; install or launch the tool to use it.";
+  }
+
+  return {
+    ...tool,
+    configured,
+    connected,
+    connectionStatus,
+    runnable: Boolean(runner.available),
+    runnerReason: runner.available ? "" : runner.reason || "",
+    instructionFile,
+    action
+  };
+}
+
+function hasSharedMemoryInstructions(file) {
+  if (!file || !fs.existsSync(file)) {
+    return false;
+  }
+  const text = fs.readFileSync(file, "utf8");
+  return text.includes("Shared AI Memory") && (
+    text.includes("ai-memory-hub") ||
+    text.includes(".ai-memory") ||
+    text.includes("AI Memory Hub")
+  );
+}
+
+function summarizeToolConnections(tools) {
+  return {
+    total: tools.length,
+    detected: tools.filter((tool) => tool.installed).length,
+    configured: tools.filter((tool) => tool.configured).length,
+    connected: tools.filter((tool) => tool.connected).length,
+    runnable: tools.filter((tool) => tool.runnable).length,
+    missing: tools.filter((tool) => !tool.installed).length,
+    unconfiguredDetected: tools.filter((tool) => tool.installed && !tool.configured).length
+  };
+}
+
+function getInstallTargetForTool(memoryDir, toolName) {
+  return getInstallTargets(memoryDir).find((target) => target.tool === toolName) || null;
+}
+
+function getLocalInstallTargets(cwd, memoryDir) {
+  return [
+    {
+      tool: "codex",
+      file: path.join(cwd, "AGENTS.md"),
+      template: readTemplate("AGENTS.md")
+    },
+    {
+      tool: "codex-app",
+      file: path.join(cwd, "AGENTS.md"),
+      template: readTemplate("AGENTS.md")
+    },
+    {
+      tool: "claude",
+      file: path.join(cwd, "CLAUDE.md"),
+      template: readTemplate("CLAUDE.md")
+    },
+    {
+      tool: "claude-desktop",
+      file: path.join(cwd, "CLAUDE.md"),
+      template: readTemplate("CLAUDE.md")
+    },
+    {
+      tool: "gemini",
+      file: path.join(cwd, "GEMINI.md"),
+      template: readTemplate("GEMINI.md")
+    },
+    {
+      tool: "antigravity",
+      file: path.join(cwd, "GEMINI.md"),
+      template: readTemplate("GEMINI.md")
+    },
+    {
+      tool: "antigravity-cockpit",
+      file: path.join(cwd, "GEMINI.md"),
+      template: readTemplate("GEMINI.md")
+    },
+    {
+      tool: "antigravity-gemini",
+      file: path.join(cwd, "GEMINI.md"),
+      template: readTemplate("GEMINI.md")
+    },
+    {
+      tool: "cursor",
+      file: path.join(cwd, ".cursorrules"),
+      template: readTemplate("shared-instructions.md")
+    },
+    {
+      tool: "windsurf",
+      file: path.join(cwd, ".windsurfrules"),
+      template: readTemplate("shared-instructions.md")
+    },
+    {
+      tool: "cline",
+      file: path.join(cwd, ".clinerules"),
+      template: readTemplate("shared-instructions.md")
+    },
+    {
+      tool: "roo-code",
+      file: path.join(cwd, ".clinerules"),
+      template: readTemplate("shared-instructions.md")
+    },
+    {
+      tool: "aider",
+      file: path.join(cwd, ".aider.instructions.md"),
+      template: readTemplate("shared-instructions.md")
+    },
+    {
+      tool: "vscode",
+      file: path.join(cwd, ".github", "copilot-instructions.md"),
+      template: readTemplate("shared-instructions.md")
+    },
+    {
+      tool: "chatgpt",
+      file: path.join(cwd, "CHATGPT.md"),
+      template: readTemplate("shared-instructions.md")
+    },
+    {
+      tool: "ollama",
+      file: path.join(cwd, "OLLAMA.md"),
+      template: readTemplate("shared-instructions.md")
+    },
+    {
+      tool: "cherry-studio",
+      file: path.join(cwd, "CHERRY_STUDIO.md"),
+      template: readTemplate("shared-instructions.md")
+    }
+  ];
 }
 
 function getInstallTargets(memoryDir) {
@@ -1277,14 +1847,29 @@ function getInstallTargets(memoryDir) {
       template: readTemplate("shared-instructions.md")
     },
     {
+      tool: "antigravity-cockpit",
+      file: path.join(memoryDir, "tools", "antigravity-cockpit-shared-memory.md"),
+      template: readTemplate("shared-instructions.md")
+    },
+    {
+      tool: "antigravity-gemini",
+      file: path.join(memoryDir, "tools", "antigravity-gemini-shared-memory.md"),
+      template: readTemplate("shared-instructions.md")
+    },
+    {
+      tool: "cc-switch",
+      file: path.join(memoryDir, "tools", "cc-switch-shared-memory.md"),
+      template: readTemplate("shared-instructions.md")
+    },
+    {
       tool: "codex-app",
       file: path.join(memoryDir, "tools", "codex-app-shared-memory.md"),
       template: readTemplate("shared-instructions.md")
     },
     {
       tool: "marvis",
-      file: path.join(memoryDir, "tools", "marvis-shared-memory.md"),
-      template: readTemplate("shared-instructions.md")
+      file: path.join(home, "AppData", "Roaming", "Tencent", "Marvis", "skills", "ai-memory-hub", "SKILL.md"),
+      template: readTemplate("MARVIS_SKILL.md")
     },
     {
       tool: "qclaw",
@@ -1302,6 +1887,7 @@ function getInstallTargets(memoryDir) {
       template: readTemplate("OPENCODE_SKILL.md")
     },
     ...[
+      "claude-desktop",
       "cursor",
       "windsurf",
       "vscode",
@@ -1407,6 +1993,157 @@ function writeTasks(memoryDir, tasks) {
   fs.writeFileSync(file, tasks.map((task) => JSON.stringify(normalizeTask(task))).join("\n") + (tasks.length ? "\n" : ""), "utf8");
 }
 
+function readWorkflows(memoryDir) {
+  return readEvents(path.join(memoryDir, "workflows", "workflows.jsonl"))
+    .map(normalizeWorkflow)
+    .filter((workflow) => workflow.id && workflow.title);
+}
+
+function writeWorkflows(memoryDir, workflows) {
+  const file = path.join(memoryDir, "workflows", "workflows.jsonl");
+  ensureDir(path.dirname(file));
+  fs.writeFileSync(file, workflows.map((workflow) => JSON.stringify(normalizeWorkflow(workflow))).join("\n") + (workflows.length ? "\n" : ""), "utf8");
+}
+
+function createWorkflow({ title, createdBy, project, priority, planner, executor, reviewer, observer, plan, acceptance }) {
+  const now = new Date().toISOString();
+  const cleanTitle = String(title || "").trim();
+  return {
+    id: createId(`workflow:${cleanTitle}:${createdBy}:${project}`),
+    createdAt: now,
+    updatedAt: now,
+    completedAt: "",
+    createdBy: String(createdBy || "manual"),
+    status: "open",
+    priority: normalizePriority(priority),
+    project: String(project || ""),
+    title: cleanTitle,
+    planner: normalizeWorkflowRole(planner),
+    executor: normalizeWorkflowRole(executor),
+    reviewer: normalizeWorkflowRole(reviewer),
+    observer: normalizeWorkflowRole(observer),
+    plan: String(plan || ""),
+    acceptance: String(acceptance || ""),
+    risks: [],
+    results: [],
+    reviews: [],
+    linkedTasks: [],
+    linkedRadio: [],
+    notes: []
+  };
+}
+
+function updateWorkflow(memoryDir, id, updater) {
+  const workflows = readWorkflows(memoryDir);
+  const index = findWorkflowIndex(workflows, id);
+  if (index === -1) {
+    throw new Error(`Workflow not found: ${id}`);
+  }
+  const updated = normalizeWorkflow(updater(workflows[index]));
+  workflows[index] = updated;
+  writeWorkflows(memoryDir, workflows);
+  return updated;
+}
+
+function findWorkflowIndex(workflows, id) {
+  const exact = workflows.findIndex((workflow) => workflow.id === id);
+  if (exact !== -1) {
+    return exact;
+  }
+  const matches = workflows
+    .map((workflow, index) => ({ workflow, index }))
+    .filter((item) => item.workflow.id.startsWith(id));
+  return matches.length === 1 ? matches[0].index : -1;
+}
+
+function spawnWorkflowTasks(memoryDir, workflow) {
+  const tasks = readTasks(memoryDir);
+  const linkedTasks = [];
+  for (const [role, assignees] of Object.entries({
+    planner: workflow.planner,
+    executor: workflow.executor,
+    reviewer: workflow.reviewer,
+    observer: workflow.observer
+  })) {
+    for (const assignee of assignees || []) {
+      const task = {
+        ...createTask({
+          title: `[workflow:${workflow.id}] ${role}: ${workflow.title}`,
+          description: workflow.plan || workflow.acceptance || "",
+          handoff: `Workflow ${workflow.id}; role=${role}`,
+          createdBy: workflow.createdBy,
+          project: workflow.project,
+          priority: workflow.priority
+        }),
+        assignee,
+        status: "claimed"
+      };
+      tasks.push(task);
+      linkedTasks.push(task.id);
+    }
+  }
+  writeTasks(memoryDir, tasks);
+  updateWorkflow(memoryDir, workflow.id, (current) => ({ ...current, linkedTasks }));
+}
+
+function notifyWorkflowRoles(memoryDir, workflow) {
+  const recipients = new Set([
+    ...(workflow.planner || []),
+    ...(workflow.executor || []),
+    ...(workflow.reviewer || []),
+    ...(workflow.observer || [])
+  ].filter(Boolean));
+  const linkedRadio = [];
+  for (const to of recipients) {
+    const message = createRadioMessage({
+      from: workflow.createdBy,
+      to,
+      type: "handoff",
+      text: `[workflow:${workflow.id}] ${workflow.title}`,
+      thread: workflow.id,
+      project: workflow.project
+    });
+    appendJsonl(path.join(memoryDir, "radio", "messages.jsonl"), message);
+    linkedRadio.push(message.id);
+  }
+  updateWorkflow(memoryDir, workflow.id, (current) => ({ ...current, linkedRadio }));
+}
+
+function normalizeWorkflow(workflow) {
+  const now = new Date().toISOString();
+  const status = isWorkflowStatus(workflow.status) ? workflow.status : "open";
+  return {
+    id: workflow.id || createId(`workflow:${workflow.title || JSON.stringify(workflow)}`),
+    createdAt: workflow.createdAt || workflow.ts || now,
+    updatedAt: workflow.updatedAt || workflow.createdAt || workflow.ts || now,
+    completedAt: workflow.completedAt || "",
+    createdBy: workflow.createdBy || workflow.created_by || workflow.source || "unknown",
+    status,
+    priority: normalizePriority(workflow.priority || "normal"),
+    project: workflow.project || "",
+    title: workflow.title || workflow.text || "",
+    planner: normalizeWorkflowRole(workflow.planner),
+    executor: normalizeWorkflowRole(workflow.executor),
+    reviewer: normalizeWorkflowRole(workflow.reviewer),
+    observer: normalizeWorkflowRole(workflow.observer),
+    plan: workflow.plan || "",
+    acceptance: workflow.acceptance || "",
+    risks: Array.isArray(workflow.risks) ? workflow.risks : [],
+    results: Array.isArray(workflow.results) ? workflow.results : [],
+    reviews: Array.isArray(workflow.reviews) ? workflow.reviews : [],
+    linkedTasks: Array.isArray(workflow.linkedTasks) ? workflow.linkedTasks : [],
+    linkedRadio: Array.isArray(workflow.linkedRadio) ? workflow.linkedRadio : [],
+    notes: Array.isArray(workflow.notes) ? workflow.notes : []
+  };
+}
+
+function normalizeWorkflowRole(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item || "").trim()).filter(Boolean);
+  }
+  return String(value || "").split(",").map((item) => item.trim()).filter(Boolean);
+}
+
 function createTask({ title, description, handoff, createdBy, project, priority }) {
   const now = new Date().toISOString();
   const cleanTitle = String(title || "").trim();
@@ -1489,8 +2226,18 @@ function assertTaskStatus(status) {
   }
 }
 
+function assertWorkflowStatus(status) {
+  if (!isWorkflowStatus(status)) {
+    throw new Error(`Invalid workflow status: ${status}`);
+  }
+}
+
 function isTaskStatus(status) {
   return new Set(["open", "claimed", "in_progress", "blocked", "done", "cancelled"]).has(status);
+}
+
+function isWorkflowStatus(status) {
+  return new Set(["open", "planned", "in_progress", "review", "blocked", "done", "cancelled"]).has(status);
 }
 
 function normalizePriority(priority) {
@@ -1838,6 +2585,7 @@ function backupHub(memoryDir, reason) {
     ["memory-ledger.jsonl", path.join(memoryDir, "memories", "ledger.jsonl")],
     ["radio-messages.jsonl", path.join(memoryDir, "radio", "messages.jsonl")],
     ["tasks.jsonl", path.join(memoryDir, "tasks", "tasks.jsonl")],
+    ["workflows.jsonl", path.join(memoryDir, "workflows", "workflows.jsonl")],
     ["config.json", path.join(memoryDir, "config.json")]
   ];
 
@@ -2033,13 +2781,21 @@ function appendJsonl(file, value) {
 
 function appendIfMissing(file, snippet, marker) {
   const existing = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
-  if (existing.includes(marker) && existing.includes("Shared Agent Radio") && existing.includes("Shared Task List")) {
+  if (
+    existing.includes(marker) &&
+    existing.includes("Shared Agent Radio") &&
+    existing.includes("Shared Task List") &&
+    existing.includes("Shared Workflows")
+  ) {
     return;
   }
   if (existing.includes(marker)) {
     const sections = [];
     if (!existing.includes("Shared Task List")) {
-      sections.push(extractSection(snippet, "## Shared Task List", "## Shared Agent Radio"));
+      sections.push(extractSection(snippet, "## Shared Task List", "## Shared Workflows"));
+    }
+    if (!existing.includes("Shared Workflows")) {
+      sections.push(extractSection(snippet, "## Shared Workflows", "## Shared Agent Radio"));
     }
     if (!existing.includes("Shared Agent Radio")) {
       sections.push(extractSection(snippet, "## Shared Agent Radio"));
@@ -2165,4 +2921,41 @@ function trimOutput(value, limit = 4000) {
     return text;
   }
   return `${text.slice(0, limit)}\n...[truncated]`;
+}
+
+function notifyWindows(from, text, messageId) {
+  if (process.platform !== "win32") {
+    return;
+  }
+  try {
+    const escapedFrom = from.replace(/"/g, '\\"');
+    const escapedText = text.slice(0, 160).replace(/"/g, '\\"');
+    const escapedId = (messageId || "").replace(/"/g, '\\"');
+    const psScript = `
+[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
+[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null
+$template = @"
+<toast>
+  <visual>
+    <binding template='ToastGeneric'>
+      <text>${escapedFrom} wants Marvis</text>
+      <text>${escapedText}</text>
+      <text placement='attribution'>via AI Memory Hub</text>
+    </binding>
+  </visual>
+</toast>
+"@
+$xml = New-Object Windows.Data.Xml.Dom.XmlDocument
+$xml.LoadXml($template)
+$toast = New-Object Windows.UI.Notifications.ToastNotification $xml
+[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("AI Memory Hub").Show($toast)
+`.trim();
+    spawnSync("powershell", ["-NoProfile", "-Command", psScript], {
+      encoding: "utf8",
+      windowsHide: true,
+      timeout: 5000
+    });
+  } catch {
+    // Notification is optional, don't fail the request
+  }
 }

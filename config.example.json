@@ -3,7 +3,12 @@
   "sync": {
     "archiveIndexedInboxItems": true,
     "snapshotLimit": 200,
-    "lockStaleMs": 120000
+    "lockStaleMs": 120000,
+    "backupRetention": {
+      "enabled": true,
+      "maxCount": 50,
+      "maxAgeDays": 0
+    }
   },
   "tools": {
     "codex": {

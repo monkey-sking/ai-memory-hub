@@ -49,6 +49,21 @@ ai-memory-hub task done --id <task-id> --by opencode
 
 Use task notes for current progress and handoff state. Use durable memory only for long-lived facts and rules.
 
+## Shared Workflows
+
+For multi-agent work with planner, executor, reviewer, and observer roles, prefer workflows over ad hoc tasks:
+
+```bash
+ai-memory-hub workflow list --status active
+ai-memory-hub workflow create "short workflow title" --from opencode --project <project> --planner opencode --executor <tool> --reviewer <tool> --spawn-tasks --notify
+ai-memory-hub workflow start --id <workflow-id> --by opencode
+ai-memory-hub workflow result --id <workflow-id> --role executor "execution result" --by opencode
+ai-memory-hub workflow review --id <workflow-id> --role reviewer "review result" --by opencode
+ai-memory-hub workflow signal --id <workflow-id> --to <role-or-tool> "handoff note" --by opencode
+```
+
+Use workflows when multiple tools may act as planner, executor, reviewer, or observer. Use standalone tasks for small single-owner work.
+
 ## Shared Agent Radio
 
 For cross-agent handoffs, review requests, risk notes, and status updates, append JSONL messages to `{{MEMORY_DIR}}/radio/messages.jsonl`.
@@ -66,5 +81,35 @@ ai-memory-hub status
 ai-memory-hub sync
 ai-memory-hub backup --reason opencode
 ai-memory-hub task list --status active
+ai-memory-hub workflow list --status active
 ai-memory-hub radio list --limit 10
 ```
+
+## Calling Marvis (Windows Desktop AI Assistant)
+
+Marvis is a Windows desktop assistant with access to local files, system settings, Android apps (via emulator), and Windows desktop apps. When you need Marvis to perform a task in the local Windows environment, call its dispatch API.
+
+The AI Memory Hub app server must be running. Start it if needed:
+
+```bash
+start /B ai-memory-hub app --port 38787
+```
+
+Then send a task to Marvis:
+
+```bash
+curl -s -X POST http://127.0.0.1:38787/api/dispatch/marvis ^
+  -H "Content-Type: application/json" ^
+  -d "{\"text\":\"Find all PDF invoices in D:\\Documents and convert them to a single Excel file at D:\\Documents\\invoices.xlsx\",\"from\":\"opencode\",\"project\":\"<project-name>\"}"
+```
+
+Marvis will not reply synchronously. It checks radio messages when the user instructs it to. The user will see a Windows desktop notification when your task is queued.
+
+**What to delegate to Marvis:**
+- Windows file operations (find, organize, convert, clean up)
+- Windows system settings (display, audio, network, power)
+- Android app operations (Xiaohongshu, Meituan, Duolingo, WeChat mini-programs, etc.)
+- Windows desktop app interactions (CapCut Pro, WeChat PC, Steam games)
+- APK/app/game installation and management
+
+**Do NOT delegate to Marvis:** web browsing, web search, code generation, git operations, cloud infrastructure.

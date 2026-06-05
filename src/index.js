@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
+import http from "node:http";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
@@ -36,6 +37,8 @@ async function main() {
       return pullCommand(rest);
     case "watch":
       return watchCommand(rest);
+    case "app":
+      return appCommand(rest);
     case "install":
       return installCommand(rest);
     case "help":
@@ -66,6 +69,10 @@ function detectCommand() {
 }
 
 function statusCommand() {
+  console.log(JSON.stringify(getStatusObject(), null, 2));
+}
+
+function getStatusObject() {
   const config = loadConfig();
   const memoryDir = config.memoryDir;
   ensureHub(memoryDir);
@@ -75,13 +82,13 @@ function statusCommand() {
   const tools = detectTools();
   const mem0 = mem0Status();
 
-  console.log(JSON.stringify({
+  return {
     memoryDir,
     pendingEvents: pending,
     syncedEventFiles: synced,
     tools,
     mem0
-  }, null, 2));
+  };
 }
 
 function recordCommand(argv) {
@@ -227,6 +234,62 @@ function watchCommand(argv) {
   setInterval(tick, intervalMs);
 }
 
+function appCommand(argv) {
+  const host = getOption(argv, "--host") || "127.0.0.1";
+  const port = Number(getOption(argv, "--port") || 38787);
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+
+  const server = http.createServer(async (req, res) => {
+    try {
+      const url = new URL(req.url || "/", `http://${host}:${port}`);
+      if (req.method === "GET" && url.pathname === "/") {
+        return sendHtml(res, renderDashboard());
+      }
+      if (req.method === "GET" && url.pathname === "/api/status") {
+        return sendJson(res, getStatusObject());
+      }
+      if (req.method === "GET" && url.pathname === "/api/memory") {
+        const config = loadConfig();
+        return sendJson(res, {
+          memory: readTextIfExists(path.join(config.memoryDir, "MEMORY.md")),
+          profile: readTextIfExists(path.join(config.memoryDir, "profile.md")),
+          pending: readEvents(path.join(config.memoryDir, "inbox", "events.jsonl"))
+        });
+      }
+      if (req.method === "POST" && url.pathname === "/api/record") {
+        const body = await readRequestJson(req);
+        if (!body.text || typeof body.text !== "string") {
+          return sendJson(res, { error: "text is required" }, 400);
+        }
+        recordCommand([
+          body.text,
+          "--source",
+          body.source || "dashboard",
+          "--kind",
+          body.kind || "note"
+        ]);
+        return sendJson(res, { ok: true, status: getStatusObject() });
+      }
+      if (req.method === "POST" && url.pathname === "/api/sync") {
+        syncCommand([]);
+        return sendJson(res, { ok: true, status: getStatusObject() });
+      }
+      if (req.method === "POST" && url.pathname === "/api/pull") {
+        pullCommand([]);
+        return sendJson(res, { ok: true, status: getStatusObject() });
+      }
+      return sendJson(res, { error: "not found" }, 404);
+    } catch (error) {
+      return sendJson(res, { error: error.message || String(error) }, 500);
+    }
+  });
+
+  server.listen(port, host, () => {
+    console.log(`AI Memory Hub app: http://${host}:${port}`);
+  });
+}
+
 function installCommand(argv) {
   const tool = getOption(argv, "--tool") || "all";
   const apply = hasFlag(argv, "--apply");
@@ -266,6 +329,7 @@ Commands:
   sync       Push pending inbox events to Mem0.
   pull       Pull Mem0 memories into MEMORY.md.
   watch      Periodically sync pending inbox events.
+  app        Start the local dashboard app.
   install    Show or apply per-tool instruction snippets.
   help       Show this help.
 
@@ -276,6 +340,7 @@ Examples:
   ${APP_NAME} sync
   ${APP_NAME} pull
   ${APP_NAME} watch --interval-ms 30000
+  ${APP_NAME} app --port 38787
   ${APP_NAME} install --tool codex
   ${APP_NAME} install --tool codex --apply
 `);
@@ -297,8 +362,11 @@ function defaultConfig(memoryDir) {
     },
     tools: {
       codex: { enabled: true },
+      codexApp: { enabled: true },
       claude: { enabled: true },
       gemini: { enabled: true },
+      antigravity: { enabled: true },
+      antigravityCockpit: { enabled: true },
       qclaw: { enabled: true },
       openclaw: { enabled: true }
     }
@@ -396,18 +464,64 @@ function runMem0(args, mem0Config) {
 function detectTools() {
   const home = os.homedir();
   const checks = [
-    ["codex", path.join(home, ".codex")],
-    ["claude", path.join(home, ".claude")],
-    ["gemini", path.join(home, ".gemini")],
-    ["qclaw", path.join(home, ".qclaw")],
-    ["openclaw", path.join(home, ".openclaw")],
-    ["cc-switch", path.join(home, ".cc-switch")]
+    {
+      name: "codex",
+      kind: "cli-config",
+      dir: path.join(home, ".codex")
+    },
+    {
+      name: "codex-app",
+      kind: "app-state",
+      dir: path.join(home, ".codex")
+    },
+    {
+      name: "claude",
+      kind: "cli-config",
+      dir: path.join(home, ".claude")
+    },
+    {
+      name: "gemini",
+      kind: "cli-config",
+      dir: path.join(home, ".gemini")
+    },
+    {
+      name: "antigravity",
+      kind: "app-state",
+      dir: path.join(home, ".antigravity")
+    },
+    {
+      name: "antigravity-cockpit",
+      kind: "app-state",
+      dir: path.join(home, ".antigravity_cockpit")
+    },
+    {
+      name: "antigravity-gemini",
+      kind: "app-state",
+      dir: path.join(home, ".gemini", "antigravity")
+    },
+    {
+      name: "qclaw",
+      kind: "app-state",
+      dir: path.join(home, ".qclaw")
+    },
+    {
+      name: "openclaw",
+      kind: "app-state",
+      dir: path.join(home, ".openclaw")
+    },
+    {
+      name: "cc-switch",
+      kind: "app-state",
+      dir: path.join(home, ".cc-switch")
+    }
   ];
 
-  return checks.map(([name, dir]) => ({
-    name,
-    installed: fs.existsSync(dir),
-    dir
+  return checks.map((check) => ({
+    name: check.name,
+    kind: check.kind,
+    installed: fs.existsSync(check.dir),
+    dir: check.dir,
+    files: fs.existsSync(check.dir) ? summarizeDir(check.dir) : []
   }));
 }
 
@@ -430,6 +544,16 @@ function getInstallTargets(memoryDir) {
       template: readTemplate("GEMINI.md")
     },
     {
+      tool: "antigravity",
+      file: path.join(memoryDir, "tools", "antigravity-shared-memory.md"),
+      template: readTemplate("shared-instructions.md")
+    },
+    {
+      tool: "codex-app",
+      file: path.join(memoryDir, "tools", "codex-app-shared-memory.md"),
+      template: readTemplate("shared-instructions.md")
+    },
+    {
       tool: "qclaw",
       file: path.join(memoryDir, "tools", "qclaw-shared-memory.md"),
       template: readTemplate("shared-instructions.md")
@@ -440,6 +564,301 @@ function getInstallTargets(memoryDir) {
       template: readTemplate("shared-instructions.md")
     }
   ];
+}
+
+function renderDashboard() {
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Memory Hub</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --text: #17202a;
+      --muted: #667085;
+      --line: #d9dee7;
+      --accent: #1570ef;
+      --ok: #067647;
+      --warn: #b54708;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+    h1 { font-size: 18px; margin: 0; }
+    main {
+      padding: 20px 24px 32px;
+      display: grid;
+      grid-template-columns: minmax(280px, 380px) 1fr;
+      gap: 16px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+    section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+      min-width: 0;
+    }
+    h2 {
+      font-size: 14px;
+      margin: 0 0 12px;
+      color: #344054;
+    }
+    .stack { display: grid; gap: 16px; }
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+    .metric {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 10px;
+      background: #fbfcfe;
+    }
+    .metric strong {
+      display: block;
+      font-size: 20px;
+      margin-bottom: 2px;
+    }
+    .muted { color: var(--muted); }
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 600;
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--warn);
+    }
+    .ok .dot { background: var(--ok); }
+    button {
+      border: 1px solid #b2c7ee;
+      background: #edf4ff;
+      color: #1849a9;
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button.primary {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: white;
+    }
+    button:disabled { opacity: .55; cursor: wait; }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    textarea, input, select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 9px 10px;
+      font: inherit;
+      background: white;
+    }
+    textarea { min-height: 92px; resize: vertical; }
+    pre {
+      white-space: pre-wrap;
+      overflow: auto;
+      margin: 0;
+      background: #f8fafc;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 12px;
+      max-height: 520px;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    th, td {
+      text-align: left;
+      border-bottom: 1px solid var(--line);
+      padding: 8px 4px;
+      vertical-align: top;
+    }
+    th { color: var(--muted); font-size: 12px; }
+    .path { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; word-break: break-all; }
+    @media (max-width: 900px) {
+      main { grid-template-columns: 1fr; padding: 12px; }
+      header { padding: 12px; align-items: flex-start; flex-direction: column; }
+      .metrics { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>AI Memory Hub</h1>
+      <div class="muted">Shared local memory for AI apps. Model tokens stay separate.</div>
+    </div>
+    <div class="actions">
+      <button onclick="refresh()">Refresh</button>
+      <button onclick="pull()">Pull Mem0</button>
+      <button class="primary" onclick="sync()">Sync Pending</button>
+    </div>
+  </header>
+  <main>
+    <div class="stack">
+      <section>
+        <h2>Status</h2>
+        <div id="statusLine" class="status"><span class="dot"></span><span>Loading</span></div>
+        <p class="path" id="memoryDir"></p>
+        <div class="metrics">
+          <div class="metric"><strong id="pending">0</strong><span class="muted">Pending</span></div>
+          <div class="metric"><strong id="synced">0</strong><span class="muted">Synced files</span></div>
+          <div class="metric"><strong id="toolCount">0</strong><span class="muted">Apps found</span></div>
+        </div>
+      </section>
+      <section>
+        <h2>Record Memory</h2>
+        <div class="stack">
+          <textarea id="recordText" placeholder="Durable preference, project fact, workflow rule, or correction."></textarea>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <input id="recordSource" value="dashboard" aria-label="source">
+            <select id="recordKind" aria-label="kind">
+              <option value="note">note</option>
+              <option value="preference">preference</option>
+              <option value="project">project</option>
+              <option value="workflow">workflow</option>
+              <option value="correction">correction</option>
+            </select>
+          </div>
+          <button class="primary" onclick="recordMemory()">Record</button>
+        </div>
+      </section>
+      <section>
+        <h2>Detected AI Apps</h2>
+        <table>
+          <thead><tr><th>App</th><th>Status</th></tr></thead>
+          <tbody id="tools"></tbody>
+        </table>
+      </section>
+    </div>
+    <div class="stack">
+      <section>
+        <h2>Shared Snapshot</h2>
+        <pre id="memory"></pre>
+      </section>
+      <section>
+        <h2>Pending Inbox</h2>
+        <pre id="pendingJson"></pre>
+      </section>
+    </div>
+  </main>
+  <script>
+    async function api(path, options) {
+      const res = await fetch(path, options);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || res.statusText);
+      return json;
+    }
+    async function refresh() {
+      const [status, memory] = await Promise.all([api('/api/status'), api('/api/memory')]);
+      const connected = status.mem0 && status.mem0.connected;
+      const line = document.getElementById('statusLine');
+      line.className = connected ? 'status ok' : 'status';
+      line.querySelector('span:last-child').textContent = connected ? 'Mem0 connected' : 'Mem0 not connected';
+      document.getElementById('memoryDir').textContent = status.memoryDir;
+      document.getElementById('pending').textContent = status.pendingEvents;
+      document.getElementById('synced').textContent = status.syncedEventFiles;
+      document.getElementById('toolCount').textContent = status.tools.filter(t => t.installed).length;
+      document.getElementById('memory').textContent = memory.memory || '';
+      document.getElementById('pendingJson').textContent = JSON.stringify(memory.pending || [], null, 2);
+      document.getElementById('tools').innerHTML = status.tools.map(t =>
+        '<tr><td>' + escapeHtml(t.name) + '<div class="path">' + escapeHtml(t.dir) + '</div></td><td>' + (t.installed ? 'installed' : 'missing') + '</td></tr>'
+      ).join('');
+    }
+    async function recordMemory() {
+      const text = document.getElementById('recordText').value.trim();
+      if (!text) return;
+      await api('/api/record', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text,
+          source: document.getElementById('recordSource').value || 'dashboard',
+          kind: document.getElementById('recordKind').value || 'note'
+        })
+      });
+      document.getElementById('recordText').value = '';
+      await refresh();
+    }
+    async function sync() { await api('/api/sync', { method: 'POST' }); await refresh(); }
+    async function pull() { await api('/api/pull', { method: 'POST' }); await refresh(); }
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+    }
+    refresh().catch(err => alert(err.message));
+  </script>
+</body>
+</html>`;
+}
+
+function sendHtml(res, html) {
+  res.writeHead(200, {
+    "Content-Type": "text/html; charset=utf-8",
+    "Cache-Control": "no-store"
+  });
+  res.end(html);
+}
+
+function sendJson(res, value, status = 200) {
+  res.writeHead(status, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store"
+  });
+  res.end(JSON.stringify(value, null, 2));
+}
+
+function readRequestJson(req) {
+  return new Promise((resolve, reject) => {
+    let data = "";
+    req.on("data", (chunk) => {
+      data += chunk;
+      if (data.length > 1024 * 1024) {
+        reject(new Error("request body too large"));
+        req.destroy();
+      }
+    });
+    req.on("end", () => {
+      if (!data.trim()) {
+        resolve({});
+        return;
+      }
+      try {
+        resolve(JSON.parse(data));
+      } catch {
+        reject(new Error("invalid JSON body"));
+      }
+    });
+    req.on("error", reject);
+  });
+}
+
+function readTextIfExists(file) {
+  return fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
 }
 
 function parseMem0List(stdout) {
@@ -635,4 +1054,14 @@ function countJsonlFiles(dir) {
     return 0;
   }
   return fs.readdirSync(dir).filter((file) => file.endsWith(".jsonl")).length;
+}
+
+function summarizeDir(dir) {
+  try {
+    return fs.readdirSync(dir, { withFileTypes: true })
+      .slice(0, 12)
+      .map((entry) => entry.isDirectory() ? `${entry.name}/` : entry.name);
+  } catch {
+    return [];
+  }
 }

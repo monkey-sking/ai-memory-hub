@@ -2,6 +2,11 @@
 
 `ai-memory-hub` gives multiple AI assistants one shared local memory directory while letting every assistant keep its own model token, provider, and billing.
 
+It includes both:
+
+- A CLI for automation, install snippets, and sync jobs.
+- A local dashboard app for inspecting memory, detected AI apps, pending inbox items, and Mem0 sync status.
+
 It does not proxy LLM traffic. Claude, Codex, Gemini, QClaw, OpenClaw, and similar tools continue to use their own credentials. The only shared part is a local directory:
 
 ```text
@@ -54,6 +59,27 @@ Run a long-lived watcher that syncs new local inbox events to Mem0:
 ai-memory-hub watch --interval-ms 30000
 ```
 
+Start the local dashboard app:
+
+```bash
+ai-memory-hub app --port 38787
+```
+
+Open:
+
+```text
+http://127.0.0.1:38787
+```
+
+The dashboard can:
+
+- Show Mem0 connection status.
+- Show the shared memory directory.
+- Show pending local memory events.
+- Record new durable memory events.
+- Trigger `sync` and `pull`.
+- Detect installed AI tools and apps.
+
 ## Mem0
 
 The sync command reads Mem0 credentials from the normal Mem0 CLI config:
@@ -76,6 +102,15 @@ mem0 init --api-key m0-xxx --user-id your-user-id
 
 AI tools do not need the Mem0 key. They only need instructions or hooks that read and write `~/.ai-memory`.
 
+Each AI tool keeps its own model credentials. For example:
+
+- Codex keeps using its own Codex/OpenAI/custom provider token.
+- Claude keeps using its own Anthropic or compatible provider token.
+- Gemini and Antigravity keep using their own OAuth/API credentials.
+- QClaw/OpenClaw keep using their own provider/account setup.
+
+Mem0 is only the shared memory backend used by the sync process.
+
 ## Assistant Integration Model
 
 The recommended integration is:
@@ -87,6 +122,22 @@ The recommended integration is:
 
 This keeps each assistant's model token independent.
 
+## Detected Apps
+
+The detector checks local state/config directories for:
+
+- Codex CLI and Codex app state
+- Claude
+- Gemini
+- Antigravity
+- Antigravity Cockpit
+- Gemini Antigravity state
+- QClaw
+- OpenClaw
+- CC Switch
+
+Detection is intentionally non-invasive: it reports local app state and does not read or copy model tokens.
+
 ## Commands
 
 ```text
@@ -97,6 +148,7 @@ record     Append a local memory event to inbox.
 sync       Push pending inbox events to Mem0.
 pull       Pull Mem0 memories into local MEMORY.md.
 watch      Periodically sync pending inbox events to Mem0.
+app        Start the local dashboard app.
 install    Show or apply per-tool instruction snippets.
 help       Show CLI help.
 ```

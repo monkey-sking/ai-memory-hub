@@ -14,7 +14,8 @@
     "detect": "node src/index.js detect",
     "sync": "node src/index.js sync",
     "pull": "node src/index.js pull",
-    "watch": "node src/index.js watch"
+    "watch": "node src/index.js watch",
+    "app": "node src/index.js app"
   },
   "keywords": [
     "ai",

@@ -179,6 +179,8 @@ Agent Radio 是 `ai-memory-hub` 内置的本地跨 Agent 消息总线。
 ~/.ai-memory/radio/messages.jsonl
 ```
 
+它不是模型代理，也不会让一个 AI 自动消耗另一个 AI 的 Token。实际流程是：一个工具写入消息，另一个工具在会话开始、收到提示、定时任务或手动执行时读取消息，然后用自己的账号和模型上下文处理。
+
 适合用于短期协作：
 
 - Agent 之间的交接
@@ -193,11 +195,20 @@ Agent Radio 是 `ai-memory-hub` 内置的本地跨 Agent 消息总线。
 ai-memory-hub radio send "Please review the latest implementation." --from codex --to claude --type review
 ```
 
+指定接收方：
+
+```bash
+ai-memory-hub radio send "Please check the latest README changes." --from codex --to qclaw --type review
+ai-memory-hub radio send "Shared memory has been updated; please run sync." --from qclaw --to opencode --type handoff
+```
+
 列出最近消息：
 
 ```bash
 ai-memory-hub radio list --limit 10
 ```
+
+按目标工具筛选时，可以让该工具读取 `to` 为自己或 `all` 的消息。当前 CLI 先提供通用列表，工具侧可按 JSONL 字段过滤。
 
 把重要的 radio 消息提升为长期记忆事件：
 
@@ -344,6 +355,8 @@ help       显示 CLI 帮助。
 安装器默认是 dry-run。只有加上 `--apply` 时，才会编辑工具的指令文件。
 
 项目不会复制、读取或统一管理各 AI 工具的模型 Token。长期记忆也会跳过看起来像密钥、密码或 Token 的文本。
+
+本地记忆目录是个人运行时状态，不应上传到 GitHub 或公开仓库。仓库 `.gitignore` 已忽略 `.ai-memory/` 和 `**/.ai-memory/`。默认真实目录是 `~/.ai-memory`，位于仓库之外；如果你把 memoryDir 改到项目目录内，也应保持该目录被忽略。
 
 ## English
 
@@ -522,6 +535,8 @@ Messages are stored as JSONL:
 ~/.ai-memory/radio/messages.jsonl
 ```
 
+It is not a model proxy and it does not make one AI tool spend another tool's tokens. The flow is: one tool writes a message, another tool reads it at session start, after a prompt, from a scheduled job, or by manual command, and then processes it with its own account and model context.
+
 Use it for short-lived collaboration:
 
 - handoffs between agents
@@ -536,11 +551,20 @@ Send a message:
 ai-memory-hub radio send "Please review the latest implementation." --from codex --to claude --type review
 ```
 
+Target a specific tool:
+
+```bash
+ai-memory-hub radio send "Please check the latest README changes." --from codex --to qclaw --type review
+ai-memory-hub radio send "Shared memory has been updated; please run sync." --from qclaw --to opencode --type handoff
+```
+
 List recent messages:
 
 ```bash
 ai-memory-hub radio list --limit 10
 ```
+
+Tools can read messages where `to` matches their own name or `all`. The current CLI exposes the general list, and tool-side adapters can filter JSONL fields.
 
 Promote an important radio message into a durable memory event:
 
@@ -687,3 +711,5 @@ help       Show CLI help.
 The installer defaults to dry-run. Use `--apply` when you want it to edit a tool instruction file.
 
 The project does not copy, read, or centrally manage model tokens from AI tools. Durable memory indexing also skips text that looks like an API key, password, secret, or token.
+
+The local memory directory is personal runtime state and should not be uploaded to GitHub or a public repository. The repository `.gitignore` ignores `.ai-memory/` and `**/.ai-memory/`. The default real directory is `~/.ai-memory`, outside the repository; if you move memoryDir into a project folder, keep it ignored.

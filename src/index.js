@@ -633,8 +633,8 @@ function getInstallTargets(memoryDir) {
     },
     {
       tool: "qclaw",
-      file: path.join(memoryDir, "tools", "qclaw-shared-memory.md"),
-      template: readTemplate("shared-instructions.md")
+      file: path.join(home, ".qclaw", "skills", "ai-memory-hub", "SKILL.md"),
+      template: readTemplate("QCLAW_SKILL.md")
     },
     {
       tool: "openclaw",

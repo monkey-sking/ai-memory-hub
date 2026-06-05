@@ -15,3 +15,13 @@ When you learn a durable preference, project fact, workflow rule, or long-lived 
 ```
 
 Only save durable facts. Do not save secrets, API keys, one-off commands, or transient chat details.
+
+## Shared Agent Radio
+
+For cross-agent handoffs, review requests, risk notes, and status updates, append JSONL messages to `{{MEMORY_DIR}}/radio/messages.jsonl`.
+
+Use this shape:
+
+```json
+{"source":"{{TOOL}}","from":"{{TOOL}}","to":"all","type":"note","text":"short cross-agent message"}
+```

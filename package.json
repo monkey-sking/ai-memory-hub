@@ -12,6 +12,7 @@
     "status": "node src/index.js status",
     "init:hub": "node src/index.js init",
     "detect": "node src/index.js detect",
+    "radio": "node src/index.js radio",
     "sync": "node src/index.js sync",
     "pull": "node src/index.js pull",
     "watch": "node src/index.js watch",

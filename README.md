@@ -22,6 +22,8 @@ It does not proxy LLM traffic. Claude, Codex, Gemini, QClaw, OpenClaw, and simil
 
 A local sync command can push new memory events from `inbox/` to Mem0 and pull Mem0 memories back into `MEMORY.md`.
 
+It also includes a built-in Agent Radio message bus for cross-agent handoffs, reviews, risk notes, and status updates. This is implemented inside `ai-memory-hub`; it does not depend on h5i.
+
 ## Why
 
 Most AI tools have separate local memory systems. This project creates a neutral place that each tool can read from and write to. Mem0 becomes the cloud backend for that shared memory, but only the sync process needs the Mem0 key.
@@ -77,6 +79,7 @@ The dashboard can:
 - Show the shared memory directory.
 - Show pending local memory events.
 - Record new durable memory events.
+- Send and inspect Agent Radio messages.
 - Trigger `sync` and `pull`.
 - Detect installed AI tools and apps.
 
@@ -110,6 +113,51 @@ Each AI tool keeps its own model credentials. For example:
 - QClaw/OpenClaw keep using their own provider/account setup.
 
 Mem0 is only the shared memory backend used by the sync process.
+
+## Agent Radio
+
+Agent Radio is a local cross-agent message bus owned by `ai-memory-hub`.
+
+Messages are stored as JSONL:
+
+```text
+~/.ai-memory/radio/messages.jsonl
+```
+
+Use it for short-lived collaboration:
+
+- handoffs between agents
+- review requests
+- risk notes
+- done/status updates
+- coordination that should not immediately become long-term memory
+
+Send a message:
+
+```bash
+ai-memory-hub radio send "Please review the latest implementation." --from codex --to claude --type review
+```
+
+List recent messages:
+
+```bash
+ai-memory-hub radio list --limit 10
+```
+
+Promote an important radio message into the memory inbox:
+
+```bash
+ai-memory-hub radio promote --id <message-id>
+ai-memory-hub sync
+```
+
+Promotion copies the radio message into:
+
+```text
+~/.ai-memory/inbox/events.jsonl
+```
+
+Then the normal `sync` command sends it to Mem0.
 
 ## Assistant Integration Model
 
@@ -160,6 +208,12 @@ and append durable memory events to:
 
 ```text
 %USERPROFILE%\.ai-memory\inbox\events.jsonl
+```
+
+It also tells the assistant to use Agent Radio for cross-agent messages:
+
+```text
+%USERPROFILE%\.ai-memory\radio\messages.jsonl
 ```
 
 For app-style tools where a stable instruction injection point is not yet guaranteed, `install` generates adapter notes under the shared memory directory:
@@ -218,6 +272,7 @@ init       Create the shared memory directory and config.
 detect     Detect installed AI tools on this machine.
 status     Show memory hub and Mem0 status.
 record     Append a local memory event to inbox.
+radio      Send, list, and promote cross-agent radio messages.
 sync       Push pending inbox events to Mem0.
 pull       Pull Mem0 memories into local MEMORY.md.
 watch      Periodically sync pending inbox events to Mem0.

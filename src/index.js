@@ -31,6 +31,8 @@ async function main() {
       return statusCommand();
     case "record":
       return recordCommand(rest);
+    case "radio":
+      return radioCommand(rest);
     case "sync":
       return syncCommand(rest);
     case "pull":
@@ -79,6 +81,7 @@ function getStatusObject() {
 
   const pending = readEvents(path.join(memoryDir, "inbox", "events.jsonl")).length;
   const synced = countJsonlFiles(path.join(memoryDir, "synced"));
+  const radio = readRadioMessages(memoryDir).length;
   const tools = detectTools();
   const mem0 = mem0Status();
 
@@ -86,6 +89,7 @@ function getStatusObject() {
     memoryDir,
     pendingEvents: pending,
     syncedEventFiles: synced,
+    radioMessages: radio,
     tools,
     mem0
   };
@@ -112,6 +116,84 @@ function recordCommand(argv) {
 
   appendJsonl(path.join(config.memoryDir, "inbox", "events.jsonl"), event);
   console.log(`Recorded memory event: ${event.id}`);
+}
+
+function radioCommand(argv) {
+  const action = argv[0] || "list";
+  const actionArgs = argv.slice(1);
+  switch (action) {
+    case "send":
+      return radioSendCommand(actionArgs);
+    case "list":
+      return radioListCommand(actionArgs);
+    case "promote":
+      return radioPromoteCommand(actionArgs);
+    default:
+      throw new Error("Usage: ai-memory-hub radio <send|list|promote> ...");
+  }
+}
+
+function radioSendCommand(argv) {
+  const text = positionalArgs(argv).join(" ").trim();
+  if (!text) {
+    throw new Error("Usage: ai-memory-hub radio send <text> [--from codex] [--to claude] [--type handoff]");
+  }
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const message = createRadioMessage({
+    from: getOption(argv, "--from") || "manual",
+    to: getOption(argv, "--to") || "all",
+    type: getOption(argv, "--type") || "note",
+    text,
+    thread: getOption(argv, "--thread") || "",
+    project: getOption(argv, "--project") || path.basename(process.cwd())
+  });
+  appendJsonl(path.join(config.memoryDir, "radio", "messages.jsonl"), message);
+  console.log(JSON.stringify(message, null, 2));
+}
+
+function radioListCommand(argv) {
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const limit = Number(getOption(argv, "--limit") || 20);
+  const messages = readRadioMessages(config.memoryDir).slice(-limit);
+  console.log(JSON.stringify(messages, null, 2));
+}
+
+function radioPromoteCommand(argv) {
+  const id = getOption(argv, "--id") || positionalArgs(argv)[0] || "";
+  if (!id) {
+    throw new Error("Usage: ai-memory-hub radio promote --id <message-id>");
+  }
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const message = readRadioMessages(config.memoryDir).find((item) => item.id === id);
+  if (!message) {
+    throw new Error(`Radio message not found: ${id}`);
+  }
+  if (message.promoted) {
+    console.log(`Radio message already promoted: ${message.id}`);
+    return;
+  }
+  appendJsonl(path.join(config.memoryDir, "inbox", "events.jsonl"), {
+    id: createId(`radio:${message.id}`),
+    ts: new Date().toISOString(),
+    source: `radio:${message.from}`,
+    text: message.text,
+    metadata: {
+      kind: "radio",
+      radio_id: message.id,
+      radio_type: message.type,
+      radio_to: message.to,
+      thread: message.thread,
+      project: message.project
+    }
+  });
+  updateRadioMessage(config.memoryDir, message.id, {
+    promoted: true,
+    promotedAt: new Date().toISOString()
+  });
+  console.log(`Promoted radio message to memory inbox: ${message.id}`);
 }
 
 function syncCommand(argv) {
@@ -257,6 +339,12 @@ function appCommand(argv) {
           pending: readEvents(path.join(config.memoryDir, "inbox", "events.jsonl"))
         });
       }
+      if (req.method === "GET" && url.pathname === "/api/radio") {
+        const config = loadConfig();
+        return sendJson(res, {
+          messages: readRadioMessages(config.memoryDir).slice(-50)
+        });
+      }
       if (req.method === "POST" && url.pathname === "/api/record") {
         const body = await readRequestJson(req);
         if (!body.text || typeof body.text !== "string") {
@@ -269,6 +357,31 @@ function appCommand(argv) {
           "--kind",
           body.kind || "note"
         ]);
+        return sendJson(res, { ok: true, status: getStatusObject() });
+      }
+      if (req.method === "POST" && url.pathname === "/api/radio/send") {
+        const body = await readRequestJson(req);
+        if (!body.text || typeof body.text !== "string") {
+          return sendJson(res, { error: "text is required" }, 400);
+        }
+        const config = loadConfig();
+        const message = createRadioMessage({
+          from: body.from || "dashboard",
+          to: body.to || "all",
+          type: body.type || "note",
+          text: body.text,
+          thread: body.thread || "",
+          project: body.project || path.basename(process.cwd())
+        });
+        appendJsonl(path.join(config.memoryDir, "radio", "messages.jsonl"), message);
+        return sendJson(res, { ok: true, message, status: getStatusObject() });
+      }
+      if (req.method === "POST" && url.pathname === "/api/radio/promote") {
+        const body = await readRequestJson(req);
+        if (!body.id || typeof body.id !== "string") {
+          return sendJson(res, { error: "id is required" }, 400);
+        }
+        radioPromoteCommand(["--id", body.id]);
         return sendJson(res, { ok: true, status: getStatusObject() });
       }
       if (req.method === "POST" && url.pathname === "/api/sync") {
@@ -326,6 +439,7 @@ Commands:
   detect     Detect installed AI tools.
   status     Show hub, tool, and Mem0 status.
   record     Append a local memory event.
+  radio      Send, list, and promote cross-agent radio messages.
   sync       Push pending inbox events to Mem0.
   pull       Pull Mem0 memories into MEMORY.md.
   watch      Periodically sync pending inbox events.
@@ -336,6 +450,9 @@ Commands:
 Examples:
   ${APP_NAME} init
   ${APP_NAME} record "User prefers concise answers." --source codex --kind preference
+  ${APP_NAME} radio send "Please review the latest implementation." --from codex --to claude --type review
+  ${APP_NAME} radio list --limit 10
+  ${APP_NAME} radio promote --id <message-id>
   ${APP_NAME} sync --dry-run
   ${APP_NAME} sync
   ${APP_NAME} pull
@@ -379,6 +496,7 @@ function ensureHub(memoryDir) {
     path.join(memoryDir, "inbox"),
     path.join(memoryDir, "synced"),
     path.join(memoryDir, "memories"),
+    path.join(memoryDir, "radio"),
     path.join(memoryDir, "tools"),
     path.join(memoryDir, "state")
   ]) {
@@ -628,7 +746,7 @@ function renderDashboard() {
     .stack { display: grid; gap: 16px; }
     .metrics {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(4, 1fr);
       gap: 8px;
     }
     .metric {
@@ -728,7 +846,26 @@ function renderDashboard() {
         <div class="metrics">
           <div class="metric"><strong id="pending">0</strong><span class="muted">Pending</span></div>
           <div class="metric"><strong id="synced">0</strong><span class="muted">Synced files</span></div>
+          <div class="metric"><strong id="radioCount">0</strong><span class="muted">Radio</span></div>
           <div class="metric"><strong id="toolCount">0</strong><span class="muted">Apps found</span></div>
+        </div>
+      </section>
+      <section>
+        <h2>Agent Radio</h2>
+        <div class="stack">
+          <textarea id="radioText" placeholder="Short cross-agent message, handoff, review request, or risk note."></textarea>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+            <input id="radioFrom" value="dashboard" aria-label="from">
+            <input id="radioTo" value="all" aria-label="to">
+            <select id="radioType" aria-label="type">
+              <option value="note">note</option>
+              <option value="handoff">handoff</option>
+              <option value="review">review</option>
+              <option value="risk">risk</option>
+              <option value="done">done</option>
+            </select>
+          </div>
+          <button class="primary" onclick="sendRadio()">Send Radio Message</button>
         </div>
       </section>
       <section>
@@ -765,6 +902,10 @@ function renderDashboard() {
         <h2>Pending Inbox</h2>
         <pre id="pendingJson"></pre>
       </section>
+      <section>
+        <h2>Agent Radio Messages</h2>
+        <pre id="radioJson"></pre>
+      </section>
     </div>
   </main>
   <script>
@@ -775,7 +916,7 @@ function renderDashboard() {
       return json;
     }
     async function refresh() {
-      const [status, memory] = await Promise.all([api('/api/status'), api('/api/memory')]);
+      const [status, memory, radio] = await Promise.all([api('/api/status'), api('/api/memory'), api('/api/radio')]);
       const connected = status.mem0 && status.mem0.connected;
       const line = document.getElementById('statusLine');
       line.className = connected ? 'status ok' : 'status';
@@ -783,9 +924,11 @@ function renderDashboard() {
       document.getElementById('memoryDir').textContent = status.memoryDir;
       document.getElementById('pending').textContent = status.pendingEvents;
       document.getElementById('synced').textContent = status.syncedEventFiles;
+      document.getElementById('radioCount').textContent = status.radioMessages;
       document.getElementById('toolCount').textContent = status.tools.filter(t => t.installed).length;
       document.getElementById('memory').textContent = memory.memory || '';
       document.getElementById('pendingJson').textContent = JSON.stringify(memory.pending || [], null, 2);
+      document.getElementById('radioJson').textContent = JSON.stringify(radio.messages || [], null, 2);
       document.getElementById('tools').innerHTML = status.tools.map(t =>
         '<tr><td>' + escapeHtml(t.name) + '<div class="path">' + escapeHtml(t.dir) + '</div></td><td>' + (t.installed ? 'installed' : 'missing') + '</td></tr>'
       ).join('');
@@ -803,6 +946,22 @@ function renderDashboard() {
         })
       });
       document.getElementById('recordText').value = '';
+      await refresh();
+    }
+    async function sendRadio() {
+      const text = document.getElementById('radioText').value.trim();
+      if (!text) return;
+      await api('/api/radio/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text,
+          from: document.getElementById('radioFrom').value || 'dashboard',
+          to: document.getElementById('radioTo').value || 'all',
+          type: document.getElementById('radioType').value || 'note'
+        })
+      });
+      document.getElementById('radioText').value = '';
       await refresh();
     }
     async function sync() { await api('/api/sync', { method: 'POST' }); await refresh(); }
@@ -934,6 +1093,46 @@ function readEvents(file) {
     });
 }
 
+function createRadioMessage({ from, to, type, text, thread, project }) {
+  const cleanText = String(text || "").trim();
+  return {
+    id: createId(`radio:${from}:${to}:${type}:${cleanText}`),
+    ts: new Date().toISOString(),
+    from: String(from || "unknown"),
+    to: String(to || "all"),
+    type: String(type || "note"),
+    text: cleanText,
+    thread: String(thread || ""),
+    project: String(project || ""),
+    promoted: false
+  };
+}
+
+function readRadioMessages(memoryDir) {
+  const file = path.join(memoryDir, "radio", "messages.jsonl");
+  return readEvents(file).map((message) => ({
+    id: message.id || createId(JSON.stringify(message)),
+    ts: message.ts || "",
+    from: message.from || message.source || "unknown",
+    to: message.to || "all",
+    type: message.type || message.metadata?.kind || "note",
+    text: message.text || "",
+    thread: message.thread || "",
+    project: message.project || "",
+    promoted: Boolean(message.promoted),
+    promotedAt: message.promotedAt || ""
+  }));
+}
+
+function updateRadioMessage(memoryDir, id, patch) {
+  const file = path.join(memoryDir, "radio", "messages.jsonl");
+  const messages = readRadioMessages(memoryDir).map((message) => (
+    message.id === id ? { ...message, ...patch } : message
+  ));
+  ensureDir(path.dirname(file));
+  fs.writeFileSync(file, messages.map((message) => JSON.stringify(message)).join("\n") + (messages.length ? "\n" : ""), "utf8");
+}
+
 function appendJsonl(file, value) {
   ensureDir(path.dirname(file));
   fs.appendFileSync(file, `${JSON.stringify(value)}\n`, "utf8");
@@ -941,11 +1140,24 @@ function appendJsonl(file, value) {
 
 function appendIfMissing(file, snippet, marker) {
   const existing = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
-  if (existing.includes(marker)) {
+  if (existing.includes(marker) && existing.includes("Shared Agent Radio")) {
+    return;
+  }
+  if (existing.includes(marker) && !existing.includes("Shared Agent Radio")) {
+    const radioSection = extractSection(snippet, "## Shared Agent Radio");
+    if (radioSection) {
+      const prefix = existing.trim() ? `${existing.trimEnd()}\n\n` : "";
+      fs.writeFileSync(file, `${prefix}${radioSection.trim()}\n`, "utf8");
+    }
     return;
   }
   const prefix = existing.trim() ? `${existing.trimEnd()}\n\n` : "";
   fs.writeFileSync(file, `${prefix}${snippet.trim()}\n`, "utf8");
+}
+
+function extractSection(text, heading) {
+  const index = text.indexOf(heading);
+  return index === -1 ? "" : text.slice(index);
 }
 
 function readTemplate(name) {

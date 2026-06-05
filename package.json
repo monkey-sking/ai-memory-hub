@@ -1,7 +1,7 @@
 {
   "name": "ai-memory-hub",
   "version": "0.1.0",
-  "description": "A local shared memory directory and Mem0 sync daemon for multiple AI coding assistants.",
+  "description": "A local shared memory ledger and agent radio for multiple AI coding assistants.",
   "type": "module",
   "bin": {
     "ai-memory-hub": "./src/index.js",
@@ -21,7 +21,8 @@
   "keywords": [
     "ai",
     "memory",
-    "mem0",
+    "local-first",
+    "agent-radio",
     "claude",
     "codex",
     "gemini"

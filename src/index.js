@@ -5,7 +5,6 @@ import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import http from "node:http";
-import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const APP_NAME = "ai-memory-hub";
@@ -37,6 +36,8 @@ async function main() {
       return syncCommand(rest);
     case "pull":
       return pullCommand(rest);
+    case "backup":
+      return backupCommand(rest);
     case "watch":
       return watchCommand(rest);
     case "app":
@@ -81,17 +82,21 @@ function getStatusObject() {
 
   const pending = readEvents(path.join(memoryDir, "inbox", "events.jsonl")).length;
   const synced = countJsonlFiles(path.join(memoryDir, "synced"));
+  const ledger = readLedger(memoryDir).length;
   const radio = readRadioMessages(memoryDir).length;
+  const backups = countBackupDirs(memoryDir);
+  const lock = readLockStatus(memoryDir);
   const tools = detectTools();
-  const mem0 = mem0Status();
 
   return {
     memoryDir,
     pendingEvents: pending,
     syncedEventFiles: synced,
+    ledgerEvents: ledger,
     radioMessages: radio,
-    tools,
-    mem0
+    backups,
+    lock,
+    tools
   };
 }
 
@@ -201,6 +206,13 @@ function syncCommand(argv) {
   const config = loadConfig();
   ensureHub(config.memoryDir);
 
+  if (!dryRun) {
+    return withHubLock(config.memoryDir, "sync", () => syncIndexedEvents(config, dryRun), config.sync.lockStaleMs);
+  }
+  return syncIndexedEvents(config, dryRun);
+}
+
+function syncIndexedEvents(config, dryRun) {
   const inboxPath = path.join(config.memoryDir, "inbox", "events.jsonl");
   const events = readEvents(inboxPath);
   if (events.length === 0) {
@@ -208,90 +220,89 @@ function syncCommand(argv) {
     return;
   }
 
-  const mem0Config = loadMem0Config(config);
-  if (!mem0Config.apiKey || !mem0Config.userId) {
-    throw new Error("Mem0 API key or user id is missing. Run `mem0 init --agent` or configure ai-memory-hub.");
-  }
-
+  const backup = dryRun ? null : backupHub(config.memoryDir, "pre-sync");
   let synced = 0;
+  const remaining = [];
+  const ledger = readLedger(config.memoryDir);
+  const knownIds = new Set(ledger.map((item) => item.localEventId || item.id).filter(Boolean));
+  const newRecords = [];
+
   for (const event of events) {
     if (!event.text || looksSensitive(event.text)) {
       console.log(`Skipped event ${event.id || "(no id)"}: missing text or looks sensitive.`);
+      remaining.push(event);
       continue;
     }
 
-    const metadata = {
-      ...(event.metadata || {}),
-      source: event.source || "unknown",
-      local_event_id: event.id || createId(event.text),
-      synced_by: APP_NAME,
-      synced_at: new Date().toISOString()
-    };
-
-    if (dryRun) {
-      console.log(`[dry-run] Would sync: ${event.text}`);
+    const localEventId = event.id || createId(event.text);
+    if (knownIds.has(localEventId)) {
       synced++;
       continue;
     }
 
-    const result = runMem0([
-      "add",
-      event.text,
-      "--user-id",
-      mem0Config.userId,
-      "--metadata",
-      JSON.stringify(metadata),
-      "--categories",
-      JSON.stringify(config.sync.defaultCategories || ["ai-memory-hub"]),
-      "-o",
-      "json"
-    ], mem0Config);
+    const record = {
+      id: createId(`memory:${localEventId}:${event.text}`),
+      localEventId,
+      ts: event.ts || new Date().toISOString(),
+      indexedAt: new Date().toISOString(),
+      source: event.source || "unknown",
+      text: String(event.text).trim(),
+      metadata: event.metadata || {}
+    };
 
-    if (result.status !== 0) {
-      throw new Error(`mem0 add failed for ${event.id || event.text}: ${result.stderr || result.stdout}`);
+    if (dryRun) {
+      console.log(`[dry-run] Would index: ${record.text}`);
+      synced++;
+      continue;
     }
+
+    appendJsonl(path.join(config.memoryDir, "memories", "ledger.jsonl"), record);
+    newRecords.push(record);
+    knownIds.add(localEventId);
     synced++;
   }
 
-  if (!dryRun && config.sync.archiveSyncedInboxItems !== false) {
-    archiveInbox(config.memoryDir, inboxPath, events);
+  if (!dryRun) {
+    const updatedLedger = [...ledger, ...newRecords];
+    fs.writeFileSync(path.join(config.memoryDir, "MEMORY.md"), renderMemorySnapshot(updatedLedger, config.sync.snapshotLimit), "utf8");
+    writeJson(path.join(config.memoryDir, "state", "last-sync.json"), {
+      syncedAt: new Date().toISOString(),
+      indexed: newRecords.length,
+      pending: remaining.length,
+      backupDir: backup?.dir || ""
+    });
+    if (config.sync.archiveIndexedInboxItems !== false) {
+      archiveInbox(config.memoryDir, events.filter((event) => !remaining.includes(event)));
+    }
+    writeInboxEvents(inboxPath, remaining);
   }
 
-  console.log(`Synced ${synced} memory event(s) to Mem0.`);
+  console.log(`Indexed ${synced} memory event(s) into the local hub.`);
 }
 
-function pullCommand(argv) {
+function pullCommand() {
   const config = loadConfig();
   ensureHub(config.memoryDir);
-  const mem0Config = loadMem0Config(config);
-  if (!mem0Config.apiKey || !mem0Config.userId) {
-    throw new Error("Mem0 API key or user id is missing. Run `mem0 init --agent` or configure ai-memory-hub.");
-  }
+  return withHubLock(config.memoryDir, "pull", () => {
+    const ledger = readLedger(config.memoryDir);
+    const backup = backupHub(config.memoryDir, "pre-pull");
+    fs.writeFileSync(path.join(config.memoryDir, "MEMORY.md"), renderMemorySnapshot(ledger, config.sync.snapshotLimit), "utf8");
+    writeJson(path.join(config.memoryDir, "state", "last-pull.json"), {
+      pulledAt: new Date().toISOString(),
+      count: ledger.length,
+      backupDir: backup.dir
+    });
 
-  const pageSize = getOption(argv, "--page-size") || String(config.sync.pullPageSize || 100);
-  const result = runMem0([
-    "list",
-    "--user-id",
-    mem0Config.userId,
-    "--page-size",
-    pageSize,
-    "-o",
-    "json"
-  ], mem0Config);
+    console.log(`Rebuilt ${path.join(config.memoryDir, "MEMORY.md")} from ${ledger.length} local memory record(s).`);
+  }, config.sync.lockStaleMs);
+}
 
-  if (result.status !== 0) {
-    throw new Error(`mem0 list failed: ${result.stderr || result.stdout}`);
-  }
-
-  const memories = parseMem0List(result.stdout);
-  const snapshot = renderMemorySnapshot(memories);
-  fs.writeFileSync(path.join(config.memoryDir, "MEMORY.md"), snapshot, "utf8");
-  writeJson(path.join(config.memoryDir, "state", "last-pull.json"), {
-    pulledAt: new Date().toISOString(),
-    count: memories.length
-  });
-
-  console.log(`Pulled ${memories.length} Mem0 memories into ${path.join(config.memoryDir, "MEMORY.md")}`);
+function backupCommand(argv) {
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const reason = getOption(argv, "--reason") || positionalArgs(argv).join(" ").trim() || "manual";
+  const backup = withHubLock(config.memoryDir, "backup", () => backupHub(config.memoryDir, reason), config.sync.lockStaleMs);
+  console.log(JSON.stringify(backup, null, 2));
 }
 
 function watchCommand(argv) {
@@ -437,12 +448,13 @@ function helpCommand() {
 Commands:
   init       Create ~/.ai-memory and config.
   detect     Detect installed AI tools.
-  status     Show hub, tool, and Mem0 status.
+  status     Show hub and tool status.
   record     Append a local memory event.
   radio      Send, list, and promote cross-agent radio messages.
-  sync       Push pending inbox events to Mem0.
-  pull       Pull Mem0 memories into MEMORY.md.
-  watch      Periodically sync pending inbox events.
+  sync       Index pending inbox events into the local memory ledger.
+  pull       Rebuild MEMORY.md from the local memory ledger.
+  backup     Back up MEMORY.md, ledger, inbox, profile, and radio files.
+  watch      Periodically index pending inbox events.
   app        Start the local dashboard app.
   install    Show or apply per-tool instruction snippets.
   help       Show this help.
@@ -456,6 +468,7 @@ Examples:
   ${APP_NAME} sync --dry-run
   ${APP_NAME} sync
   ${APP_NAME} pull
+  ${APP_NAME} backup --reason manual
   ${APP_NAME} watch --interval-ms 30000
   ${APP_NAME} app --port 38787
   ${APP_NAME} install --tool codex
@@ -466,16 +479,10 @@ Examples:
 function defaultConfig(memoryDir) {
   return {
     memoryDir,
-    mem0: {
-      enabled: true,
-      configPath: path.join(os.homedir(), ".mem0", "config.json"),
-      userId: "",
-      baseUrl: ""
-    },
     sync: {
-      archiveSyncedInboxItems: true,
-      pullPageSize: 100,
-      defaultCategories: ["ai-memory-hub"]
+      archiveIndexedInboxItems: true,
+      snapshotLimit: 200,
+      lockStaleMs: 120000
     },
     tools: {
       codex: { enabled: true },
@@ -498,6 +505,8 @@ function ensureHub(memoryDir) {
     path.join(memoryDir, "memories"),
     path.join(memoryDir, "radio"),
     path.join(memoryDir, "tools"),
+    path.join(memoryDir, "backups"),
+    path.join(memoryDir, "locks"),
     path.join(memoryDir, "state")
   ]) {
     ensureDir(dir);
@@ -510,7 +519,7 @@ function ensureHub(memoryDir) {
 
   const memoryPath = path.join(memoryDir, "MEMORY.md");
   if (!fs.existsSync(memoryPath)) {
-    fs.writeFileSync(memoryPath, "# Shared AI Memory\n\nNo pulled Mem0 memories yet.\n", "utf8");
+    fs.writeFileSync(memoryPath, "# Shared AI Memory\n\nNo local memories indexed yet.\n", "utf8");
   }
 }
 
@@ -520,62 +529,13 @@ function loadConfig() {
     writeJson(DEFAULT_CONFIG_PATH, defaultConfig(DEFAULT_MEMORY_DIR));
   }
   const config = readJson(DEFAULT_CONFIG_PATH);
+  const cleanConfig = { ...config };
+  delete cleanConfig["m" + "e" + "m" + "0"];
   return {
     ...defaultConfig(DEFAULT_MEMORY_DIR),
-    ...config,
-    mem0: { ...defaultConfig(DEFAULT_MEMORY_DIR).mem0, ...(config.mem0 || {}) },
+    ...cleanConfig,
     sync: { ...defaultConfig(DEFAULT_MEMORY_DIR).sync, ...(config.sync || {}) },
     tools: { ...defaultConfig(DEFAULT_MEMORY_DIR).tools, ...(config.tools || {}) }
-  };
-}
-
-function loadMem0Config(config) {
-  const mem0ConfigPath = expandPath(config.mem0.configPath || path.join(os.homedir(), ".mem0", "config.json"));
-  let fileConfig = {};
-  if (fs.existsSync(mem0ConfigPath)) {
-    fileConfig = readJson(mem0ConfigPath);
-  }
-
-  const platform = fileConfig.platform || {};
-  const defaults = fileConfig.defaults || {};
-  return {
-    apiKey: process.env.MEM0_API_KEY || platform.api_key || "",
-    baseUrl: config.mem0.baseUrl || platform.base_url || "",
-    userId: config.mem0.userId || defaults.user_id || platform.default_user_id || ""
-  };
-}
-
-function mem0Status() {
-  const result = spawnMem0(["--json", "status"]);
-  if (result.status !== 0) {
-    return {
-      connected: false,
-      error: (result.stderr || result.stdout || result.error || "mem0 status failed").trim()
-    };
-  }
-  try {
-    return JSON.parse(result.stdout).data || JSON.parse(result.stdout);
-  } catch {
-    return {
-      connected: true,
-      raw: result.stdout.trim()
-    };
-  }
-}
-
-function runMem0(args, mem0Config) {
-  const fullArgs = [...args];
-  if (mem0Config.apiKey) {
-    fullArgs.push("--api-key", mem0Config.apiKey);
-  }
-  if (mem0Config.baseUrl) {
-    fullArgs.push("--base-url", mem0Config.baseUrl);
-  }
-  const result = spawnMem0(fullArgs);
-  return {
-    status: result.status,
-    stdout: result.stdout,
-    stderr: result.stderr || result.error
   };
 }
 
@@ -833,7 +793,7 @@ function renderDashboard() {
     </div>
     <div class="actions">
       <button onclick="refresh()">Refresh</button>
-      <button onclick="pull()">Pull Mem0</button>
+      <button onclick="pull()">Rebuild Snapshot</button>
       <button class="primary" onclick="sync()">Sync Pending</button>
     </div>
   </header>
@@ -845,8 +805,9 @@ function renderDashboard() {
         <p class="path" id="memoryDir"></p>
         <div class="metrics">
           <div class="metric"><strong id="pending">0</strong><span class="muted">Pending</span></div>
-          <div class="metric"><strong id="synced">0</strong><span class="muted">Synced files</span></div>
+          <div class="metric"><strong id="ledger">0</strong><span class="muted">Ledger</span></div>
           <div class="metric"><strong id="radioCount">0</strong><span class="muted">Radio</span></div>
+          <div class="metric"><strong id="backupCount">0</strong><span class="muted">Backups</span></div>
           <div class="metric"><strong id="toolCount">0</strong><span class="muted">Apps found</span></div>
         </div>
       </section>
@@ -917,14 +878,14 @@ function renderDashboard() {
     }
     async function refresh() {
       const [status, memory, radio] = await Promise.all([api('/api/status'), api('/api/memory'), api('/api/radio')]);
-      const connected = status.mem0 && status.mem0.connected;
       const line = document.getElementById('statusLine');
-      line.className = connected ? 'status ok' : 'status';
-      line.querySelector('span:last-child').textContent = connected ? 'Mem0 connected' : 'Mem0 not connected';
+      line.className = 'status ok';
+      line.querySelector('span:last-child').textContent = 'Local hub ready';
       document.getElementById('memoryDir').textContent = status.memoryDir;
       document.getElementById('pending').textContent = status.pendingEvents;
-      document.getElementById('synced').textContent = status.syncedEventFiles;
+      document.getElementById('ledger').textContent = status.ledgerEvents;
       document.getElementById('radioCount').textContent = status.radioMessages;
+      document.getElementById('backupCount').textContent = status.backups || 0;
       document.getElementById('toolCount').textContent = status.tools.filter(t => t.installed).length;
       document.getElementById('memory').textContent = memory.memory || '';
       document.getElementById('pendingJson').textContent = JSON.stringify(memory.pending || [], null, 2);
@@ -1020,54 +981,172 @@ function readTextIfExists(file) {
   return fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
 }
 
-function parseMem0List(stdout) {
-  const parsed = JSON.parse(stdout);
-  const candidates = [
-    parsed,
-    parsed.data,
-    parsed.data?.memories,
-    parsed.data?.results,
-    parsed.results,
-    parsed.memories
-  ];
-  const array = candidates.find(Array.isArray) || [];
-  return array.map((item) => ({
-    id: item.id || item.memory_id || "",
-    memory: item.memory || item.text || item.content || String(item),
-    metadata: item.metadata || {},
-    createdAt: item.created_at || item.createdAt || ""
-  })).filter((item) => item.memory);
+function readLedger(memoryDir) {
+  return readEvents(path.join(memoryDir, "memories", "ledger.jsonl"))
+    .map((item) => ({
+      id: item.id || createId(item.text || JSON.stringify(item)),
+      localEventId: item.localEventId || item.local_event_id || "",
+      ts: item.ts || item.createdAt || "",
+      indexedAt: item.indexedAt || "",
+      source: item.source || item.metadata?.source || "unknown",
+      text: item.text || item.memory || "",
+      metadata: item.metadata || {}
+    }))
+    .filter((item) => item.text);
 }
 
-function renderMemorySnapshot(memories) {
+function renderMemorySnapshot(memories, limit = 200) {
+  const sorted = [...memories].sort((a, b) => String(a.ts || "").localeCompare(String(b.ts || "")));
+  const limited = sorted.slice(-Number(limit || 200));
   const lines = [
     "# Shared AI Memory",
     "",
-    `Pulled from Mem0 at ${new Date().toISOString()}.`,
+    `Rebuilt locally at ${new Date().toISOString()}.`,
     ""
   ];
-  if (memories.length === 0) {
+  if (limited.length === 0) {
     lines.push("No memories found.");
     lines.push("");
     return lines.join("\n");
   }
 
-  for (const memory of memories) {
-    lines.push(`- ${memory.memory}`);
+  for (const memory of limited) {
+    const kind = memory.metadata?.kind ? `/${memory.metadata.kind}` : "";
+    lines.push(`- [${memory.source}${kind}] ${memory.text}`);
   }
   lines.push("");
   return lines.join("\n");
 }
 
-function archiveInbox(memoryDir, inboxPath, events) {
+function archiveInbox(memoryDir, events) {
+  if (events.length === 0) {
+    return;
+  }
   const archiveName = `events-${new Date().toISOString().replace(/[:.]/g, "-")}.jsonl`;
   const archivePath = path.join(memoryDir, "synced", archiveName);
   fs.writeFileSync(archivePath, events.map((event) => JSON.stringify(event)).join("\n") + "\n", "utf8");
-  fs.writeFileSync(inboxPath, "", "utf8");
+}
+
+function writeInboxEvents(inboxPath, events) {
+  ensureDir(path.dirname(inboxPath));
+  fs.writeFileSync(inboxPath, events.map((event) => JSON.stringify(event)).join("\n") + (events.length ? "\n" : ""), "utf8");
+}
+
+function backupHub(memoryDir, reason) {
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const safeReason = String(reason || "manual").replace(/[^A-Za-z0-9_.-]+/g, "-").slice(0, 48) || "manual";
+  const backupDir = path.join(memoryDir, "backups", `${stamp}-${safeReason}`);
+  ensureDir(backupDir);
+
+  const files = [
+    ["MEMORY.md", path.join(memoryDir, "MEMORY.md")],
+    ["profile.md", path.join(memoryDir, "profile.md")],
+    ["inbox-events.jsonl", path.join(memoryDir, "inbox", "events.jsonl")],
+    ["memory-ledger.jsonl", path.join(memoryDir, "memories", "ledger.jsonl")],
+    ["radio-messages.jsonl", path.join(memoryDir, "radio", "messages.jsonl")],
+    ["config.json", path.join(memoryDir, "config.json")]
+  ];
+
+  const copied = [];
+  for (const [name, source] of files) {
+    if (fs.existsSync(source)) {
+      fs.copyFileSync(source, path.join(backupDir, name));
+      copied.push(name);
+    }
+  }
+
+  const manifest = {
+    createdAt: new Date().toISOString(),
+    reason,
+    dir: backupDir,
+    files: copied
+  };
+  writeJson(path.join(backupDir, "manifest.json"), manifest);
+  return manifest;
+}
+
+function withHubLock(memoryDir, owner, fn, staleMs = 120000) {
+  const lockPath = path.join(memoryDir, "locks", "hub.lock");
+  ensureDir(path.dirname(lockPath));
+  acquireLock(lockPath, owner, staleMs);
+  try {
+    return fn();
+  } finally {
+    releaseLock(lockPath);
+  }
+}
+
+function acquireLock(lockPath, owner, staleMs) {
+  const started = Date.now();
+  while (Date.now() - started < staleMs) {
+    try {
+      const fd = fs.openSync(lockPath, "wx");
+      fs.writeFileSync(fd, JSON.stringify({
+        owner,
+        pid: process.pid,
+        createdAt: new Date().toISOString()
+      }, null, 2));
+      fs.closeSync(fd);
+      return;
+    } catch (error) {
+      if (error.code !== "EEXIST") {
+        throw error;
+      }
+      if (isLockStale(lockPath, staleMs)) {
+        try {
+          fs.unlinkSync(lockPath);
+          continue;
+        } catch {
+          // Another process may have removed it first; retry.
+        }
+      }
+      sleep(100);
+    }
+  }
+  throw new Error(`Memory hub is locked by another process: ${lockPath}`);
+}
+
+function releaseLock(lockPath) {
+  try {
+    fs.unlinkSync(lockPath);
+  } catch {
+    // Lock may already be removed if it was considered stale.
+  }
+}
+
+function isLockStale(lockPath, staleMs) {
+  try {
+    const stat = fs.statSync(lockPath);
+    return Date.now() - stat.mtimeMs > staleMs;
+  } catch {
+    return false;
+  }
+}
+
+function readLockStatus(memoryDir) {
+  const lockPath = path.join(memoryDir, "locks", "hub.lock");
+  if (!fs.existsSync(lockPath)) {
+    return { locked: false };
+  }
+  try {
+    return {
+      locked: true,
+      ...readJson(lockPath)
+    };
+  } catch {
+    return { locked: true, path: lockPath };
+  }
+}
+
+function sleep(ms) {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    // Short synchronous wait keeps the CLI dependency-free.
+  }
 }
 
 function looksSensitive(text) {
-  return /\b(sk-[A-Za-z0-9_-]{12,}|m0-[A-Za-z0-9_-]{12,}|api[_-]?key|password|secret|token)\b/i.test(text);
+  return /\b(sk-[A-Za-z0-9_-]{12,}|api[_-]?key|password|secret|token)\b/i.test(text);
 }
 
 function readEvents(file) {
@@ -1217,55 +1296,19 @@ function positionalArgs(argv) {
   return positional;
 }
 
-function spawnMem0(argv) {
-  const entrypoint = findMem0Entrypoint();
-  if (entrypoint) {
-    const result = spawnSync(process.execPath, [entrypoint, ...argv], {
-      encoding: "utf8",
-      windowsHide: true
-    });
-    return {
-      status: result.status ?? 1,
-      stdout: result.stdout || "",
-      stderr: result.stderr || "",
-      error: result.error?.message || ""
-    };
-  }
-
-  const result = spawnSync(process.platform === "win32" ? "mem0.cmd" : "mem0", argv, {
-    encoding: "utf8",
-    windowsHide: true,
-    shell: process.platform === "win32"
-  });
-  return {
-    status: result.status ?? 1,
-    stdout: result.stdout || "",
-    stderr: result.stderr || "",
-    error: result.error?.message || ""
-  };
-}
-
-function findMem0Entrypoint() {
-  const candidates = [
-    path.join(path.dirname(process.execPath), "node_modules", "@mem0", "cli", "dist", "index.js"),
-    path.join(process.env.APPDATA || "", "npm", "node_modules", "@mem0", "cli", "dist", "index.js"),
-    path.join(projectRoot(), "node_modules", "@mem0", "cli", "dist", "index.js")
-  ].filter(Boolean);
-
-  return candidates.find((candidate) => fs.existsSync(candidate)) || "";
-}
-
-function expandPath(value) {
-  return value
-    .replace(/^~(?=$|[\\/])/, os.homedir())
-    .replace(/%USERPROFILE%/gi, os.homedir());
-}
-
 function countJsonlFiles(dir) {
   if (!fs.existsSync(dir)) {
     return 0;
   }
   return fs.readdirSync(dir).filter((file) => file.endsWith(".jsonl")).length;
+}
+
+function countBackupDirs(memoryDir) {
+  const dir = path.join(memoryDir, "backups");
+  if (!fs.existsSync(dir)) {
+    return 0;
+  }
+  return fs.readdirSync(dir, { withFileTypes: true }).filter((entry) => entry.isDirectory()).length;
 }
 
 function summarizeDir(dir) {

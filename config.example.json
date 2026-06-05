@@ -1,15 +1,9 @@
 {
   "memoryDir": "%USERPROFILE%\\.ai-memory",
-  "mem0": {
-    "enabled": true,
-    "configPath": "%USERPROFILE%\\.mem0\\config.json",
-    "userId": "",
-    "baseUrl": ""
-  },
   "sync": {
-    "archiveSyncedInboxItems": true,
-    "pullPageSize": 100,
-    "defaultCategories": ["ai-memory-hub"]
+    "archiveIndexedInboxItems": true,
+    "snapshotLimit": 200,
+    "lockStaleMs": 120000
   },
   "tools": {
     "codex": {

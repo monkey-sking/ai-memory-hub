@@ -14,6 +14,8 @@ When you learn a durable preference, project fact, workflow rule, or long-lived 
 {"source":"{{TOOL}}","text":"short durable memory","metadata":{"kind":"preference|project|workflow|correction"}}
 ```
 
+Do not edit `{{MEMORY_DIR}}/memories/ledger.jsonl` or `{{MEMORY_DIR}}/MEMORY.md` directly. After appending a durable memory event, run `ai-memory-hub sync` when command execution is available. If not, the local watcher will index it later.
+
 Only save durable facts. Do not save secrets, API keys, one-off commands, or transient chat details.
 
 ## Shared Agent Radio

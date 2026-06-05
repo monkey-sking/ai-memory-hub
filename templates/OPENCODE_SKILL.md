@@ -35,6 +35,20 @@ If command execution is not available, the local watcher will index it later.
 
 Only save durable facts. Do not save secrets, API keys, one-off commands, or transient chat details.
 
+## Shared Task List
+
+For active work that another AI tool may continue or help with, use the shared task list:
+
+```bash
+ai-memory-hub task list --status active
+ai-memory-hub task add "short task title" --from opencode --project <project> --priority normal
+ai-memory-hub task claim --id <task-id> --by opencode
+ai-memory-hub task note --id <task-id> "handoff note or progress update" --by opencode
+ai-memory-hub task done --id <task-id> --by opencode
+```
+
+Use task notes for current progress and handoff state. Use durable memory only for long-lived facts and rules.
+
 ## Shared Agent Radio
 
 For cross-agent handoffs, review requests, risk notes, and status updates, append JSONL messages to `{{MEMORY_DIR}}/radio/messages.jsonl`.
@@ -51,5 +65,6 @@ Use this shape:
 ai-memory-hub status
 ai-memory-hub sync
 ai-memory-hub backup --reason opencode
+ai-memory-hub task list --status active
 ai-memory-hub radio list --limit 10
 ```

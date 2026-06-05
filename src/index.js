@@ -32,8 +32,15 @@ async function main() {
       return recordCommand(rest);
     case "radio":
       return radioCommand(rest);
+    case "task":
+    case "todo":
+      return taskCommand(rest);
     case "sync":
       return syncCommand(rest);
+    case "index":
+      return indexCommand(rest);
+    case "search":
+      return searchCommand(rest);
     case "pull":
       return pullCommand(rest);
     case "backup":
@@ -83,7 +90,11 @@ function getStatusObject() {
   const pending = readEvents(path.join(memoryDir, "inbox", "events.jsonl")).length;
   const synced = countJsonlFiles(path.join(memoryDir, "synced"));
   const ledger = readLedger(memoryDir).length;
+  const indexPath = path.join(memoryDir, "memories", "index.json");
+  const indexStats = fs.existsSync(indexPath) ? readJson(indexPath).stats : {};
   const radio = readRadioMessages(memoryDir).length;
+  const tasks = readTasks(memoryDir);
+  const activeTasks = tasks.filter((task) => !["done", "cancelled"].includes(task.status)).length;
   const backups = countBackupDirs(memoryDir);
   const lock = readLockStatus(memoryDir);
   const tools = detectTools();
@@ -93,7 +104,17 @@ function getStatusObject() {
     pendingEvents: pending,
     syncedEventFiles: synced,
     ledgerEvents: ledger,
+    index: indexStats || {},
     radioMessages: radio,
+    tasks: {
+      total: tasks.length,
+      active: activeTasks,
+      open: tasks.filter((task) => task.status === "open").length,
+      claimed: tasks.filter((task) => task.status === "claimed").length,
+      inProgress: tasks.filter((task) => task.status === "in_progress").length,
+      blocked: tasks.filter((task) => task.status === "blocked").length,
+      done: tasks.filter((task) => task.status === "done").length
+    },
     backups,
     lock,
     tools
@@ -201,6 +222,162 @@ function radioPromoteCommand(argv) {
   console.log(`Promoted radio message to memory inbox: ${message.id}`);
 }
 
+function taskCommand(argv) {
+  const action = argv[0] || "list";
+  const actionArgs = argv.slice(1);
+  switch (action) {
+    case "add":
+      return taskAddCommand(actionArgs);
+    case "list":
+      return taskListCommand(actionArgs);
+    case "claim":
+      return taskClaimCommand(actionArgs);
+    case "status":
+      return taskStatusCommand(actionArgs);
+    case "note":
+      return taskNoteCommand(actionArgs);
+    case "done":
+      return taskDoneCommand(actionArgs);
+    default:
+      throw new Error("Usage: ai-memory-hub task <add|list|claim|status|note|done> ...");
+  }
+}
+
+function taskAddCommand(argv) {
+  const title = positionalArgs(argv).join(" ").trim();
+  if (!title) {
+    throw new Error("Usage: ai-memory-hub task add <title> [--from codex] [--project name] [--priority normal]");
+  }
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  return withHubLock(config.memoryDir, "task-add", () => {
+    const tasks = readTasks(config.memoryDir);
+    const task = createTask({
+      title,
+      description: getOption(argv, "--description") || "",
+      handoff: getOption(argv, "--handoff") || "",
+      createdBy: getOption(argv, "--from") || getOption(argv, "--by") || "manual",
+      project: getOption(argv, "--project") || path.basename(process.cwd()),
+      priority: getOption(argv, "--priority") || "normal"
+    });
+    tasks.push(task);
+    writeTasks(config.memoryDir, tasks);
+    console.log(JSON.stringify(task, null, 2));
+  }, config.sync.lockStaleMs);
+}
+
+function taskListCommand(argv) {
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const status = getOption(argv, "--status") || "active";
+  const project = getOption(argv, "--project") || "";
+  const assignee = getOption(argv, "--assignee") || "";
+  const limit = Number(getOption(argv, "--limit") || 20);
+  const tasks = readTasks(config.memoryDir)
+    .filter((task) => status === "all" ? true : status === "active" ? !["done", "cancelled"].includes(task.status) : task.status === status)
+    .filter((task) => project ? task.project === project : true)
+    .filter((task) => assignee ? task.assignee === assignee : true)
+    .sort((a, b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")))
+    .slice(0, limit);
+  console.log(JSON.stringify(tasks, null, 2));
+}
+
+function taskClaimCommand(argv) {
+  const id = getOption(argv, "--id") || positionalArgs(argv)[0] || "";
+  const by = getOption(argv, "--by") || getOption(argv, "--from") || "manual";
+  if (!id) {
+    throw new Error("Usage: ai-memory-hub task claim --id <task-id> [--by codex]");
+  }
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  return withHubLock(config.memoryDir, "task-claim", () => {
+    const task = updateTask(config.memoryDir, id, (current) => ({
+      ...current,
+      status: current.status === "open" ? "claimed" : current.status,
+      assignee: by,
+      updatedAt: new Date().toISOString(),
+      notes: [
+        ...(current.notes || []),
+        createTaskNote(by, `Claimed by ${by}.`)
+      ]
+    }));
+    console.log(JSON.stringify(task, null, 2));
+  }, config.sync.lockStaleMs);
+}
+
+function taskStatusCommand(argv) {
+  const id = getOption(argv, "--id") || positionalArgs(argv)[0] || "";
+  const status = getOption(argv, "--status") || positionalArgs(argv)[1] || "";
+  const by = getOption(argv, "--by") || getOption(argv, "--from") || "manual";
+  if (!id || !status) {
+    throw new Error("Usage: ai-memory-hub task status --id <task-id> --status <open|claimed|in_progress|blocked|done|cancelled> [--by codex]");
+  }
+  assertTaskStatus(status);
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  return withHubLock(config.memoryDir, "task-status", () => {
+    const task = updateTask(config.memoryDir, id, (current) => ({
+      ...current,
+      status,
+      assignee: current.assignee || by,
+      updatedAt: new Date().toISOString(),
+      completedAt: status === "done" ? new Date().toISOString() : current.completedAt || "",
+      notes: [
+        ...(current.notes || []),
+        createTaskNote(by, `Status changed to ${status}.`)
+      ]
+    }));
+    console.log(JSON.stringify(task, null, 2));
+  }, config.sync.lockStaleMs);
+}
+
+function taskNoteCommand(argv) {
+  const args = positionalArgs(argv);
+  const id = getOption(argv, "--id") || args[0] || "";
+  const text = getOption(argv, "--text") || (getOption(argv, "--id") ? args.join(" ") : args.slice(1).join(" ")).trim();
+  const by = getOption(argv, "--by") || getOption(argv, "--from") || "manual";
+  if (!id || !text) {
+    throw new Error("Usage: ai-memory-hub task note --id <task-id> <note> [--by codex]");
+  }
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  return withHubLock(config.memoryDir, "task-note", () => {
+    const task = updateTask(config.memoryDir, id, (current) => ({
+      ...current,
+      updatedAt: new Date().toISOString(),
+      notes: [
+        ...(current.notes || []),
+        createTaskNote(by, text)
+      ]
+    }));
+    console.log(JSON.stringify(task, null, 2));
+  }, config.sync.lockStaleMs);
+}
+
+function taskDoneCommand(argv) {
+  const id = getOption(argv, "--id") || positionalArgs(argv)[0] || "";
+  const by = getOption(argv, "--by") || getOption(argv, "--from") || "manual";
+  if (!id) {
+    throw new Error("Usage: ai-memory-hub task done --id <task-id> [--by codex]");
+  }
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  return withHubLock(config.memoryDir, "task-done", () => {
+    const task = updateTask(config.memoryDir, id, (current) => ({
+      ...current,
+      status: "done",
+      updatedAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+      assignee: current.assignee || by,
+      notes: [
+        ...(current.notes || []),
+        createTaskNote(by, `Completed by ${by}.`)
+      ]
+    }));
+    console.log(JSON.stringify(task, null, 2));
+  }, config.sync.lockStaleMs);
+}
+
 function syncCommand(argv) {
   const dryRun = hasFlag(argv, "--dry-run");
   const config = loadConfig();
@@ -228,26 +405,27 @@ function syncIndexedEvents(config, dryRun) {
   const newRecords = [];
 
   for (const event of events) {
-    if (!event.text || looksSensitive(event.text)) {
+    const normalizedEvent = normalizeMemoryEvent(event);
+    if (!normalizedEvent.text || looksSensitive(normalizedEvent.text)) {
       console.log(`Skipped event ${event.id || "(no id)"}: missing text or looks sensitive.`);
       remaining.push(event);
       continue;
     }
 
-    const localEventId = event.id || createId(event.text);
+    const localEventId = normalizedEvent.id || createId(normalizedEvent.text);
     if (knownIds.has(localEventId)) {
       synced++;
       continue;
     }
 
     const record = {
-      id: createId(`memory:${localEventId}:${event.text}`),
+      id: createId(`memory:${localEventId}:${normalizedEvent.text}`),
       localEventId,
-      ts: event.ts || new Date().toISOString(),
+      ts: normalizedEvent.ts || new Date().toISOString(),
       indexedAt: new Date().toISOString(),
-      source: event.source || "unknown",
-      text: String(event.text).trim(),
-      metadata: event.metadata || {}
+      source: normalizedEvent.source || "unknown",
+      text: String(normalizedEvent.text).trim(),
+      metadata: normalizedEvent.metadata || {}
     };
 
     if (dryRun) {
@@ -264,7 +442,7 @@ function syncIndexedEvents(config, dryRun) {
 
   if (!dryRun) {
     const updatedLedger = [...ledger, ...newRecords];
-    fs.writeFileSync(path.join(config.memoryDir, "MEMORY.md"), renderMemorySnapshot(updatedLedger, config.sync.snapshotLimit), "utf8");
+    rebuildMemoryOutputs(config, updatedLedger);
     writeJson(path.join(config.memoryDir, "state", "last-sync.json"), {
       syncedAt: new Date().toISOString(),
       indexed: newRecords.length,
@@ -280,20 +458,47 @@ function syncIndexedEvents(config, dryRun) {
   console.log(`Indexed ${synced} memory event(s) into the local hub.`);
 }
 
+function indexCommand() {
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  return withHubLock(config.memoryDir, "index", () => {
+    const ledger = readLedger(config.memoryDir);
+    rebuildMemoryOutputs(config, ledger);
+    console.log(`Rebuilt memory index for ${ledger.length} record(s).`);
+  }, config.sync.lockStaleMs);
+}
+
+function searchCommand(argv) {
+  const query = positionalArgs(argv).join(" ").trim();
+  if (!query) {
+    throw new Error("Usage: ai-memory-hub search <query> [--limit 10]");
+  }
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const limit = Number(getOption(argv, "--limit") || 10);
+  const index = buildMemoryIndex(readLedger(config.memoryDir), config);
+  const results = searchMemories(index.records, query).slice(0, limit);
+  for (const item of results) {
+    const kind = item.metadata?.kind || "note";
+    const topics = (item.topics || []).slice(0, 4).join(",");
+    console.log(`[${item.score.toFixed(2)}] ${item.source}/${kind} ${topics ? `(${topics}) ` : ""}${item.text}`);
+  }
+}
+
 function pullCommand() {
   const config = loadConfig();
   ensureHub(config.memoryDir);
   return withHubLock(config.memoryDir, "pull", () => {
     const ledger = readLedger(config.memoryDir);
     const backup = backupHub(config.memoryDir, "pre-pull");
-    fs.writeFileSync(path.join(config.memoryDir, "MEMORY.md"), renderMemorySnapshot(ledger, config.sync.snapshotLimit), "utf8");
+    rebuildMemoryOutputs(config, ledger);
     writeJson(path.join(config.memoryDir, "state", "last-pull.json"), {
       pulledAt: new Date().toISOString(),
       count: ledger.length,
       backupDir: backup.dir
     });
 
-    console.log(`Rebuilt ${path.join(config.memoryDir, "MEMORY.md")} from ${ledger.length} local memory record(s).`);
+    console.log(`Rebuilt MEMORY.md, INDEX.md, and memories/index.json from ${ledger.length} local memory record(s).`);
   }, config.sync.lockStaleMs);
 }
 
@@ -356,6 +561,15 @@ function appCommand(argv) {
           messages: readRadioMessages(config.memoryDir).slice(-50)
         });
       }
+      if (req.method === "GET" && url.pathname === "/api/tasks") {
+        const config = loadConfig();
+        return sendJson(res, {
+          tasks: readTasks(config.memoryDir)
+            .filter((task) => !["done", "cancelled"].includes(task.status))
+            .sort((a, b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")))
+            .slice(0, 50)
+        });
+      }
       if (req.method === "POST" && url.pathname === "/api/record") {
         const body = await readRequestJson(req);
         if (!body.text || typeof body.text !== "string") {
@@ -386,6 +600,28 @@ function appCommand(argv) {
         });
         appendJsonl(path.join(config.memoryDir, "radio", "messages.jsonl"), message);
         return sendJson(res, { ok: true, message, status: getStatusObject() });
+      }
+      if (req.method === "POST" && url.pathname === "/api/task/add") {
+        const body = await readRequestJson(req);
+        if (!body.title || typeof body.title !== "string") {
+          return sendJson(res, { error: "title is required" }, 400);
+        }
+        const config = loadConfig();
+        let task;
+        withHubLock(config.memoryDir, "task-add", () => {
+          const tasks = readTasks(config.memoryDir);
+          task = createTask({
+            title: body.title,
+            description: body.description || "",
+            handoff: body.handoff || "",
+            createdBy: body.from || "dashboard",
+            project: body.project || path.basename(process.cwd()),
+            priority: body.priority || "normal"
+          });
+          tasks.push(task);
+          writeTasks(config.memoryDir, tasks);
+        }, config.sync.lockStaleMs);
+        return sendJson(res, { ok: true, task, status: getStatusObject() });
       }
       if (req.method === "POST" && url.pathname === "/api/radio/promote") {
         const body = await readRequestJson(req);
@@ -452,8 +688,11 @@ Commands:
   record     Append a local memory event.
   radio      Send, list, and promote cross-agent radio messages.
   sync       Index pending inbox events into the local memory ledger.
+  index      Rebuild MEMORY.md, INDEX.md, and the structured local index.
+  search     Search indexed local memories.
+  task       Share task/todo state across AI tools.
   pull       Rebuild MEMORY.md from the local memory ledger.
-  backup     Back up MEMORY.md, ledger, inbox, profile, and radio files.
+  backup     Back up MEMORY.md, ledger, inbox, profile, radio, and task files.
   watch      Periodically index pending inbox events.
   app        Start the local dashboard app.
   install    Show or apply per-tool instruction snippets.
@@ -467,6 +706,13 @@ Examples:
   ${APP_NAME} radio promote --id <message-id>
   ${APP_NAME} sync --dry-run
   ${APP_NAME} sync
+  ${APP_NAME} index
+  ${APP_NAME} search "git commit rules" --limit 5
+  ${APP_NAME} task add "Review README task-list section" --from codex --project ai-memory-hub --priority high
+  ${APP_NAME} task list --status active
+  ${APP_NAME} task claim --id <task-id> --by claude
+  ${APP_NAME} task note --id <task-id> "Reviewed Chinese docs." --by qclaw
+  ${APP_NAME} task done --id <task-id> --by codex
   ${APP_NAME} pull
   ${APP_NAME} backup --reason manual
   ${APP_NAME} watch --interval-ms 30000
@@ -482,6 +728,8 @@ function defaultConfig(memoryDir) {
     sync: {
       archiveIndexedInboxItems: true,
       snapshotLimit: 200,
+      coreLimit: 40,
+      recentLimit: 20,
       lockStaleMs: 120000
     },
     tools: {
@@ -528,6 +776,7 @@ function ensureHub(memoryDir) {
     path.join(memoryDir, "synced"),
     path.join(memoryDir, "memories"),
     path.join(memoryDir, "radio"),
+    path.join(memoryDir, "tasks"),
     path.join(memoryDir, "tools"),
     path.join(memoryDir, "backups"),
     path.join(memoryDir, "locks"),
@@ -989,8 +1238,26 @@ function renderDashboard() {
           <div class="metric"><strong id="pending">0</strong><span class="muted">Pending</span></div>
           <div class="metric"><strong id="ledger">0</strong><span class="muted">Ledger</span></div>
           <div class="metric"><strong id="radioCount">0</strong><span class="muted">Radio</span></div>
+          <div class="metric"><strong id="taskCount">0</strong><span class="muted">Tasks</span></div>
           <div class="metric"><strong id="backupCount">0</strong><span class="muted">Backups</span></div>
           <div class="metric"><strong id="toolCount">0</strong><span class="muted">Apps found</span></div>
+        </div>
+      </section>
+      <section>
+        <h2>Shared Tasks</h2>
+        <div class="stack">
+          <textarea id="taskTitle" placeholder="Current task another AI can pick up or help with."></textarea>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+            <input id="taskFrom" value="dashboard" aria-label="from">
+            <input id="taskProject" value="default" aria-label="project">
+            <select id="taskPriority" aria-label="priority">
+              <option value="normal">normal</option>
+              <option value="high">high</option>
+              <option value="urgent">urgent</option>
+              <option value="low">low</option>
+            </select>
+          </div>
+          <button class="primary" onclick="addTask()">Add Task</button>
         </div>
       </section>
       <section>
@@ -1046,6 +1313,10 @@ function renderDashboard() {
         <pre id="pendingJson"></pre>
       </section>
       <section>
+        <h2>Active Tasks</h2>
+        <pre id="tasksJson"></pre>
+      </section>
+      <section>
         <h2>Agent Radio Messages</h2>
         <pre id="radioJson"></pre>
       </section>
@@ -1059,7 +1330,7 @@ function renderDashboard() {
       return json;
     }
     async function refresh() {
-      const [status, memory, radio] = await Promise.all([api('/api/status'), api('/api/memory'), api('/api/radio')]);
+      const [status, memory, radio, tasks] = await Promise.all([api('/api/status'), api('/api/memory'), api('/api/radio'), api('/api/tasks')]);
       const line = document.getElementById('statusLine');
       line.className = 'status ok';
       line.querySelector('span:last-child').textContent = 'Local hub ready';
@@ -1067,11 +1338,13 @@ function renderDashboard() {
       document.getElementById('pending').textContent = status.pendingEvents;
       document.getElementById('ledger').textContent = status.ledgerEvents;
       document.getElementById('radioCount').textContent = status.radioMessages;
+      document.getElementById('taskCount').textContent = (status.tasks && status.tasks.active) || 0;
       document.getElementById('backupCount').textContent = status.backups || 0;
       document.getElementById('toolCount').textContent = status.tools.filter(t => t.installed).length;
       document.getElementById('memory').textContent = memory.memory || '';
       document.getElementById('pendingJson').textContent = JSON.stringify(memory.pending || [], null, 2);
       document.getElementById('radioJson').textContent = JSON.stringify(radio.messages || [], null, 2);
+      document.getElementById('tasksJson').textContent = JSON.stringify(tasks.tasks || [], null, 2);
       document.getElementById('tools').innerHTML = status.tools.map(t =>
         '<tr><td>' + escapeHtml(t.name) + '<div class="path">' + escapeHtml(t.dir) + '</div></td><td>' + (t.installed ? 'installed' : 'missing') + '</td></tr>'
       ).join('');
@@ -1105,6 +1378,22 @@ function renderDashboard() {
         })
       });
       document.getElementById('radioText').value = '';
+      await refresh();
+    }
+    async function addTask() {
+      const title = document.getElementById('taskTitle').value.trim();
+      if (!title) return;
+      await api('/api/task/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          from: document.getElementById('taskFrom').value || 'dashboard',
+          project: document.getElementById('taskProject').value || 'default',
+          priority: document.getElementById('taskPriority').value || 'normal'
+        })
+      });
+      document.getElementById('taskTitle').value = '';
       await refresh();
     }
     async function sync() { await api('/api/sync', { method: 'POST' }); await refresh(); }
@@ -1177,27 +1466,349 @@ function readLedger(memoryDir) {
     .filter((item) => item.text);
 }
 
-function renderMemorySnapshot(memories, limit = 200) {
+function readTasks(memoryDir) {
+  return readEvents(path.join(memoryDir, "tasks", "tasks.jsonl"))
+    .map(normalizeTask)
+    .filter((task) => task.id && task.title);
+}
+
+function writeTasks(memoryDir, tasks) {
+  const file = path.join(memoryDir, "tasks", "tasks.jsonl");
+  ensureDir(path.dirname(file));
+  fs.writeFileSync(file, tasks.map((task) => JSON.stringify(normalizeTask(task))).join("\n") + (tasks.length ? "\n" : ""), "utf8");
+}
+
+function createTask({ title, description, handoff, createdBy, project, priority }) {
+  const now = new Date().toISOString();
+  const cleanTitle = String(title || "").trim();
+  const cleanPriority = normalizePriority(priority);
+  return {
+    id: createId(`task:${cleanTitle}:${createdBy}:${project}`),
+    createdAt: now,
+    updatedAt: now,
+    completedAt: "",
+    createdBy: String(createdBy || "manual"),
+    assignee: "",
+    status: "open",
+    priority: cleanPriority,
+    project: String(project || ""),
+    title: cleanTitle,
+    description: String(description || ""),
+    handoff: String(handoff || ""),
+    notes: []
+  };
+}
+
+function updateTask(memoryDir, id, updater) {
+  const tasks = readTasks(memoryDir);
+  const index = findTaskIndex(tasks, id);
+  if (index === -1) {
+    throw new Error(`Task not found: ${id}`);
+  }
+  const updated = normalizeTask(updater(tasks[index]));
+  tasks[index] = updated;
+  writeTasks(memoryDir, tasks);
+  return updated;
+}
+
+function normalizeTask(task) {
+  const now = new Date().toISOString();
+  const status = isTaskStatus(task.status) ? task.status : "open";
+  return {
+    id: task.id || createId(`task:${task.title || JSON.stringify(task)}`),
+    createdAt: task.createdAt || task.ts || now,
+    updatedAt: task.updatedAt || task.createdAt || task.ts || now,
+    completedAt: task.completedAt || "",
+    createdBy: task.createdBy || task.created_by || task.source || "unknown",
+    assignee: task.assignee || "",
+    status,
+    priority: normalizePriority(task.priority || "normal"),
+    project: task.project || "",
+    title: task.title || task.text || "",
+    description: task.description || "",
+    handoff: task.handoff || "",
+    notes: Array.isArray(task.notes) ? task.notes.map((note) => ({
+      ts: note.ts || note.createdAt || now,
+      by: note.by || note.source || "unknown",
+      text: String(note.text || "")
+    })).filter((note) => note.text) : []
+  };
+}
+
+function findTaskIndex(tasks, id) {
+  const exact = tasks.findIndex((task) => task.id === id);
+  if (exact !== -1) {
+    return exact;
+  }
+  const matches = tasks
+    .map((task, index) => ({ task, index }))
+    .filter((item) => item.task.id.startsWith(id));
+  return matches.length === 1 ? matches[0].index : -1;
+}
+
+function createTaskNote(by, text) {
+  return {
+    ts: new Date().toISOString(),
+    by: String(by || "unknown"),
+    text: String(text || "").trim()
+  };
+}
+
+function assertTaskStatus(status) {
+  if (!isTaskStatus(status)) {
+    throw new Error(`Invalid task status: ${status}`);
+  }
+}
+
+function isTaskStatus(status) {
+  return new Set(["open", "claimed", "in_progress", "blocked", "done", "cancelled"]).has(status);
+}
+
+function normalizePriority(priority) {
+  const clean = String(priority || "normal").toLowerCase();
+  return ["low", "normal", "high", "urgent"].includes(clean) ? clean : "normal";
+}
+
+function rebuildMemoryOutputs(config, ledger) {
+  const index = buildMemoryIndex(ledger, config);
+  fs.writeFileSync(path.join(config.memoryDir, "MEMORY.md"), renderMemorySnapshot(index, config), "utf8");
+  fs.writeFileSync(path.join(config.memoryDir, "INDEX.md"), renderIndexMarkdown(index), "utf8");
+  writeJson(path.join(config.memoryDir, "memories", "index.json"), index);
+}
+
+function buildMemoryIndex(memories, config) {
   const sorted = [...memories].sort((a, b) => String(a.ts || "").localeCompare(String(b.ts || "")));
-  const limited = sorted.slice(-Number(limit || 200));
+  const records = sorted.map((memory, index) => enrichMemory(memory, index, sorted.length));
+  const stats = {
+    records: records.length,
+    core: records.filter((item) => item.layer === "core").length,
+    working: records.filter((item) => item.layer === "working").length,
+    archive: records.filter((item) => item.layer === "archive").length,
+    snapshotCoreLimit: Number(config.sync?.coreLimit || 40),
+    snapshotRecentLimit: Number(config.sync?.recentLimit || 20),
+    rebuiltAt: new Date().toISOString()
+  };
+  return {
+    version: 1,
+    memoryDir: config.memoryDir,
+    stats,
+    topics: countBy(records.flatMap((item) => item.topics)),
+    kinds: countBy(records.map((item) => item.metadata?.kind || "note")),
+    sources: countBy(records.map((item) => item.source || "unknown")),
+    records
+  };
+}
+
+function enrichMemory(memory, ordinal, total) {
+  const metadata = memory.metadata || {};
+  const kind = metadata.kind || "note";
+  const topics = inferTopics(memory);
+  const importance = scoreImportance(memory, topics, ordinal, total);
+  const layer = chooseMemoryLayer(kind, importance);
+  return {
+    ...memory,
+    metadata: {
+      ...metadata,
+      kind
+    },
+    layer,
+    importance,
+    scope: inferScope(kind, topics),
+    topics,
+    keywords: extractKeywords(`${memory.text} ${(topics || []).join(" ")}`)
+  };
+}
+
+function renderMemorySnapshot(index, config) {
+  const coreLimit = Number(config.sync?.coreLimit || 40);
+  const recentLimit = Number(config.sync?.recentLimit || 20);
+  const core = index.records
+    .filter((item) => item.layer === "core")
+    .sort(sortByImportance)
+    .slice(0, coreLimit);
+  const recent = [...index.records]
+    .filter((item) => item.layer !== "core")
+    .sort((a, b) => String(b.ts || "").localeCompare(String(a.ts || "")))
+    .slice(0, recentLimit);
   const lines = [
     "# Shared AI Memory",
     "",
-    `Rebuilt locally at ${new Date().toISOString()}.`,
+    `Rebuilt locally at ${index.stats.rebuiltAt}.`,
+    "",
+    "This snapshot is intentionally short. Full local history is in `memories/ledger.jsonl`; structured search data is in `memories/index.json`; readable grouped index is in `INDEX.md`.",
+    "",
+    "Use `ai-memory-hub search <query> --limit 10` when task-specific context is needed.",
+    "",
+    "## Core Memory",
     ""
   ];
-  if (limited.length === 0) {
+  if (index.records.length === 0) {
     lines.push("No memories found.");
     lines.push("");
     return lines.join("\n");
   }
 
-  for (const memory of limited) {
-    const kind = memory.metadata?.kind ? `/${memory.metadata.kind}` : "";
-    lines.push(`- [${memory.source}${kind}] ${memory.text}`);
+  for (const memory of core) {
+    lines.push(renderMemoryLine(memory));
   }
   lines.push("");
+  lines.push("## Recent Working Context");
+  lines.push("");
+  for (const memory of recent) {
+    lines.push(renderMemoryLine(memory));
+  }
+  lines.push("");
+  lines.push("## Index Summary");
+  lines.push("");
+  lines.push(`- Records: ${index.stats.records}; core: ${index.stats.core}; working: ${index.stats.working}; archive: ${index.stats.archive}.`);
+  lines.push(`- Top topics: ${index.topics.slice(0, 12).map((item) => `${item.key}(${item.count})`).join(", ") || "none"}.`);
+  lines.push("");
   return lines.join("\n");
+}
+
+function renderIndexMarkdown(index) {
+  const lines = [
+    "# Shared AI Memory Index",
+    "",
+    `Rebuilt locally at ${index.stats.rebuiltAt}.`,
+    "",
+    "## Stats",
+    "",
+    `- Records: ${index.stats.records}`,
+    `- Core: ${index.stats.core}`,
+    `- Working: ${index.stats.working}`,
+    `- Archive: ${index.stats.archive}`,
+    "",
+    "## Top Topics",
+    ""
+  ];
+  for (const item of index.topics.slice(0, 40)) {
+    lines.push(`- ${item.key}: ${item.count}`);
+  }
+  lines.push("");
+  for (const layer of ["core", "working", "archive"]) {
+    lines.push(`## ${titleCase(layer)} Records`);
+    lines.push("");
+    const records = index.records
+      .filter((item) => item.layer === layer)
+      .sort(layer === "core" ? sortByImportance : (a, b) => String(b.ts || "").localeCompare(String(a.ts || "")));
+    for (const memory of records) {
+      lines.push(renderMemoryLine(memory));
+    }
+    lines.push("");
+  }
+  return lines.join("\n");
+}
+
+function renderMemoryLine(memory) {
+  const kind = memory.metadata?.kind ? `/${memory.metadata.kind}` : "";
+  const topics = memory.topics?.length ? ` topics=${memory.topics.slice(0, 5).join(",")}` : "";
+  return `- [${memory.source}${kind} score=${memory.importance}${topics}] ${memory.text}`;
+}
+
+function searchMemories(records, query) {
+  const queryTerms = extractKeywords(query);
+  return records
+    .map((memory) => {
+      const haystack = new Set([
+        ...extractKeywords(memory.text),
+        ...(memory.keywords || []),
+        ...(memory.topics || []),
+        memory.source || "",
+        memory.metadata?.kind || ""
+      ]);
+      let score = 0;
+      for (const term of queryTerms) {
+        if (haystack.has(term)) {
+          score += 2;
+        } else if (memory.text.toLowerCase().includes(term)) {
+          score += 1;
+        }
+      }
+      score += Number(memory.importance || 0) / 100;
+      return { ...memory, score };
+    })
+    .filter((memory) => memory.score > 0)
+    .sort((a, b) => b.score - a.score);
+}
+
+function chooseMemoryLayer(kind, importance) {
+  if (["preference", "workflow", "correction"].includes(kind) || importance >= 70) {
+    return "core";
+  }
+  if (["project", "lesson", "reference"].includes(kind) || importance >= 45) {
+    return "working";
+  }
+  return "archive";
+}
+
+function scoreImportance(memory, topics, ordinal, total) {
+  const text = String(memory.text || "");
+  const kind = memory.metadata?.kind || "note";
+  let score = 20;
+  if (["preference", "workflow", "correction"].includes(kind)) score += 45;
+  if (["project", "lesson"].includes(kind)) score += 30;
+  if (["reference", "raw", "note"].includes(kind)) score += 10;
+  if (/must|always|never|必须|不要|偏好|规范|规则|纠错|红线|合规|错误|lesson/i.test(text)) score += 18;
+  if (/github|git|lark|feishu|qclaw|claude|codex|opencode|memory|飞书|微信|小游戏/i.test(text)) score += 8;
+  if (topics.length > 0) score += Math.min(10, topics.length * 2);
+  const recency = total > 0 ? ordinal / total : 0;
+  score += Math.round(recency * 8);
+  return Math.max(1, Math.min(100, score));
+}
+
+function inferScope(kind, topics) {
+  if (kind === "preference") return "user";
+  if (kind === "workflow" || kind === "correction" || kind === "lesson") return "workflow";
+  if (topics.includes("ai-memory-hub")) return "memory-hub";
+  if (topics.includes("game") || topics.includes("wechat-mini-game")) return "project";
+  return "general";
+}
+
+function inferTopics(memory) {
+  const text = `${memory.text || ""} ${(memory.metadata?.tags || []).join(" ")}`.toLowerCase();
+  const topics = [];
+  const rules = [
+    ["ai-memory-hub", /ai-memory|shared memory|memory hub|agent radio|opencode|qclaw|claude|codex|gemini|共享记忆|本地记忆/],
+    ["game", /game|unity|mahjong|match|西游|麻将|小游戏|策划|关卡|体力|广告|分享/],
+    ["wechat-mini-game", /wechat|微信|小游戏|wx\.|sendgift|红包|开放能力/],
+    ["lark-feishu", /lark|feishu|飞书|多维表格|任务|文档|lark-cli/],
+    ["git", /git|github|gitee|commit|提交/],
+    ["team", /team|member|role|团队|成员|pm|planner|dev|art/],
+    ["automation", /automation|daemon|watcher|script|自动|脚本|后台|签到/],
+    ["docs", /readme|doc|文档|prd|gdd|策划文档/],
+    ["security", /secret|password|token|key|合规|隐私|上传|ignore|gitignore/]
+  ];
+  for (const [topic, pattern] of rules) {
+    if (pattern.test(text)) topics.push(topic);
+  }
+  return [...new Set(topics)];
+}
+
+function extractKeywords(text) {
+  const normalized = String(text || "").toLowerCase();
+  const latin = normalized.match(/[a-z0-9][a-z0-9_.-]{1,}/g) || [];
+  const cjk = normalized.match(/[\u4e00-\u9fff]{2,}/g) || [];
+  const stop = new Set(["the", "and", "for", "with", "when", "this", "that", "into", "from", "should", "memory", "local"]);
+  return [...new Set([...latin, ...cjk].filter((term) => !stop.has(term)).slice(0, 80))];
+}
+
+function countBy(values) {
+  const counts = new Map();
+  for (const value of values.filter(Boolean)) {
+    counts.set(value, (counts.get(value) || 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([key, count]) => ({ key, count }))
+    .sort((a, b) => b.count - a.count || a.key.localeCompare(b.key));
+}
+
+function sortByImportance(a, b) {
+  return Number(b.importance || 0) - Number(a.importance || 0) || String(b.ts || "").localeCompare(String(a.ts || ""));
+}
+
+function titleCase(value) {
+  return String(value || "").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function archiveInbox(memoryDir, events) {
@@ -1226,6 +1837,7 @@ function backupHub(memoryDir, reason) {
     ["inbox-events.jsonl", path.join(memoryDir, "inbox", "events.jsonl")],
     ["memory-ledger.jsonl", path.join(memoryDir, "memories", "ledger.jsonl")],
     ["radio-messages.jsonl", path.join(memoryDir, "radio", "messages.jsonl")],
+    ["tasks.jsonl", path.join(memoryDir, "tasks", "tasks.jsonl")],
     ["config.json", path.join(memoryDir, "config.json")]
   ];
 
@@ -1331,6 +1943,26 @@ function looksSensitive(text) {
   return /\b(sk-[A-Za-z0-9_-]{12,}|api[_-]?key|password|secret|token)\b/i.test(text);
 }
 
+function normalizeMemoryEvent(event) {
+  const text = event.text ?? event.content ?? event.memory ?? "";
+  const metadata = {
+    ...(event.metadata || {})
+  };
+  if (!metadata.kind && event.type) {
+    metadata.kind = event.type;
+  }
+  if (event.tags && !metadata.tags) {
+    metadata.tags = event.tags;
+  }
+  return {
+    id: event.id || "",
+    ts: event.ts || event.timestamp || event.createdAt || "",
+    source: event.source || metadata.source || "unknown",
+    text: String(text || "").trim(),
+    metadata
+  };
+}
+
 function readEvents(file) {
   if (!fs.existsSync(file)) {
     return [];
@@ -1401,14 +2033,21 @@ function appendJsonl(file, value) {
 
 function appendIfMissing(file, snippet, marker) {
   const existing = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
-  if (existing.includes(marker) && existing.includes("Shared Agent Radio")) {
+  if (existing.includes(marker) && existing.includes("Shared Agent Radio") && existing.includes("Shared Task List")) {
     return;
   }
-  if (existing.includes(marker) && !existing.includes("Shared Agent Radio")) {
-    const radioSection = extractSection(snippet, "## Shared Agent Radio");
-    if (radioSection) {
+  if (existing.includes(marker)) {
+    const sections = [];
+    if (!existing.includes("Shared Task List")) {
+      sections.push(extractSection(snippet, "## Shared Task List", "## Shared Agent Radio"));
+    }
+    if (!existing.includes("Shared Agent Radio")) {
+      sections.push(extractSection(snippet, "## Shared Agent Radio"));
+    }
+    const addition = sections.filter(Boolean).map((section) => section.trim()).join("\n\n");
+    if (addition) {
       const prefix = existing.trim() ? `${existing.trimEnd()}\n\n` : "";
-      fs.writeFileSync(file, `${prefix}${radioSection.trim()}\n`, "utf8");
+      fs.writeFileSync(file, `${prefix}${addition}\n`, "utf8");
     }
     return;
   }
@@ -1416,9 +2055,16 @@ function appendIfMissing(file, snippet, marker) {
   fs.writeFileSync(file, `${prefix}${snippet.trim()}\n`, "utf8");
 }
 
-function extractSection(text, heading) {
+function extractSection(text, heading, nextHeading = "") {
   const index = text.indexOf(heading);
-  return index === -1 ? "" : text.slice(index);
+  if (index === -1) {
+    return "";
+  }
+  if (!nextHeading) {
+    return text.slice(index);
+  }
+  const nextIndex = text.indexOf(nextHeading, index + heading.length);
+  return nextIndex === -1 ? text.slice(index) : text.slice(index, nextIndex);
 }
 
 function readTemplate(name) {

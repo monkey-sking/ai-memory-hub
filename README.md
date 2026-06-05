@@ -4,46 +4,42 @@ Language: [中文](#中文说明) | [English](#english)
 
 ## 中文说明
 
-`ai-memory-hub` 是一个给多个 AI 工具共用的本地记忆中枢。它让 Codex、Claude、Gemini、Antigravity、QClaw、OpenClaw 等工具使用同一个本地记忆目录，同时每个工具继续使用自己的模型 Token、服务商和计费账户。
+`ai-memory-hub` 是一个给多个 AI 工具共用的本地协作层。它让 Codex、Claude、Gemini、Antigravity、QClaw、OpenClaw、OpenCode、Marvis 等工具使用同一个本地目录共享记忆、消息和任务，同时每个工具继续使用自己的模型 Token、服务商和计费账户。
 
-它不代理 LLM 请求，也不要求统一配置模型 Key。每个 AI 工具只负责读写本地目录，`ai-memory-hub` 负责把这些事件整理成共享记忆快照。
+它不代理 LLM 请求，不要求统一配置模型 Key，也不会读取或复制各 AI 工具的 Token。
 
-共享目录结构：
+### 本地目录
 
 ```text
 ~/.ai-memory/
   profile.md
   MEMORY.md
+  INDEX.md
   inbox/
   synced/
   memories/
+    ledger.jsonl
+    index.json
   radio/
+    messages.jsonl
+  tasks/
+    tasks.jsonl
   backups/
   locks/
   tools/
   state/
 ```
 
-核心机制：
+核心文件：
 
-- `inbox/events.jsonl`：各 AI 工具写入的待处理长期记忆事件。
-- `memories/ledger.jsonl`：项目自己的本地长期记忆账本。
-- `MEMORY.md`：给各 AI 工具读取的共享记忆快照。
-- `radio/messages.jsonl`：Agent 之间的短期协作消息。
-- `locks/hub.lock`：整理账本和重建快照时使用的本地锁。
-- `backups/`：每次整理或重建前自动生成的备份。
-
-### 为什么做这个项目
-
-很多 AI 工具都有自己的本地记忆，但彼此不互通。这个项目提供一个统一的本地共享层，让不同 AI 工具在不共享模型 Token 的前提下共享上下文。
-
-我们的特色是：
-
-- 本地优先：默认不依赖外部记忆平台。
-- Token 独立：每个 AI 工具继续使用自己的账号和模型配置。
-- 可审计：所有长期记忆都进入本地 JSONL 账本。
-- 可协作：Agent Radio 支持跨工具交接、审查请求和状态同步。
-- 非侵入：检测 AI App 状态，不读取或复制模型 Token。
+- `MEMORY.md`：给 AI 工具读取的短快照，只保留核心记忆和最近工作上下文。
+- `INDEX.md`：可读的分层索引，按 core、working、archive 分组。
+- `memories/ledger.jsonl`：完整长期记忆账本。
+- `memories/index.json`：结构化索引，可用于搜索和后续扩展。
+- `radio/messages.jsonl`：AI 工具之间的短消息总线。
+- `tasks/tasks.jsonl`：AI 工具之间共享的当前任务和交接状态。
+- `locks/hub.lock`：本地写入锁，避免多个工具同时整理同一份状态。
+- `backups/`：同步、重建、备份前保存关键文件。
 
 ### 快速开始
 
@@ -54,31 +50,21 @@ ai-memory-hub detect
 ai-memory-hub status
 ```
 
-记录一条长期记忆事件：
+记录长期记忆：
 
 ```bash
-ai-memory-hub record "User prefers concise Chinese explanations." --source codex
-```
-
-把本地 inbox 事件整理进本地记忆账本，并重建 `MEMORY.md`：
-
-```bash
+ai-memory-hub record "User prefers concise Chinese explanations." --source codex --kind preference
 ai-memory-hub sync
 ```
 
-从本地记忆账本重建共享快照：
+重建分层记忆索引：
 
 ```bash
-ai-memory-hub pull
+ai-memory-hub index
+ai-memory-hub search "git commit rules" --limit 5
 ```
 
-运行长期 watcher，定时整理新的 inbox 事件：
-
-```bash
-ai-memory-hub watch --interval-ms 30000
-```
-
-启动本地 Dashboard 应用：
+启动本地 Dashboard：
 
 ```bash
 ai-memory-hub app --port 38787
@@ -90,56 +76,99 @@ ai-memory-hub app --port 38787
 http://127.0.0.1:38787
 ```
 
-Dashboard 可以：
+### 分层记忆和 Token 成本
 
-- 显示本地 hub 状态。
-- 显示共享记忆目录。
-- 显示本地待处理记忆事件。
-- 显示本地长期记忆账本数量。
-- 记录新的长期记忆事件。
-- 发送和查看 Agent Radio 消息。
-- 触发 `sync` 和 `pull`。
-- 检测已安装的 AI 工具和应用。
+本项目的本地记录、同步、备份、索引和 watcher 不调用模型，所以它们本身不消耗模型 Token。
 
-### 本地记忆账本
+真正消耗 Token 的地方，是某个 AI 工具读取 `MEMORY.md` 并放进自己的上下文。为避免越记越大，当前设计把记忆分成：
 
-`sync` 命令会读取：
+- `core`：长期稳定偏好、规则、纠错和高重要度事实。
+- `working`：近期项目事实、工作流、参考信息。
+- `archive`：完整历史保存在账本和索引里，默认不塞进短快照。
 
-```text
-~/.ai-memory/inbox/events.jsonl
+可以在 `~/.ai-memory/config.json` 调整快照大小：
+
+```json
+{
+  "sync": {
+    "coreLimit": 40,
+    "recentLimit": 20
+  }
+}
 ```
 
-然后把有效的长期记忆事件写入：
+AI 工具需要任务相关上下文时，应优先用搜索：
 
-```text
-~/.ai-memory/memories/ledger.jsonl
+```bash
+ai-memory-hub search "麻将 体力" --limit 10
 ```
 
-最后重建：
+### AI 工具之间如何相互对话
 
-```text
-~/.ai-memory/MEMORY.md
+这里的“对话”不是一个模型直接调用另一个模型，也不是让一个工具消耗另一个工具的 Token。实际机制是本地异步协作：
+
+1. 一个 AI 工具把消息写入 `radio/messages.jsonl`，或者把任务写入 `tasks/tasks.jsonl`。
+2. 另一个 AI 工具在会话开始、收到用户提示、定时任务或手动命令时读取这些本地状态。
+3. 该工具用自己的模型账号和上下文处理消息或任务。
+
+短消息用 Agent Radio：
+
+```bash
+ai-memory-hub radio send "请检查 README 的任务列表说明" --from codex --to qclaw --type review --project ai-memory-hub
+ai-memory-hub radio list --limit 10
 ```
 
-AI 工具不需要任何共享平台 Key。它们只需要通过指令或 hook 读取和写入 `~/.ai-memory`。
+重要消息可以提升为长期记忆：
+
+```bash
+ai-memory-hub radio promote --id <message-id>
+ai-memory-hub sync
+```
+
+### Shared Task List
+
+共享任务表用于“当前正在做什么、谁认领了、进展如何、如何交接”。它比 Radio 更持久，但又不应该进入长期记忆。
+
+常用命令：
+
+```bash
+ai-memory-hub task add "补充 README 的 AI 工具互相对话章节" --from codex --project ai-memory-hub --priority high
+ai-memory-hub task list --status active
+ai-memory-hub task claim --id <task-id> --by qclaw
+ai-memory-hub task status --id <task-id> --status in_progress --by qclaw
+ai-memory-hub task note --id <task-id> "中文部分已检查，英文还要同步。" --by qclaw
+ai-memory-hub task done --id <task-id> --by codex
+```
+
+状态包括：
+
+```text
+open | claimed | in_progress | blocked | done | cancelled
+```
+
+建议用法：
+
+- 开始较大的工作前先运行 `ai-memory-hub task list --status active`。
+- 多个 AI 同时参与同一项目时，先 `claim` 再修改。
+- 中途切换 AI 工具时，用 `task note` 写清已做内容、剩余风险和下一步。
+- 完成后用 `task done` 关闭任务。
+- 长期规则和偏好写入记忆；当前进度和交接写入任务；短提醒写入 Radio。
 
 ### 并发与备份
 
-多个 AI 工具可以同时追加 `inbox/events.jsonl`。它们不应该直接修改 `memories/ledger.jsonl` 或 `MEMORY.md`。
+多个 AI 工具可能同时追加记忆、消息或任务。约束是：
 
-`sync`、`pull` 和 `backup` 会通过 `locks/hub.lock` 串行执行，避免多个进程同时整理账本或重建快照。锁超过 `lockStaleMs` 后会被视为过期。
+- AI 工具可以追加 `inbox/events.jsonl` 和使用 `radio`、`task` 命令。
+- AI 工具不应直接编辑 `memories/ledger.jsonl`、`MEMORY.md`、`INDEX.md` 或 `memories/index.json`。
+- `sync`、`index`、`pull`、`backup` 和任务写操作会通过 `locks/hub.lock` 串行执行。
 
-每次 `sync` 或 `pull` 前都会自动备份关键文件到：
-
-```text
-~/.ai-memory/backups/
-```
-
-也可以手动备份：
+手动备份：
 
 ```bash
 ai-memory-hub backup --reason before-large-change
 ```
+
+备份会包含 `MEMORY.md`、`profile.md`、inbox、ledger、radio、tasks 和 config。
 
 ### 自动化
 
@@ -149,90 +178,13 @@ ai-memory-hub backup --reason before-large-change
 ai-memory-hub watch --interval-ms 30000
 ```
 
-AI 工具写入长期记忆事件后，如果能执行命令，可以顺手运行 `ai-memory-hub sync`；如果不能执行命令，watcher 会在后台自动整理。
+AI 工具写入长期记忆后，如果能执行命令，可以顺手运行 `ai-memory-hub sync`；如果不能执行命令，watcher 会稍后整理。
 
-### Token 成本控制
-
-本项目的本地记录、同步、备份和 watcher 不调用模型，因此本身不消耗模型 Token。
-
-真正消耗 Token 的地方，是某个 AI 工具在会话里读取 `MEMORY.md`，并把它放进自己的上下文。默认 `snapshotLimit` 是 200 条，但建议只保存长期有效的偏好、项目事实、工作流规则和纠错，不保存临时聊天、命令日志、失败堆栈或大段文档。
-
-如果记忆变多，可以在 `~/.ai-memory/config.json` 里调低：
-
-```json
-{
-  "sync": {
-    "snapshotLimit": 50
-  }
-}
-```
-
-`ledger.jsonl` 可以保留完整历史，`MEMORY.md` 只放最近或最重要的一小部分，降低每个 AI 工具启动时的上下文成本。
-
-### Agent Radio
-
-Agent Radio 是 `ai-memory-hub` 内置的本地跨 Agent 消息总线。
-
-消息以 JSONL 格式保存：
-
-```text
-~/.ai-memory/radio/messages.jsonl
-```
-
-它不是模型代理，也不会让一个 AI 自动消耗另一个 AI 的 Token。实际流程是：一个工具写入消息，另一个工具在会话开始、收到提示、定时任务或手动执行时读取消息，然后用自己的账号和模型上下文处理。
-
-适合用于短期协作：
-
-- Agent 之间的交接
-- 审查请求
-- 风险提示
-- 完成或状态更新
-- 不应立即写入长期记忆的协作信息
-
-发送消息：
-
-```bash
-ai-memory-hub radio send "Please review the latest implementation." --from codex --to claude --type review
-```
-
-指定接收方：
-
-```bash
-ai-memory-hub radio send "Please check the latest README changes." --from codex --to qclaw --type review
-ai-memory-hub radio send "Shared memory has been updated; please run sync." --from qclaw --to opencode --type handoff
-```
-
-列出最近消息：
-
-```bash
-ai-memory-hub radio list --limit 10
-```
-
-按目标工具筛选时，可以让该工具读取 `to` 为自己或 `all` 的消息。当前 CLI 先提供通用列表，工具侧可按 JSONL 字段过滤。
-
-把重要的 radio 消息提升为长期记忆事件：
-
-```bash
-ai-memory-hub radio promote --id <message-id>
-ai-memory-hub sync
-```
-
-### AI 助手集成模型
-
-推荐集成方式：
-
-1. 在每个 AI 助手的本地指令文件中加入一小段说明。
-2. 要求助手在会话开始时读取 `~/.ai-memory/MEMORY.md`。
-3. 要求助手把长期记忆事件追加到 `~/.ai-memory/inbox/events.jsonl`。
-4. 手动、通过计划任务或以 daemon 方式运行 `ai-memory-hub sync`。
-
-这种方式可以保持每个助手的模型 Token 相互独立。
+任务和 Radio 不需要 `sync` 才能被其他工具读取，它们写入后就是本地可见状态。
 
 ### 配置 AI 工具
 
-使用 `install` 可以把共享记忆指令注入到支持的工具里。它不会写入模型 Key，也不会修改模型服务商配置。
-
-先预览：
+预览安装指令：
 
 ```bash
 ai-memory-hub install --tool codex
@@ -240,7 +192,7 @@ ai-memory-hub install --tool claude
 ai-memory-hub install --tool gemini
 ```
 
-实际应用：
+实际写入：
 
 ```bash
 ai-memory-hub install --tool codex --apply
@@ -248,7 +200,7 @@ ai-memory-hub install --tool claude --apply
 ai-memory-hub install --tool gemini --apply
 ```
 
-在 Windows 上，这会写入：
+Windows 上会写入：
 
 ```text
 %USERPROFILE%\.codex\AGENTS.md
@@ -256,7 +208,7 @@ ai-memory-hub install --tool gemini --apply
 %USERPROFILE%\.gemini\GEMINI.md
 ```
 
-QClaw 支持通过自己的 Skill 目录接入：
+QClaw、OpenClaw、OpenCode 使用 Skill 目录：
 
 ```bash
 ai-memory-hub install --tool qclaw --apply
@@ -264,142 +216,88 @@ ai-memory-hub install --tool openclaw --apply
 ai-memory-hub install --tool opencode --apply
 ```
 
-这会写入：
+App 类型工具如果没有稳定指令注入点，`install` 会在 `~/.ai-memory/tools/` 生成安全适配说明，不会侵入式修改内部数据库。
 
-```text
-%USERPROFILE%\.qclaw\skills\ai-memory-hub\SKILL.md
-%USERPROFILE%\.openclaw\skills\ai-memory-hub\SKILL.md
-%USERPROFILE%\.config\opencode\skills\ai-memory-hub\SKILL.md
-```
-
-对于还没有稳定指令注入点的 App 类型工具，`install` 会在共享记忆目录下生成安全的适配说明：
-
-```bash
-ai-memory-hub install --tool antigravity --apply
-ai-memory-hub install --tool codex-app --apply
-ai-memory-hub install --tool marvis --apply
-ai-memory-hub install --tool cursor --apply
-ai-memory-hub install --tool windsurf --apply
-ai-memory-hub install --tool chatgpt --apply
-```
-
-这些命令会创建类似下面的文件：
-
-```text
-%USERPROFILE%\.ai-memory\tools\antigravity-shared-memory.md
-%USERPROFILE%\.ai-memory\tools\codex-app-shared-memory.md
-%USERPROFILE%\.ai-memory\tools\marvis-shared-memory.md
-%USERPROFILE%\.ai-memory\tools\cursor-shared-memory.md
-%USERPROFILE%\.ai-memory\tools\windsurf-shared-memory.md
-%USERPROFILE%\.ai-memory\tools\chatgpt-shared-memory.md
-```
-
-这些是安全的适配说明，不会侵入式修改内部 App 数据库或不透明状态文件。
-
-#### 当前支持矩阵
+### 当前支持矩阵
 
 ```text
 Codex CLI      通过 ~/.codex/AGENTS.md 直接注入指令
 Claude         通过 ~/.claude/CLAUDE.md 直接注入指令
 Gemini         通过 ~/.gemini/GEMINI.md 直接注入指令
-Antigravity    已检测；在 ~/.ai-memory/tools 下生成适配说明
-Codex App      已检测；在 ~/.ai-memory/tools 下生成适配说明
-Marvis         已检测；在 ~/.ai-memory/tools 下生成适配说明；深度 MCP/知识库接入待验证
-QClaw          通过 ~/.qclaw/skills/ai-memory-hub/SKILL.md 安装为 QClaw Skill
-OpenClaw       通过 ~/.openclaw/skills/ai-memory-hub/SKILL.md 安装为 OpenClaw Skill
-OpenCode       通过 ~/.config/opencode/skills/ai-memory-hub/SKILL.md 安装为 OpenCode Skill
-CC Switch      已检测；暂未直接注入
-Cursor         预支持；在 ~/.ai-memory/tools 下生成适配说明
-Windsurf       预支持；在 ~/.ai-memory/tools 下生成适配说明
-VS Code        预支持；在 ~/.ai-memory/tools 下生成适配说明
-Continue       预支持；在 ~/.ai-memory/tools 下生成适配说明
-Cline          预支持；在 ~/.ai-memory/tools 下生成适配说明
-Roo Code       预支持；在 ~/.ai-memory/tools 下生成适配说明
-Trae           预支持；在 ~/.ai-memory/tools 下生成适配说明
-Kiro           预支持；在 ~/.ai-memory/tools 下生成适配说明
-Zed            预支持；在 ~/.ai-memory/tools 下生成适配说明
-ChatGPT        预支持；在 ~/.ai-memory/tools 下生成适配说明
-Ollama         预支持；在 ~/.ai-memory/tools 下生成适配说明
-LM Studio      预支持；在 ~/.ai-memory/tools 下生成适配说明
-Jan            预支持；在 ~/.ai-memory/tools 下生成适配说明
-AnythingLLM    预支持；在 ~/.ai-memory/tools 下生成适配说明
-Cherry Studio  预支持；在 ~/.ai-memory/tools 下生成适配说明
-Dify           预支持；在 ~/.ai-memory/tools 下生成适配说明
-Open WebUI     预支持；在 ~/.ai-memory/tools 下生成适配说明
-Aider          预支持；在 ~/.ai-memory/tools 下生成适配说明
-Tabby          预支持；在 ~/.ai-memory/tools 下生成适配说明
-Codeium        预支持；在 ~/.ai-memory/tools 下生成适配说明
-Augment        预支持；在 ~/.ai-memory/tools 下生成适配说明
-Supermaven     预支持；在 ~/.ai-memory/tools 下生成适配说明
+QClaw          通过 ~/.qclaw/skills/ai-memory-hub/SKILL.md 安装 Skill
+OpenClaw       通过 ~/.openclaw/skills/ai-memory-hub/SKILL.md 安装 Skill
+OpenCode       通过 ~/.config/opencode/skills/ai-memory-hub/SKILL.md 安装 Skill
+Antigravity    检测并生成 ~/.ai-memory/tools 适配说明
+Codex App      检测并生成 ~/.ai-memory/tools 适配说明
+Marvis         检测并生成 ~/.ai-memory/tools 适配说明，深度接入待验证
+Cursor/Windsurf/VS Code/Continue/Cline/Roo Code/Trae/Kiro/Zed/ChatGPT/Ollama/LM Studio/Jan/AnythingLLM/Cherry Studio/Dify/Open WebUI/Aider/Tabby/Codeium/Augment/Supermaven
+               预支持，生成安全适配说明
 ```
 
 ### 命令
 
 ```text
-init       创建共享记忆目录和配置。
-detect     检测当前机器上安装的 AI 工具。
-status     显示 hub 和工具状态。
-record     向 inbox 追加一条本地记忆事件。
-radio      发送、列出和提升跨 Agent radio 消息。
-sync       把待处理 inbox 事件整理进本地记忆账本。
-pull       从本地记忆账本重建 MEMORY.md。
-backup     备份 MEMORY.md、账本、inbox、profile 和 radio 文件。
+init       创建共享目录和配置。
+detect     检测当前机器上的 AI 工具。
+status     显示 hub、工具、索引、Radio 和任务状态。
+record     追加一条长期记忆事件。
+radio      发送、列出和提升跨工具短消息。
+task       添加、列出、认领、备注、更新和完成共享任务。
+sync       把 inbox 事件整理进长期记忆账本。
+index      重建 MEMORY.md、INDEX.md 和 memories/index.json。
+search     搜索本地记忆索引。
+pull       从账本重建共享快照和索引。
+backup     备份关键本地状态文件。
 watch      定时整理待处理 inbox 事件。
-app        启动本地 Dashboard 应用。
+app        启动本地 Dashboard。
 install    显示或应用每个工具的指令片段。
 help       显示 CLI 帮助。
 ```
 
 ### 安全性
 
-安装器默认是 dry-run。只有加上 `--apply` 时，才会编辑工具的指令文件。
+本项目不会复制、读取或统一管理各 AI 工具的模型 Token。长期记忆同步会跳过看起来像密钥、密码或 Token 的文本。
 
-项目不会复制、读取或统一管理各 AI 工具的模型 Token。长期记忆也会跳过看起来像密钥、密码或 Token 的文本。
-
-本地记忆目录是个人运行时状态，不应上传到 GitHub 或公开仓库。仓库 `.gitignore` 已忽略 `.ai-memory/` 和 `**/.ai-memory/`。默认真实目录是 `~/.ai-memory`，位于仓库之外；如果你把 memoryDir 改到项目目录内，也应保持该目录被忽略。
+本地记忆目录是个人运行时状态，不应上传到 GitHub 或公开仓库。仓库 `.gitignore` 已忽略 `.ai-memory/` 和 `**/.ai-memory/`。默认真实目录是 `~/.ai-memory`，位于仓库之外；如果把 `memoryDir` 改到项目目录内，也应保持该目录被忽略。
 
 ## English
 
-`ai-memory-hub` is a local memory hub for multiple AI tools. It lets Codex, Claude, Gemini, Antigravity, QClaw, OpenClaw, and similar tools use one shared local memory directory while each tool keeps its own model token, provider, and billing account.
+`ai-memory-hub` is a local collaboration layer for multiple AI tools. It lets Codex, Claude, Gemini, Antigravity, QClaw, OpenClaw, OpenCode, Marvis, and similar tools share one local directory for memory, messages, and task state while each tool keeps its own model token, provider, and billing account.
 
-It does not proxy LLM traffic and does not require a shared model key. Each AI tool only reads and writes the local directory. `ai-memory-hub` indexes those events into a shared memory snapshot.
+It does not proxy LLM traffic, does not require a shared model key, and does not read or copy AI tool tokens.
 
-Shared directory layout:
+### Local Directory
 
 ```text
 ~/.ai-memory/
   profile.md
   MEMORY.md
+  INDEX.md
   inbox/
   synced/
   memories/
+    ledger.jsonl
+    index.json
   radio/
+    messages.jsonl
+  tasks/
+    tasks.jsonl
   backups/
   locks/
   tools/
   state/
 ```
 
-Core mechanism:
+Key files:
 
-- `inbox/events.jsonl`: pending durable memory events written by AI tools.
-- `memories/ledger.jsonl`: the project's own local durable memory ledger.
-- `MEMORY.md`: the shared snapshot read by AI tools.
-- `radio/messages.jsonl`: short-lived cross-agent collaboration messages.
-- `locks/hub.lock`: the local lock used while indexing the ledger or rebuilding the snapshot.
-- `backups/`: automatic backups created before indexing or snapshot rebuilds.
-
-### Why
-
-Most AI tools keep separate local memory. This project provides a unified local layer so different AI tools can share context without sharing model tokens.
-
-What makes it distinct:
-
-- Local-first: no external memory platform is required by default.
-- Token-independent: each AI tool keeps its own account and model configuration.
-- Auditable: durable memories are stored in a local JSONL ledger.
-- Collaborative: Agent Radio supports handoffs, review requests, and status updates.
-- Non-invasive: detection reports local app state without reading or copying model tokens.
+- `MEMORY.md`: a compact snapshot read by AI tools.
+- `INDEX.md`: a readable layered index grouped by core, working, and archive.
+- `memories/ledger.jsonl`: the full durable memory ledger.
+- `memories/index.json`: structured local search/index data.
+- `radio/messages.jsonl`: short cross-tool messages.
+- `tasks/tasks.jsonl`: shared current tasks and handoff state.
+- `locks/hub.lock`: a local write lock.
+- `backups/`: snapshots of key files before sync, rebuild, or backup actions.
 
 ### Quick Start
 
@@ -410,31 +308,21 @@ ai-memory-hub detect
 ai-memory-hub status
 ```
 
-Record a durable memory event:
+Record durable memory:
 
 ```bash
-ai-memory-hub record "User prefers concise Chinese explanations." --source codex
-```
-
-Index local inbox events into the local memory ledger and rebuild `MEMORY.md`:
-
-```bash
+ai-memory-hub record "User prefers concise Chinese explanations." --source codex --kind preference
 ai-memory-hub sync
 ```
 
-Rebuild the shared snapshot from the local memory ledger:
+Rebuild and search the layered index:
 
 ```bash
-ai-memory-hub pull
+ai-memory-hub index
+ai-memory-hub search "git commit rules" --limit 5
 ```
 
-Run a long-lived watcher that periodically indexes new inbox events:
-
-```bash
-ai-memory-hub watch --interval-ms 30000
-```
-
-Start the local dashboard app:
+Start the local dashboard:
 
 ```bash
 ai-memory-hub app --port 38787
@@ -446,56 +334,99 @@ Open:
 http://127.0.0.1:38787
 ```
 
-The dashboard can:
+### Layered Memory And Token Cost
 
-- Show local hub status.
-- Show the shared memory directory.
-- Show pending local memory events.
-- Show local ledger count.
-- Record new durable memory events.
-- Send and inspect Agent Radio messages.
-- Trigger `sync` and `pull`.
-- Detect installed AI tools and apps.
+Local recording, syncing, backups, indexing, and the watcher do not call a model, so they do not consume model tokens by themselves.
 
-### Local Ledger
+Tokens are consumed when an AI tool reads `MEMORY.md` and includes it in its own context. To keep that small, memory is layered:
 
-The `sync` command reads:
+- `core`: stable preferences, rules, corrections, and high-importance facts.
+- `working`: recent project facts, workflow information, and references.
+- `archive`: full history kept in the ledger and index, not loaded by default.
 
-```text
-~/.ai-memory/inbox/events.jsonl
+Tune snapshot size in `~/.ai-memory/config.json`:
+
+```json
+{
+  "sync": {
+    "coreLimit": 40,
+    "recentLimit": 20
+  }
+}
 ```
 
-Then it writes valid durable memory events into:
+For task-specific context, search instead of loading the full ledger:
 
-```text
-~/.ai-memory/memories/ledger.jsonl
+```bash
+ai-memory-hub search "mahjong stamina" --limit 10
 ```
 
-Finally it rebuilds:
+### How AI Tools Talk To Each Other
 
-```text
-~/.ai-memory/MEMORY.md
+This is not direct model-to-model calling, and it does not make one tool spend another tool's tokens. It is local asynchronous collaboration:
+
+1. One AI tool writes a message to `radio/messages.jsonl` or a task to `tasks/tasks.jsonl`.
+2. Another AI tool reads that local state at session start, after a user prompt, from a scheduled task, or by manual command.
+3. That tool handles the message or task with its own model account and context.
+
+Short messages use Agent Radio:
+
+```bash
+ai-memory-hub radio send "Please review the README task-list section" --from codex --to qclaw --type review --project ai-memory-hub
+ai-memory-hub radio list --limit 10
 ```
 
-AI tools do not need any shared platform key. They only need instructions or hooks that read and write `~/.ai-memory`.
+Promote an important message into durable memory:
+
+```bash
+ai-memory-hub radio promote --id <message-id>
+ai-memory-hub sync
+```
+
+### Shared Task List
+
+The shared task list tracks what is currently being worked on, who claimed it, what progress exists, and how another tool can take over. It is more durable than Radio, but it should not become long-term memory.
+
+Common commands:
+
+```bash
+ai-memory-hub task add "Document how AI tools talk to each other" --from codex --project ai-memory-hub --priority high
+ai-memory-hub task list --status active
+ai-memory-hub task claim --id <task-id> --by qclaw
+ai-memory-hub task status --id <task-id> --status in_progress --by qclaw
+ai-memory-hub task note --id <task-id> "Chinese section reviewed; English still needs sync." --by qclaw
+ai-memory-hub task done --id <task-id> --by codex
+```
+
+Statuses:
+
+```text
+open | claimed | in_progress | blocked | done | cancelled
+```
+
+Recommended use:
+
+- Run `ai-memory-hub task list --status active` before substantial work.
+- When multiple tools work on one project, claim the task before editing.
+- During handoff, add a note with completed work, remaining risk, and next step.
+- Close finished work with `task done`.
+- Store long-lived rules in memory, current progress in tasks, and short pings in Radio.
 
 ### Concurrency And Backups
 
-Multiple AI tools may append to `inbox/events.jsonl` at the same time. They should not edit `memories/ledger.jsonl` or `MEMORY.md` directly.
+Multiple AI tools may append memories, messages, and task updates. The rules are:
 
-`sync`, `pull`, and `backup` run behind `locks/hub.lock`, so ledger indexing and snapshot rebuilds are serialized. Locks older than `lockStaleMs` are treated as stale.
+- Tools may append `inbox/events.jsonl` and use `radio` or `task` commands.
+- Tools should not directly edit `memories/ledger.jsonl`, `MEMORY.md`, `INDEX.md`, or `memories/index.json`.
+- `sync`, `index`, `pull`, `backup`, and task writes are serialized through `locks/hub.lock`.
 
-Before each `sync` or `pull`, the hub automatically backs up key files into:
-
-```text
-~/.ai-memory/backups/
-```
-
-You can also create a manual backup:
+Manual backup:
 
 ```bash
 ai-memory-hub backup --reason before-large-change
 ```
+
+Backups include `MEMORY.md`, `profile.md`, inbox, ledger, radio, tasks, and config.
 
 ### Automation
 
@@ -505,90 +436,13 @@ The most reliable automation path is to keep the watcher running:
 ai-memory-hub watch --interval-ms 30000
 ```
 
-After an AI tool appends a durable memory event, it should run `ai-memory-hub sync` when command execution is available. If it cannot run commands, the watcher will index the event in the background.
+After an AI tool writes durable memory, it should run `ai-memory-hub sync` when command execution is available. If it cannot, the watcher will index the event later.
 
-### Token Cost Control
-
-Local recording, syncing, backups, and the watcher do not call a model, so they do not consume model tokens by themselves.
-
-Tokens are consumed when an AI tool reads `MEMORY.md` and includes it in its own context. The default `snapshotLimit` is 200 records, but the intended use is to save only durable preferences, project facts, workflow rules, and corrections. Do not save temporary chat details, command logs, failure stacks, or long documents.
-
-If memory grows, lower this in `~/.ai-memory/config.json`:
-
-```json
-{
-  "sync": {
-    "snapshotLimit": 50
-  }
-}
-```
-
-`ledger.jsonl` can keep the full history while `MEMORY.md` stays small, which reduces context cost when AI tools start.
-
-### Agent Radio
-
-Agent Radio is a local cross-agent message bus built into `ai-memory-hub`.
-
-Messages are stored as JSONL:
-
-```text
-~/.ai-memory/radio/messages.jsonl
-```
-
-It is not a model proxy and it does not make one AI tool spend another tool's tokens. The flow is: one tool writes a message, another tool reads it at session start, after a prompt, from a scheduled job, or by manual command, and then processes it with its own account and model context.
-
-Use it for short-lived collaboration:
-
-- handoffs between agents
-- review requests
-- risk notes
-- done/status updates
-- coordination that should not immediately become long-term memory
-
-Send a message:
-
-```bash
-ai-memory-hub radio send "Please review the latest implementation." --from codex --to claude --type review
-```
-
-Target a specific tool:
-
-```bash
-ai-memory-hub radio send "Please check the latest README changes." --from codex --to qclaw --type review
-ai-memory-hub radio send "Shared memory has been updated; please run sync." --from qclaw --to opencode --type handoff
-```
-
-List recent messages:
-
-```bash
-ai-memory-hub radio list --limit 10
-```
-
-Tools can read messages where `to` matches their own name or `all`. The current CLI exposes the general list, and tool-side adapters can filter JSONL fields.
-
-Promote an important radio message into a durable memory event:
-
-```bash
-ai-memory-hub radio promote --id <message-id>
-ai-memory-hub sync
-```
-
-### Assistant Integration Model
-
-The recommended integration is:
-
-1. Add a short instruction to each assistant's local instruction file.
-2. Ask the assistant to read `~/.ai-memory/MEMORY.md` at session start.
-3. Ask the assistant to append durable memory events to `~/.ai-memory/inbox/events.jsonl`.
-4. Run `ai-memory-hub sync` manually, from a scheduler, or as a daemon.
-
-This keeps each assistant's model token independent.
+Tasks and Radio do not require `sync`; once written, they are locally visible.
 
 ### Configure AI Tools
 
-Use `install` to inject shared-memory instructions into supported tools. This does not write model keys and does not change model provider configuration.
-
-Preview first:
+Preview instruction installation:
 
 ```bash
 ai-memory-hub install --tool codex
@@ -612,7 +466,7 @@ On Windows, this writes:
 %USERPROFILE%\.gemini\GEMINI.md
 ```
 
-QClaw can be connected through its own Skill directory:
+QClaw, OpenClaw, and OpenCode use Skill directories:
 
 ```bash
 ai-memory-hub install --tool qclaw --apply
@@ -620,96 +474,46 @@ ai-memory-hub install --tool openclaw --apply
 ai-memory-hub install --tool opencode --apply
 ```
 
-This writes:
+For app-style tools without a stable instruction injection point, `install` generates safe adapter notes under `~/.ai-memory/tools/`. It does not invasively modify internal app databases.
 
-```text
-%USERPROFILE%\.qclaw\skills\ai-memory-hub\SKILL.md
-%USERPROFILE%\.openclaw\skills\ai-memory-hub\SKILL.md
-%USERPROFILE%\.config\opencode\skills\ai-memory-hub\SKILL.md
-```
-
-For app-style tools where a stable instruction injection point is not yet guaranteed, `install` generates adapter notes under the shared memory directory:
-
-```bash
-ai-memory-hub install --tool antigravity --apply
-ai-memory-hub install --tool codex-app --apply
-ai-memory-hub install --tool marvis --apply
-ai-memory-hub install --tool cursor --apply
-ai-memory-hub install --tool windsurf --apply
-ai-memory-hub install --tool chatgpt --apply
-```
-
-These create files such as:
-
-```text
-%USERPROFILE%\.ai-memory\tools\antigravity-shared-memory.md
-%USERPROFILE%\.ai-memory\tools\codex-app-shared-memory.md
-%USERPROFILE%\.ai-memory\tools\marvis-shared-memory.md
-%USERPROFILE%\.ai-memory\tools\cursor-shared-memory.md
-%USERPROFILE%\.ai-memory\tools\windsurf-shared-memory.md
-%USERPROFILE%\.ai-memory\tools\chatgpt-shared-memory.md
-```
-
-They are safe adapter notes, not invasive edits to internal app databases or opaque state files.
-
-#### Current Support Matrix
+### Current Support Matrix
 
 ```text
 Codex CLI      Direct instruction injection via ~/.codex/AGENTS.md
 Claude         Direct instruction injection via ~/.claude/CLAUDE.md
 Gemini         Direct instruction injection via ~/.gemini/GEMINI.md
+QClaw          Skill installed via ~/.qclaw/skills/ai-memory-hub/SKILL.md
+OpenClaw       Skill installed via ~/.openclaw/skills/ai-memory-hub/SKILL.md
+OpenCode       Skill installed via ~/.config/opencode/skills/ai-memory-hub/SKILL.md
 Antigravity    Detected; adapter note generated under ~/.ai-memory/tools
 Codex App      Detected; adapter note generated under ~/.ai-memory/tools
-Marvis         Detected; adapter note generated under ~/.ai-memory/tools; deeper MCP/knowledgebase integration is not yet verified
-QClaw          Installed as a QClaw Skill via ~/.qclaw/skills/ai-memory-hub/SKILL.md
-OpenClaw       Installed as an OpenClaw Skill via ~/.openclaw/skills/ai-memory-hub/SKILL.md
-OpenCode       Installed as an OpenCode Skill via ~/.config/opencode/skills/ai-memory-hub/SKILL.md
-CC Switch      Detected; no direct injection yet
-Cursor         Pre-supported; adapter note generated under ~/.ai-memory/tools
-Windsurf       Pre-supported; adapter note generated under ~/.ai-memory/tools
-VS Code        Pre-supported; adapter note generated under ~/.ai-memory/tools
-Continue       Pre-supported; adapter note generated under ~/.ai-memory/tools
-Cline          Pre-supported; adapter note generated under ~/.ai-memory/tools
-Roo Code       Pre-supported; adapter note generated under ~/.ai-memory/tools
-Trae           Pre-supported; adapter note generated under ~/.ai-memory/tools
-Kiro           Pre-supported; adapter note generated under ~/.ai-memory/tools
-Zed            Pre-supported; adapter note generated under ~/.ai-memory/tools
-ChatGPT        Pre-supported; adapter note generated under ~/.ai-memory/tools
-Ollama         Pre-supported; adapter note generated under ~/.ai-memory/tools
-LM Studio      Pre-supported; adapter note generated under ~/.ai-memory/tools
-Jan            Pre-supported; adapter note generated under ~/.ai-memory/tools
-AnythingLLM    Pre-supported; adapter note generated under ~/.ai-memory/tools
-Cherry Studio  Pre-supported; adapter note generated under ~/.ai-memory/tools
-Dify           Pre-supported; adapter note generated under ~/.ai-memory/tools
-Open WebUI     Pre-supported; adapter note generated under ~/.ai-memory/tools
-Aider          Pre-supported; adapter note generated under ~/.ai-memory/tools
-Tabby          Pre-supported; adapter note generated under ~/.ai-memory/tools
-Codeium        Pre-supported; adapter note generated under ~/.ai-memory/tools
-Augment        Pre-supported; adapter note generated under ~/.ai-memory/tools
-Supermaven     Pre-supported; adapter note generated under ~/.ai-memory/tools
+Marvis         Detected; adapter note generated under ~/.ai-memory/tools; deeper integration is unverified
+Cursor/Windsurf/VS Code/Continue/Cline/Roo Code/Trae/Kiro/Zed/ChatGPT/Ollama/LM Studio/Jan/AnythingLLM/Cherry Studio/Dify/Open WebUI/Aider/Tabby/Codeium/Augment/Supermaven
+               Pre-supported through safe adapter notes
 ```
 
 ### Commands
 
 ```text
-init       Create the shared memory directory and config.
-detect     Detect installed AI tools on this machine.
-status     Show hub and tool status.
-record     Append a local memory event to inbox.
-radio      Send, list, and promote cross-agent radio messages.
-sync       Index pending inbox events into the local memory ledger.
-pull       Rebuild MEMORY.md from the local memory ledger.
-backup     Back up MEMORY.md, ledger, inbox, profile, and radio files.
+init       Create the shared directory and config.
+detect     Detect AI tools on this machine.
+status     Show hub, tool, index, Radio, and task status.
+record     Append a durable memory event.
+radio      Send, list, and promote cross-tool short messages.
+task       Add, list, claim, note, update, and complete shared tasks.
+sync       Index inbox events into the durable memory ledger.
+index      Rebuild MEMORY.md, INDEX.md, and memories/index.json.
+search     Search the local memory index.
+pull       Rebuild the shared snapshot and index from the ledger.
+backup     Back up key local state files.
 watch      Periodically index pending inbox events.
-app        Start the local dashboard app.
+app        Start the local Dashboard.
 install    Show or apply per-tool instruction snippets.
 help       Show CLI help.
 ```
 
 ### Safety
 
-The installer defaults to dry-run. Use `--apply` when you want it to edit a tool instruction file.
+This project does not copy, read, or centrally manage model tokens from AI tools. Durable memory sync skips text that looks like an API key, password, secret, or token.
 
-The project does not copy, read, or centrally manage model tokens from AI tools. Durable memory indexing also skips text that looks like an API key, password, secret, or token.
-
-The local memory directory is personal runtime state and should not be uploaded to GitHub or a public repository. The repository `.gitignore` ignores `.ai-memory/` and `**/.ai-memory/`. The default real directory is `~/.ai-memory`, outside the repository; if you move memoryDir into a project folder, keep it ignored.
+The local memory directory is personal runtime state and should not be uploaded to GitHub or public repositories. The repository `.gitignore` ignores `.ai-memory/` and `**/.ai-memory/`. The default real directory is `~/.ai-memory`, outside the repository. If you move `memoryDir` into a project folder, keep that directory ignored.

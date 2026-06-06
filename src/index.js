@@ -160,6 +160,7 @@ function getStatusObject() {
       totalThreads: relayLatest.length,
       pending: relayLatest.filter((entry) => entry.state === "pending").length,
       dispatched: relayLatest.filter((entry) => entry.state === "dispatched").length,
+      acked: relayLatest.filter((entry) => entry.state === "acked").length,
       retrying: relayLatest.filter((entry) => entry.state === "retrying").length,
       failed: relayLatest.filter((entry) => entry.state === "failed").length,
       completed: relayLatest.filter((entry) => entry.state === "completed").length,
@@ -610,17 +611,20 @@ function executeDispatch(memoryDir, { run = false, force = false, to = "", proje
         reason: runner.reason
       };
       if (run) {
+        const attempt = nextRelayAttempt(relayState, job);
+        const maxRetries = 3;
+        const state = getRelayFailureState(attempt, maxRetries);
         appendRelayStatus(memoryDir, job, {
-          state: "failed",
-          attempt: nextRelayAttempt(relayState, job),
-          maxRetries: 3,
+          state,
+          attempt,
+          maxRetries,
           exitCode: null,
           lastError: runner.reason,
           sessionId: "",
           ackTimeout: 5 * 60 * 1000,
-          nextRetryAt: computeNextRetryAt(nextRelayAttempt(relayState, job), 3)
+          nextRetryAt: computeNextRetryAt(attempt, maxRetries)
         });
-        appendDispatchStatusMessage(memoryDir, job, result);
+        appendDispatchStatusMessage(memoryDir, job, { ...result, relayState: state });
         appendDispatchLog(memoryDir, result);
       }
       results.push(result);
@@ -638,27 +642,42 @@ function executeDispatch(memoryDir, { run = false, force = false, to = "", proje
       });
       continue;
     }
+    const attempt = nextRelayAttempt(relayState, job);
+    const maxRetries = 3;
     appendRelayStatus(memoryDir, job, {
       state: "dispatched",
-      attempt: nextRelayAttempt(relayState, job),
-      maxRetries: 3,
+      attempt,
+      maxRetries,
       exitCode: null,
       lastError: "",
       sessionId: "",
       ackTimeout: 5 * 60 * 1000
     });
     const result = runDispatchJob(memoryDir, job, runner);
+    if (result.exitCode === 0) {
+      appendRelayStatus(memoryDir, job, {
+        state: "acked",
+        attempt,
+        maxRetries,
+        exitCode: 0,
+        lastError: "",
+        sessionId: result.sessionId || "",
+        ackTimeout: 5 * 60 * 1000,
+        nextRetryAt: ""
+      });
+    }
+    const finalState = result.exitCode === 0 ? "completed" : getRelayFailureState(attempt, maxRetries);
     appendRelayStatus(memoryDir, job, {
-      state: result.exitCode === 0 ? "completed" : "failed",
-      attempt: nextRelayAttempt(relayState, job),
-      maxRetries: 3,
+      state: finalState,
+      attempt,
+      maxRetries,
       exitCode: result.exitCode,
       lastError: result.error || result.stderr || "",
       sessionId: result.sessionId || "",
       ackTimeout: 5 * 60 * 1000,
-      nextRetryAt: result.exitCode === 0 ? "" : computeNextRetryAt(nextRelayAttempt(relayState, job), 3)
+      nextRetryAt: result.exitCode === 0 ? "" : computeNextRetryAt(attempt, maxRetries)
     });
-    appendDispatchStatusMessage(memoryDir, job, result);
+    appendDispatchStatusMessage(memoryDir, job, { ...result, relayState: finalState });
     appendDispatchLog(memoryDir, result);
     results.push(result);
   }
@@ -678,8 +697,9 @@ function executeDispatchRetry(memoryDir, { run = false, to = "", project = "", l
         reason: runner.reason
       };
       if (run) {
+        const state = getRelayFailureState(job.attempt, job.maxRetries || 3);
         appendRelayStatus(memoryDir, job, {
-          state: "failed",
+          state,
           attempt: job.attempt,
           maxRetries: job.maxRetries || 3,
           exitCode: null,
@@ -688,7 +708,7 @@ function executeDispatchRetry(memoryDir, { run = false, to = "", project = "", l
           ackTimeout: 5 * 60 * 1000,
           nextRetryAt: computeNextRetryAt(job.attempt, job.maxRetries || 3)
         });
-        appendDispatchStatusMessage(memoryDir, job, result);
+        appendDispatchStatusMessage(memoryDir, job, { ...result, relayState: state });
         appendDispatchLog(memoryDir, result);
       }
       results.push(result);
@@ -715,8 +735,23 @@ function executeDispatchRetry(memoryDir, { run = false, to = "", project = "", l
       nextRetryAt: ""
     });
     const result = runDispatchJob(memoryDir, job, runner);
+    if (result.exitCode === 0) {
+      appendRelayStatus(memoryDir, job, {
+        state: "acked",
+        attempt: job.attempt,
+        maxRetries: job.maxRetries || 3,
+        exitCode: 0,
+        lastError: "",
+        sessionId: result.sessionId || "",
+        ackTimeout: 5 * 60 * 1000,
+        nextRetryAt: ""
+      });
+    }
+    const finalState = result.exitCode === 0
+      ? "completed"
+      : getRelayFailureState(job.attempt, job.maxRetries || 3);
     appendRelayStatus(memoryDir, job, {
-      state: result.exitCode === 0 ? "completed" : "failed",
+      state: finalState,
       attempt: job.attempt,
       maxRetries: job.maxRetries || 3,
       exitCode: result.exitCode,
@@ -725,7 +760,7 @@ function executeDispatchRetry(memoryDir, { run = false, to = "", project = "", l
       ackTimeout: 5 * 60 * 1000,
       nextRetryAt: result.exitCode === 0 ? "" : computeNextRetryAt(job.attempt, job.maxRetries || 3)
     });
-    appendDispatchStatusMessage(memoryDir, job, result);
+    appendDispatchStatusMessage(memoryDir, job, { ...result, relayState: finalState });
     appendDispatchLog(memoryDir, { ...result, retry: true });
     results.push({ ...result, retry: true });
   }
@@ -1025,6 +1060,10 @@ function computeNextRetryAt(attempt, maxRetries = 3) {
   return new Date(Date.now() + delayMs).toISOString();
 }
 
+function getRelayFailureState(attempt, maxRetries = 3) {
+  return Number(attempt || 0) >= Number(maxRetries || 3) ? "abandoned" : "failed";
+}
+
 function isRelayRetryDue(entry) {
   if (!entry || entry.state !== "failed" || !entry.nextRetryAt) {
     return false;
@@ -1065,7 +1104,7 @@ function appendDispatchStatusMessage(memoryDir, job, result) {
   if (!origin?.from) {
     return null;
   }
-  const state = result.exitCode === 0 ? "completed" : "failed";
+  const state = result.relayState || (result.exitCode === 0 ? "completed" : "failed");
   const parts = [
     `Dispatch ${state} for ${job.tool}`,
     `thread=${job.thread || job.refId}`

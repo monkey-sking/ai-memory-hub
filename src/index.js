@@ -594,9 +594,17 @@ function dispatchStatusCommand(argv) {
     throw new Error("Usage: ai-memory-hub dispatch status [--thread-key <tool:project:ref> | --thread <thread-id> | --ref-id <id>] [--project <project>] [--to <tool>]");
   }
 
+  const resolvedThreadKeys = resolveRelayThreadKeys(config.memoryDir, {
+    threadKey,
+    thread,
+    refId,
+    project,
+    tool
+  });
+
   const all = readRelayStatus(config.memoryDir)
     .filter((entry) => threadKey ? entry.threadKey === threadKey : true)
-    .filter((entry) => thread ? entry.thread === thread : true)
+    .filter((entry) => resolvedThreadKeys ? resolvedThreadKeys.has(entry.threadKey) : true)
     .filter((entry) => refId ? entry.sourceId === refId || entry.dispatchId === refId : true)
     .filter((entry) => project ? entry.project === project : true)
     .filter((entry) => tool ? entry.tool === tool : true)
@@ -632,10 +640,34 @@ function dispatchStatusCommand(argv) {
       project,
       tool
     },
+    matchedThreadKeys: [...new Set(all.map((entry) => entry.threadKey).filter(Boolean))],
     latest,
     timeline: all,
     dispatchLog
   }, null, 2));
+}
+
+function resolveRelayThreadKeys(memoryDir, { threadKey = "", thread = "", refId = "", project = "", tool = "" }) {
+  if (threadKey) {
+    return new Set([threadKey]);
+  }
+  if (!thread && !refId) {
+    return null;
+  }
+  const keys = new Set();
+  for (const entry of readRelayStatus(memoryDir)) {
+    if (thread && entry.thread === thread) {
+      if ((!project || entry.project === project) && (!tool || entry.tool === tool)) {
+        keys.add(entry.threadKey);
+      }
+    }
+    if (refId && (entry.sourceId === refId || entry.dispatchId === refId)) {
+      if ((!project || entry.project === project) && (!tool || entry.tool === tool)) {
+        keys.add(entry.threadKey);
+      }
+    }
+  }
+  return keys.size ? keys : null;
 }
 
 function dispatchRetryCommand(argv) {

@@ -57,6 +57,7 @@ ai-memory-hub status
 
 ```bash
 ai-memory-hub record "User prefers concise Chinese explanations." --source codex --kind preference
+ai-memory-hub record "Project memory with tags." --source codex --kind project --project ai-memory-hub --tags schema,memos --confidence 0.8
 ai-memory-hub sync
 ```
 
@@ -403,8 +404,11 @@ Record durable memory:
 
 ```bash
 ai-memory-hub record "User prefers concise Chinese explanations." --source codex --kind preference
+ai-memory-hub record "Project memory with tags." --source codex --kind project --project ai-memory-hub --tags schema,memos --confidence 0.8
 ai-memory-hub sync
 ```
+
+Memory records keep the raw ledger format backward-compatible while the rebuilt index adds canonical structured fields: `schemaVersion`, `kind`, `project`, `tags`, `scope`, and numeric `confidence` from `0` to `1`.
 
 Rebuild and search the layered index:
 

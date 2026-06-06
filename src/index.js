@@ -298,20 +298,27 @@ function connectSendCommand(argv, defaultType) {
 function recordCommand(argv) {
   const text = positionalArgs(argv).join(" ").trim();
   if (!text) {
-    throw new Error("Usage: ai-memory-hub record <text> [--source tool] [--kind preference]");
+    throw new Error("Usage: ai-memory-hub record <text> [--source tool] [--kind preference] [--project name] [--tags a,b]");
   }
 
   const config = loadConfig();
   ensureHub(config.memoryDir);
+  const source = getOption(argv, "--source") || "manual";
+  const kind = normalizeMemoryKind(getOption(argv, "--kind") || "note");
+  const metadata = normalizeMemoryMetadata({
+    kind,
+    project: getOption(argv, "--project") || "",
+    tags: parseListOption(getOption(argv, "--tags")),
+    scope: getOption(argv, "--scope") || "",
+    confidence: getOption(argv, "--confidence") || ""
+  });
 
   const event = {
     id: createId(text),
     ts: new Date().toISOString(),
-    source: getOption(argv, "--source") || "manual",
+    source,
     text,
-    metadata: {
-      kind: getOption(argv, "--kind") || "note"
-    }
+    metadata
   };
 
   appendJsonl(path.join(config.memoryDir, "inbox", "events.jsonl"), event);
@@ -1616,10 +1623,16 @@ function syncIndexedEvents(config, dryRun) {
     const record = {
       id: createId(`memory:${localEventId}:${normalizedEvent.text}`),
       localEventId,
+      schemaVersion: 2,
       ts: normalizedEvent.ts || new Date().toISOString(),
       indexedAt: new Date().toISOString(),
       source: normalizedEvent.source || "unknown",
       text: String(normalizedEvent.text).trim(),
+      kind: normalizedEvent.metadata?.kind || "note",
+      project: normalizedEvent.metadata?.project || "",
+      tags: normalizedEvent.metadata?.tags || [],
+      scope: normalizedEvent.metadata?.scope || "",
+      confidence: normalizedEvent.metadata?.confidence ?? 1,
       metadata: normalizedEvent.metadata || {}
     };
 
@@ -2078,6 +2091,7 @@ Commands:
 Examples:
   ${APP_NAME} init
   ${APP_NAME} record "User prefers concise answers." --source codex --kind preference
+  ${APP_NAME} record "Project memory with tags." --source codex --kind project --project ai-memory-hub --tags schema,memos --confidence 0.8
   ${APP_NAME} radio send "Please review the latest implementation." --from codex --to claude --type review
   ${APP_NAME} radio list --limit 10
   ${APP_NAME} radio promote --id <message-id>
@@ -2886,15 +2900,19 @@ function readTextIfExists(file) {
 
 function readLedger(memoryDir) {
   return readEvents(path.join(memoryDir, "memories", "ledger.jsonl"))
-    .map((item) => ({
-      id: item.id || createId(item.text || JSON.stringify(item)),
-      localEventId: item.localEventId || item.local_event_id || "",
-      ts: item.ts || item.createdAt || "",
-      indexedAt: item.indexedAt || "",
-      source: item.source || item.metadata?.source || "unknown",
-      text: item.text || item.memory || "",
-      metadata: item.metadata || {}
-    }))
+    .map((item) => {
+      const metadata = normalizeMemoryMetadata(item.metadata || {}, item);
+      return {
+        id: item.id || createId(item.text || JSON.stringify(item)),
+        localEventId: item.localEventId || item.local_event_id || "",
+        schemaVersion: item.schemaVersion || 1,
+        ts: item.ts || item.createdAt || "",
+        indexedAt: item.indexedAt || "",
+        source: item.source || metadata.source || "unknown",
+        text: item.text || item.memory || "",
+        metadata
+      };
+    })
     .filter((item) => item.text);
 }
 
@@ -3162,6 +3180,61 @@ function normalizePriority(priority) {
   return ["low", "normal", "high", "urgent"].includes(clean) ? clean : "normal";
 }
 
+function normalizeMemoryMetadata(metadata = {}, fallback = {}) {
+  const normalized = { ...metadata };
+  normalized.kind = normalizeMemoryKind(normalized.kind || normalized.type || fallback.kind || fallback.type || "note");
+  normalized.project = normalizeMemoryProject(normalized.project || fallback.project || "");
+  normalized.tags = normalizeList(normalized.tags?.length ? normalized.tags : fallback.tags);
+  normalized.scope = normalizeMemoryScope(normalized.scope || fallback.scope || "");
+  normalized.confidence = normalizeConfidence(normalized.confidence ?? fallback.confidence);
+  return normalized;
+}
+
+function normalizeMemoryKind(kind) {
+  const clean = String(kind || "note").trim().toLowerCase().replace(/[^a-z0-9_.-]+/g, "-");
+  return clean || "note";
+}
+
+function normalizeMemoryProject(project) {
+  return String(project || "").trim().toLowerCase().replace(/\s+/g, "-");
+}
+
+function normalizeMemoryScope(scope) {
+  const clean = String(scope || "").trim().toLowerCase().replace(/\s+/g, "-");
+  return clean;
+}
+
+function normalizeList(value) {
+  if (Array.isArray(value)) {
+    return [...new Set(value.flatMap((item) => normalizeList(item)))];
+  }
+  if (value === undefined || value === null || value === "") {
+    return [];
+  }
+  return [...new Set(String(value)
+    .split(/[,\n;]/)
+    .map((item) => item.trim().toLowerCase().replace(/\s+/g, "-"))
+    .filter(Boolean))];
+}
+
+function parseListOption(value) {
+  return normalizeList(value);
+}
+
+function normalizeConfidence(value) {
+  if (value === undefined || value === null || value === "") {
+    return 1;
+  }
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return 1;
+  }
+  if (numeric > 1) {
+    return Math.max(0, Math.min(1, numeric / 100));
+  }
+  return Math.max(0, Math.min(1, numeric));
+}
+
 function rebuildMemoryOutputs(config, ledger) {
   const index = buildMemoryIndex(ledger, config);
   fs.writeFileSync(path.join(config.memoryDir, "MEMORY.md"), renderMemorySnapshot(index, config), "utf8");
@@ -3182,33 +3255,61 @@ function buildMemoryIndex(memories, config) {
     rebuiltAt: new Date().toISOString()
   };
   return {
-    version: 1,
+    version: 2,
+    schemaVersion: 2,
     memoryDir: config.memoryDir,
     stats,
     topics: countBy(records.flatMap((item) => item.topics)),
-    kinds: countBy(records.map((item) => item.metadata?.kind || "note")),
+    kinds: countBy(records.map((item) => item.kind || item.metadata?.kind || "note")),
+    projects: countBy(records.map((item) => item.project || item.metadata?.project || "").filter(Boolean)),
+    scopes: countBy(records.map((item) => item.scope || "").filter(Boolean)),
+    tags: countBy(records.flatMap((item) => item.tags || [])),
     sources: countBy(records.map((item) => item.source || "unknown")),
     records
   };
 }
 
 function enrichMemory(memory, ordinal, total) {
-  const metadata = memory.metadata || {};
-  const kind = metadata.kind || "note";
-  const topics = inferTopics(memory);
-  const importance = scoreImportance(memory, topics, ordinal, total);
-  const layer = chooseMemoryLayer(kind, importance);
-  return {
+  const metadata = normalizeMemoryMetadata(memory.metadata || {}, memory);
+  const kind = normalizeMemoryKind(metadata.kind || "note");
+  const tags = normalizeList(metadata.tags);
+  const project = normalizeMemoryProject(metadata.project || memory.project || "");
+  const canonicalMemory = {
     ...memory,
+    project,
+    tags,
     metadata: {
       ...metadata,
+      project,
+      tags,
       kind
+    }
+  };
+  const topics = inferTopics(canonicalMemory);
+  const importance = scoreImportance(canonicalMemory, topics, ordinal, total);
+  const confidence = normalizeConfidence(metadata.confidence);
+  const layer = chooseMemoryLayer(kind, importance);
+  const scope = normalizeMemoryScope(metadata.scope) || inferScope(kind, topics, project);
+  return {
+    ...memory,
+    schemaVersion: 2,
+    kind,
+    project,
+    tags,
+    confidence,
+    metadata: {
+      ...metadata,
+      kind,
+      project,
+      tags,
+      scope,
+      confidence
     },
     layer,
     importance,
-    scope: inferScope(kind, topics),
+    scope,
     topics,
-    keywords: extractKeywords(`${memory.text} ${(topics || []).join(" ")}`)
+    keywords: extractKeywords(`${memory.text} ${project} ${tags.join(" ")} ${(topics || []).join(" ")}`)
   };
 }
 
@@ -3255,6 +3356,7 @@ function renderMemorySnapshot(index, config) {
   lines.push("");
   lines.push(`- Records: ${index.stats.records}; core: ${index.stats.core}; working: ${index.stats.working}; archive: ${index.stats.archive}.`);
   lines.push(`- Top topics: ${index.topics.slice(0, 12).map((item) => `${item.key}(${item.count})`).join(", ") || "none"}.`);
+  lines.push(`- Top projects: ${index.projects.slice(0, 8).map((item) => `${item.key}(${item.count})`).join(", ") || "none"}.`);
   lines.push("");
   return lines.join("\n");
 }
@@ -3271,11 +3373,24 @@ function renderIndexMarkdown(index) {
     `- Core: ${index.stats.core}`,
     `- Working: ${index.stats.working}`,
     `- Archive: ${index.stats.archive}`,
+    `- Schema version: ${index.schemaVersion || index.version || 1}`,
     "",
     "## Top Topics",
     ""
   ];
   for (const item of index.topics.slice(0, 40)) {
+    lines.push(`- ${item.key}: ${item.count}`);
+  }
+  lines.push("");
+  lines.push("## Top Projects");
+  lines.push("");
+  for (const item of index.projects.slice(0, 40)) {
+    lines.push(`- ${item.key}: ${item.count}`);
+  }
+  lines.push("");
+  lines.push("## Top Tags");
+  lines.push("");
+  for (const item of index.tags.slice(0, 40)) {
     lines.push(`- ${item.key}: ${item.count}`);
   }
   lines.push("");
@@ -3294,9 +3409,11 @@ function renderIndexMarkdown(index) {
 }
 
 function renderMemoryLine(memory) {
-  const kind = memory.metadata?.kind ? `/${memory.metadata.kind}` : "";
+  const kind = memory.kind || memory.metadata?.kind ? `/${memory.kind || memory.metadata.kind}` : "";
   const topics = memory.topics?.length ? ` topics=${memory.topics.slice(0, 5).join(",")}` : "";
-  return `- [${memory.source}${kind} score=${memory.importance}${topics}] ${memory.text}`;
+  const project = memory.project ? ` project=${memory.project}` : "";
+  const tags = memory.tags?.length ? ` tags=${memory.tags.slice(0, 5).join(",")}` : "";
+  return `- [${memory.source}${kind} score=${memory.importance}${project}${tags}${topics}] ${memory.text}`;
 }
 
 function expandSynonyms(terms) {
@@ -3334,13 +3451,19 @@ function searchMemories(records, query) {
         ...(memory.keywords || []),
         ...(memory.topics || []),
         memory.source || "",
-        memory.metadata?.kind || ""
+        memory.kind || memory.metadata?.kind || "",
+        memory.project || memory.metadata?.project || "",
+        memory.scope || "",
+        ...(memory.tags || memory.metadata?.tags || [])
       ]);
       const searchTerms = new Set([
         ...extractSearchTerms(text),
         ...extractSearchTerms((memory.topics || []).join(" ")),
         ...extractSearchTerms(memory.source || ""),
-        ...extractSearchTerms(memory.metadata?.kind || "")
+        ...extractSearchTerms(memory.kind || memory.metadata?.kind || ""),
+        ...extractSearchTerms(memory.project || memory.metadata?.project || ""),
+        ...extractSearchTerms(memory.scope || ""),
+        ...extractSearchTerms((memory.tags || memory.metadata?.tags || []).join(" "))
       ]);
       const normalizedText = normalizeSearchText(text);
       const normalizedJoinedKeywords = normalizeSearchText([
@@ -3410,16 +3533,18 @@ function scoreImportance(memory, topics, ordinal, total) {
   return Math.max(1, Math.min(100, score));
 }
 
-function inferScope(kind, topics) {
+function inferScope(kind, topics, project = "") {
   if (kind === "preference") return "user";
   if (kind === "workflow" || kind === "correction" || kind === "lesson") return "workflow";
+  if (project) return "project";
   if (topics.includes("ai-memory-hub")) return "memory-hub";
   if (topics.includes("game") || topics.includes("wechat-mini-game")) return "project";
   return "general";
 }
 
 function inferTopics(memory) {
-  const text = `${memory.text || ""} ${(memory.metadata?.tags || []).join(" ")}`.toLowerCase();
+  const tags = normalizeList(memory.tags?.length ? memory.tags : memory.metadata?.tags);
+  const text = `${memory.text || ""} ${memory.project || memory.metadata?.project || ""} ${tags.join(" ")}`.toLowerCase();
   const topics = [];
   const rules = [
     ["ai-memory-hub", /ai-memory|shared memory|memory hub|agent radio|opencode|qclaw|claude|codex|gemini|共享记忆|本地记忆/],
@@ -3713,14 +3838,12 @@ function looksSensitive(text) {
 
 function normalizeMemoryEvent(event) {
   const text = event.text ?? event.content ?? event.memory ?? "";
-  const metadata = {
-    ...(event.metadata || {})
-  };
+  const metadata = normalizeMemoryMetadata(event.metadata || {}, event);
   if (!metadata.kind && event.type) {
-    metadata.kind = event.type;
+    metadata.kind = normalizeMemoryKind(event.type);
   }
   if (event.tags && !metadata.tags) {
-    metadata.tags = event.tags;
+    metadata.tags = normalizeList(event.tags);
   }
   return {
     id: event.id || "",

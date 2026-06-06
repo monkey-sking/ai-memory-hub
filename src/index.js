@@ -607,7 +607,8 @@ function buildDispatchJobs(memoryDir, { to, project, limit, force }) {
       tool: message.to === "all" ? to : message.to,
       project: message.project || "",
       text: message.text,
-      refId: message.id
+      refId: message.id,
+      thread: message.thread || message.id
     }));
   const tasks = readTasks(memoryDir)
     .filter((task) => !["done", "cancelled"].includes(task.status))
@@ -620,7 +621,8 @@ function buildDispatchJobs(memoryDir, { to, project, limit, force }) {
       tool: task.assignee,
       project: task.project || "",
       text: `${task.title}${task.handoff ? `\nHandoff: ${task.handoff}` : ""}`,
-      refId: task.id
+      refId: task.id,
+      thread: task.id
     }));
   return [...messages, ...tasks]
     .filter((job) => job.tool)
@@ -644,7 +646,15 @@ function getToolRunner(tool) {
     if (!commandExists("claude")) {
       return { available: false, reason: "claude CLI not found or broken in PATH" };
     }
-    return { available: false, reason: "claude runner is not enabled yet; command shape needs verification on this machine" };
+    return {
+      available: true,
+      preview: "claude -p --output-format json --permission-mode bypassPermissions --bare <prompt>",
+      command: process.platform === "win32" ? "powershell" : "claude",
+      args: process.platform === "win32"
+        ? ["-NoProfile", "-Command"]
+        : ["-p", "--output-format", "json", "--permission-mode", "bypassPermissions", "--bare", "--model", "sonnet", "--effort", "low"],
+      mode: process.platform === "win32" ? "claude-windows-powershell" : "claude-json"
+    };
   }
   if (tool === "marvis") {
     return {
@@ -662,33 +672,118 @@ function getToolRunner(tool) {
 
 function runDispatchJob(memoryDir, job, runner) {
   const prompt = renderDispatchPrompt(memoryDir, job);
-  const completed = spawnSync(runner.command, [...runner.args, prompt], {
+  const completed = spawnSync(runner.command, buildRunnerArgs(memoryDir, job, runner, prompt), {
     cwd: process.cwd(),
     encoding: "utf8",
     timeout: 10 * 60 * 1000,
     windowsHide: true
   });
+  const parsed = parseRunnerOutput(memoryDir, job, runner, completed.stdout);
   return {
     ...job,
     runnable: true,
     exitCode: completed.status,
-    stdout: trimOutput(completed.stdout),
+    stdout: trimOutput(parsed.stdout),
     stderr: trimOutput(completed.stderr),
-    error: completed.error ? completed.error.message : ""
+    error: completed.error ? completed.error.message : "",
+    sessionId: parsed.sessionId || ""
   };
+}
+
+function buildRunnerArgs(memoryDir, job, runner, prompt) {
+  const sessionId = runner.mode && runner.mode.startsWith("claude")
+    ? readClaudeSessionState(memoryDir)[getDispatchThreadKey(job)] || ""
+    : "";
+  if (runner.mode === "claude-windows-powershell") {
+    const resumePart = sessionId ? ` --resume ${sessionId}` : "";
+    return [
+      ...runner.args,
+      `$p = @'\n${prompt}\n'@; claude -p --output-format json --permission-mode bypassPermissions --bare --model sonnet --effort low${resumePart} $p`
+    ];
+  }
+  if (runner.mode === "claude-json") {
+    return sessionId
+      ? [...runner.args, "--resume", sessionId, prompt]
+      : [...runner.args, prompt];
+  }
+  if (runner.mode === "claude-windows-cmd") {
+    return [
+      ...runner.args,
+      `claude -p --output-format text --permission-mode bypassPermissions "${escapeForWindowsCmd(prompt)}"`
+    ];
+  }
+  return [...runner.args, prompt];
+}
+
+function parseRunnerOutput(memoryDir, job, runner, stdout) {
+  if (!runner.mode || !runner.mode.startsWith("claude")) {
+    return { stdout, sessionId: "" };
+  }
+  const text = String(stdout || "").trim();
+  if (!text) {
+    return { stdout: "", sessionId: "" };
+  }
+  try {
+    const payload = JSON.parse(text);
+    const sessionId = payload.session_id || "";
+    if (sessionId && job.thread) {
+      writeClaudeSessionState(memoryDir, job, sessionId);
+    }
+    return {
+      stdout: payload.result || text,
+      sessionId
+    };
+  } catch {
+    return { stdout: text, sessionId: "" };
+  }
+}
+
+function readClaudeSessionState(memoryDir) {
+  const file = path.join(memoryDir, "state", "claude-sessions.json");
+  if (!fs.existsSync(file)) {
+    return {};
+  }
+  try {
+    return readJson(file);
+  } catch {
+    return {};
+  }
+}
+
+function writeClaudeSessionState(memoryDir, job, sessionId) {
+  const threadKey = getDispatchThreadKey(job);
+  if (!threadKey) {
+    return;
+  }
+  const state = readClaudeSessionState(memoryDir);
+  state[threadKey] = sessionId;
+  writeJson(path.join(memoryDir, "state", "claude-sessions.json"), state);
+}
+
+function getDispatchThreadKey(job) {
+  return `${job.tool || "unknown"}:${job.project || "default"}:${job.thread || job.refId || job.id || ""}`;
+}
+
+function escapeForWindowsCmd(value) {
+  return String(value || "")
+    .replace(/"/g, '""')
+    .replace(/%/g, "%%");
 }
 
 function renderDispatchPrompt(memoryDir, job) {
   return [
-    `You are being dispatched by ai-memory-hub for ${job.kind} ${job.refId}.`,
-    `Shared memory dir: ${memoryDir}`,
+    `__AI_MEMORY_THREAD__: ${getDispatchThreadKey(job)}`,
+    `Dispatch target: ${job.tool}`,
     `Project: ${job.project || "(none)"}`,
+    `Kind: ${job.kind}`,
+    `Ref: ${job.refId}`,
     "",
     "Instructions:",
-    "- Read MEMORY.md if useful.",
-    "- Check active tasks with `ai-memory-hub task list --status active`.",
-    "- Use Agent Radio or task notes to report progress.",
-    "- Do not store secrets or promote temporary game/chat details into durable memory.",
+    "- Continue the existing thread context if this dispatch resumes a prior session.",
+    "- Do the dispatched task directly. Do not introduce yourself, list tools, or ask what to work on.",
+    "- Keep the response compact: at most 6 short bullets or 1 short paragraph.",
+    "- If the payload asks for a design or plan, return concrete steps and state transitions.",
+    "- If you need to mention follow-up, end with a single 'Next:' line.",
     "",
     "Payload:",
     job.text
@@ -869,6 +964,9 @@ function appCommand(argv) {
   const server = http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url || "/", `http://${host}:${port}`);
+      if (req.method === "GET" && url.pathname.startsWith("/assets/")) {
+        return sendStaticAsset(res, url.pathname);
+      }
       if (req.method === "GET" && url.pathname === "/") {
         return sendHtml(res, renderDashboard());
       }
@@ -1934,6 +2032,47 @@ function sendJson(res, value, status = 200) {
     "Cache-Control": "no-store"
   });
   res.end(JSON.stringify(value, null, 2));
+}
+
+function sendStaticAsset(res, pathname) {
+  const relativePath = pathname.replace(/^\/+/, "");
+  const assetPath = path.join(projectRoot(), relativePath);
+  const assetsRoot = path.join(projectRoot(), "assets");
+  const normalizedAssetPath = path.resolve(assetPath);
+  const normalizedAssetsRoot = path.resolve(assetsRoot);
+  if (!normalizedAssetPath.startsWith(normalizedAssetsRoot + path.sep) && normalizedAssetPath !== normalizedAssetsRoot) {
+    res.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("Forbidden");
+    return;
+  }
+  if (!fs.existsSync(normalizedAssetPath) || !fs.statSync(normalizedAssetPath).isFile()) {
+    res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("Not found");
+    return;
+  }
+  res.writeHead(200, {
+    "Content-Type": getContentType(normalizedAssetPath),
+    "Cache-Control": "public, max-age=3600"
+  });
+  fs.createReadStream(normalizedAssetPath).pipe(res);
+}
+
+function getContentType(file) {
+  switch (path.extname(file).toLowerCase()) {
+    case ".svg":
+      return "image/svg+xml";
+    case ".png":
+      return "image/png";
+    case ".jpg":
+    case ".jpeg":
+      return "image/jpeg";
+    case ".webp":
+      return "image/webp";
+    case ".gif":
+      return "image/gif";
+    default:
+      return "application/octet-stream";
+  }
 }
 
 function readRequestJson(req) {

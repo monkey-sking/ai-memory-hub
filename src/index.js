@@ -628,6 +628,7 @@ function dispatchStatusCommand(argv) {
 
   const latest = all[all.length - 1];
   const source = resolveRelaySourceObject(config.memoryDir, latest);
+  const related = resolveRelayRelatedObjects(config.memoryDir, latest, source);
   const dispatchLog = readDispatchLog(config.memoryDir)
     .filter((entry) => latest.threadKey ? getDispatchThreadKey(entry) === latest.threadKey : true)
     .filter((entry) => (!hasExplicitThreadScope && refId) ? entry.refId === refId || entry.id === refId : true)
@@ -664,6 +665,7 @@ function dispatchStatusCommand(argv) {
     },
     summary,
     source,
+    related,
     matchedThreadKeys: [...new Set(all.map((entry) => entry.threadKey).filter(Boolean))],
     latest,
     timeline: all,
@@ -705,6 +707,28 @@ function resolveRelaySourceObject(memoryDir, entry) {
     return readTasks(memoryDir).find((task) => task.id === entry.sourceId) || null;
   }
   return null;
+}
+
+function resolveRelayRelatedObjects(memoryDir, entry, source = null) {
+  const thread = entry?.thread || "";
+  const project = entry?.project || "";
+  const radios = readRadioMessages(memoryDir)
+    .filter((message) => thread ? message.thread === thread : false)
+    .filter((message) => project ? message.project === project : true);
+  const tasks = readTasks(memoryDir)
+    .filter((task) => thread ? task.id === thread : false)
+    .filter((task) => project ? task.project === project : true);
+  const workflows = readWorkflows(memoryDir)
+    .filter((workflow) => thread ? workflow.id === thread : false)
+    .filter((workflow) => project ? workflow.project === project : true);
+
+  return {
+    radios,
+    tasks,
+    workflows,
+    sourceTask: source?.id ? tasks.find((task) => task.id === source.id) || null : null,
+    sourceWorkflow: source?.id ? workflows.find((workflow) => workflow.id === source.id) || null : null
+  };
 }
 
 function dispatchRetryCommand(argv) {

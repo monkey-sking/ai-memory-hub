@@ -125,6 +125,7 @@ function getStatusObject() {
   const activeTasks = tasks.filter((task) => !["done", "cancelled"].includes(task.status)).length;
   const workflows = readWorkflows(memoryDir);
   const activeWorkflows = workflows.filter((workflow) => !["done", "cancelled"].includes(workflow.status)).length;
+  const relayLatest = Object.values(readLatestRelayStatusByThread(memoryDir));
   const backups = countBackupDirs(memoryDir);
   const lock = readLockStatus(memoryDir);
   const tools = detectTools(memoryDir);
@@ -154,6 +155,16 @@ function getStatusObject() {
       review: workflows.filter((workflow) => workflow.status === "review").length,
       blocked: workflows.filter((workflow) => workflow.status === "blocked").length,
       done: workflows.filter((workflow) => workflow.status === "done").length
+    },
+    relay: {
+      totalThreads: relayLatest.length,
+      pending: relayLatest.filter((entry) => entry.state === "pending").length,
+      dispatched: relayLatest.filter((entry) => entry.state === "dispatched").length,
+      retrying: relayLatest.filter((entry) => entry.state === "retrying").length,
+      failed: relayLatest.filter((entry) => entry.state === "failed").length,
+      completed: relayLatest.filter((entry) => entry.state === "completed").length,
+      abandoned: relayLatest.filter((entry) => entry.state === "abandoned").length,
+      dueRetries: relayLatest.filter((entry) => isRelayRetryDue(entry)).length
     },
     backups,
     lock,
@@ -1014,6 +1025,17 @@ function computeNextRetryAt(attempt, maxRetries = 3) {
   return new Date(Date.now() + delayMs).toISOString();
 }
 
+function isRelayRetryDue(entry) {
+  if (!entry || entry.state !== "failed" || !entry.nextRetryAt) {
+    return false;
+  }
+  const nextRetryMs = Date.parse(entry.nextRetryAt);
+  if (Number.isNaN(nextRetryMs)) {
+    return false;
+  }
+  return nextRetryMs <= Date.now() && Number(entry.attempt || 0) < Number(entry.maxRetries || 3);
+}
+
 function appendRelayStatus(memoryDir, job, patch = {}) {
   const now = new Date().toISOString();
   appendJsonl(path.join(memoryDir, "state", "relay-status.jsonl"), {
@@ -1287,8 +1309,12 @@ function appCommand(argv) {
       }
       if (req.method === "GET" && url.pathname === "/api/dispatch") {
         const config = loadConfig();
+        const relay = Object.values(readLatestRelayStatusByThread(config.memoryDir))
+          .sort((a, b) => String(b.ts || "").localeCompare(String(a.ts || "")))
+          .slice(0, 100);
         return sendJson(res, {
-          logs: readDispatchLog(config.memoryDir).slice(-100).reverse()
+          logs: readDispatchLog(config.memoryDir).slice(-100).reverse(),
+          relay
         });
       }
       if (req.method === "POST" && url.pathname === "/api/record") {

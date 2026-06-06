@@ -2366,7 +2366,7 @@ function sendStaticAsset(res, pathname) {
   }
   res.writeHead(200, {
     "Content-Type": getContentType(normalizedAssetPath),
-    "Cache-Control": "no-store, max-age=0"
+    "Cache-Control": "public, max-age=31536000, immutable"
   });
   fs.createReadStream(normalizedAssetPath).pipe(res);
 }

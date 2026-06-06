@@ -416,19 +416,21 @@ function taskCommand(argv) {
       return taskClaimCommand(actionArgs);
     case "status":
       return taskStatusCommand(actionArgs);
+    case "update":
+      return taskUpdateCommand(actionArgs);
     case "note":
       return taskNoteCommand(actionArgs);
     case "done":
       return taskDoneCommand(actionArgs);
     default:
-      throw new Error("Usage: ai-memory-hub task <add|list|claim|status|note|done> ...");
+      throw new Error("Usage: ai-memory-hub task <add|list|claim|status|update|note|done> ...");
   }
 }
 
 function taskAddCommand(argv) {
   const title = positionalArgs(argv).join(" ").trim();
   if (!title) {
-    throw new Error("Usage: ai-memory-hub task add <title> [--from codex] [--project name] [--priority normal]");
+    throw new Error("Usage: ai-memory-hub task add <title> [--description text] [--handoff text] [--from codex] [--project name] [--priority normal]");
   }
   const config = loadConfig();
   ensureHub(config.memoryDir);
@@ -2099,9 +2101,10 @@ Examples:
   ${APP_NAME} sync
   ${APP_NAME} index
   ${APP_NAME} search "git commit rules" --limit 5
-  ${APP_NAME} task add "Review README task-list section" --from codex --project ai-memory-hub --priority high
+  ${APP_NAME} task add "Review README task-list section" --description "Goal: check task docs. Scope: README only. Acceptance: examples are accurate." --handoff "Next: reviewer verifies wording." --from codex --project ai-memory-hub --priority high
   ${APP_NAME} task list --status active
   ${APP_NAME} task claim --id <task-id> --by claude
+  ${APP_NAME} task update --id <task-id> --description "Goal: ... Scope: ... Acceptance: ..." --handoff "Current state and next step." --by codex
   ${APP_NAME} task note --id <task-id> "Reviewed Chinese docs." --by qclaw
   ${APP_NAME} task done --id <task-id> --by codex
   ${APP_NAME} connect
@@ -2467,6 +2470,56 @@ function workflowCreateCommand(argv) {
     }
     const created = readWorkflows(config.memoryDir).find((item) => item.id === workflow.id) || workflow;
     console.log(JSON.stringify(created, null, 2));
+  }, config.sync.lockStaleMs);
+}
+
+function taskUpdateCommand(argv) {
+  const id = getOption(argv, "--id") || positionalArgs(argv)[0] || "";
+  if (!id) {
+    throw new Error("Usage: ai-memory-hub task update --id <task-id> [--title text] [--description text] [--handoff text] [--priority normal] [--status open]");
+  }
+  const by = getOption(argv, "--by") || "manual";
+  const patch = {};
+  for (const [flag, key] of [
+    ["--title", "title"],
+    ["--description", "description"],
+    ["--handoff", "handoff"],
+    ["--priority", "priority"],
+    ["--status", "status"],
+    ["--project", "project"]
+  ]) {
+    const value = getOption(argv, flag);
+    if (value !== "") {
+      patch[key] = value;
+    }
+  }
+  if (Object.keys(patch).length === 0) {
+    throw new Error("task update requires at least one field: --title, --description, --handoff, --priority, --status, or --project");
+  }
+  if (patch.priority) {
+    patch.priority = normalizePriority(patch.priority);
+  }
+  if (patch.status) {
+    assertTaskStatus(patch.status);
+  }
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  return withHubLock(config.memoryDir, "task-update", () => {
+    const updated = updateTask(config.memoryDir, id, (task) => {
+      const now = new Date().toISOString();
+      return {
+        ...task,
+        ...patch,
+        updatedAt: now,
+        completedAt: patch.status === "done" ? now : patch.status && patch.status !== "done" ? "" : task.completedAt || "",
+        assignee: patch.status && !["open", "cancelled"].includes(patch.status) ? task.assignee || by : task.assignee || "",
+        notes: [
+          ...(task.notes || []),
+          createTaskNote(by, `Updated task fields: ${Object.keys(patch).join(", ")}.`)
+        ]
+      };
+    });
+    console.log(JSON.stringify(updated, null, 2));
   }, config.sync.lockStaleMs);
 }
 

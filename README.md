@@ -529,10 +529,11 @@ The shared task list tracks what is currently being worked on, who claimed it, w
 Common commands:
 
 ```bash
-ai-memory-hub task add "Document how AI tools talk to each other" --from codex --project ai-memory-hub --priority high
+ai-memory-hub task add "Document how AI tools talk to each other" --description "Goal: document the workflow. Scope: README. Acceptance: examples are runnable." --handoff "Next: review Chinese and English parity." --from codex --project ai-memory-hub --priority high
 ai-memory-hub task list --status active
 ai-memory-hub task claim --id <task-id> --by qclaw
 ai-memory-hub task status --id <task-id> --status in_progress --by qclaw
+ai-memory-hub task update --id <task-id> --description "Goal: ... Scope: ... Acceptance: ..." --handoff "Current state, next step, risks." --by codex
 ai-memory-hub task note --id <task-id> "Chinese section reviewed; English still needs sync." --by qclaw
 ai-memory-hub task done --id <task-id> --by codex
 ```
@@ -546,6 +547,8 @@ open | claimed | in_progress | blocked | done | cancelled
 Recommended use:
 
 - Run `ai-memory-hub task list --status active` before substantial work.
+- Add `--description` with goal, scope, and acceptance criteria when creating substantial tasks.
+- Keep `--handoff` focused on current state, next step, owner, and risks.
 - When multiple tools work on one project, claim the task before editing.
 - During handoff, add a note with completed work, remaining risk, and next step.
 - Close finished work with `task done`.

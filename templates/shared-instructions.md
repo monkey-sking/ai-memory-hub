@@ -24,8 +24,9 @@ For shared work tracking, check and update the local task list:
 
 ```bash
 ai-memory-hub task list --status active
-ai-memory-hub task add "short task title" --from {{TOOL}} --project <project> --priority normal
+ai-memory-hub task add "short task title" --description "Goal: ... Scope: ... Acceptance: ..." --handoff "Current state, next step, owner, risks." --from {{TOOL}} --project <project> --priority normal
 ai-memory-hub task claim --id <task-id> --by {{TOOL}}
+ai-memory-hub task update --id <task-id> --description "Goal: ... Scope: ... Acceptance: ..." --handoff "Current state, next step, owner, risks." --by {{TOOL}}
 ai-memory-hub task note --id <task-id> "handoff note or progress update" --by {{TOOL}}
 ai-memory-hub task done --id <task-id> --by {{TOOL}}
 ```

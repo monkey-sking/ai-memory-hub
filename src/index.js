@@ -259,6 +259,7 @@ function connectSendCommand(argv, defaultType) {
     type,
     text,
     thread: getOption(argv, "--thread") || task?.id || "",
+    replyTo: getOption(argv, "--reply-to") || "",
     project
   });
   appendJsonl(path.join(config.memoryDir, "radio", "messages.jsonl"), message);
@@ -333,6 +334,7 @@ function radioSendCommand(argv) {
     type: getOption(argv, "--type") || "note",
     text,
     thread: getOption(argv, "--thread") || "",
+    replyTo: getOption(argv, "--reply-to") || "",
     project: getOption(argv, "--project") || path.basename(process.cwd())
   });
   appendJsonl(path.join(config.memoryDir, "radio", "messages.jsonl"), message);
@@ -563,6 +565,7 @@ function dispatchCommand(argv) {
 function executeDispatch(memoryDir, { run = false, force = false, to = "", project = "", limit = 10 }) {
   const jobs = buildDispatchJobs(memoryDir, { to, project, limit, force });
   const results = [];
+  const relayState = readLatestRelayStatusByThread(memoryDir);
   for (const job of jobs) {
     const runner = getToolRunner(job.tool);
     if (!runner.available) {
@@ -572,21 +575,52 @@ function executeDispatch(memoryDir, { run = false, force = false, to = "", proje
         reason: runner.reason
       };
       if (run) {
+        appendRelayStatus(memoryDir, job, {
+          state: "failed",
+          attempt: nextRelayAttempt(relayState, job),
+          maxRetries: 3,
+          exitCode: null,
+          lastError: runner.reason,
+          sessionId: "",
+          ackTimeout: 5 * 60 * 1000
+        });
         appendDispatchLog(memoryDir, result);
       }
       results.push(result);
       continue;
     }
     if (!run) {
+      const threadKey = getDispatchThreadKey(job);
       results.push({
         ...job,
         runnable: true,
         dryRun: true,
-        command: runner.preview
+        command: runner.preview,
+        relayState: relayState[threadKey]?.state || "pending",
+        attempt: relayState[threadKey]?.attempt || 0
       });
       continue;
     }
+    appendRelayStatus(memoryDir, job, {
+      state: "dispatched",
+      attempt: nextRelayAttempt(relayState, job),
+      maxRetries: 3,
+      exitCode: null,
+      lastError: "",
+      sessionId: "",
+      ackTimeout: 5 * 60 * 1000
+    });
     const result = runDispatchJob(memoryDir, job, runner);
+    appendRelayStatus(memoryDir, job, {
+      state: result.exitCode === 0 ? "completed" : "failed",
+      attempt: nextRelayAttempt(relayState, job),
+      maxRetries: 3,
+      exitCode: result.exitCode,
+      lastError: result.error || result.stderr || "",
+      sessionId: result.sessionId || "",
+      ackTimeout: 5 * 60 * 1000
+    });
+    appendDispatchStatusMessage(memoryDir, job, result);
     appendDispatchLog(memoryDir, result);
     results.push(result);
   }
@@ -799,6 +833,107 @@ function appendDispatchLog(memoryDir, result) {
     ...result,
     dispatchedAt: new Date().toISOString()
   });
+}
+
+function readRelayStatus(memoryDir) {
+  return readEvents(path.join(memoryDir, "state", "relay-status.jsonl"));
+}
+
+function readLatestRelayStatusByThread(memoryDir) {
+  const latest = {};
+  for (const entry of readRelayStatus(memoryDir)) {
+    const threadKey = entry.threadKey || "";
+    if (!threadKey) {
+      continue;
+    }
+    const current = latest[threadKey];
+    const currentTs = String(current?.ts || current?.updatedAt || "");
+    const nextTs = String(entry.ts || entry.updatedAt || "");
+    if (!current || nextTs >= currentTs) {
+      latest[threadKey] = entry;
+    }
+  }
+  return latest;
+}
+
+function nextRelayAttempt(relayState, job) {
+  const threadKey = getDispatchThreadKey(job);
+  return Number(relayState[threadKey]?.attempt || 0) + 1;
+}
+
+function appendRelayStatus(memoryDir, job, patch = {}) {
+  const now = new Date().toISOString();
+  appendJsonl(path.join(memoryDir, "state", "relay-status.jsonl"), {
+    id: createId(`relay:${job.id}:${now}:${patch.state || "pending"}`),
+    ts: now,
+    threadKey: getDispatchThreadKey(job),
+    sourceKind: job.kind,
+    sourceId: job.refId,
+    dispatchId: job.id,
+    state: patch.state || "pending",
+    attempt: Number(patch.attempt || 1),
+    maxRetries: Number(patch.maxRetries || 3),
+    dispatchedAt: patch.state === "dispatched" ? now : "",
+    ackTimeout: Number(patch.ackTimeout || 0),
+    sessionId: patch.sessionId || "",
+    exitCode: patch.exitCode ?? null,
+    lastError: String(patch.lastError || "").trim(),
+      nextRetryAt: patch.nextRetryAt || "",
+      project: job.project || "",
+      tool: job.tool || "",
+      thread: job.thread || ""
+  });
+}
+
+function appendDispatchStatusMessage(memoryDir, job, result) {
+  const origin = findDispatchOrigin(memoryDir, job);
+  if (!origin?.from) {
+    return null;
+  }
+  const state = result.exitCode === 0 ? "completed" : "failed";
+  const parts = [
+    `Dispatch ${state} for ${job.tool}`,
+    `thread=${job.thread || job.refId}`
+  ];
+  if (result.sessionId) {
+    parts.push(`session=${result.sessionId}`);
+  }
+  if (result.exitCode !== null && result.exitCode !== undefined) {
+    parts.push(`exit=${result.exitCode}`);
+  }
+  if (result.error) {
+    parts.push(`error=${summarizeText(result.error, 120)}`);
+  }
+  const message = createRadioMessage({
+    from: "ai-memory-hub",
+    to: origin.from,
+    type: "status",
+    text: parts.join(" | "),
+    thread: origin.thread || job.thread || job.refId,
+    replyTo: origin.id || job.refId,
+    project: origin.project || job.project || ""
+  });
+  appendJsonl(path.join(memoryDir, "radio", "messages.jsonl"), message);
+  return message;
+}
+
+function findDispatchOrigin(memoryDir, job) {
+  if (job.kind === "radio") {
+    return readRadioMessages(memoryDir).find((message) => message.id === job.refId) || null;
+  }
+  if (job.kind === "task") {
+    const task = readTasks(memoryDir).find((item) => item.id === job.refId);
+    if (!task) {
+      return null;
+    }
+    return {
+      id: task.id,
+      from: task.createdBy,
+      thread: task.id,
+      project: task.project
+    };
+  }
+  return null;
 }
 
 function syncCommand(argv) {
@@ -2902,7 +3037,7 @@ function readEvents(file) {
     });
 }
 
-function createRadioMessage({ from, to, type, text, thread, project }) {
+function createRadioMessage({ from, to, type, text, thread, replyTo, project }) {
   const cleanText = String(text || "").trim();
   return {
     id: createId(`radio:${from}:${to}:${type}:${cleanText}`),
@@ -2912,6 +3047,7 @@ function createRadioMessage({ from, to, type, text, thread, project }) {
     type: String(type || "note"),
     text: cleanText,
     thread: String(thread || ""),
+    replyTo: String(replyTo || ""),
     project: String(project || ""),
     promoted: false
   };
@@ -2927,6 +3063,7 @@ function readRadioMessages(memoryDir) {
     type: message.type || message.metadata?.kind || "note",
     text: message.text || "",
     thread: message.thread || "",
+    replyTo: message.replyTo || message.reply_to || "",
     project: message.project || "",
     promoted: Boolean(message.promoted),
     promotedAt: message.promotedAt || ""

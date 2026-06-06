@@ -1219,6 +1219,9 @@
         'codex-app': 'Codex App',
         'windsurf': 'Windsurf',
         'aider': 'Aider',
+        'marvis': 'Marvis',
+        'qclaw': 'QClaw',
+        'openclaw': 'OpenClaw',
         'cherry-studio': 'Cherry Studio',
         'ollama': 'Ollama',
         'ccswitch': 'CC-Switch',
@@ -1237,6 +1240,9 @@
         'codex-app': 'Codex App',
         'windsurf': 'Windsurf',
         'aider': 'Aider',
+        'marvis': 'Marvis',
+        'qclaw': 'QClaw',
+        'openclaw': 'OpenClaw',
         'cherry-studio': 'Cherry Studio',
         'ollama': 'Ollama',
         'ccswitch': 'CC-Switch',
@@ -1245,23 +1251,28 @@
       }
     };
 
-    const toolDomains = {
-      'gemini': 'gemini.google.com',
-      'antigravity-gemini': 'gemini.google.com',
-      'claude': 'claude.ai',
-      'claude-desktop': 'claude.ai',
-      'chatgpt': 'chatgpt.com',
-      'cursor': 'cursor.com',
-      'vscode': 'code.visualstudio.com',
-      'codex': 'openai.com',
-      'codex-app': 'openai.com',
-      'windsurf': 'codeium.com',
-      'aider': 'aider.chat',
-      'cherry-studio': 'cherry-studio.github.io',
-      'ollama': 'ollama.com',
-      'ccswitch': 'github.com',
-      'antigravity': 'deepmind.google',
-      'antigravity-cockpit': 'deepmind.google'
+    const iconAssetVersion = '20260606-app-icons-v2';
+
+    const toolIconFiles = {
+      'gemini': '/assets/tool-icons/gemini.png',
+      'antigravity-gemini': '/assets/tool-icons/gemini.png',
+      'claude': '/assets/tool-icons/claude.png',
+      'claude-desktop': '/assets/tool-icons/claude-desktop.png',
+      'chatgpt': '/assets/tool-icons/chatgpt.png',
+      'cursor': '/assets/tool-icons/cursor.png',
+      'vscode': '/assets/tool-icons/vscode.png',
+      'codex': '/assets/tool-icons/codex.png',
+      'codex-app': '/assets/tool-icons/codex-app.png',
+      'windsurf': '/assets/tool-icons/windsurf.png',
+      'aider': '/assets/tool-icons/aider.png',
+      'marvis': '/assets/tool-icons/marvis-app.png',
+      'qclaw': '/assets/tool-icons/qclaw-app.png',
+      'openclaw': '/assets/tool-icons/qclaw-app.png',
+      'cherry-studio': '/assets/tool-icons/cherry-studio.png',
+      'ollama': '/assets/tool-icons/ollama.png',
+      'ccswitch': '/assets/tool-icons/ccswitch-app.png',
+      'antigravity': '/assets/tool-icons/antigravity.png',
+      'antigravity-cockpit': '/assets/tool-icons/antigravity-cockpit.png'
     };
 
     const toolKindBadges = {
@@ -1314,40 +1325,8 @@
       return gradients[Math.abs(hash) % gradients.length];
     }
 
-    function getToolIconSvg(name) {
-      const clean = (name || '').toLowerCase().trim();
-      switch (clean) {
-        case 'gemini':
-        case 'antigravity-gemini':
-          return `<svg viewBox="0 0 24 24" fill="none" class="tool-icon-svg"><path d="M12 2C12 2 12.5 8.5 15.5 11.5C18.5 14.5 22 12 22 12C22 12 15.5 12.5 12.5 15.5C9.5 18.5 12 22 12 22C12 22 11.5 15.5 8.5 12.5C5.5 9.5 2 12 2 12C2 12 8.5 11.5 11.5 8.5C14.5 5.5 12 2 12 2Z" fill="url(#geminiGrad)"/><defs><linearGradient id="geminiGrad" x1="2" y1="2" x2="22" y2="22"><stop offset="0%" stop-color="#388bfd"/><stop offset="100%" stop-color="#bc8cff"/></linearGradient></defs></svg>`;
-        case 'claude':
-        case 'claude-desktop':
-          return `<svg viewBox="0 0 24 24" fill="none" class="tool-icon-svg"><path d="M12 2C8 6 4 10 4 15C4 19.4 7.6 22 12 22C16.4 22 20 19.4 20 15C20 10 16 6 12 2Z" fill="url(#claudeGrad)"/><defs><linearGradient id="claudeGrad" x1="4" y1="2" x2="20" y2="22"><stop offset="0%" stop-color="#ea7a50"/><stop offset="100%" stop-color="#d9531e"/></linearGradient></defs></svg>`;
-        case 'chatgpt':
-          return `<svg viewBox="0 0 24 24" fill="none" class="tool-icon-svg"><path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM13 17H11V15H13V17ZM13 13H11V7H13V13Z" fill="url(#chatgptGrad)"/><defs><linearGradient id="chatgptGrad" x1="2" y1="2" x2="22" y2="22"><stop offset="0%" stop-color="#10a37f"/><stop offset="100%" stop-color="#0e7f62"/></linearGradient></defs></svg>`;
-        case 'cursor':
-          return `<svg viewBox="0 0 24 24" fill="none" class="tool-icon-svg"><path d="M4 2L20 12L12 14L20 22L17 23.5L9 15.5L4 18V2Z" fill="url(#cursorGrad)"/><defs><linearGradient id="cursorGrad" x1="4" y1="2" x2="20" y2="23.5"><stop offset="0%" stop-color="#00e5ff"/><stop offset="100%" stop-color="#006be6"/></linearGradient></defs></svg>`;
-        case 'vscode':
-          return `<svg viewBox="0 0 24 24" fill="none" class="tool-icon-svg"><path d="M23.9 6.5L18.4 1L12.5 6.5L18.4 12L23.9 6.5ZM0.1 6.5L5.6 12L11.5 6.5L5.6 1L0.1 6.5Z" fill="url(#vscodeGrad)"/><defs><linearGradient id="vscodeGrad" x1="0.1" y1="1" x2="23.9" y2="12"><stop offset="0%" stop-color="#007acc"/><stop offset="100%" stop-color="#005a9e"/></linearGradient></defs></svg>`;
-        case 'codex':
-        case 'codex-app':
-          return `<svg viewBox="0 0 24 24" fill="none" class="tool-icon-svg"><path d="M13.795 23.856q-1.188 0-2.256-.448a6.1 6.1 0 0 1-1.9-1.247 5.8 5.8 0 0 1-1.875.306 5.8 5.8 0 0 1-2.944-.777 6.1 6.1 0 0 1-2.184-2.12q-.807-1.34-.808-2.99 0-.682.19-1.482a6.3 6.3 0 0 1-1.472-2.002 5.76 5.76 0 0 1 .024-4.85q.546-1.177 1.52-2.024a5.5 5.5 0 0 1 2.303-1.2A5.55 5.55 0 0 1 5.485 2.62 6.06 6.06 0 0 1 7.575.925 5.85 5.85 0 0 1 10.21.313q1.187 0 2.255.447a6.1 6.1 0 0 1 1.9 1.248 5.8 5.8 0 0 1 1.875-.306q1.59 0 2.944.776a5.9 5.9 0 0 1 2.16 2.12q.832 1.34.832 2.99 0 .682-.19 1.483a6.2 6.2 0 0 1 1.472 2.024q.522 1.13.522 2.378 0 1.272-.546 2.449a6.1 6.1 0 0 1-1.543 2.048 5.45 5.45 0 0 1-2.28 1.177 5.4 5.4 0 0 1-1.115 2.402 5.8 5.8 0 0 1-2.066 1.695 5.85 5.85 0 0 1-2.635.612M7.93 20.913q1.188 0 2.066-.495l4.463-2.542a.52.52 0 0 0 .238-.448v-2.024L8.95 18.676a.97.97 0 0 1-1.044 0L3.419 16.11a.7.7 0 0 1-.024.165v.282q0 1.201.57 2.213.594.99 1.639 1.554 1.044.59 2.326.589m.238-3.838q.143.07.26.07a.46.46 0 0 0 .238-.07l1.781-1.012-5.722-3.296q-.522-.306-.522-.918v-5.11a4.27 4.27 0 0 0-1.9 1.602 4.13 4.13 0 0 0-.712 2.354q0 1.155.594 2.213.593 1.06 1.543 1.601zm5.627 5.227q1.258 0 2.279-.565a4.25 4.25 0 0 0 1.614-1.554q.594-.99.594-2.213v-5.085q0-.283-.237-.424l-1.805-1.036v6.568q0 .613-.522.919l-4.487 2.566q1.163.825 2.564.824m.902-8.617v-3.202l-2.683-1.507-2.707 1.507v3.202l2.707 1.507zm-6.933-7.51q0-.612.522-.918l4.488-2.567a4.34 4.34 0 0 0-2.564-.824q-1.26 0-2.28.565a4.25 4.25 0 0 0-1.614 1.554q-.57.99-.57 2.213v5.062q0 .283.237.447l1.781 1.036zm12.061 11.253a4.13 4.13 0 0 0 1.876-1.6 4.2 4.2 0 0 0 .712-2.355q0-1.154-.593-2.213-.594-1.06-1.544-1.6l-4.44-2.543q-.142-.095-.26-.071a.46.46 0 0 0-.238.07l-1.78.99 5.745 3.319q.26.141.38.377a.9.9 0 0 1 .142.518zm-4.772-11.96q.522-.33 1.045 0l4.51 2.614v-.424q0-1.13-.57-2.142a4.1 4.1 0 0 0-1.59-1.648q-1.02-.613-2.374-.613-1.187 0-2.066.495L9.545 6.292a.52.52 0 0 0-.238.448v2.025z" fill="url(#codexGrad)"/><defs><linearGradient id="codexGrad" x1="2" y1="2" x2="22" y2="22"><stop offset="0%" stop-color="#f28e2b"/><stop offset="100%" stop-color="#e15759"/></linearGradient></defs></svg>`;
-        case 'windsurf':
-          return `<svg viewBox="0 0 24 24" fill="none" class="tool-icon-svg"><path d="M12 2C16.4 2 20 5.6 20 10C20 14.4 16.4 18 12 22C7.6 18 4 14.4 4 10C4 5.6 7.6 2 12 2Z" fill="url(#windGrad)"/><defs><linearGradient id="windGrad" x1="4" y1="2" x2="20" y2="22"><stop offset="0%" stop-color="#00f2fe"/><stop offset="100%" stop-color="#4facfe"/></linearGradient></defs></svg>`;
-        case 'aider':
-          return `<svg viewBox="0 0 24 24" fill="none" class="tool-icon-svg"><circle cx="12" cy="12" r="10" stroke="url(#aiderGrad)" stroke-width="4"/><path d="M12 2V22M2 12H22" stroke="url(#aiderGrad)" stroke-width="2"/><defs><linearGradient id="aiderGrad" x1="2" y1="2" x2="22" y2="22"><stop offset="0%" stop-color="#ff4b4b"/><stop offset="100%" stop-color="#a80000"/></linearGradient></defs></svg>`;
-        case 'cherry-studio':
-          return `<svg viewBox="0 0 24 24" fill="none" class="tool-icon-svg"><circle cx="8" cy="16" r="6" fill="url(#cherryGrad)"/><circle cx="16" cy="16" r="6" fill="url(#cherryGrad)"/><path d="M8 10C8 10 12 6 16 10" stroke="#5c3f2b" stroke-width="2"/><defs><linearGradient id="cherryGrad" x1="2" y1="10" x2="22" y2="22"><stop offset="0%" stop-color="#ff2a6d"/><stop offset="100%" stop-color="#9b003c"/></linearGradient></defs></svg>`;
-        case 'ollama':
-          return `<svg viewBox="0 0 24 24" fill="none" class="tool-icon-svg"><path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM12 17L7 12H17L12 17Z" fill="url(#ollamaGrad)"/><defs><linearGradient id="ollamaGrad" x1="2" y1="2" x2="22" y2="22"><stop offset="0%" stop-color="#f39c12"/><stop offset="100%" stop-color="#d35400"/></linearGradient></defs></svg>`;
-        case 'ccswitch':
-          return `<svg viewBox="0 0 24 24" fill="none" class="tool-icon-svg"><rect x="2" y="6" width="20" height="12" rx="6" fill="#484f58"/><circle cx="16" cy="12" r="4" fill="#388bfd"/></svg>`;
-        case 'antigravity':
-        case 'antigravity-cockpit':
-          return `<svg viewBox="0 0 24 24" fill="none" class="tool-icon-svg"><ellipse cx="12" cy="12" rx="9" ry="3" stroke="url(#antiGrad)" stroke-width="2" transform="rotate(30,12,12)"/><ellipse cx="12" cy="12" rx="9" ry="3" stroke="url(#antiGrad)" stroke-width="2" transform="rotate(-30,12,12)"/><circle cx="12" cy="12" r="3" fill="url(#antiGrad)"/><defs><linearGradient id="antiGrad" x1="2" y1="2" x2="22" y2="22"><stop offset="0%" stop-color="#bc8cff"/><stop offset="100%" stop-color="#ff79c6"/></linearGradient></defs></svg>`;
-        default:
-          return null;
-      }
+    function getToolIconSvg() {
+      return null;
     }
 
     const toolKinds = {
@@ -1362,6 +1341,9 @@
       'codex-app': 'app-state',
       'windsurf': 'editor-state',
       'aider': 'cli-config',
+      'marvis': 'app-state',
+      'qclaw': 'app-state',
+      'openclaw': 'app-state',
       'cherry-studio': 'app-state',
       'ollama': 'local-model-runtime',
       'ccswitch': 'app-state',
@@ -1371,15 +1353,9 @@
 
     function renderToolIcon(name, size = 18, kind = '') {
       const cleanName = (name || '').toLowerCase().trim();
-      const domain = toolDomains[cleanName];
+      const iconPath = toolIconFiles[cleanName] || null;
+      const iconSrc = iconPath ? `${iconPath}?v=${iconAssetVersion}` : null;
       const svg = getToolIconSvg(cleanName);
-      
-      let imgSrc = null;
-      if (cleanName === 'codex' || cleanName === 'codex-app') {
-        imgSrc = 'https://store-images.s-microsoft.com/image/apps.44278.14314868180609929.f8c49912-5781-408f-8963-10487f629f2d.8ac35a1c-f121-477f-9d70-d37926d2aeb5?h=210';
-      } else if (domain) {
-        imgSrc = `https://www.google.com/s2/favicons?domain=${domain}&sz=64`;
-      }
       
       const fallbackContent = svg
         ? svg
@@ -1426,10 +1402,10 @@
         }
       }
 
-      if (imgSrc) {
+      if (iconSrc) {
         return `
           <div class="tool-icon-wrapper" style="width:${size}px; height:${size}px;">
-            <img src="${imgSrc}"
+            <img src="${iconSrc}"
                  alt="${escapeHtml(name)}"
                  style="width:100%; height:100%; object-fit:contain; border-radius:4px; display:block;"
                  onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex';" />

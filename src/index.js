@@ -627,10 +627,31 @@ function dispatchStatusCommand(argv) {
   }
 
   const latest = all[all.length - 1];
+  const source = resolveRelaySourceObject(config.memoryDir, latest);
   const dispatchLog = readDispatchLog(config.memoryDir)
     .filter((entry) => latest.threadKey ? getDispatchThreadKey(entry) === latest.threadKey : true)
     .filter((entry) => (!hasExplicitThreadScope && refId) ? entry.refId === refId || entry.id === refId : true)
     .sort((a, b) => String(a.dispatchedAt || "").localeCompare(String(b.dispatchedAt || "")));
+  const states = all.map((entry) => entry.state).filter(Boolean);
+  const summary = {
+    threadKey: latest.threadKey || "",
+    thread: latest.thread || "",
+    sourceKind: latest.sourceKind || "",
+    sourceId: latest.sourceId || "",
+    tool: latest.tool || "",
+    project: latest.project || "",
+    latestState: latest.state || "",
+    attempt: Number(latest.attempt || 0),
+    maxRetries: Number(latest.maxRetries || 0),
+    exitCode: latest.exitCode ?? null,
+    sessionId: latest.sessionId || "",
+    lastError: latest.lastError || "",
+    nextRetryAt: latest.nextRetryAt || "",
+    firstTs: all[0]?.ts || "",
+    latestTs: latest.ts || "",
+    timelineLength: all.length,
+    states
+  };
 
   console.log(JSON.stringify({
     found: true,
@@ -641,6 +662,8 @@ function dispatchStatusCommand(argv) {
       project,
       tool
     },
+    summary,
+    source,
     matchedThreadKeys: [...new Set(all.map((entry) => entry.threadKey).filter(Boolean))],
     latest,
     timeline: all,
@@ -669,6 +692,19 @@ function resolveRelayThreadKeys(memoryDir, { threadKey = "", thread = "", refId 
     }
   }
   return keys.size ? keys : null;
+}
+
+function resolveRelaySourceObject(memoryDir, entry) {
+  if (!entry?.sourceKind || !entry?.sourceId) {
+    return null;
+  }
+  if (entry.sourceKind === "radio") {
+    return readRadioMessages(memoryDir).find((message) => message.id === entry.sourceId) || null;
+  }
+  if (entry.sourceKind === "task") {
+    return readTasks(memoryDir).find((task) => task.id === entry.sourceId) || null;
+  }
+  return null;
 }
 
 function dispatchRetryCommand(argv) {

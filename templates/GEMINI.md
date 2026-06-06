@@ -2,6 +2,8 @@
 
 Use `{{MEMORY_DIR}}/MEMORY.md` as the shared durable memory snapshot.
 
+RTK.md-style referenced instruction includes are optional unless the file exists at the referenced path. If an include is missing, continue with the visible instructions in this file and repo-local docs instead of failing or inventing tool-specific rules.
+
 Append durable memory events to `{{MEMORY_DIR}}/inbox/events.jsonl` as JSONL using this exact shape:
 
 ```json
@@ -12,14 +14,25 @@ Do not edit `{{MEMORY_DIR}}/memories/ledger.jsonl` or `{{MEMORY_DIR}}/MEMORY.md`
 
 After appending a durable memory event, run `ai-memory-hub sync` when command execution is available. If not, the local watcher will index it later. Never store secrets, tokens, or short-lived chat details.
 
+## Lark / Feishu CLI Notes
+
+When using `lark-cli` or Feishu/Lark commands from PowerShell:
+
+- Quote file-content arguments that use `@`, for example `--content "@path.html"`, so PowerShell does not treat `@` as splatting syntax.
+- On permission errors such as "Only bot creator has permission" or inaccessible user documents, retry with `--as user` when user-level authorization is intended.
+- If authentication is expired or missing, run `lark-cli auth login` and complete the browser or QR-code login flow.
+- For complex JSON request bodies, prefer a quoted temporary JSON file reference such as `--params "@params.json"` or `--data "@data.json"` instead of inline PowerShell JSON escaping.
+- Do not store Feishu tokens, cookies, or other secrets in durable memory, tasks, radio messages, or repo files.
+
 ## Shared Task List
 
 For shared work tracking, check and update the local task list:
 
 ```bash
 ai-memory-hub task list --status active
-ai-memory-hub task add "short task title" --from {{TOOL}} --project <project> --priority normal
+ai-memory-hub task add "short task title" --description "Goal: ... Scope: ... Acceptance: ..." --handoff "Current state, next step, owner, risks." --from {{TOOL}} --project <project> --priority normal
 ai-memory-hub task claim --id <task-id> --by {{TOOL}}
+ai-memory-hub task update --id <task-id> --description "Goal: ... Scope: ... Acceptance: ..." --handoff "Current state, next step, owner, risks." --by {{TOOL}}
 ai-memory-hub task note --id <task-id> "handoff note or progress update" --by {{TOOL}}
 ai-memory-hub task done --id <task-id> --by {{TOOL}}
 ```

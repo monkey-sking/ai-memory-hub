@@ -8,6 +8,8 @@ Use the local shared memory directory as the durable cross-assistant memory hub:
 
 At the start of a session, read `{{MEMORY_DIR}}/MEMORY.md` if it exists and use it as durable user/project context.
 
+RTK.md-style referenced instruction includes are optional unless the file exists at the referenced path. If an include is missing, continue with the visible instructions in this file and repo-local docs instead of failing or inventing tool-specific rules.
+
 When you learn a durable preference, project fact, workflow rule, or long-lived correction, append a JSON line to `{{MEMORY_DIR}}/inbox/events.jsonl` with this shape:
 
 ```json
@@ -17,6 +19,16 @@ When you learn a durable preference, project fact, workflow rule, or long-lived 
 Do not edit `{{MEMORY_DIR}}/memories/ledger.jsonl` or `{{MEMORY_DIR}}/MEMORY.md` directly. After appending a durable memory event, run `ai-memory-hub sync` when command execution is available. If not, the local watcher will index it later.
 
 Only save durable facts. Do not save secrets, API keys, one-off commands, or transient chat details.
+
+## Lark / Feishu CLI Notes
+
+When using `lark-cli` or Feishu/Lark commands from PowerShell:
+
+- Quote file-content arguments that use `@`, for example `--content "@path.html"`, so PowerShell does not treat `@` as splatting syntax.
+- On permission errors such as "Only bot creator has permission" or inaccessible user documents, retry with `--as user` when user-level authorization is intended.
+- If authentication is expired or missing, run `lark-cli auth login` and complete the browser or QR-code login flow.
+- For complex JSON request bodies, prefer a quoted temporary JSON file reference such as `--params "@params.json"` or `--data "@data.json"` instead of inline PowerShell JSON escaping.
+- Do not store Feishu tokens, cookies, or other secrets in durable memory, tasks, radio messages, or repo files.
 
 ## Shared Task List
 

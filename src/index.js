@@ -589,6 +589,7 @@ function dispatchStatusCommand(argv) {
   const refId = getOption(argv, "--ref-id") || "";
   const project = getOption(argv, "--project") || "";
   const tool = getOption(argv, "--to") || getOption(argv, "--tool") || "";
+  const hasExplicitThreadScope = Boolean(threadKey || thread);
 
   if (!threadKey && !thread && !refId) {
     throw new Error("Usage: ai-memory-hub dispatch status [--thread-key <tool:project:ref> | --thread <thread-id> | --ref-id <id>] [--project <project>] [--to <tool>]");
@@ -605,7 +606,7 @@ function dispatchStatusCommand(argv) {
   const all = readRelayStatus(config.memoryDir)
     .filter((entry) => threadKey ? entry.threadKey === threadKey : true)
     .filter((entry) => resolvedThreadKeys ? resolvedThreadKeys.has(entry.threadKey) : true)
-    .filter((entry) => refId ? entry.sourceId === refId || entry.dispatchId === refId : true)
+    .filter((entry) => (!hasExplicitThreadScope && refId) ? entry.sourceId === refId || entry.dispatchId === refId : true)
     .filter((entry) => project ? entry.project === project : true)
     .filter((entry) => tool ? entry.tool === tool : true)
     .sort((a, b) => String(a.ts || "").localeCompare(String(b.ts || "")));
@@ -628,7 +629,7 @@ function dispatchStatusCommand(argv) {
   const latest = all[all.length - 1];
   const dispatchLog = readDispatchLog(config.memoryDir)
     .filter((entry) => latest.threadKey ? getDispatchThreadKey(entry) === latest.threadKey : true)
-    .filter((entry) => refId ? entry.refId === refId || entry.id === refId : true)
+    .filter((entry) => (!hasExplicitThreadScope && refId) ? entry.refId === refId || entry.id === refId : true)
     .sort((a, b) => String(a.dispatchedAt || "").localeCompare(String(b.dispatchedAt || "")));
 
   console.log(JSON.stringify({

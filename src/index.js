@@ -3096,7 +3096,7 @@ function withHubLock(memoryDir, owner, fn, staleMs = 120000) {
   try {
     return fn();
   } finally {
-    releaseLock(lockPath);
+    releaseLock(lockPath, owner);
   }
 }
 
@@ -3105,12 +3105,22 @@ function acquireLock(lockPath, owner, staleMs) {
   while (Date.now() - started < staleMs) {
     try {
       const fd = fs.openSync(lockPath, "wx");
-      fs.writeFileSync(fd, JSON.stringify({
+      const payload = {
         owner,
         pid: process.pid,
-        createdAt: new Date().toISOString()
-      }, null, 2));
+        createdAt: new Date().toISOString(),
+        host: os.hostname(),
+        cwd: process.cwd(),
+        staleMs
+      };
+      fs.writeFileSync(fd, JSON.stringify(payload, null, 2));
       fs.closeSync(fd);
+      appendLockEvent(lockPath, {
+        type: "acquired",
+        owner,
+        pid: process.pid,
+        host: os.hostname()
+      });
       return;
     } catch (error) {
       if (error.code !== "EEXIST") {
@@ -3118,7 +3128,14 @@ function acquireLock(lockPath, owner, staleMs) {
       }
       if (isLockStale(lockPath, staleMs)) {
         try {
+          const staleInfo = readLockFile(lockPath);
           fs.unlinkSync(lockPath);
+          appendLockEvent(lockPath, {
+            type: "stale-reaped",
+            owner,
+            pid: process.pid,
+            staleLock: staleInfo
+          });
           continue;
         } catch {
           // Another process may have removed it first; retry.
@@ -3127,12 +3144,19 @@ function acquireLock(lockPath, owner, staleMs) {
       sleep(100);
     }
   }
-  throw new Error(`Memory hub is locked by another process: ${lockPath}`);
+  const status = describeLock(lockPath, staleMs);
+  throw new Error(`Memory hub lock timeout at ${lockPath} (owner=${status.owner || "unknown"}, pid=${status.pid || "unknown"}, ageMs=${status.ageMs ?? "unknown"}, stale=${status.stale ? "yes" : "no"})`);
 }
 
-function releaseLock(lockPath) {
+function releaseLock(lockPath, owner = "") {
   try {
     fs.unlinkSync(lockPath);
+    appendLockEvent(lockPath, {
+      type: "released",
+      owner: owner || "unknown",
+      pid: process.pid,
+      host: os.hostname()
+    });
   } catch {
     // Lock may already be removed if it was considered stale.
   }
@@ -3140,8 +3164,8 @@ function releaseLock(lockPath) {
 
 function isLockStale(lockPath, staleMs) {
   try {
-    const stat = fs.statSync(lockPath);
-    return Date.now() - stat.mtimeMs > staleMs;
+    const status = describeLock(lockPath, staleMs);
+    return Boolean(status.stale);
   } catch {
     return false;
   }
@@ -3150,16 +3174,64 @@ function isLockStale(lockPath, staleMs) {
 function readLockStatus(memoryDir) {
   const lockPath = path.join(memoryDir, "locks", "hub.lock");
   if (!fs.existsSync(lockPath)) {
-    return { locked: false };
+    return {
+      locked: false,
+      path: lockPath,
+      events: readLockEvents(memoryDir).slice(-10)
+    };
+  }
+  return {
+    locked: true,
+    ...describeLock(lockPath, loadConfig().sync.lockStaleMs),
+    events: readLockEvents(memoryDir).slice(-10)
+  };
+}
+
+function describeLock(lockPath, staleMs) {
+  const data = readLockFile(lockPath);
+  const stat = fs.existsSync(lockPath) ? fs.statSync(lockPath) : null;
+  const createdAt = data.createdAt || "";
+  const createdMs = createdAt ? Date.parse(createdAt) : NaN;
+  const ageMs = Number.isNaN(createdMs)
+    ? (stat ? Math.max(0, Math.round(Date.now() - stat.mtimeMs)) : null)
+    : Math.max(0, Date.now() - createdMs);
+  return {
+    path: lockPath,
+    owner: data.owner || "",
+    pid: data.pid || null,
+    host: data.host || "",
+    cwd: data.cwd || "",
+    createdAt,
+    ageMs,
+    staleMs,
+    stale: ageMs !== null ? ageMs > staleMs : false,
+    parseError: data.parseError || ""
+  };
+}
+
+function readLockFile(lockPath) {
+  if (!fs.existsSync(lockPath)) {
+    return {};
   }
   try {
-    return {
-      locked: true,
-      ...readJson(lockPath)
-    };
-  } catch {
-    return { locked: true, path: lockPath };
+    return readJson(lockPath);
+  } catch (error) {
+    return { parseError: error.message || String(error) };
   }
+}
+
+function readLockEvents(memoryDir) {
+  return readEvents(path.join(memoryDir, "state", "lock-events.jsonl"));
+}
+
+function appendLockEvent(lockPath, payload) {
+  const memoryDir = path.resolve(lockPath, "..", "..");
+  appendJsonl(path.join(memoryDir, "state", "lock-events.jsonl"), {
+    id: createId(`lock:${payload.type}:${payload.owner || ""}:${Date.now()}`),
+    ts: new Date().toISOString(),
+    path: lockPath,
+    ...payload
+  });
 }
 
 function sleep(ms) {

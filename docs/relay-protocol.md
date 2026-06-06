@@ -240,7 +240,15 @@ attempt | delay
 **Check dispatch status**:
 ```bash
 ai-memory-hub dispatch status --thread task-abc
+ai-memory-hub dispatch status --thread-key claude:ai-memory-hub:task-abc
+ai-memory-hub dispatch status --ref-id radio-msg123 --project ai-memory-hub
+ai-memory-hub dispatch status --recent 10 --project ai-memory-hub
+ai-memory-hub dispatch status --recent --state failed --to claude
 ```
+
+Single-thread status queries return the latest relay state, full timeline, matched dispatch log entries, the resolved source object, and related radio/task/workflow objects for the same thread.
+
+Recent status queries return the latest relay entry per thread plus summary counts grouped by state and tool across the full filtered result set. The returned `items` list is then capped by `--recent` or `--limit`, which is useful for scanning failed, retrying, acked, or abandoned work without opening one thread at a time.
 
 **Retry failed dispatches**:
 ```bash
@@ -251,4 +259,3 @@ ai-memory-hub dispatch retry --project ai-memory-hub
 ```bash
 ai-memory-hub session list --tool claude
 ```
-

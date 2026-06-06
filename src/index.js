@@ -589,10 +589,30 @@ function dispatchStatusCommand(argv) {
   const refId = getOption(argv, "--ref-id") || "";
   const project = getOption(argv, "--project") || "";
   const tool = getOption(argv, "--to") || getOption(argv, "--tool") || "";
+  const state = getOption(argv, "--state") || "";
+  const recentValue = getOption(argv, "--recent");
+  const limitValue = getOption(argv, "--limit");
+  const recent = parsePositiveIntegerOption(recentValue, "--recent", { allowEmpty: true, defaultValue: 0 });
+  const limit = parsePositiveIntegerOption(limitValue, "--limit", {
+    allowEmpty: true,
+    defaultValue: recent || 20
+  });
   const hasExplicitThreadScope = Boolean(threadKey || thread);
+  const wantsRecentView = recent > 0 || hasFlag(argv, "--recent");
 
-  if (!threadKey && !thread && !refId) {
-    throw new Error("Usage: ai-memory-hub dispatch status [--thread-key <tool:project:ref> | --thread <thread-id> | --ref-id <id>] [--project <project>] [--to <tool>]");
+  if (!threadKey && !thread && !refId && !wantsRecentView) {
+    throw new Error("Usage: ai-memory-hub dispatch status [--thread-key <tool:project:ref> | --thread <thread-id> | --ref-id <id> | --recent [N]] [--project <project>] [--to <tool>] [--state <relay-state>] [--limit <N>]");
+  }
+
+  if (!threadKey && !thread && !refId && wantsRecentView) {
+    const summary = buildRecentRelayStatusView(config.memoryDir, {
+      project,
+      tool,
+      state,
+      limit
+    });
+    console.log(JSON.stringify(summary, null, 2));
+    return;
   }
 
   const resolvedThreadKeys = resolveRelayThreadKeys(config.memoryDir, {
@@ -609,6 +629,7 @@ function dispatchStatusCommand(argv) {
     .filter((entry) => (!hasExplicitThreadScope && refId) ? entry.sourceId === refId || entry.dispatchId === refId : true)
     .filter((entry) => project ? entry.project === project : true)
     .filter((entry) => tool ? entry.tool === tool : true)
+    .filter((entry) => state ? entry.state === state : true)
     .sort((a, b) => String(a.ts || "").localeCompare(String(b.ts || "")));
 
   if (all.length === 0) {
@@ -619,7 +640,8 @@ function dispatchStatusCommand(argv) {
         thread,
         refId,
         project,
-        tool
+        tool,
+        state
       },
       message: "No relay status entries matched."
     }, null, 2));
@@ -656,13 +678,14 @@ function dispatchStatusCommand(argv) {
 
   console.log(JSON.stringify({
     found: true,
-    query: {
-      threadKey,
-      thread,
-      refId,
-      project,
-      tool
-    },
+      query: {
+        threadKey,
+        thread,
+        refId,
+        project,
+        tool,
+        state
+      },
     summary,
     source,
     related,
@@ -671,6 +694,55 @@ function dispatchStatusCommand(argv) {
     timeline: all,
     dispatchLog
   }, null, 2));
+}
+
+function buildRecentRelayStatusView(memoryDir, { project = "", tool = "", state = "", limit = 20 }) {
+  const filteredEntries = Object.values(readLatestRelayStatusByThread(memoryDir))
+    .filter((entry) => project ? entry.project === project : true)
+    .filter((entry) => tool ? entry.tool === tool : true)
+    .filter((entry) => state ? entry.state === state : true)
+    .sort((a, b) => String(b.ts || "").localeCompare(String(a.ts || "")));
+  const latestEntries = filteredEntries.slice(0, Math.max(1, Number(limit || 20)));
+
+  const countsByState = {};
+  const countsByTool = {};
+  for (const entry of filteredEntries) {
+    const stateKey = entry.state || "unknown";
+    const toolKey = entry.tool || "unknown";
+    countsByState[stateKey] = (countsByState[stateKey] || 0) + 1;
+    countsByTool[toolKey] = (countsByTool[toolKey] || 0) + 1;
+  }
+
+  return {
+    found: latestEntries.length > 0,
+    mode: "recent",
+    query: {
+      recent: limit,
+      project,
+      tool,
+      state
+    },
+    summary: {
+      totalMatched: filteredEntries.length,
+      returned: latestEntries.length,
+      countsByState,
+      countsByTool
+    },
+    items: latestEntries.map((entry) => ({
+      threadKey: entry.threadKey || "",
+      thread: entry.thread || "",
+      project: entry.project || "",
+      tool: entry.tool || "",
+      state: entry.state || "",
+      sourceKind: entry.sourceKind || "",
+      sourceId: entry.sourceId || "",
+      attempt: Number(entry.attempt || 0),
+      maxRetries: Number(entry.maxRetries || 0),
+      nextRetryAt: entry.nextRetryAt || "",
+      lastError: summarizeText(entry.lastError || "", 120),
+      ts: entry.ts || ""
+    }))
+  };
 }
 
 function resolveRelayThreadKeys(memoryDir, { threadKey = "", thread = "", refId = "", project = "", tool = "" }) {
@@ -1827,6 +1899,10 @@ Examples:
   ${APP_NAME} workflow list --status active
   ${APP_NAME} dispatch --project ai-memory-hub
   ${APP_NAME} dispatch --to codex --run
+  ${APP_NAME} dispatch status --thread <thread-id> --project ai-memory-hub
+  ${APP_NAME} dispatch status --recent 10 --project ai-memory-hub
+  ${APP_NAME} dispatch status --recent --state failed --to claude
+  ${APP_NAME} dispatch retry --project ai-memory-hub --to qclaw --run --limit 1
   ${APP_NAME} pull
   ${APP_NAME} backup --reason manual
   ${APP_NAME} watch --interval-ms 30000
@@ -3641,6 +3717,20 @@ function getOption(argv, name) {
 
 function hasFlag(argv, name) {
   return argv.includes(name);
+}
+
+function parsePositiveIntegerOption(rawValue, name, { allowEmpty = false, defaultValue = 0 } = {}) {
+  if (rawValue === undefined || rawValue === null || rawValue === "") {
+    if (allowEmpty) {
+      return defaultValue;
+    }
+    throw new Error(`${name} requires a positive integer.`);
+  }
+  const value = Number(rawValue);
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error(`${name} must be a positive integer.`);
+  }
+  return value;
 }
 
 function positionalArgs(argv) {

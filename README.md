@@ -602,9 +602,15 @@ Use `dispatch` to trigger AI tools:
 ```bash
 ai-memory-hub dispatch --to codex --project who-is-undercover-20260605-01
 ai-memory-hub dispatch --to codex --project who-is-undercover-20260605-01 --run
+ai-memory-hub dispatch status --thread <thread-id> --project ai-memory-hub
+ai-memory-hub dispatch status --recent 10 --project ai-memory-hub
+ai-memory-hub dispatch status --recent --state failed --to claude
+ai-memory-hub dispatch retry --project ai-memory-hub --to qclaw --run --limit 1
 ```
 
 Without `--run`, dispatch is a dry run and only reports what can be triggered. With `--run`, it calls the target tool CLI and spends that tool's own model tokens. Successful dispatches are logged in `~/.ai-memory/state/dispatch-log.jsonl` and are not repeated by default; use `--force` to rerun.
+
+For relay observability, `dispatch status` supports both a single-thread deep view and a recent summary view. Use `--thread`, `--thread-key`, or `--ref-id` to inspect one relay timeline with source, related objects, and matching dispatch log entries. Use `--recent` to list the latest relay state for multiple threads, optionally filtered by `--project`, `--to`, or `--state`. The summary counts are computed across the full filtered result set, while `items` is the top-N slice controlled by `--recent` or `--limit`.
 
 Verified runner status on this machine:
 

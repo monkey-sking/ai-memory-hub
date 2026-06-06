@@ -153,6 +153,21 @@ ai-memory-hub workflow done --id <workflow-id> --by codex
 - 中途需要转交、提醒或补充上下文时，用 `workflow signal` 发给某个角色或具体工具。
 - 小的单人事项仍然用 `task`；短提醒仍然用 `radio`。
 
+### 联系 Codex 和其他 AI 工具
+
+当一个 AI 工具需要明确让另一个 AI 工具检查、执行、评审或接手时，用 `connect`。它会写入 Radio 消息，也可以同时创建一条指派给目标工具的共享任务。
+
+```bash
+ai-memory-hub connect status
+ai-memory-hub connect request --from gemini --to codex --project ai-memory-hub --text "请检查当前任务列表并继续实现。" --task
+ai-memory-hub connect review --from qclaw --to codex --project ai-memory-hub --text "请评审这次互操作改动。" --task
+ai-memory-hub connect handoff --from marvis --to codex --project ai-memory-hub --text "这是交接上下文和下一步。" --task
+ai-memory-hub dispatch --to codex --project ai-memory-hub
+ai-memory-hub dispatch --to codex --project ai-memory-hub --run
+```
+
+不加 `--run` 时，请求只是共享本地状态，目标工具下次读取 Radio/Task 时会看到。加 `--run` 只适合已经验证过 CLI runner 的目标；目前 `codex` 可以被自动触发，其它工具优先通过共享状态自行读取。
+
 ### 共享任务表
 
 共享任务表用于“当前正在做什么、谁认领了、进展如何、如何交接”。它比 Radio 更持久，但又不应该进入长期记忆。
@@ -296,6 +311,7 @@ record     追加一条长期记忆事件。
 radio      发送、列出和提升跨工具短消息。
 task       添加、列出、认领、备注、更新和完成共享任务。
 workflow   编排 planner/executor/reviewer/observer 多角色协作。
+connect    检查工具连接，或向另一个工具发送请求、评审、交接。
 dispatch   把 Radio/Task 调度给已验证的 CLI runner。
 sync       把 inbox 事件整理进长期记忆账本。
 index      重建 MEMORY.md、INDEX.md 和 memories/index.json。
@@ -483,6 +499,21 @@ Recommended use:
 - Use `workflow signal` for handoffs, reminders, or role-specific context.
 - Keep small single-owner items in `task`, and short pings in `radio`.
 
+### Contact Codex And Other AI Tools
+
+Use `connect` when one AI tool needs a specific target tool to inspect, execute, review, or continue work. It writes a Radio message and can also create an assigned shared task for the target.
+
+```bash
+ai-memory-hub connect status
+ai-memory-hub connect request --from gemini --to codex --project ai-memory-hub --text "Please inspect the current task list and continue implementation." --task
+ai-memory-hub connect review --from qclaw --to codex --project ai-memory-hub --text "Please review this interoperability change." --task
+ai-memory-hub connect handoff --from marvis --to codex --project ai-memory-hub --text "Handoff context and next step." --task
+ai-memory-hub dispatch --to codex --project ai-memory-hub
+ai-memory-hub dispatch --to codex --project ai-memory-hub --run
+```
+
+Without `--run`, the request remains shared local state until the target reads Radio or Task state. Use `--run` only for targets with verified CLI runners; currently `codex` can be auto-triggered, while most other tools should read shared state themselves.
+
 ### Shared Task List
 
 The shared task list tracks what is currently being worked on, who claimed it, what progress exists, and how another tool can take over. It is more durable than Radio, but it should not become long-term memory.
@@ -647,6 +678,7 @@ record     Append a durable memory event.
 radio      Send, list, and promote cross-tool short messages.
 task       Add, list, claim, note, update, and complete shared tasks.
 workflow   Orchestrate planner/executor/reviewer/observer work across tools.
+connect    Check tool connections or send requests, reviews, and handoffs.
 dispatch   Dispatch Radio/Task work to verified CLI runners.
 sync       Index inbox events into the durable memory ledger.
 index      Rebuild MEMORY.md, INDEX.md, and memories/index.json.

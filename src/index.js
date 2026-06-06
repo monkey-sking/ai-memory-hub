@@ -1061,9 +1061,6 @@ function appCommand(argv) {
           writeTasks(config.memoryDir, tasks);
         }, config.sync.lockStaleMs);
 
-        // Windows toast notification
-        notifyWindows(from, body.text, message.id);
-
         return sendJson(res, {
           ok: true,
           message,
@@ -1576,7 +1573,8 @@ function workflowCreateCommand(argv) {
     if (hasFlag(argv, "--notify")) {
       notifyWorkflowRoles(config.memoryDir, workflow);
     }
-    console.log(JSON.stringify(workflow, null, 2));
+    const created = readWorkflows(config.memoryDir).find((item) => item.id === workflow.id) || workflow;
+    console.log(JSON.stringify(created, null, 2));
   }, config.sync.lockStaleMs);
 }
 
@@ -2382,6 +2380,29 @@ function renderMemoryLine(memory) {
   return `- [${memory.source}${kind} score=${memory.importance}${topics}] ${memory.text}`;
 }
 
+function expandSynonyms(terms) {
+  const synonyms = [
+    ["feishu", "飞书", "lark", "lark-feishu"],
+    ["git", "github", "gitee"],
+    ["wechat", "微信", "wx", "wechat-mini-game"],
+    ["game", "游戏", "play"],
+    ["task", "任务", "todo"],
+    ["workflow", "工作流", "collaboration"],
+    ["memory", "记忆", "hub"]
+  ];
+  const expanded = new Set(terms);
+  for (const term of terms) {
+    for (const group of synonyms) {
+      if (group.includes(term)) {
+        for (const word of group) {
+          expanded.add(word);
+        }
+      }
+    }
+  }
+  return [...expanded];
+}
+
 function searchMemories(records, query) {
   const queryTerms = extractKeywords(query);
   const queryNgrams = extractSearchTerms(query);
@@ -2408,7 +2429,8 @@ function searchMemories(records, query) {
         ...searchTerms
       ].join(" "));
       let score = 0;
-      for (const term of queryTerms) {
+      const expandedTerms = expandSynonyms(queryTerms);
+      for (const term of expandedTerms) {
         if (haystack.has(term)) {
           score += 4;
         } else if (searchTerms.has(term)) {
@@ -2429,6 +2451,13 @@ function searchMemories(records, query) {
         score += queryNormalized.length >= 6 ? 8 : 5;
       } else if (queryNormalized && normalizedJoinedKeywords.includes(queryNormalized)) {
         score += 3;
+      }
+      for (const topic of memory.topics || []) {
+        for (const term of expandedTerms) {
+          if (topic.includes(term) || term.includes(topic)) {
+            score += 5;
+          }
+        }
       }
       score += Number(memory.importance || 0) / 100;
       return { ...memory, score };
@@ -2785,7 +2814,8 @@ function appendIfMissing(file, snippet, marker) {
     existing.includes(marker) &&
     existing.includes("Shared Agent Radio") &&
     existing.includes("Shared Task List") &&
-    existing.includes("Shared Workflows")
+    existing.includes("Shared Workflows") &&
+    existing.includes("Contact Other AI Tools")
   ) {
     return;
   }
@@ -2798,7 +2828,19 @@ function appendIfMissing(file, snippet, marker) {
       sections.push(extractSection(snippet, "## Shared Workflows", "## Shared Agent Radio"));
     }
     if (!existing.includes("Shared Agent Radio")) {
-      sections.push(extractSection(snippet, "## Shared Agent Radio"));
+      sections.push(extractSectionBeforeAny(snippet, "## Shared Agent Radio", [
+        "## Contact Other AI Tools",
+        "## Commands",
+        "## Calling Marvis",
+        "## Other AI Tools Calling Marvis"
+      ]));
+    }
+    if (!existing.includes("Contact Other AI Tools")) {
+      sections.push(extractSectionBeforeAny(snippet, "## Contact Other AI Tools", [
+        "## Commands",
+        "## Calling Marvis",
+        "## Other AI Tools Calling Marvis"
+      ]));
     }
     const addition = sections.filter(Boolean).map((section) => section.trim()).join("\n\n");
     if (addition) {
@@ -2821,6 +2863,21 @@ function extractSection(text, heading, nextHeading = "") {
   }
   const nextIndex = text.indexOf(nextHeading, index + heading.length);
   return nextIndex === -1 ? text.slice(index) : text.slice(index, nextIndex);
+}
+
+function extractSectionBeforeAny(text, heading, nextHeadings = []) {
+  const index = text.indexOf(heading);
+  if (index === -1) {
+    return "";
+  }
+  let nextIndex = text.length;
+  for (const nextHeading of nextHeadings) {
+    const found = text.indexOf(nextHeading, index + heading.length);
+    if (found !== -1 && found < nextIndex) {
+      nextIndex = found;
+    }
+  }
+  return text.slice(index, nextIndex);
 }
 
 function readTemplate(name) {
@@ -2923,39 +2980,11 @@ function trimOutput(value, limit = 4000) {
   return `${text.slice(0, limit)}\n...[truncated]`;
 }
 
-function notifyWindows(from, text, messageId) {
-  if (process.platform !== "win32") {
-    return;
+function summarizeText(value, limit = 80) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  if (text.length <= limit) {
+    return text;
   }
-  try {
-    const escapedFrom = from.replace(/"/g, '\\"');
-    const escapedText = text.slice(0, 160).replace(/"/g, '\\"');
-    const escapedId = (messageId || "").replace(/"/g, '\\"');
-    const psScript = `
-[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
-[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null
-$template = @"
-<toast>
-  <visual>
-    <binding template='ToastGeneric'>
-      <text>${escapedFrom} wants Marvis</text>
-      <text>${escapedText}</text>
-      <text placement='attribution'>via AI Memory Hub</text>
-    </binding>
-  </visual>
-</toast>
-"@
-$xml = New-Object Windows.Data.Xml.Dom.XmlDocument
-$xml.LoadXml($template)
-$toast = New-Object Windows.UI.Notifications.ToastNotification $xml
-[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("AI Memory Hub").Show($toast)
-`.trim();
-    spawnSync("powershell", ["-NoProfile", "-Command", psScript], {
-      encoding: "utf8",
-      windowsHide: true,
-      timeout: 5000
-    });
-  } catch {
-    // Notification is optional, don't fail the request
-  }
+  const safeLimit = Math.max(0, Number(limit) || 0);
+  return `${text.slice(0, Math.max(0, safeLimit - 3)).trimEnd()}...`;
 }

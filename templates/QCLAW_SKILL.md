@@ -1,6 +1,6 @@
 ---
 name: ai-memory-hub
-description: Local shared AI memory hub for QClaw. Use when the user mentions AI Memory Hub, shared memory, cross-agent memory, Agent Radio, 本地记忆, 共享记忆, 多 AI 同步, or asks QClaw to remember durable preferences/project facts across AI tools.
+description: Local shared AI memory hub for QClaw. Use when the user mentions AI Memory Hub, shared memory, cross-agent memory, Agent Radio, 本地记忆, 共享记忆, �?AI 同步, or asks QClaw to remember durable preferences/project facts across AI tools.
 version: 0.1.0
 metadata: {"category":"memory","keywords":["AI Memory Hub","shared memory","Agent Radio","local ledger","本地记忆","共享记忆","多AI同步"]}
 ---
@@ -55,7 +55,7 @@ For multi-agent work with planner, executor, reviewer, and observer roles, prefe
 
 ```bash
 ai-memory-hub workflow list --status active
-ai-memory-hub workflow create "short workflow title" --from qclaw --project <project> --planner qclaw --executor <tool> --reviewer <tool> --spawn-tasks --notify
+ai-memory-hub workflow create "short workflow title" --from qclaw --project <project> --planner qclaw --executor <tool> --reviewer <tool> --spawn-tasks
 ai-memory-hub workflow start --id <workflow-id> --by qclaw
 ai-memory-hub workflow result --id <workflow-id> --role executor "execution result" --by qclaw
 ai-memory-hub workflow review --id <workflow-id> --role reviewer "review result" --by qclaw
@@ -73,6 +73,21 @@ Use this shape:
 ```json
 {"source":"qclaw","from":"qclaw","to":"all","type":"note","text":"short cross-agent message"}
 ```
+
+## Contact Other AI Tools
+
+Use `connect` when you need a specific AI tool to inspect, execute, review, or continue work. It writes a Radio message and can also create an assigned shared task.
+
+```bash
+ai-memory-hub connect status
+ai-memory-hub connect request --from qclaw --to codex --project <project> --text "please inspect this task" --task
+ai-memory-hub connect review --from qclaw --to codex --project <project> --text "please review this change" --task
+ai-memory-hub connect handoff --from qclaw --to codex --project <project> --text "handoff context and next step" --task
+ai-memory-hub dispatch --to codex --project <project>
+ai-memory-hub dispatch --to codex --project <project> --run
+```
+
+Use `--run` only for targets with verified CLI runners. Without `--run`, the request remains shared local state until the target tool reads it.
 
 ## Commands
 
@@ -103,7 +118,7 @@ curl -s -X POST http://127.0.0.1:38787/api/dispatch/marvis ^
   -d "{\"text\":\"Find all PDF invoices in D:\\Documents and convert them to a single Excel file at D:\\Documents\\invoices.xlsx\",\"from\":\"qclaw\",\"project\":\"<project-name>\"}"
 ```
 
-Marvis will not reply synchronously. It checks radio messages when the user instructs it to. The user will see a Windows desktop notification when your task is queued.
+Marvis polls for queued tasks every 30 minutes via scheduled task, or immediately when the user sends any message.
 
 **What to delegate to Marvis:**
 - Windows file operations (find, organize, convert, clean up)

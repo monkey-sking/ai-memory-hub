@@ -461,6 +461,62 @@
       font-family: var(--font-mono);
     }
     .stream-body { font-size: 13.5px; white-space: pre-wrap; word-break: break-all; }
+    .stream-status-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+    }
+    .stream-status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--border-color);
+      background: rgba(255,255,255,0.04);
+      color: var(--text-muted);
+    }
+    .stream-status-badge.delivery-written {
+      border-color: rgba(79, 193, 255, 0.35);
+      color: #9ddcff;
+    }
+    .stream-status-badge.delivery-dispatched {
+      border-color: rgba(46, 204, 113, 0.35);
+      color: #7ee2a8;
+    }
+    .stream-status-badge.delivery-failed {
+      border-color: rgba(255, 123, 114, 0.35);
+      color: #ff9b96;
+    }
+    .stream-status-badge.delivery-replied {
+      border-color: rgba(188, 140, 255, 0.35);
+      color: #d1b2ff;
+    }
+    .stream-status-detail {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .stream-thread {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+    .stream-collapsible {
+      border-top: 1px dashed rgba(255,255,255,0.08);
+      padding-top: 8px;
+      margin-top: 2px;
+    }
+    .stream-collapsible summary {
+      cursor: pointer;
+      color: var(--text-muted);
+      font-size: 12px;
+      user-select: none;
+    }
+    .stream-collapsible summary:hover {
+      color: var(--text-main);
+    }
     .stream-actions {
       display: flex;
       justify-content: flex-end;
@@ -945,7 +1001,11 @@
               </div>
               <div class="form-group">
                 <label data-i18n="projectLabel">Project</label>
-                <input type="text" id="radProject" data-i18n-placeholder="projectLabel" placeholder="Project name">
+                <select id="radProject" onchange="toggleCustomProjectInput('rad')">
+                  <option value="" data-i18n="selectProject">Select Project</option>
+                  <option value="__custom__" data-i18n="customProject">Custom Project</option>
+                </select>
+                <input type="text" id="radProjectCustom" data-i18n-placeholder="projectLabel" placeholder="Project name" style="display:none;margin-top:8px;">
               </div>
             </div>
             <button class="primary" onclick="submitRadio()" data-i18n="broadcast">Broadcast Message</button>
@@ -992,7 +1052,11 @@
             </div>
             <div class="form-group">
               <label data-i18n="projectLabel">Project</label>
-              <input type="text" id="tskProject" value="default">
+              <select id="tskProject" onchange="toggleCustomProjectInput('tsk')">
+                <option value="default">default</option>
+                <option value="__custom__" data-i18n="customProject">Custom Project</option>
+              </select>
+              <input type="text" id="tskProjectCustom" data-i18n-placeholder="projectLabel" placeholder="Project name" style="display:none;margin-top:8px;">
             </div>
             <div class="form-group">
               <label data-i18n="priorityLabel">Priority</label>
@@ -1434,6 +1498,18 @@
         filterProject: "Filter Project:",
         filterPriority: "Filter Priority:",
         allProjects: "All Projects",
+        selectProject: "Select Project",
+        customProject: "Custom Project",
+        deliveryWritten: "Written to Hub",
+        deliveryDispatched: "Dispatched",
+        deliveryFailed: "Dispatch Failed",
+        deliveryReplied: "Thread Replied",
+        deliveryPendingRead: "Pending Tool Read",
+        dispatchToTool: "Dispatch to {tool}",
+        dispatchToAll: "Broadcast to all tools",
+        replySummary: "{tool} replied in thread",
+        showStatusReply: "Show status reply",
+        threadLabel: "Thread",
         allPriorities: "All Priorities",
         automatedDispatcher: "Automated Dispatcher (Cron / Watcher logs)",
         triggerDispatch: "Trigger Dispatch Now",
@@ -1541,6 +1617,18 @@
         filterProject: "筛选项目:",
         filterPriority: "筛选优先级:",
         allProjects: "所有项目",
+        selectProject: "选择项目",
+        customProject: "自定义项目",
+        deliveryWritten: "已写入 Hub",
+        deliveryDispatched: "已调度",
+        deliveryFailed: "调度失败",
+        deliveryReplied: "线程已有回执",
+        deliveryPendingRead: "待目标工具读取",
+        dispatchToTool: "派发给 {tool}",
+        dispatchToAll: "广播给所有工具",
+        replySummary: "{tool} 已在线程中回复",
+        showStatusReply: "展开状态回执",
+        threadLabel: "线程",
         allPriorities: "所有优先级",
         automatedDispatcher: "自动调度执行日志",
         triggerDispatch: "立即触发调度",
@@ -1855,13 +1943,17 @@
 
       const tskProjSet = new Set();
       state.tasks.forEach(tsk => {
-        if (tsk.project) tskProjSet.add(tsk.project);
+        if (tsk.project) {
+          tskProjSet.add(tsk.project);
+          projectSet.add(tsk.project);
+        }
       });
 
       updateSelectOptions('filterRadioFromOpt', Array.from(fromSet), t('senderAll'));
       updateSelectOptions('filterRadioToOpt', Array.from(toSet), t('recipientAll'));
       updateSelectOptions('filterRadioProject', Array.from(projectSet), t('allProjects'));
       updateSelectOptions('filterTaskProject', Array.from(tskProjSet), t('allProjects'));
+      updateProjectInputOptions(Array.from(projectSet));
     }
 
     function updateSelectOptions(elementId, values, defaultLabel) {
@@ -1874,6 +1966,110 @@
       });
       select.innerHTML = html;
       select.value = current;
+    }
+
+    function updateProjectInputOptions(values) {
+      updateProjectSelectOptions('radProject', values, '');
+      updateProjectSelectOptions('tskProject', values, 'default');
+    }
+
+    function updateProjectSelectOptions(elementId, values, fallbackValue) {
+      const select = document.getElementById(elementId);
+      if (!select) return;
+      const current = select.value;
+      const customOption = `<option value="__custom__">${t('customProject')}</option>`;
+      const placeholder = elementId === 'radProject'
+        ? `<option value="">${t('selectProject')}</option>`
+        : '';
+      const normalized = Array.from(new Set(values.filter(Boolean))).sort();
+      const options = normalized
+        .map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`)
+        .join('');
+      select.innerHTML = `${placeholder}${options}${customOption}`;
+
+      if (current === '__custom__' || normalized.includes(current) || current === '') {
+        select.value = current;
+      } else if (current) {
+        select.value = '__custom__';
+      } else {
+        select.value = fallbackValue;
+      }
+
+      toggleCustomProjectInput(elementId === 'radProject' ? 'rad' : 'tsk');
+    }
+
+    function toggleCustomProjectInput(prefix) {
+      const select = document.getElementById(prefix + 'Project');
+      const input = document.getElementById(prefix + 'ProjectCustom');
+      if (!select || !input) return;
+      const showCustom = select.value === '__custom__';
+      input.style.display = showCustom ? 'block' : 'none';
+      if (!showCustom) {
+        input.value = '';
+      }
+    }
+
+    function getProjectValue(prefix, fallbackValue = '') {
+      const select = document.getElementById(prefix + 'Project');
+      const input = document.getElementById(prefix + 'ProjectCustom');
+      if (!select) return fallbackValue;
+      if (select.value === '__custom__') {
+        return (input?.value || '').trim() || fallbackValue;
+      }
+      return select.value || fallbackValue;
+    }
+
+    function formatDateTime(value) {
+      if (!value) return '';
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return escapeHtml(String(value));
+      return date.toLocaleString();
+    }
+
+    function getDispatchRecordForMessage(msg) {
+      return state.dispatch.find(log => log.kind === 'radio' && log.refId === msg.id) || null;
+    }
+
+    function getThreadReplies(msg) {
+      if (!msg.thread) return [];
+      return state.radio.filter(item =>
+        item.id !== msg.id &&
+        item.thread &&
+        item.thread === msg.thread &&
+        item.type === 'status'
+      );
+    }
+
+    function getDeliveryMeta(msg) {
+      const dispatchRecord = getDispatchRecordForMessage(msg);
+      const replies = getThreadReplies(msg);
+      const badges = [
+        { tone: 'delivery-written', label: t('deliveryWritten') }
+      ];
+      const details = [];
+
+      if (msg.to === 'all') {
+        details.push(t('dispatchToAll'));
+      } else if (msg.to) {
+        const targetName = (toolDisplayNames[state.lang] && toolDisplayNames[state.lang][msg.to]) || msg.to;
+        details.push(t('dispatchToTool', { tool: targetName }));
+      }
+
+      if (dispatchRecord) {
+        if (dispatchRecord.runnable && dispatchRecord.exitCode === 0) {
+          badges.push({ tone: 'delivery-dispatched', label: t('deliveryDispatched') });
+        } else if (dispatchRecord.runnable) {
+          badges.push({ tone: 'delivery-failed', label: t('deliveryFailed') });
+        }
+      } else if (msg.to && msg.to !== 'all') {
+        details.push(t('deliveryPendingRead'));
+      }
+
+      if (replies.length > 0) {
+        badges.push({ tone: 'delivery-replied', label: t('deliveryReplied') });
+      }
+
+      return { dispatchRecord, replies, badges, details };
     }
 
     // Dashboard Overview Tab Rendering
@@ -1915,6 +2111,36 @@
     function renderRadioCardHTML(msg) {
       const fromName = (toolDisplayNames[state.lang] && toolDisplayNames[state.lang][msg.from]) || msg.from;
       const toName = (toolDisplayNames[state.lang] && toolDisplayNames[state.lang][msg.to]) || msg.to;
+      const delivery = getDeliveryMeta(msg);
+      const badgesHtml = delivery.badges
+        .map(item => `<span class="stream-status-badge ${item.tone}">${escapeHtml(item.label)}</span>`)
+        .join('');
+      const detailHtml = delivery.details.length > 0
+        ? `<span class="stream-status-detail">${escapeHtml(delivery.details.join(' · '))}</span>`
+        : '';
+      const threadHtml = msg.thread
+        ? `<div class="stream-thread">${t('threadLabel')}: ${escapeHtml(msg.thread)}</div>`
+        : '';
+      const replyHtml = delivery.replies.length > 0
+        ? delivery.replies.map(reply => {
+            const replyFromName = (toolDisplayNames[state.lang] && toolDisplayNames[state.lang][reply.from]) || reply.from;
+            return `
+              <details class="stream-collapsible">
+                <summary>${t('replySummary', { tool: replyFromName })} · ${formatDateTime(reply.ts || reply.createdAt)}</summary>
+                <div class="stream-body" style="margin-top:8px;">${escapeHtml(reply.text)}</div>
+              </details>
+            `;
+          }).join('')
+        : '';
+      const shouldCollapseBody = msg.type === 'status';
+      const bodyHtml = shouldCollapseBody
+        ? `
+          <details class="stream-collapsible">
+            <summary>${t('showStatusReply')}</summary>
+            <div class="stream-body" style="margin-top:8px;">${escapeHtml(msg.text)}</div>
+          </details>
+        `
+        : `<div class="stream-body">${escapeHtml(msg.text)}</div>`;
 
       return `
         <div class="stream-card">
@@ -1929,9 +2155,12 @@
               </span>
               <span class="badge status-open" style="margin-left:4px;">${t(msg.type + 'Opt')}</span>
             </div>
-            <span class="muted">${new Date(msg.ts || msg.createdAt).toLocaleTimeString()}</span>
+            <span class="muted">${formatDateTime(msg.ts || msg.createdAt)}</span>
           </div>
-          <div class="stream-body">${escapeHtml(msg.text)}</div>
+          <div class="stream-status-row">${badgesHtml}${detailHtml}</div>
+          ${threadHtml}
+          ${bodyHtml}
+          ${replyHtml}
           ${msg.project ? `<div style="font-size:11px;"><span class="stream-project">${escapeHtml(msg.project)}</span></div>` : ''}
           <div class="stream-actions">
             <button class="small" onclick="promoteRadio('${msg.id}')">${t('promoteToMemory')}</button>
@@ -2159,11 +2388,13 @@
           from: document.getElementById('radFrom').value || 'dashboard',
           to: document.getElementById('radTo').value || 'all',
           type: document.getElementById('radType').value,
-          project: document.getElementById('radProject').value
+          project: getProjectValue('rad')
         })
       });
       document.getElementById('radText').value = '';
       document.getElementById('radProject').value = '';
+      document.getElementById('radProjectCustom').value = '';
+      toggleCustomProjectInput('rad');
       await refreshData();
     }
 
@@ -2178,13 +2409,16 @@
           description: document.getElementById('tskDesc').value,
           handoff: document.getElementById('tskHandoff').value,
           from: 'dashboard',
-          project: document.getElementById('tskProject').value || 'default',
+          project: getProjectValue('tsk', 'default'),
           priority: document.getElementById('tskPriority').value
         })
       });
       document.getElementById('tskTitle').value = '';
       document.getElementById('tskDesc').value = '';
       document.getElementById('tskHandoff').value = '';
+      document.getElementById('tskProject').value = 'default';
+      document.getElementById('tskProjectCustom').value = '';
+      toggleCustomProjectInput('tsk');
       await refreshData();
     }
 

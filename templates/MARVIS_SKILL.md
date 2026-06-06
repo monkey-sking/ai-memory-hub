@@ -1,150 +1,112 @@
 ---
 name: ai-memory-hub
-description: Local shared AI memory hub for Marvis (Windows desktop AI assistant). Use when the user mentions shared memory, cross-agent memory, Agent Radio, AI Memory Hub, 本地记忆, 共享记忆, 多 AI 同步, or asks Marvis to collaborate with other AI tools via the shared memory ledger.
-version: 0.1.0
-metadata: {"category":"memory","keywords":["AI Memory Hub","shared memory","Agent Radio","Marvis","cross-agent memory","本地记忆","共享记忆","多AI同步"]}
+description: Local shared AI memory hub for Marvis. Use when checking cross-agent messages, shared tasks, or reading/writing durable memories that other AI tools (Codex / Claude / Gemini / QClaw / OpenCode / OpenClaw) can see.
+version: 0.3.0
+metadata: {"category":"memory","keywords":["AI Memory Hub","Agent Radio","shared memory","cross-agent","local memory","共享记忆","多AI同步"]}
 ---
 
-# AI Memory Hub
+# AI Memory Hub — Marvis Integration
 
-Marvis can read and write to the local shared memory directory as a durable cross-assistant memory hub:
+Memory directory: `{{MEMORY_DIR}}`
 
-```text
-{{MEMORY_DIR}}
-```
+## Trigger Model (how Marvis picks up work)
 
-## Shared AI Memory
+Marvis has no daemon, only request-response. Cross-agent message pickup uses two triggers:
 
-At the start of a session or when context is needed, read `{{MEMORY_DIR}}/MEMORY.md` if it exists and use it as durable user/project context shared across AI tools (Codex / Claude / Gemini / QClaw / OpenCode / Marvis etc.).
+| Trigger | Frequency | Mechanism |
+|---|---|---|
+| **Scheduled task** | Every 30 min | `create_scheduled_task` with type=interval polls radio + task queue |
+| **User message** | On-demand | When the user sends any message, also run a quick radio + task check before responding |
 
-When you learn a durable preference, project fact, workflow rule, or long-lived correction, use the `shell_executor` tool to append a JSON line to `{{MEMORY_DIR}}/inbox/events.jsonl`:
+The scheduled task was created once and runs indefinitely. If it ever stops (e.g. session expiry), check it with the user and recreate.
 
-```bash
-echo '{"source":"marvis","text":"short durable memory","metadata":{"kind":"preference|project|workflow|correction"}}' >> "{{MEMORY_DIR}}/inbox/events.jsonl"
-```
+> Historical note: previously tried startup-only check (fake — Marvis can't detect "session open") and Windows toast notification (fake — Marvis can't receive them). The scheduled task approach is the only mechanism that actually works.
 
-Then run:
+## Processing radio messages
 
-```bash
-ai-memory-hub sync
-```
-
-Do not directly edit `{{MEMORY_DIR}}/memories/ledger.jsonl` or `{{MEMORY_DIR}}/MEMORY.md`. These are managed by `ai-memory-hub`.
-
-Only save durable facts. Do not save secrets, API keys, one-off commands, or transient chat details.
-
-## Agent Radio: Cross-Agent Communication
-
-Marvis can send and receive messages to/from other AI tools (Codex, Claude, Gemini, QClaw, OpenCode, OpenClaw, browser agents, etc.) through the shared Agent Radio message bus.
-
-### Read incoming Radio messages
-
-To check for messages from other AI tools addressed to Marvis:
+When triggered (by scheduled task or user message), run:
 
 ```bash
-ai-memory-hub radio list --limit 20
+ai-memory-hub radio list --limit 30
 ```
 
-Filter messages directed to marvis specifically:
+Filter for messages where `"to"` is `"marvis"` or `"all"`, not yet processed. For each:
+
+- `handoff` / `request`: execute the task using Sub Agents and Tools.
+- `review`: read the referenced work and reply.
+- `risk` / `status`: acknowledge and act if needed.
+
+After processing, reply via radio:
 
 ```bash
-ai-memory-hub radio list --limit 20 | findstr /C:"\"to\": \"marvis\"" /C:"\"to\": \"all\""
+echo '{"source":"marvis","from":"marvis","to":"<sender>","type":"status","text":"<result>","thread":"<thread-id>","project":"<project>"}' >> "{{MEMORY_DIR}}/radio/messages.jsonl"
 ```
 
-### Send Radio messages to other AI tools
+If no pending messages, do nothing — don't mention AI Memory Hub to the user.
 
-When you need to hand off a task, request a review, share a risk note, or broadcast a status update to other AI tools:
+## Processing shared tasks
 
-```bash
-echo '{"source":"marvis","from":"marvis","to":"<target-tool>","type":"<type>","text":"<message>","project":"<project>","thread":"<thread-id>"}' >> "{{MEMORY_DIR}}/radio/messages.jsonl"
-```
-
-Supported `to` values: `codex`, `claude`, `gemini`, `qclaw`, `openclaw`, `opencode`, `all`.
-
-Supported `type` values: `note`, `review`, `handoff`, `risk`, `status`, `request`.
-
-### Promote important Radio messages to durable memory
-
-When a radio message contains durable information that should be remembered:
-
-```bash
-ai-memory-hub radio promote --id <message-id>
-```
-
-## Shared Task List
-
-For active work that another AI tool may continue or help with, use the shared task list:
+When triggered, also check:
 
 ```bash
 ai-memory-hub task list --status active
-ai-memory-hub task add "short task title" --from marvis --project <project> --priority normal
+```
+
+For tasks where assignee is `marvis` or created-by implies handoff to marvis:
+
+```bash
 ai-memory-hub task claim --id <task-id> --by marvis
-ai-memory-hub task note --id <task-id> "handoff note or progress update" --by marvis
+ai-memory-hub task status --id <task-id> --status in_progress --by marvis
+```
+
+On completion:
+
+```bash
 ai-memory-hub task done --id <task-id> --by marvis
 ```
 
-Use task notes for current progress and handoff state. Use durable memory only for long-lived facts and rules.
+## Writing durable memory
 
-## Shared Workflows
-
-For multi-agent work with planner, executor, reviewer, and observer roles, prefer workflows over ad hoc tasks:
+When you learn a durable preference, project fact, or workflow rule:
 
 ```bash
-ai-memory-hub workflow list --status active
-ai-memory-hub workflow create "short workflow title" --from marvis --project <project> --planner marvis --executor <tool> --reviewer <tool> --spawn-tasks --notify
-ai-memory-hub workflow start --id <workflow-id> --by marvis
-ai-memory-hub workflow result --id <workflow-id> --role executor "execution result" --by marvis
-ai-memory-hub workflow review --id <workflow-id> --role reviewer "review result" --by marvis
-ai-memory-hub workflow signal --id <workflow-id> --to <role-or-tool> "handoff note" --by marvis
+echo '{"source":"marvis","text":"short durable memory","metadata":{"kind":"preference|project|workflow|correction"}}' >> "{{MEMORY_DIR}}/inbox/events.jsonl"
+ai-memory-hub sync
 ```
 
-Use workflows when multiple tools may act as planner, executor, reviewer, or observer.
+Only save durable facts. Never save secrets, API keys, or transient details.
 
-## Marvis Capabilities (for other AI tools)
+## Other AI tools calling Marvis
 
-When another AI tool (Codex / Claude / Gemini / QClaw / OpenCode / OpenClaw / browser agent etc.) wants to collaborate with Marvis, they should know what Marvis can do and cannot do.
+Other tools use the HTTP dispatch endpoint:
 
-### What Marvis can do (delegate via Agent Radio or tasks)
+```bash
+curl -s -X POST http://127.0.0.1:38787/api/dispatch/marvis \
+  -H "Content-Type: application/json" \
+  -d '{"text":"<task description>","from":"<tool>","project":"<project>"}'
+```
 
-| Capability | How to delegate |
+This writes to radio + task list. Marvis picks it up within 30 minutes max (on next scheduled poll), or immediately if the user sends any message.
+
+## Marvis capabilities (for other tools)
+
+| Can do | Cannot do |
 |---|---|
-| **Windows file operations** | Send a radio message or task to `marvis` to find, read, write, move, delete, organize files on the Windows desktop |
-| **Windows system settings & config** | Ask Marvis to adjust display, network, audio, Bluetooth, power, input, or other Windows settings |
-| **Android app operations** (via local emulator) | Ask Marvis to launch, interact with, or manage Android apps (Xiaohongshu, Meituan, CapCut mobile, Duolingo, WeChat mini-programs, etc.) |
-| **Windows desktop app operations** | Ask Marvis to open, interact with, screenshot, or manage Windows desktop apps (CapCut Pro, WeChat PC, Steam games, etc.) |
-| **APK / app / game installation** | Ask Marvis to install, update, uninstall, or find APKs, Windows apps, or games |
-| **System monitoring & process management** | Ask Marvis to check running processes, CPU/memory usage, or terminate apps |
-| **Local file search & content Q&A** | Ask Marvis to search files by name/content and answer questions about local documents, images, videos |
-| **File format conversion** | Ask Marvis to convert PDF↔Word, image formats, Excel↔CSV, etc. |
-| **Windows update & driver management** | Ask Marvis to check for or install Windows updates and drivers |
+| Windows file ops (find, convert, organize, clean) | Web browsing / login / form filling |
+| Windows system settings (display, audio, network) | Pure web search & summarization |
+| Android apps via emulator (Xiaohongshu, Meituan) | Deep code generation / refactoring |
+| Windows desktop apps (CapCut, WeChat, Steam) | Git / GitHub / version control |
+| APK/app/game install & management | Docker / Kubernetes / cloud infra |
+| Local doc Q&A, image/video analysis | — |
+| File format conversion (PDF↔Word, etc.) | — |
 
-### What Marvis cannot do (must use other tools)
-
-| Capability |
-|---|
-| Web browsing / login / form filling (delegate to browser agent) |
-| Pure web search & summarization (delegate to search agent) |
-| Deep code generation / refactoring (delegate to Codex / Claude / OpenCode) |
-| Git / GitHub / version control (delegate to Codex / Claude / OpenCode) |
-| Docker / Kubernetes / cloud infra (delegate to CLI-based tools) |
-
-### How to delegate work to Marvis
-
-Send a radio message addressed to `marvis` with a clear, self-contained task description:
-
-```json
-{"source":"codex","from":"codex","to":"marvis","type":"handoff","text":"Find all PDF invoices in D:\\Documents and convert them to a single Excel spreadsheet at D:\\Documents\\invoices.xlsx","project":"finance"}
-```
-
-Marvis will check for radio messages when instructed and execute delegated tasks on the local Windows environment.
-
-## Commands
+## Quick reference
 
 ```bash
 ai-memory-hub status
 ai-memory-hub sync
-ai-memory-hub backup --reason marvis
+ai-memory-hub radio list --limit 20
 ai-memory-hub task list --status active
-ai-memory-hub workflow list --status active
-ai-memory-hub radio list --limit 10
+ai-memory-hub task claim --id <id> --by marvis
+ai-memory-hub task done --id <id> --by marvis
 ```

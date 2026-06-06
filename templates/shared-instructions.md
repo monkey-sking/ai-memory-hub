@@ -38,7 +38,7 @@ For multi-agent work with planner, executor, reviewer, and observer roles, prefe
 
 ```bash
 ai-memory-hub workflow list --status active
-ai-memory-hub workflow create "short workflow title" --from {{TOOL}} --project <project> --planner {{TOOL}} --executor <tool> --reviewer <tool> --spawn-tasks --notify
+ai-memory-hub workflow create "short workflow title" --from {{TOOL}} --project <project> --planner {{TOOL}} --executor <tool> --reviewer <tool> --spawn-tasks
 ai-memory-hub workflow start --id <workflow-id> --by {{TOOL}}
 ai-memory-hub workflow result --id <workflow-id> --role executor "execution result" --by {{TOOL}}
 ai-memory-hub workflow review --id <workflow-id> --role reviewer "review result" --by {{TOOL}}
@@ -56,6 +56,21 @@ Use this shape:
 ```json
 {"source":"{{TOOL}}","from":"{{TOOL}}","to":"all","type":"note","text":"short cross-agent message"}
 ```
+
+## Contact Other AI Tools
+
+Use `connect` when you need a specific AI tool to inspect, execute, review, or continue work. It writes a Radio message and can also create an assigned shared task.
+
+```bash
+ai-memory-hub connect status
+ai-memory-hub connect request --from {{TOOL}} --to <tool> --project <project> --text "please inspect this task" --task
+ai-memory-hub connect review --from {{TOOL}} --to <tool> --project <project> --text "please review this change" --task
+ai-memory-hub connect handoff --from {{TOOL}} --to <tool> --project <project> --text "handoff context and next step" --task
+ai-memory-hub dispatch --to <tool> --project <project>
+ai-memory-hub dispatch --to <tool> --project <project> --run
+```
+
+Use `--to codex` when asking Codex to continue or review work. Use `--run` only for targets with verified CLI runners. Without `--run`, the request remains shared local state until the target tool reads it.
 
 ## Calling Marvis (Windows Desktop AI Assistant)
 
@@ -75,7 +90,7 @@ curl -s -X POST http://127.0.0.1:38787/api/dispatch/marvis ^
   -d "{\"text\":\"Find all PDF invoices in D:\\Documents and convert them to a single Excel file at D:\\Documents\\invoices.xlsx\",\"from\":\"{{TOOL}}\",\"project\":\"<project-name>\"}"
 ```
 
-Marvis will not reply synchronously. It checks radio messages when the user instructs it to. The user will see a Windows desktop notification when your task is queued.
+Marvis polls for queued tasks every 30 minutes via scheduled task, or immediately when the user sends any message.
 
 **What to delegate to Marvis:**
 - Windows file operations (find, organize, convert, clean up)

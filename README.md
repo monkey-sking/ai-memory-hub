@@ -90,6 +90,8 @@ Token 消耗实际发生在 AI 工具将 `MEMORY.md` 纳入自身上下文时。
 - `working`：近期项目事实、工作流、参考信息。
 - `archive`：完整历史保存在账本和索引里，默认不塞进短快照。
 
+生命周期策略见 `docs/memory-lifecycle.md`：账本长期保留，索引和快照可重建，过期/纠错先通过追加新记忆表达，不自动删除 durable facts。
+
 可以在 `~/.ai-memory/config.json` 调整快照大小：
 
 ```json
@@ -438,6 +440,8 @@ Tokens are consumed when an AI tool reads `MEMORY.md` and includes it in its own
 - `core`: stable preferences, rules, corrections, and high-importance facts.
 - `working`: recent project facts, workflow information, and references.
 - `archive`: full history kept in the ledger and index, not loaded by default.
+
+See `docs/memory-lifecycle.md` for the durable memory lifecycle policy: the ledger is retained, indexes and snapshots are derived, and stale facts are superseded by new memories before any destructive cleanup exists.
 
 Tune snapshot size in `~/.ai-memory/config.json`:
 

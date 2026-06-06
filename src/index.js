@@ -165,7 +165,7 @@ function getStatusObject() {
       failed: relayLatest.filter((entry) => entry.state === "failed").length,
       completed: relayLatest.filter((entry) => entry.state === "completed").length,
       abandoned: relayLatest.filter((entry) => entry.state === "abandoned").length,
-      dueRetries: relayLatest.filter((entry) => isRelayRetryDue(entry)).length
+      dueRetries: relayLatest.filter((entry) => isRelayRetryDue(entry) && isRelayRetryRunnable(entry)).length
     },
     backups,
     lock,
@@ -622,6 +622,21 @@ function dispatchStatusCommand(argv) {
     project,
     tool
   });
+  if ((threadKey || thread || refId) && resolvedThreadKeys && resolvedThreadKeys.size === 0) {
+    console.log(JSON.stringify({
+      found: false,
+      query: {
+        threadKey,
+        thread,
+        refId,
+        project,
+        tool,
+        state
+      },
+      message: "No relay status entries matched."
+    }, null, 2));
+    return;
+  }
 
   const all = readRelayStatus(config.memoryDir)
     .filter((entry) => threadKey ? entry.threadKey === threadKey : true)
@@ -765,7 +780,7 @@ function resolveRelayThreadKeys(memoryDir, { threadKey = "", thread = "", refId 
       }
     }
   }
-  return keys.size ? keys : null;
+  return keys;
 }
 
 function resolveRelaySourceObject(memoryDir, entry) {
@@ -1147,6 +1162,7 @@ function buildRetryDispatchJobs(memoryDir, relayState, { to, project, limit }) {
   const candidates = Object.values(relayState)
     .filter((entry) => isRelayRetryCandidate(entry, now))
     .filter((entry) => Number(entry.attempt || 0) < Number(entry.maxRetries || 3))
+    .filter((entry) => isRelayRetryRunnable(entry))
     .filter((entry) => to ? entry.tool === to : true)
     .filter((entry) => project ? entry.project === project : true)
     .slice(0, limit);
@@ -1439,6 +1455,11 @@ function isRelayRetryDue(entry) {
     return false;
   }
   return nextRetryMs <= Date.now() && Number(entry.attempt || 0) < Number(entry.maxRetries || 3);
+}
+
+function isRelayRetryRunnable(entry) {
+  const runner = getToolRunner(entry?.tool || "");
+  return !runner.sharedStateOnly;
 }
 
 function isRelayRetryCandidate(entry, now = Date.now()) {
@@ -3907,7 +3928,8 @@ function getOption(argv, name) {
   if (index === -1) {
     return "";
   }
-  return argv[index + 1] || "";
+  const value = argv[index + 1] || "";
+  return value.startsWith("--") ? "" : value;
 }
 
 function hasFlag(argv, name) {

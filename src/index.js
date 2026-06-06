@@ -558,6 +558,9 @@ function dispatchCommand(argv) {
   if (action === "retry") {
     return dispatchRetryCommand(argv.slice(1));
   }
+  if (action === "status") {
+    return dispatchStatusCommand(argv.slice(1));
+  }
   const run = hasFlag(argv, "--run");
   const force = hasFlag(argv, "--force");
   const to = getOption(argv, "--to") || "";
@@ -575,6 +578,63 @@ function dispatchCommand(argv) {
   console.log(JSON.stringify({
     run,
     results
+  }, null, 2));
+}
+
+function dispatchStatusCommand(argv) {
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const threadKey = getOption(argv, "--thread-key") || "";
+  const thread = getOption(argv, "--thread") || "";
+  const refId = getOption(argv, "--ref-id") || "";
+  const project = getOption(argv, "--project") || "";
+  const tool = getOption(argv, "--to") || getOption(argv, "--tool") || "";
+
+  if (!threadKey && !thread && !refId) {
+    throw new Error("Usage: ai-memory-hub dispatch status [--thread-key <tool:project:ref> | --thread <thread-id> | --ref-id <id>] [--project <project>] [--to <tool>]");
+  }
+
+  const all = readRelayStatus(config.memoryDir)
+    .filter((entry) => threadKey ? entry.threadKey === threadKey : true)
+    .filter((entry) => thread ? entry.thread === thread : true)
+    .filter((entry) => refId ? entry.sourceId === refId || entry.dispatchId === refId : true)
+    .filter((entry) => project ? entry.project === project : true)
+    .filter((entry) => tool ? entry.tool === tool : true)
+    .sort((a, b) => String(a.ts || "").localeCompare(String(b.ts || "")));
+
+  if (all.length === 0) {
+    console.log(JSON.stringify({
+      found: false,
+      query: {
+        threadKey,
+        thread,
+        refId,
+        project,
+        tool
+      },
+      message: "No relay status entries matched."
+    }, null, 2));
+    return;
+  }
+
+  const latest = all[all.length - 1];
+  const dispatchLog = readDispatchLog(config.memoryDir)
+    .filter((entry) => latest.threadKey ? getDispatchThreadKey(entry) === latest.threadKey : true)
+    .filter((entry) => refId ? entry.refId === refId || entry.id === refId : true)
+    .sort((a, b) => String(a.dispatchedAt || "").localeCompare(String(b.dispatchedAt || "")));
+
+  console.log(JSON.stringify({
+    found: true,
+    query: {
+      threadKey,
+      thread,
+      refId,
+      project,
+      tool
+    },
+    latest,
+    timeline: all,
+    dispatchLog
   }, null, 2));
 }
 

@@ -67,6 +67,8 @@ async function main() {
       return sessionCommand(rest);
     case "rpc":
       return rpcCommand(rest);
+    case "notify":
+      return notifyCommand(rest);
     case "connect":
     case "contact":
       return connectCommand(rest);
@@ -628,6 +630,88 @@ function rpcPendingCommand(argv) {
     .filter((req) => !readRpcResult(config.memoryDir, req.id));
 
   console.log(JSON.stringify(pending, null, 2));
+}
+
+function notifyCommand(argv) {
+  const action = argv[0] || "send";
+  switch (action) {
+    case "send":
+      return notifySendCommand(argv.slice(1));
+    case "list":
+      return notifyListCommand(argv.slice(1));
+    case "pending":
+      return notifyPendingCommand(argv.slice(1));
+    case "deliver":
+      return notifyDeliverCommand(argv.slice(1));
+    default:
+      throw new Error(`Unknown notify action: ${action}\nTry: ai-memory-hub notify send|list|pending|deliver`);
+  }
+}
+
+function notifySendCommand(argv) {
+  const severity = getOption(argv, "--severity") || "info";
+  const title = getOption(argv, "--title") || "";
+  const message = argv.find((arg) => !arg.startsWith("--")) || getOption(argv, "--message") || "";
+  const actionUrl = getOption(argv, "--url") || "";
+  const channelsStr = getOption(argv, "--channels") || "";
+  const from = getOption(argv, "--from") || "unknown";
+  const project = getOption(argv, "--project") || "";
+
+  if (!message && !title) {
+    throw new Error("Usage: ai-memory-hub notify send <message> [--severity info|warning|error|critical|need_input] [--title <title>] [--url <url>] [--channels telegram,wechat,email] [--from <tool>] [--project <project>]");
+  }
+
+  const userChannels = channelsStr ? channelsStr.split(",").map((c) => c.trim()) : [];
+  const channels = getNotificationChannels(severity, userChannels);
+
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+
+  const notification = createNotification({
+    severity,
+    title,
+    message,
+    actionUrl,
+    channels,
+    from,
+    project
+  });
+
+  writeNotification(config.memoryDir, notification);
+  console.log(JSON.stringify(notification, null, 2));
+}
+
+function notifyListCommand(argv) {
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+
+  const notifications = readNotifications(config.memoryDir);
+  console.log(JSON.stringify(notifications, null, 2));
+}
+
+function notifyPendingCommand(argv) {
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+
+  const pending = getPendingNotifications(config.memoryDir);
+  console.log(JSON.stringify(pending, null, 2));
+}
+
+function notifyDeliverCommand(argv) {
+  const notificationId = getOption(argv, "--id") || "";
+  const channelsStr = getOption(argv, "--channels") || "";
+
+  if (!notificationId || !channelsStr) {
+    throw new Error("Usage: ai-memory-hub notify deliver --id <notification-id> --channels telegram,wechat");
+  }
+
+  const deliveredTo = channelsStr.split(",").map((c) => c.trim());
+
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+
+  updateNotificationStatus(config.memoryDir, notificationId, "delivered", deliveredTo);
+  console.log(JSON.stringify({ id: notificationId, deliveredTo, status: "delivered" }, null, 2));
 }
 
 function taskCommand(argv) {
@@ -2395,6 +2479,7 @@ Commands:
   workflow   Coordinate planner/executor/reviewer/observer work across AI tools.
   session    Manage session handoff for context transfer between tools.
   rpc        Synchronous request-response RPC calls between tools.
+  notify     Send cross-platform notifications with severity-based routing.
   connect    Check tool connections or send a request/review/handoff to another tool.
   dispatch   Dispatch pending radio/task work to verified CLI runners.
   pull       Rebuild MEMORY.md from the local memory ledger.
@@ -3661,6 +3746,74 @@ function waitForRpcResult(memoryDir, requestId, timeoutMs = 30000) {
     sleep(500);
   }
   return null;
+}
+
+// Notification Bus Functions
+function createNotification({ severity, title, message, actionUrl, channels, from, project }) {
+  return {
+    id: createId(`notification:${severity}:${Date.now()}`),
+    createdAt: new Date().toISOString(),
+    severity: normalizeSeverity(severity),
+    title: title || "",
+    message: message || "",
+    actionUrl: actionUrl || "",
+    channels: channels || [],
+    from: from || "unknown",
+    project: project || "",
+    status: "pending",
+    deliveredTo: []
+  };
+}
+
+function normalizeSeverity(severity) {
+  const clean = String(severity || "info").toLowerCase();
+  return ["info", "warning", "error", "critical", "need_input"].includes(clean) ? clean : "info";
+}
+
+function writeNotification(memoryDir, notification) {
+  const file = path.join(memoryDir, "notifications", "notifications.jsonl");
+  ensureDir(path.dirname(file));
+  appendJsonl(file, notification);
+}
+
+function readNotifications(memoryDir) {
+  const file = path.join(memoryDir, "notifications", "notifications.jsonl");
+  return readEvents(file);
+}
+
+function getPendingNotifications(memoryDir) {
+  return readNotifications(memoryDir).filter((n) => n.status === "pending");
+}
+
+function updateNotificationStatus(memoryDir, notificationId, status, deliveredTo = []) {
+  const file = path.join(memoryDir, "notifications", "notifications.jsonl");
+  const notifications = readNotifications(memoryDir).map((n) => {
+    if (n.id === notificationId) {
+      return {
+        ...n,
+        status,
+        deliveredTo: [...new Set([...(n.deliveredTo || []), ...deliveredTo])],
+        updatedAt: new Date().toISOString()
+      };
+    }
+    return n;
+  });
+  ensureDir(path.dirname(file));
+  fs.writeFileSync(file, notifications.map((n) => JSON.stringify(n)).join("\n") + "\n", "utf8");
+}
+
+function getNotificationChannels(severity, userChannels = []) {
+  // Default routing based on severity
+  const defaultRouting = {
+    info: ["console"],
+    warning: ["console", "radio"],
+    error: ["console", "radio", "telegram"],
+    critical: ["console", "radio", "telegram", "wechat", "email"],
+    need_input: ["console", "radio", "telegram", "wechat"]
+  };
+
+  const channels = userChannels.length > 0 ? userChannels : (defaultRouting[severity] || ["console"]);
+  return [...new Set(channels)];
 }
 
 function normalizePriority(priority) {

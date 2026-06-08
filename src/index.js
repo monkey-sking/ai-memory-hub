@@ -967,9 +967,15 @@ function executeDispatch(memoryDir, { run = false, force = false, to = "", proje
       sessionId: result.sessionId || "",
       lastError: result.error || result.stderr || ""
     });
-    appendDispatchStatusMessage(memoryDir, job, { ...result, relayState: finalState });
-    appendDispatchLog(memoryDir, result);
-    results.push(result);
+    const responseMessage = appendDispatchResponseMessage(memoryDir, job, { ...result, relayState: finalState });
+    const statusMessage = appendDispatchStatusMessage(memoryDir, job, { ...result, relayState: finalState });
+    const enrichedResult = {
+      ...result,
+      responseRadioId: responseMessage?.id || "",
+      statusRadioId: statusMessage?.id || ""
+    };
+    appendDispatchLog(memoryDir, enrichedResult);
+    results.push(enrichedResult);
   }
   return results;
 }
@@ -1091,18 +1097,25 @@ function executeDispatchRetry(memoryDir, { run = false, to = "", project = "", l
       sessionId: result.sessionId || "",
       lastError: result.error || result.stderr || ""
     });
-    appendDispatchStatusMessage(memoryDir, job, { ...result, relayState: finalState });
-    appendDispatchLog(memoryDir, { ...result, retry: true });
-    results.push({ ...result, retry: true });
+    const responseMessage = appendDispatchResponseMessage(memoryDir, job, { ...result, relayState: finalState });
+    const statusMessage = appendDispatchStatusMessage(memoryDir, job, { ...result, relayState: finalState });
+    const enrichedResult = {
+      ...result,
+      retry: true,
+      responseRadioId: responseMessage?.id || "",
+      statusRadioId: statusMessage?.id || ""
+    };
+    appendDispatchLog(memoryDir, enrichedResult);
+    results.push(enrichedResult);
   }
   return results;
 }
 
 function updateDispatchSourceState(memoryDir, job, patch) {
-  if (!job || job.kind !== "radio" || !job.refId) {
+  if (!job || !job.refId) {
     return;
   }
-  updateRadioMessage(memoryDir, job.refId, {
+  const statePatch = {
     deliveryState: patch.deliveryState || "",
     deliveryUpdatedAt: new Date().toISOString(),
     dispatchId: patch.dispatchId || "",
@@ -1112,7 +1125,34 @@ function updateDispatchSourceState(memoryDir, job, patch) {
     nextRetryAt: patch.nextRetryAt || "",
     sessionId: patch.sessionId || "",
     lastError: String(patch.lastError || "").trim()
-  });
+  };
+  if (job.kind === "radio") {
+    updateRadioMessage(memoryDir, job.refId, statePatch);
+    return;
+  }
+  if (job.kind === "task") {
+    updateTask(memoryDir, job.refId, (task) => ({
+      ...task,
+      ...statePatch,
+      updatedAt: new Date().toISOString()
+    }));
+    return;
+  }
+  if (job.kind === "workflow") {
+    updateWorkflow(memoryDir, job.refId, (workflow) => ({
+      ...workflow,
+      ...statePatch,
+      updatedAt: new Date().toISOString()
+    }));
+  }
+}
+
+function isDispatchableRadioMessage(message) {
+  const type = message.type || "note";
+  if (type === "status" || type === "response") {
+    return false;
+  }
+  return true;
 }
 
 function buildDispatchJobs(memoryDir, { to, project, limit, force }) {
@@ -1123,6 +1163,7 @@ function buildDispatchJobs(memoryDir, { to, project, limit, force }) {
   const messages = readRadioMessages(memoryDir)
     .filter((message) => project ? message.project === project : true)
     .filter((message) => to ? message.to === to || message.to === "all" : message.to !== "all")
+    .filter(isDispatchableRadioMessage)
     .slice(-limit)
     .map((message) => ({
       id: `radio:${message.id}`,
@@ -1529,6 +1570,24 @@ function getRelaySourceKey(entry) {
     return "";
   }
   return `${entry.sourceKind}:${entry.sourceId}`;
+}
+
+function appendDispatchResponseMessage(memoryDir, job, result) {
+  const origin = findDispatchOrigin(memoryDir, job);
+  if (!origin?.from || !result.stdout) {
+    return null;
+  }
+  const message = createRadioMessage({
+    from: job.tool || "unknown",
+    to: origin.from,
+    type: "response",
+    text: trimOutput(result.stdout),
+    thread: origin.thread || job.thread || job.refId,
+    replyTo: origin.id || job.refId,
+    project: origin.project || job.project || ""
+  });
+  appendJsonl(path.join(memoryDir, "radio", "messages.jsonl"), message);
+  return message;
 }
 
 function appendDispatchStatusMessage(memoryDir, job, result) {

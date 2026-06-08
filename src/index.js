@@ -65,6 +65,8 @@ async function main() {
       return workflowCommand(rest);
     case "session":
       return sessionCommand(rest);
+    case "rpc":
+      return rpcCommand(rest);
     case "connect":
     case "contact":
       return connectCommand(rest);
@@ -518,6 +520,114 @@ function sessionActiveCommand(argv) {
 
   const activeSessions = getActiveSessions(config.memoryDir, maxAgeMs);
   console.log(JSON.stringify(activeSessions, null, 2));
+}
+
+function rpcCommand(argv) {
+  const action = argv[0] || "call";
+  switch (action) {
+    case "call":
+      return rpcCallCommand(argv.slice(1));
+    case "respond":
+      return rpcRespondCommand(argv.slice(1));
+    case "pending":
+      return rpcPendingCommand(argv.slice(1));
+    default:
+      throw new Error(`Unknown rpc action: ${action}\nTry: ai-memory-hub rpc call|respond|pending`);
+  }
+}
+
+function rpcCallCommand(argv) {
+  const to = getOption(argv, "--to") || "";
+  const method = getOption(argv, "--method") || "";
+  const paramsJson = getOption(argv, "--params") || "{}";
+  const timeout = Number(getOption(argv, "--timeout") || 30000);
+  const from = getOption(argv, "--from") || "unknown";
+
+  if (!to || !method) {
+    throw new Error("Usage: ai-memory-hub rpc call --to <tool> --method <method> [--params '{\"key\":\"value\"}'] [--timeout 30000] [--from <tool>]");
+  }
+
+  let params;
+  try {
+    params = JSON.parse(paramsJson);
+  } catch (error) {
+    throw new Error(`Invalid JSON params: ${error.message}`);
+  }
+
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+
+  const request = createRpcRequest({ from, to, method, params, timeout });
+  writeRpcRequest(config.memoryDir, request);
+
+  console.log(JSON.stringify({ request, status: "waiting" }, null, 2));
+
+  const result = waitForRpcResult(config.memoryDir, request.id, timeout);
+
+  if (!result) {
+    console.log(JSON.stringify({ request, status: "timeout", error: "No response within timeout" }, null, 2));
+    process.exit(1);
+  }
+
+  console.log(JSON.stringify({ request, result }, null, 2));
+  process.exit(result.success ? 0 : 1);
+}
+
+function rpcRespondCommand(argv) {
+  const requestId = getOption(argv, "--id") || "";
+  const dataJson = getOption(argv, "--data") || "null";
+  const error = getOption(argv, "--error") || "";
+  const success = !error && !hasFlag(argv, "--error");
+
+  if (!requestId) {
+    throw new Error("Usage: ai-memory-hub rpc respond --id <request-id> [--data '{\"result\":\"value\"}'] [--error <message>]");
+  }
+
+  let data;
+  try {
+    data = JSON.parse(dataJson);
+  } catch (err) {
+    throw new Error(`Invalid JSON data: ${err.message}`);
+  }
+
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+
+  const request = readRpcRequest(config.memoryDir, requestId);
+  if (!request) {
+    throw new Error(`RPC request not found: ${requestId}`);
+  }
+
+  const result = writeRpcResult(config.memoryDir, requestId, { success, data, error });
+  console.log(JSON.stringify(result, null, 2));
+}
+
+function rpcPendingCommand(argv) {
+  const to = getOption(argv, "--to") || "";
+
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+
+  const requestsDir = path.join(config.memoryDir, "rpc", "requests");
+  if (!fs.existsSync(requestsDir)) {
+    console.log(JSON.stringify([], null, 2));
+    return;
+  }
+
+  const files = fs.readdirSync(requestsDir).filter((f) => f.endsWith(".json"));
+  const pending = files
+    .map((file) => {
+      try {
+        return readJson(path.join(requestsDir, file));
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean)
+    .filter((req) => to ? req.to === to : true)
+    .filter((req) => !readRpcResult(config.memoryDir, req.id));
+
+  console.log(JSON.stringify(pending, null, 2));
 }
 
 function taskCommand(argv) {
@@ -2284,6 +2394,7 @@ Commands:
   task       Share task/todo state across AI tools.
   workflow   Coordinate planner/executor/reviewer/observer work across AI tools.
   session    Manage session handoff for context transfer between tools.
+  rpc        Synchronous request-response RPC calls between tools.
   connect    Check tool connections or send a request/review/handoff to another tool.
   dispatch   Dispatch pending radio/task work to verified CLI runners.
   pull       Rebuild MEMORY.md from the local memory ledger.
@@ -3487,6 +3598,69 @@ function getActiveSessions(memoryDir, maxAgeMs = 3600000) {
     const bTime = b.lastActive || b.updatedAt || "";
     return bTime.localeCompare(aTime);
   });
+}
+
+// RPC Functions
+function createRpcRequest({ from, to, method, params, timeout }) {
+  return {
+    id: createId(`rpc:${from}:${to}:${method}:${Date.now()}`),
+    createdAt: new Date().toISOString(),
+    from: from || "unknown",
+    to: to || "unknown",
+    method: method || "",
+    params: params || {},
+    timeout: Number(timeout || 30000),
+    status: "pending"
+  };
+}
+
+function writeRpcRequest(memoryDir, request) {
+  const file = path.join(memoryDir, "rpc", "requests", `${request.id}.json`);
+  ensureDir(path.dirname(file));
+  fs.writeFileSync(file, JSON.stringify(request, null, 2) + "\n", "utf8");
+}
+
+function readRpcRequest(memoryDir, requestId) {
+  const file = path.join(memoryDir, "rpc", "requests", `${requestId}.json`);
+  if (!fs.existsSync(file)) {
+    return null;
+  }
+  return readJson(file);
+}
+
+function writeRpcResult(memoryDir, requestId, result) {
+  const resultData = {
+    id: createId(`rpc-result:${requestId}:${Date.now()}`),
+    requestId,
+    createdAt: new Date().toISOString(),
+    success: result.success !== false,
+    data: result.data || null,
+    error: result.error || null
+  };
+  const file = path.join(memoryDir, "rpc", "results", `${requestId}.json`);
+  ensureDir(path.dirname(file));
+  fs.writeFileSync(file, JSON.stringify(resultData, null, 2) + "\n", "utf8");
+  return resultData;
+}
+
+function readRpcResult(memoryDir, requestId) {
+  const file = path.join(memoryDir, "rpc", "results", `${requestId}.json`);
+  if (!fs.existsSync(file)) {
+    return null;
+  }
+  return readJson(file);
+}
+
+function waitForRpcResult(memoryDir, requestId, timeoutMs = 30000) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const result = readRpcResult(memoryDir, requestId);
+    if (result) {
+      return result;
+    }
+    sleep(500);
+  }
+  return null;
 }
 
 function normalizePriority(priority) {

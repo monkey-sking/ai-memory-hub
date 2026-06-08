@@ -13,6 +13,27 @@ const MEMORY_DIR_ENV = "AI_MEMORY_DIR";
 const DEFAULT_MEMORY_DIR = path.join(os.homedir(), ".ai-memory");
 const DEFAULT_CONFIG_PATH = path.join(DEFAULT_MEMORY_DIR, "config.json");
 
+// Unified async call state machine
+const ASYNC_CALL_STATES = {
+  PENDING: "pending",
+  DISPATCHED: "dispatched",
+  ACKED: "acked",
+  RETRYING: "retrying",
+  FAILED: "failed",
+  COMPLETED: "completed",
+  ABANDONED: "abandoned"
+};
+
+const ASYNC_CALL_TRANSITIONS = {
+  "pending": ["dispatched"],
+  "dispatched": ["acked", "failed", "completed"],
+  "acked": ["completed", "failed"],
+  "retrying": ["dispatched", "failed", "abandoned"],
+  "failed": ["retrying", "abandoned"],
+  "completed": [],
+  "abandoned": []
+};
+
 const rawArgs = process.argv.slice(2);
 const parsedArgs = parseCliArgs(rawArgs);
 const args = parsedArgs.args;
@@ -1496,8 +1517,33 @@ function getRelayFailureState(attempt, maxRetries = 3) {
   return Number(attempt || 0) >= Number(maxRetries || 3) ? "abandoned" : "failed";
 }
 
+function isValidAsyncCallState(state) {
+  return Object.values(ASYNC_CALL_STATES).includes(state);
+}
+
+function isValidAsyncCallTransition(fromState, toState) {
+  if (!isValidAsyncCallState(fromState) || !isValidAsyncCallState(toState)) {
+    return false;
+  }
+  const allowedTransitions = ASYNC_CALL_TRANSITIONS[fromState] || [];
+  return allowedTransitions.includes(toState);
+}
+
+function getAsyncCallStateMeta(state) {
+  const meta = {
+    "pending": { terminal: false, success: false, retriable: false, label: "Pending" },
+    "dispatched": { terminal: false, success: false, retriable: false, label: "Dispatched" },
+    "acked": { terminal: false, success: false, retriable: false, label: "Acknowledged" },
+    "retrying": { terminal: false, success: false, retriable: true, label: "Retrying" },
+    "failed": { terminal: false, success: false, retriable: true, label: "Failed" },
+    "completed": { terminal: true, success: true, retriable: false, label: "Completed" },
+    "abandoned": { terminal: true, success: false, retriable: false, label: "Abandoned" }
+  };
+  return meta[state] || { terminal: false, success: false, retriable: false, label: "Unknown" };
+}
+
 function isRelayRetryDue(entry) {
-  if (!entry || entry.state !== "failed" || !entry.nextRetryAt) {
+  if (!entry || entry.state !== ASYNC_CALL_STATES.FAILED || !entry.nextRetryAt) {
     return false;
   }
   const nextRetryMs = Date.parse(entry.nextRetryAt);
@@ -1516,14 +1562,14 @@ function isRelayRetryCandidate(entry, now = Date.now()) {
   if (!entry) {
     return false;
   }
-  if (entry.state === "failed") {
+  if (entry.state === ASYNC_CALL_STATES.FAILED) {
     if (!entry.nextRetryAt) {
       return false;
     }
     const nextRetryMs = Date.parse(entry.nextRetryAt);
     return !Number.isNaN(nextRetryMs) && nextRetryMs <= now;
   }
-  if (!["dispatched", "acked", "retrying"].includes(entry.state || "")) {
+  if (![ASYNC_CALL_STATES.DISPATCHED, ASYNC_CALL_STATES.ACKED, ASYNC_CALL_STATES.RETRYING].includes(entry.state || "")) {
     return false;
   }
   const timeoutMs = Number(entry.ackTimeout || 0);
@@ -1539,17 +1585,19 @@ function isRelayRetryCandidate(entry, now = Date.now()) {
 
 function appendRelayStatus(memoryDir, job, patch = {}) {
   const now = new Date().toISOString();
+  const nextState = patch.state || ASYNC_CALL_STATES.PENDING;
+
   appendJsonl(path.join(memoryDir, "state", "relay-status.jsonl"), {
-    id: createId(`relay:${job.id}:${now}:${patch.state || "pending"}`),
+    id: createId(`relay:${job.id}:${now}:${nextState}`),
     ts: now,
     threadKey: getDispatchThreadKey(job),
     sourceKind: job.kind,
     sourceId: job.refId,
     dispatchId: job.id,
-    state: patch.state || "pending",
+    state: nextState,
     attempt: Number(patch.attempt || 1),
     maxRetries: Number(patch.maxRetries || 3),
-    dispatchedAt: patch.state === "dispatched" ? now : "",
+    dispatchedAt: patch.state === ASYNC_CALL_STATES.DISPATCHED ? now : "",
     ackTimeout: Number(patch.ackTimeout || 0),
     sessionId: patch.sessionId || "",
     exitCode: patch.exitCode ?? null,

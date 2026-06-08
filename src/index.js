@@ -63,6 +63,8 @@ async function main() {
     case "workflow":
     case "flow":
       return workflowCommand(rest);
+    case "session":
+      return sessionCommand(rest);
     case "connect":
     case "contact":
       return connectCommand(rest);
@@ -423,6 +425,99 @@ function radioPromoteCommand(argv) {
     promotedAt: new Date().toISOString()
   });
   console.log(`Promoted radio message to memory inbox: ${message.id}`);
+}
+
+function sessionCommand(argv) {
+  const action = argv[0] || "list";
+  switch (action) {
+    case "list":
+      return sessionListCommand(argv.slice(1));
+    case "add":
+    case "create":
+      return sessionAddCommand(argv.slice(1));
+    case "update":
+      return sessionUpdateCommand(argv.slice(1));
+    case "active":
+      return sessionActiveCommand(argv.slice(1));
+    default:
+      throw new Error(`Unknown session action: ${action}\nTry: ai-memory-hub session list|add|update|active`);
+  }
+}
+
+function sessionListCommand(argv) {
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const sessions = readSessions(config.memoryDir);
+  console.log(JSON.stringify(sessions, null, 2));
+}
+
+function sessionAddCommand(argv) {
+  const title = getOption(argv, "--title") || argv[0] || "";
+  const createdBy = getOption(argv, "--from") || getOption(argv, "--by") || "unknown";
+  const project = getOption(argv, "--project") || "";
+  const context = getOption(argv, "--context") || "";
+
+  if (!title) {
+    throw new Error("Usage: ai-memory-hub session add <title> --from <tool> [--project <project>] [--context <text>]");
+  }
+
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+
+  const session = createSession({
+    title,
+    createdBy,
+    project,
+    participants: [createdBy],
+    context,
+    artifacts: []
+  });
+
+  const sessions = readSessions(config.memoryDir);
+  sessions.push(session);
+  writeSessions(config.memoryDir, sessions);
+
+  console.log(JSON.stringify(session, null, 2));
+}
+
+function sessionUpdateCommand(argv) {
+  const sessionId = getOption(argv, "--id") || argv[0] || "";
+  const context = getOption(argv, "--context");
+  const addParticipant = getOption(argv, "--add-participant");
+
+  if (!sessionId) {
+    throw new Error("Usage: ai-memory-hub session update --id <session-id> [--context <text>] [--add-participant <tool>]");
+  }
+
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+
+  const updates = {};
+  if (context !== null && context !== undefined) {
+    updates.context = context;
+  }
+
+  if (addParticipant) {
+    const sessions = readSessions(config.memoryDir);
+    const session = sessions.find((s) => s.id === sessionId);
+    if (session) {
+      updates.participants = [...new Set([...(session.participants || []), addParticipant])];
+    }
+  }
+
+  const updated = updateSession(config.memoryDir, sessionId, updates);
+  console.log(JSON.stringify(updated, null, 2));
+}
+
+function sessionActiveCommand(argv) {
+  const maxAgeHours = Number(getOption(argv, "--max-age") || 1);
+  const maxAgeMs = maxAgeHours * 3600000;
+
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+
+  const activeSessions = getActiveSessions(config.memoryDir, maxAgeMs);
+  console.log(JSON.stringify(activeSessions, null, 2));
 }
 
 function taskCommand(argv) {
@@ -2188,6 +2283,7 @@ Commands:
   search     Search indexed local memories.
   task       Share task/todo state across AI tools.
   workflow   Coordinate planner/executor/reviewer/observer work across AI tools.
+  session    Manage session handoff for context transfer between tools.
   connect    Check tool connections or send a request/review/handoff to another tool.
   dispatch   Dispatch pending radio/task work to verified CLI runners.
   pull       Rebuild MEMORY.md from the local memory ledger.
@@ -3333,6 +3429,64 @@ function isTaskStatus(status) {
 
 function isWorkflowStatus(status) {
   return new Set(["open", "planned", "in_progress", "review", "blocked", "done", "cancelled"]).has(status);
+}
+
+// Session Handoff Functions
+function readSessions(memoryDir) {
+  const file = path.join(memoryDir, "context", "sessions.jsonl");
+  return readEvents(file);
+}
+
+function writeSessions(memoryDir, sessions) {
+  const file = path.join(memoryDir, "context", "sessions.jsonl");
+  ensureDir(path.dirname(file));
+  fs.writeFileSync(file, sessions.map((s) => JSON.stringify(s)).join("\n") + (sessions.length ? "\n" : ""), "utf8");
+}
+
+function createSession({ title, createdBy, project, participants, context, artifacts }) {
+  return {
+    id: createId(`session:${title}:${createdBy}:${Date.now()}`),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    lastActive: new Date().toISOString(),
+    createdBy: createdBy || "unknown",
+    project: project || "",
+    title: title || "Untitled Session",
+    participants: participants || [],
+    context: context || "",
+    artifacts: artifacts || [],
+    metadata: {}
+  };
+}
+
+function updateSession(memoryDir, sessionId, updates) {
+  const sessions = readSessions(memoryDir);
+  const updated = sessions.map((session) => {
+    if (session.id === sessionId) {
+      return {
+        ...session,
+        ...updates,
+        updatedAt: new Date().toISOString(),
+        lastActive: new Date().toISOString()
+      };
+    }
+    return session;
+  });
+  writeSessions(memoryDir, updated);
+  return updated.find((s) => s.id === sessionId);
+}
+
+function getActiveSessions(memoryDir, maxAgeMs = 3600000) {
+  const sessions = readSessions(memoryDir);
+  const now = Date.now();
+  return sessions.filter((session) => {
+    const lastActiveMs = Date.parse(session.lastActive || session.updatedAt || "");
+    return !Number.isNaN(lastActiveMs) && (now - lastActiveMs) < maxAgeMs;
+  }).sort((a, b) => {
+    const aTime = a.lastActive || a.updatedAt || "";
+    const bTime = b.lastActive || b.updatedAt || "";
+    return bTime.localeCompare(aTime);
+  });
 }
 
 function normalizePriority(priority) {

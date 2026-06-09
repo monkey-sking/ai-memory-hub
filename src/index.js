@@ -1902,6 +1902,7 @@ function findLatestRelayStatusEntry(memoryDir, { threadKey = "", thread = "", re
         || entry.dispatchId === refId
         || entry.dispatchId === `task:${refId}`
         || entry.dispatchId === `radio:${refId}`
+        || entry.dispatchId === `workflow:${refId}`
       : true)
     .filter((entry) => project ? entry.project === project : true)
     .filter((entry) => tool ? entry.tool === tool : true)
@@ -1930,6 +1931,9 @@ function resolveRelaySourceObject(memoryDir, entry) {
   if (entry.sourceKind === "task") {
     return readTasks(memoryDir).find((task) => task.id === entry.sourceId) || null;
   }
+  if (entry.sourceKind === "workflow") {
+    return readWorkflows(memoryDir).find((workflow) => workflow.id === entry.sourceId) || null;
+  }
   return null;
 }
 
@@ -1939,12 +1943,13 @@ function resolveRelayRelatedObjects(memoryDir, entry, source = null) {
   const radios = readRadioMessages(memoryDir)
     .filter((message) => thread ? message.thread === thread : false)
     .filter((message) => project ? message.project === project : true);
-  const tasks = readTasks(memoryDir)
-    .filter((task) => thread ? task.id === thread : false)
-    .filter((task) => project ? task.project === project : true);
   const workflows = readWorkflows(memoryDir)
     .filter((workflow) => thread ? workflow.id === thread : false)
     .filter((workflow) => project ? workflow.project === project : true);
+  const linkedTaskIds = new Set(workflows.flatMap((workflow) => workflow.linkedTasks || []));
+  const tasks = readTasks(memoryDir)
+    .filter((task) => thread ? task.id === thread || linkedTaskIds.has(task.id) : false)
+    .filter((task) => project ? task.project === project : true);
 
   return {
     radios,
@@ -2103,6 +2108,10 @@ function executeDispatch(memoryDir, { run = false, force = false, to = "", proje
     const statusMessage = appendDispatchStatusMessage(memoryDir, job, { ...result, relayState: finalState });
     const enrichedResult = {
       ...result,
+      relayState: finalState,
+      attempt,
+      maxRetries,
+      nextRetryAt,
       responseRadioId: responseMessage?.id || "",
       statusRadioId: statusMessage?.id || ""
     };
@@ -2245,6 +2254,10 @@ function executeDispatchRetry(memoryDir, { run = false, to = "", project = "", l
     const enrichedResult = {
       ...result,
       retry: true,
+      relayState: finalState,
+      attempt: job.attempt,
+      maxRetries: job.maxRetries || 3,
+      nextRetryAt,
       responseRadioId: responseMessage?.id || "",
       statusRadioId: statusMessage?.id || ""
     };
@@ -2381,8 +2394,9 @@ function applyDispatchOutcome(memoryDir, job, result, relayState, { responseMess
   const reportPath = completed ? writeDispatchReportIfUseful(memoryDir, job, result, relayState) : "";
   const responseSummary = summarizeText(result.stdout || "", 220);
   const errorSummary = summarizeText(result.error || result.stderr || "", 220);
+  let outcomeNoteText = "";
 
-  return updateTask(memoryDir, job.refId, (task) => {
+  const updatedTask = updateTask(memoryDir, job.refId, (task) => {
     const notes = [...(task.notes || [])];
     if (completed) {
       const parts = [`Dispatch completed by ${job.tool || "unknown"}.`];
@@ -2392,9 +2406,11 @@ function applyDispatchOutcome(memoryDir, job, result, relayState, { responseMess
       if (reportPath) {
         parts.push(`Report: ${reportPath}`);
       }
-      notes.push(createTaskNote("ai-memory-hub", parts.join(" ")));
+      outcomeNoteText = parts.join(" ");
+      notes.push(createTaskNote("ai-memory-hub", outcomeNoteText));
     } else if (failed) {
-      notes.push(createTaskNote("ai-memory-hub", `Dispatch ${relayState} for ${job.tool || "unknown"}: ${errorSummary || "no error output"}`));
+      outcomeNoteText = `Dispatch ${relayState} for ${job.tool || "unknown"}: ${errorSummary || "no error output"}`;
+      notes.push(createTaskNote("ai-memory-hub", outcomeNoteText));
     }
 
     return {
@@ -2418,6 +2434,115 @@ function applyDispatchOutcome(memoryDir, job, result, relayState, { responseMess
       notes
     };
   });
+  syncLinkedWorkflowDeliveryState(memoryDir, updatedTask, {
+    deliveryState: relayState,
+    dispatchId: job.id,
+    threadKey: getDispatchThreadKey(job),
+    attempt: Number(result.attempt || updatedTask.attempt || 0),
+    maxRetries: Number(result.maxRetries || updatedTask.maxRetries || 0),
+    nextRetryAt: result.nextRetryAt || updatedTask.nextRetryAt || "",
+    sessionId: result.sessionId || updatedTask.sessionId || "",
+    lastError: failed ? (result.error || result.stderr || updatedTask.lastError || "") : "",
+    responseRadioId: responseMessage?.id || updatedTask.responseRadioId || "",
+    statusRadioId: statusMessage?.id || updatedTask.statusRadioId || "",
+    dispatchReportPath: reportPath || updatedTask.dispatchReportPath || "",
+    noteText: outcomeNoteText ? `Linked task ${updatedTask.id}: ${outcomeNoteText}` : ""
+  });
+  return updatedTask;
+}
+
+function syncLinkedWorkflowDeliveryState(memoryDir, task, patch = {}) {
+  if (!task?.id) {
+    return [];
+  }
+  const workflows = readWorkflows(memoryDir).filter((workflow) => (workflow.linkedTasks || []).includes(task.id));
+  if (workflows.length === 0) {
+    return [];
+  }
+  const tasks = readTasks(memoryDir);
+  const updated = [];
+  for (const workflow of workflows) {
+    const aggregate = summarizeWorkflowLinkedTaskDelivery(workflow, tasks, patch);
+    const next = updateWorkflow(memoryDir, workflow.id, (current) => {
+      const notes = [...(current.notes || [])];
+      if (patch.noteText && !notes.some((note) => note.text === patch.noteText)) {
+        notes.push(createTaskNote("ai-memory-hub", patch.noteText));
+      }
+      return {
+        ...current,
+        updatedAt: new Date().toISOString(),
+        deliveryState: aggregate.deliveryState,
+        deliveryUpdatedAt: new Date().toISOString(),
+        dispatchId: patch.dispatchId || current.dispatchId || "",
+        threadKey: patch.threadKey || current.threadKey || "",
+        attempt: Number(patch.attempt || current.attempt || 0),
+        maxRetries: Number(patch.maxRetries || current.maxRetries || 0),
+        nextRetryAt: aggregate.nextRetryAt || patch.nextRetryAt || current.nextRetryAt || "",
+        sessionId: patch.sessionId || current.sessionId || "",
+        lastError: aggregate.lastError || patch.lastError || "",
+        progressPercent: aggregate.progressPercent,
+        progressStatus: aggregate.progressStatus,
+        progressAt: aggregate.progressAt || current.progressAt || "",
+        progressBy: aggregate.progressBy || current.progressBy || "",
+        responseRadioId: patch.responseRadioId || current.responseRadioId || "",
+        statusRadioId: patch.statusRadioId || current.statusRadioId || "",
+        dispatchReportPath: patch.dispatchReportPath || current.dispatchReportPath || "",
+        notes
+      };
+    });
+    updated.push(next);
+  }
+  return updated;
+}
+
+function summarizeWorkflowLinkedTaskDelivery(workflow, tasks, patch = {}) {
+  const linkedTasks = (workflow.linkedTasks || [])
+    .map((id) => tasks.find((task) => task.id === id))
+    .filter(Boolean);
+  if (linkedTasks.length === 0) {
+    return {
+      deliveryState: patch.deliveryState || workflow.deliveryState || "",
+      progressPercent: workflow.progressPercent ?? null,
+      progressStatus: workflow.progressStatus || "",
+      progressAt: workflow.progressAt || "",
+      progressBy: workflow.progressBy || "",
+      lastError: patch.lastError || workflow.lastError || "",
+      nextRetryAt: patch.nextRetryAt || workflow.nextRetryAt || ""
+    };
+  }
+
+  const states = linkedTasks.map((task) => task.deliveryState || "").filter(Boolean);
+  const completedCount = linkedTasks.filter((task) => task.status === "done" || task.deliveryState === ASYNC_CALL_STATES.COMPLETED).length;
+  const failedTask = linkedTasks.find((task) => [ASYNC_CALL_STATES.ABANDONED, ASYNC_CALL_STATES.FAILED].includes(task.deliveryState));
+  const statePriority = [
+    ASYNC_CALL_STATES.ABANDONED,
+    ASYNC_CALL_STATES.FAILED,
+    ASYNC_CALL_STATES.RETRYING,
+    ASYNC_CALL_STATES.PROGRESS,
+    ASYNC_CALL_STATES.ACKED,
+    ASYNC_CALL_STATES.DISPATCHED
+  ];
+  let deliveryState = statePriority.find((state) => states.includes(state)) || "";
+  if (!deliveryState && completedCount === linkedTasks.length) {
+    deliveryState = ASYNC_CALL_STATES.COMPLETED;
+  } else if (!deliveryState && completedCount > 0) {
+    deliveryState = ASYNC_CALL_STATES.PROGRESS;
+  } else if (!deliveryState) {
+    deliveryState = patch.deliveryState || workflow.deliveryState || "";
+  }
+
+  return {
+    deliveryState,
+    progressPercent: Math.round((completedCount / linkedTasks.length) * 100),
+    progressStatus: `${completedCount}/${linkedTasks.length} linked tasks completed`,
+    progressAt: patch.progressAt || new Date().toISOString(),
+    progressBy: patch.progressBy || patch.tool || "",
+    lastError: failedTask?.lastError || patch.lastError || "",
+    nextRetryAt: linkedTasks
+      .map((task) => task.nextRetryAt || "")
+      .filter(Boolean)
+      .sort()[0] || patch.nextRetryAt || ""
+  };
 }
 
 function writeDispatchReportIfUseful(memoryDir, job, result, relayState) {
@@ -2482,11 +2607,12 @@ function updateDispatchSourceState(memoryDir, job, patch) {
     return;
   }
   if (job.kind === "task") {
-    updateTask(memoryDir, job.refId, (task) => ({
+    const updatedTask = updateTask(memoryDir, job.refId, (task) => ({
       ...task,
       ...statePatch,
       updatedAt: new Date().toISOString()
     }));
+    syncLinkedWorkflowDeliveryState(memoryDir, updatedTask, statePatch);
     return;
   }
   if (job.kind === "workflow") {
@@ -2608,6 +2734,19 @@ function rebuildDispatchJobFromRelay(memoryDir, entry) {
       text: `${task.title}${task.handoff ? `\nHandoff: ${task.handoff}` : ""}`,
       refId: task.id,
       thread: task.id
+    };
+  }
+  if (entry.sourceKind === "workflow") {
+    const workflow = readWorkflows(memoryDir).find((item) => item.id === entry.sourceId);
+    if (!workflow) return null;
+    return {
+      id: `workflow:${workflow.id}`,
+      kind: "workflow",
+      tool: entry.tool || "",
+      project: workflow.project || "",
+      text: `${workflow.title}${workflow.plan ? `\nPlan: ${workflow.plan}` : ""}`,
+      refId: workflow.id,
+      thread: workflow.id
     };
   }
   return null;
@@ -3099,6 +3238,18 @@ function findDispatchOrigin(memoryDir, job) {
       from: task.createdBy,
       thread: task.id,
       project: task.project
+    };
+  }
+  if (job.kind === "workflow") {
+    const workflow = readWorkflows(memoryDir).find((item) => item.id === job.refId);
+    if (!workflow) {
+      return null;
+    }
+    return {
+      id: workflow.id,
+      from: workflow.createdBy,
+      thread: workflow.id,
+      project: workflow.project
     };
   }
   return null;
@@ -4972,6 +5123,9 @@ function normalizeWorkflow(workflow) {
     progressStatus: workflow.progressStatus || "",
     progressAt: workflow.progressAt || "",
     progressBy: workflow.progressBy || "",
+    responseRadioId: workflow.responseRadioId || "",
+    statusRadioId: workflow.statusRadioId || "",
+    dispatchReportPath: workflow.dispatchReportPath || "",
     notes: Array.isArray(workflow.notes) ? workflow.notes : []
   };
 }

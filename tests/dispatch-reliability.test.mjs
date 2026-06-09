@@ -367,6 +367,29 @@ test("dispatch launches resolved runner shim with prompt on stdin", async () => 
       handoff: "Long prompt payload should not be embedded in a PowerShell command.",
       notes: []
     });
+    await appendJsonl(path.join(memoryDir, "workflows", "workflows.jsonl"), {
+      id: "workflow-stdin",
+      createdAt: now,
+      updatedAt: now,
+      completedAt: "",
+      createdBy: "test",
+      status: "in_progress",
+      priority: "normal",
+      project: "test-project",
+      title: "Workflow with stdin task",
+      planner: [],
+      executor: ["codex"],
+      reviewer: [],
+      observer: [],
+      plan: "",
+      acceptance: "",
+      risks: [],
+      results: [],
+      reviews: [],
+      linkedTasks: ["task-stdin"],
+      linkedRadio: [],
+      notes: []
+    });
 
     const result = runCli(
       memoryDir,
@@ -379,6 +402,10 @@ test("dispatch launches resolved runner shim with prompt on stdin", async () => 
     assert.equal(payload.results[0].exitCode, 0, JSON.stringify(payload.results[0], null, 2));
     assert.equal(payload.results[0].runnerMode, "stdin");
     assert.match(payload.results[0].runnerCommand, /^codex(\.cmd)?$/);
+    assert.equal(payload.results[0].relayState, "completed");
+    assert.equal(payload.results[0].attempt, 1);
+    assert.equal(payload.results[0].maxRetries, 3);
+    assert.equal(payload.results[0].nextRetryAt, "");
 
     const stdout = JSON.parse(payload.results[0].stdout);
     assert.deepEqual(stdout.args, ["exec", "--sandbox", "danger-full-access"]);
@@ -389,6 +416,91 @@ test("dispatch launches resolved runner shim with prompt on stdin", async () => 
     const tasks = await readJsonl(path.join(memoryDir, "tasks", "tasks.jsonl"));
     assert.equal(tasks[0].status, "done");
     assert.equal(tasks[0].deliveryState, "completed");
+    assert.ok(tasks[0].responseRadioId);
+    assert.ok(tasks[0].statusRadioId);
+
+    const workflows = await readJsonl(path.join(memoryDir, "workflows", "workflows.jsonl"));
+    assert.equal(workflows.length, 1);
+    assert.equal(workflows[0].deliveryState, "completed");
+    assert.equal(workflows[0].progressPercent, 100);
+    assert.equal(workflows[0].progressStatus, "1/1 linked tasks completed");
+    assert.equal(workflows[0].dispatchId, "task:task-stdin");
+    assert.equal(workflows[0].threadKey, "codex:test-project:task-stdin");
+    assert.equal(workflows[0].responseRadioId, tasks[0].responseRadioId);
+    assert.equal(workflows[0].statusRadioId, tasks[0].statusRadioId);
+    assert.match(workflows[0].notes.at(-1).text, /Linked task task-stdin: Dispatch completed/);
+
+    const radios = await readJsonl(path.join(memoryDir, "radio", "messages.jsonl"));
+    assert.equal(radios.find((message) => message.id === tasks[0].responseRadioId)?.type, "response");
+    assert.equal(radios.find((message) => message.id === tasks[0].statusRadioId)?.type, "status");
+  });
+});
+
+test("dispatch status resolves workflow relay sources and linked tasks", async () => {
+  await withHub(async (memoryDir) => {
+    const now = new Date().toISOString();
+    await appendJsonl(path.join(memoryDir, "tasks", "tasks.jsonl"), {
+      id: "workflow-child-task",
+      createdAt: now,
+      updatedAt: now,
+      completedAt: "",
+      createdBy: "test",
+      assignee: "codex",
+      status: "claimed",
+      priority: "normal",
+      project: "test-project",
+      title: "Workflow child task",
+      description: "",
+      handoff: "",
+      notes: []
+    });
+    await appendJsonl(path.join(memoryDir, "workflows", "workflows.jsonl"), {
+      id: "workflow-status",
+      createdAt: now,
+      updatedAt: now,
+      completedAt: "",
+      createdBy: "test",
+      status: "in_progress",
+      priority: "normal",
+      project: "test-project",
+      title: "Workflow status source",
+      planner: [],
+      executor: ["codex"],
+      reviewer: [],
+      observer: [],
+      plan: "",
+      acceptance: "",
+      risks: [],
+      results: [],
+      reviews: [],
+      linkedTasks: ["workflow-child-task"],
+      linkedRadio: [],
+      notes: []
+    });
+    await appendJsonl(path.join(memoryDir, "state", "relay-status.jsonl"), {
+      id: "relay-workflow",
+      ts: now,
+      threadKey: "codex:test-project:workflow-status",
+      sourceKind: "workflow",
+      sourceId: "workflow-status",
+      dispatchId: "workflow:workflow-status",
+      state: "progress",
+      project: "test-project",
+      tool: "codex",
+      thread: "workflow-status",
+      progressPercent: 50,
+      progressStatus: "reviewing linked task"
+    });
+
+    const result = runCli(memoryDir, ["dispatch", "status", "--ref-id", "workflow-status", "--project", "test-project"]);
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.summary.latestState, "progress");
+    assert.equal(payload.source.id, "workflow-status");
+    assert.equal(payload.source.title, "Workflow status source");
+    assert.equal(payload.related.workflows.length, 1);
+    assert.equal(payload.related.tasks.length, 1);
+    assert.equal(payload.related.tasks[0].id, "workflow-child-task");
   });
 });
 

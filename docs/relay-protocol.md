@@ -53,6 +53,8 @@ pending → dispatched → (acked | failed) → [retrying] → (completed | aban
 }
 ```
 
+`sourceKind` is one of `radio`, `task`, or `workflow`. `sourceId` points at the durable source record, while `dispatchId` uses a typed prefix such as `radio:<id>`, `task:<id>`, or `workflow:<id>` so status lookup can resolve the source even when only a reference ID is known.
+
 ## Reply Threading
 
 ### Forward Thread Linking
@@ -207,6 +209,7 @@ attempt | delay
 4. **On success** (exit 0):
    - State: `completed`
    - Extract session ID from JSON output
+   - If the source is a task linked from one or more workflows, aggregate linked-task delivery state back onto each workflow (`deliveryState`, progress percent/status, retry metadata, response/status radio IDs, and dispatch report path).
    - Create status notification to task creator:
      ```json
      {
@@ -242,11 +245,12 @@ attempt | delay
 ai-memory-hub dispatch status --thread task-abc
 ai-memory-hub dispatch status --thread-key claude:ai-memory-hub:task-abc
 ai-memory-hub dispatch status --ref-id radio-msg123 --project ai-memory-hub
+ai-memory-hub dispatch status --ref-id workflow-xyz --project ai-memory-hub
 ai-memory-hub dispatch status --recent 10 --project ai-memory-hub
 ai-memory-hub dispatch status --recent --state failed --to claude
 ```
 
-Single-thread status queries return the latest relay state, full timeline, matched dispatch log entries, the resolved source object, and related radio/task/workflow objects for the same thread.
+Single-thread status queries return the latest relay state, full timeline, matched dispatch log entries, the resolved source object, and related radio/task/workflow objects for the same thread. Workflow source queries also include linked tasks in the related objects so workflow delivery state can be traced back to the task dispatches that produced it.
 
 Recent status queries return the latest relay entry per thread plus summary counts grouped by state and tool across the full filtered result set. The returned `items` list is then capped by `--recent` or `--limit`, which is useful for scanning failed, retrying, acked, or abandoned work without opening one thread at a time.
 

@@ -87,6 +87,119 @@ Future implementation may add the explicit `lifecycle` fields listed above, but
 they should become mutating CLI behavior only after the operation abstraction and
 thread-aware linking tasks define how records reference one another.
 
+## Operation Abstraction
+
+Memory updates must be modeled as append-only operations over durable records,
+not as in-place edits to `memories/ledger.jsonl`. The operation log is the
+auditable source of lifecycle intent; rebuilt indexes apply those operations as
+an overlay when deciding search ranking, snapshot visibility, and lifecycle
+links.
+
+The planned storage surface is:
+
+- `memories/operations.jsonl`: append-only operation events.
+- `memories/operation-state.json`: optional derived state for fast lookup. It
+  may be rebuilt from `ledger.jsonl` and `operations.jsonl`.
+
+Each operation should use this shape:
+
+```json
+{
+  "id": "op-{timestamp}-{hash}",
+  "ts": "2026-06-09T10:00:00.000Z",
+  "source": "codex",
+  "action": "annotate",
+  "target": {
+    "recordId": "memory-record-id",
+    "localEventId": "inbox-event-id",
+    "thread": "relay-lifecycle-2026-06-09",
+    "project": "ai-memory-hub"
+  },
+  "reason": "manual-review",
+  "patch": {
+    "lifecycle": {
+      "state": "archived",
+      "reason": "superseded-by"
+    },
+    "tags": ["relay", "workflow"]
+  },
+  "refs": {
+    "supersedes": [],
+    "supersededBy": ["memory-record-id-2"],
+    "taskId": "",
+    "workflowId": "",
+    "radioId": ""
+  }
+}
+```
+
+Supported actions are:
+
+- `create`: append a new durable fact through the existing inbox and sync path.
+- `annotate`: add normalized metadata or lifecycle hints without changing the
+  source text.
+- `supersede`: link an old record to a newer correction or replacement.
+- `archive`: lower snapshot exposure while keeping the record searchable.
+- `pin`: raise snapshot exposure for a reviewed high-value record.
+- `revoke`: hide a record from startup snapshots and default search because it
+  is unsafe or clearly wrong, while keeping an audit trail.
+- `review`: record that a human or tool checked the memory and either confirmed
+  or requested follow-up.
+
+Index rebuilds should apply operations in timestamp order. Conflicting
+operations are resolved by the latest operation for the same lifecycle field,
+except `refs` fields should merge by id. `revoke` has higher visibility priority
+than `pin` or `archive`: a revoked record stays out of `MEMORY.md` and default
+search unless the user asks for revoked records explicitly.
+
+### CLI And API Shape
+
+The CLI should expose one operation-oriented namespace rather than separate
+commands that rewrite records:
+
+```bash
+ai-memory-hub memory op create --action annotate --record <id> --reason manual-review --patch @patch.json --by codex
+ai-memory-hub memory op create --action supersede --record <old-id> --superseded-by <new-id> --reason correction --by codex
+ai-memory-hub memory op list --record <id>
+ai-memory-hub memory op apply --dry-run
+```
+
+Convenience aliases may be added later, such as `memory archive`, `memory pin`,
+or `memory revoke`, but they should still append operation events internally.
+
+The dashboard/API equivalent should mirror the same event model:
+
+- `POST /api/memory/operations`: append one operation.
+- `GET /api/memory/operations?record=<id>`: inspect operation history.
+- `POST /api/memory/operations/apply?dryRun=1`: preview derived lifecycle
+  overlays before rebuilding snapshots.
+
+The API must not expose a direct "edit ledger record" endpoint.
+
+### Thread Compatibility
+
+Operations should carry optional task, workflow, radio, and thread references so
+thread-aware search can explain why a memory changed. A supersede operation
+created from a correction should link:
+
+- the old memory record,
+- the new correction record,
+- the task or workflow where the correction was produced,
+- the radio thread or dispatch thread that requested review.
+
+This keeps memory lifecycle changes compatible with shared task/workflow state
+without mixing runtime delivery state into durable memory facts.
+
+### Safety Rules
+
+- Never edit `memories/ledger.jsonl` in place for lifecycle changes.
+- Never delete a ledger record as part of archive, supersede, pin, review, or
+  revoke.
+- Require a short reason for every operation except `create`.
+- Preserve unknown operation fields during rebuilds for forward compatibility.
+- Treat destructive cleanup as a separate maintenance command with backup and
+  explicit user confirmation.
+
 ## Retention
 
 Default retention is:
@@ -108,8 +221,7 @@ The following are intentionally deferred to separate tasks:
 
 - Project and tag filter UX for search and snapshot views.
 - Thread-aware linking between corrections, stale facts, and source events.
-- A unified memory operation abstraction for explicit update, archive, pin, and
-  supersede operations.
+- Implementation of the operation abstraction described above.
 - Automatic expiration, stale review queues, and destructive cleanup commands.
 
 This keeps the current lifecycle policy conservative: structured enough for

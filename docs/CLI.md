@@ -114,6 +114,20 @@ ai-memory-hub memory snapshot [--limit <n>]
 **Options:**
 - `--limit` - Maximum number of records in snapshot (default: 40)
 
+### Planned `memory op`
+
+Future lifecycle edits should use append-only memory operations instead of
+editing `memories/ledger.jsonl` directly.
+
+```bash
+ai-memory-hub memory op create --action annotate --record <id> --reason manual-review --patch @patch.json --by codex
+ai-memory-hub memory op list --record <id>
+ai-memory-hub memory op apply --dry-run
+```
+
+See [memory-lifecycle.md](memory-lifecycle.md) for the operation event schema,
+supported actions, and API shape.
+
 ---
 
 ## Message Bus (Radio)

@@ -2118,7 +2118,8 @@ function runDispatchJob(memoryDir, job, runner) {
   const prompt = renderDispatchPrompt(memoryDir, job);
 
   // For Windows, use stdin to avoid shell escaping issues (except for gemini which doesn't support stdin)
-  if (process.platform === "win32" && runner.command !== "powershell" && runner.command !== "gemini") {
+  // Gemini ALSO needs stdin because shell: true breaks multi-word -p arguments
+  if (process.platform === "win32" && runner.command !== "powershell") {
     const completed = spawnSync(runner.command, runner.args, {
       cwd: process.cwd(),
       encoding: "utf8",
@@ -2140,7 +2141,7 @@ function runDispatchJob(memoryDir, job, runner) {
     };
   }
 
-  // Original path for non-Windows, PowerShell, or Gemini (which needs args, not stdin)
+  // Original path for non-Windows or PowerShell
   const completed = spawnSync(runner.command, buildRunnerArgs(memoryDir, job, runner, prompt), {
     cwd: process.cwd(),
     encoding: "utf8",

@@ -2058,9 +2058,9 @@ function getToolRunner(tool) {
     }
     return {
       available: true,
-      preview: "codex exec --ask-for-approval never <prompt>",
+      preview: "codex exec <prompt>",
       command: "codex",
-      args: ["exec", "--ask-for-approval", "never"]
+      args: ["exec"]
     };
   }
   if (tool === "claude") {
@@ -2107,7 +2107,8 @@ function runDispatchJob(memoryDir, job, runner) {
     cwd: process.cwd(),
     encoding: "utf8",
     timeout: 10 * 60 * 1000,
-    windowsHide: true
+    windowsHide: true,
+    shell: true
   });
   const parsed = parseRunnerOutput(memoryDir, job, runner, completed.stdout);
   return {

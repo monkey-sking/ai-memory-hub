@@ -94,14 +94,22 @@ ai-memory-hub update --force
 Search through memory index.
 
 ```bash
-ai-memory-hub memory search <query> [--limit <n>]
+ai-memory-hub search [query] [--limit <n>] [--project <name>] [--thread <id>] [--task <id>] [--workflow <id>] [--radio <id>]
 ```
 
 **Examples:**
 ```bash
-ai-memory-hub memory search "git commit rules"
-ai-memory-hub memory search "project setup" --limit 10
+ai-memory-hub search "git commit rules"
+ai-memory-hub search "project setup" --limit 10
+ai-memory-hub search "relay lifecycle" --thread relay-lifecycle-2026-06-09
+ai-memory-hub search --thread relay-lifecycle-2026-06-09
+ai-memory-hub search "review result" --task task-relay --project ai-memory-hub
 ```
+
+Search reads the rebuilt memory index and can filter by thread-aware references
+stored in `refs.thread`, `refs.taskId`, `refs.workflowId`, and `refs.radioId`.
+Plain text search still works without any reference filters. If a reference
+filter is provided without a query, search returns the newest matching records.
 
 ### `memory snapshot`
 

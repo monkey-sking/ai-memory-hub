@@ -41,6 +41,13 @@ The index schema uses these lifecycle-relevant fields:
 - `confidence`: numeric value from `0` to `1`; missing values default to `1`.
 - `importance`: derived score used for ranking.
 - `layer`: derived snapshot tier: `core`, `working`, or `archive`.
+- `refs`: normalized context references used by thread-aware search:
+  - `refs.thread`: conversation, radio, dispatch, task, or workflow thread id.
+  - `refs.threadKey`: exact relay thread key when known.
+  - `refs.taskId`: related shared task id.
+  - `refs.workflowId`: related workflow id.
+  - `refs.radioId`: related radio/message id.
+  - `refs.dispatchId` and `refs.sourceId`: optional execution/source ids.
 
 Unknown metadata fields should be preserved. The hub should normalize known
 fields for search and display, not strip tool-specific context.

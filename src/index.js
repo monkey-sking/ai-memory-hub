@@ -3307,6 +3307,7 @@ function syncIndexedEvents(config, dryRun) {
       project: normalizedEvent.metadata?.project || "",
       tags: normalizedEvent.metadata?.tags || [],
       scope: normalizedEvent.metadata?.scope || "",
+      refs: normalizedEvent.metadata?.refs || {},
       confidence: normalizedEvent.metadata?.confidence ?? 1,
       metadata: normalizedEvent.metadata || {}
     };
@@ -3353,18 +3354,33 @@ function indexCommand() {
 
 function searchCommand(argv) {
   const query = positionalArgs(argv).join(" ").trim();
-  if (!query) {
-    throw new Error("Usage: ai-memory-hub search <query> [--limit 10]");
-  }
   const config = loadConfig();
   ensureHub(config.memoryDir);
   const limit = Number(getOption(argv, "--limit") || 10);
+  const filters = {
+    project: getOption(argv, "--project") || "",
+    thread: getOption(argv, "--thread") || "",
+    taskId: getOption(argv, "--task") || getOption(argv, "--task-id") || "",
+    workflowId: getOption(argv, "--workflow") || getOption(argv, "--workflow-id") || "",
+    radioId: getOption(argv, "--radio") || getOption(argv, "--radio-id") || ""
+  };
+  const hasFilter = Object.values(filters).some(Boolean);
+  if (!query && !hasFilter) {
+    throw new Error("Usage: ai-memory-hub search [query] [--limit 10] [--project <name>] [--thread <id>] [--task <id>] [--workflow <id>] [--radio <id>]");
+  }
   const index = buildMemoryIndex(readLedger(config.memoryDir), config);
-  const results = searchMemories(index.records, query).slice(0, limit);
+  const records = filterMemoryRecords(index.records, filters);
+  const results = (query
+    ? searchMemories(records, query)
+    : [...records]
+      .sort((a, b) => String(b.ts || "").localeCompare(String(a.ts || "")))
+      .map((record) => ({ ...record, score: Number(record.importance || 0) / 100 }))
+  ).slice(0, limit);
   for (const item of results) {
     const kind = item.metadata?.kind || "note";
     const topics = (item.topics || []).slice(0, 4).join(",");
-    console.log(`[${item.score.toFixed(2)}] ${item.source}/${kind} ${topics ? `(${topics}) ` : ""}${item.text}`);
+    const refs = formatMemoryRefs(item.refs);
+    console.log(`[${item.score.toFixed(2)}] ${item.source}/${kind} ${topics ? `(${topics}) ` : ""}${refs ? `[${refs}] ` : ""}${item.text}`);
   }
 }
 
@@ -5881,6 +5897,7 @@ function normalizeMemoryMetadata(metadata = {}, fallback = {}) {
   normalized.project = normalizeMemoryProject(normalized.project || fallback.project || "");
   normalized.tags = normalizeList(normalized.tags?.length ? normalized.tags : fallback.tags);
   normalized.scope = normalizeMemoryScope(normalized.scope || fallback.scope || "");
+  normalized.refs = normalizeMemoryRefs(normalized.refs || normalized.references || {}, { ...fallback, ...normalized });
   normalized.confidence = normalizeConfidence(normalized.confidence ?? fallback.confidence);
   return normalized;
 }
@@ -5914,6 +5931,107 @@ function normalizeList(value) {
 
 function parseListOption(value) {
   return normalizeList(value);
+}
+
+function normalizeMemoryRefs(refs = {}, fallback = {}) {
+  const source = isPlainObject(refs) ? refs : {};
+  const aliases = {
+    thread: ["thread", "threadId", "thread_id", "conversationId", "conversation_id"],
+    threadKey: ["threadKey", "thread_key"],
+    taskId: ["taskId", "task_id", "task"],
+    workflowId: ["workflowId", "workflow_id", "workflow"],
+    radioId: ["radioId", "radio_id", "radio", "messageId", "message_id", "replyTo", "reply_to"],
+    dispatchId: ["dispatchId", "dispatch_id"],
+    sourceId: ["sourceId", "source_id", "localEventId", "local_event_id"]
+  };
+  const normalized = {};
+  for (const [targetKey, keys] of Object.entries(aliases)) {
+    const values = normalizeRefValues(firstDefinedRef(source, fallback, keys));
+    if (values.length === 1) {
+      normalized[targetKey] = values[0];
+    } else if (values.length > 1) {
+      normalized[targetKey] = values;
+    }
+  }
+  return normalized;
+}
+
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function firstDefinedRef(source, fallback, keys) {
+  for (const key of keys) {
+    if (source[key] !== undefined && source[key] !== null && source[key] !== "") {
+      return source[key];
+    }
+    if (fallback[key] !== undefined && fallback[key] !== null && fallback[key] !== "") {
+      return fallback[key];
+    }
+  }
+  return "";
+}
+
+function normalizeRefValues(value) {
+  if (Array.isArray(value)) {
+    return [...new Set(value.flatMap((item) => normalizeRefValues(item)))];
+  }
+  if (value === undefined || value === null || value === "") {
+    return [];
+  }
+  if (isPlainObject(value)) {
+    return Object.values(value).flatMap((item) => normalizeRefValues(item));
+  }
+  return [String(value).trim()].filter(Boolean);
+}
+
+function flattenMemoryRefs(refs = {}) {
+  if (!isPlainObject(refs)) {
+    return [];
+  }
+  return [...new Set(Object.values(refs).flatMap((value) => normalizeRefValues(value)))];
+}
+
+function formatMemoryRefs(refs = {}) {
+  if (!isPlainObject(refs)) {
+    return "";
+  }
+  const parts = [];
+  for (const key of ["thread", "threadKey", "taskId", "workflowId", "radioId"]) {
+    const values = normalizeRefValues(refs[key]).slice(0, 3);
+    if (values.length > 0) {
+      parts.push(`${key}=${values.join(",")}`);
+    }
+  }
+  return parts.join(" ");
+}
+
+function filterMemoryRecords(records, filters = {}) {
+  return records
+    .filter((record) => filters.project ? record.project === normalizeMemoryProject(filters.project) : true)
+    .filter((record) => matchesMemoryRef(record, "thread", filters.thread))
+    .filter((record) => matchesMemoryRef(record, "taskId", filters.taskId))
+    .filter((record) => matchesMemoryRef(record, "workflowId", filters.workflowId))
+    .filter((record) => matchesMemoryRef(record, "radioId", filters.radioId));
+}
+
+function matchesMemoryRef(memory, key, query) {
+  if (!query) {
+    return true;
+  }
+  const target = normalizeRefToken(query);
+  const candidates = [
+    ...(normalizeRefValues(memory.refs?.[key])),
+    ...(normalizeRefValues(memory.metadata?.refs?.[key]))
+  ];
+  return candidates.some((candidate) => {
+    const value = normalizeRefToken(candidate);
+    return value === target || value.startsWith(target) || target.startsWith(value);
+  });
+}
+
+function normalizeRefToken(value) {
+  return String(value || "").trim().toLowerCase();
 }
 
 function normalizeConfidence(value) {
@@ -5959,6 +6077,10 @@ function buildMemoryIndex(memories, config) {
     projects: countBy(records.map((item) => item.project || item.metadata?.project || "").filter(Boolean)),
     scopes: countBy(records.map((item) => item.scope || "").filter(Boolean)),
     tags: countBy(records.flatMap((item) => item.tags || [])),
+    threads: countBy(records.flatMap((item) => normalizeRefValues(item.refs?.thread))),
+    tasks: countBy(records.flatMap((item) => normalizeRefValues(item.refs?.taskId))),
+    workflows: countBy(records.flatMap((item) => normalizeRefValues(item.refs?.workflowId))),
+    radios: countBy(records.flatMap((item) => normalizeRefValues(item.refs?.radioId))),
     sources: countBy(records.map((item) => item.source || "unknown")),
     records
   };
@@ -5969,15 +6091,18 @@ function enrichMemory(memory, ordinal, total) {
   const kind = normalizeMemoryKind(metadata.kind || "note");
   const tags = normalizeList(metadata.tags);
   const project = normalizeMemoryProject(metadata.project || memory.project || "");
+  const refs = normalizeMemoryRefs(metadata.refs || memory.refs || {}, { ...memory, ...metadata });
   const canonicalMemory = {
     ...memory,
     project,
     tags,
+    refs,
     metadata: {
       ...metadata,
       project,
       tags,
-      kind
+      kind,
+      refs
     }
   };
   const topics = inferTopics(canonicalMemory);
@@ -5991,6 +6116,7 @@ function enrichMemory(memory, ordinal, total) {
     kind,
     project,
     tags,
+    refs,
     confidence,
     metadata: {
       ...metadata,
@@ -5998,13 +6124,14 @@ function enrichMemory(memory, ordinal, total) {
       project,
       tags,
       scope,
-      confidence
+      confidence,
+      refs
     },
     layer,
     importance,
     scope,
     topics,
-    keywords: extractKeywords(`${memory.text} ${project} ${tags.join(" ")} ${(topics || []).join(" ")}`)
+    keywords: extractKeywords(`${memory.text} ${project} ${tags.join(" ")} ${flattenMemoryRefs(refs).join(" ")} ${(topics || []).join(" ")}`)
   };
 }
 
@@ -6108,7 +6235,8 @@ function renderMemoryLine(memory) {
   const topics = memory.topics?.length ? ` topics=${memory.topics.slice(0, 5).join(",")}` : "";
   const project = memory.project ? ` project=${memory.project}` : "";
   const tags = memory.tags?.length ? ` tags=${memory.tags.slice(0, 5).join(",")}` : "";
-  return `- [${memory.source}${kind} score=${memory.importance}${project}${tags}${topics}] ${memory.text}`;
+  const refs = formatMemoryRefs(memory.refs);
+  return `- [${memory.source}${kind} score=${memory.importance}${project}${tags}${topics}${refs ? ` refs=${refs}` : ""}] ${memory.text}`;
 }
 
 function expandSynonyms(terms) {
@@ -6149,7 +6277,8 @@ function searchMemories(records, query) {
         memory.kind || memory.metadata?.kind || "",
         memory.project || memory.metadata?.project || "",
         memory.scope || "",
-        ...(memory.tags || memory.metadata?.tags || [])
+        ...(memory.tags || memory.metadata?.tags || []),
+        ...flattenMemoryRefs(memory.refs || memory.metadata?.refs)
       ]);
       const searchTerms = new Set([
         ...extractSearchTerms(text),
@@ -6158,7 +6287,8 @@ function searchMemories(records, query) {
         ...extractSearchTerms(memory.kind || memory.metadata?.kind || ""),
         ...extractSearchTerms(memory.project || memory.metadata?.project || ""),
         ...extractSearchTerms(memory.scope || ""),
-        ...extractSearchTerms((memory.tags || memory.metadata?.tags || []).join(" "))
+        ...extractSearchTerms((memory.tags || memory.metadata?.tags || []).join(" ")),
+        ...extractSearchTerms(flattenMemoryRefs(memory.refs || memory.metadata?.refs).join(" "))
       ]);
       const normalizedText = normalizeSearchText(text);
       const normalizedJoinedKeywords = normalizeSearchText([

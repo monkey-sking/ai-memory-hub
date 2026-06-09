@@ -42,6 +42,11 @@ async function writeRecipe(memoryDir, name, recipe) {
   await fs.writeFile(path.join(recipesDir, `${name}.json`), JSON.stringify(recipe, null, 2), "utf8");
 }
 
+async function appendJsonl(file, value) {
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.appendFile(file, `${JSON.stringify(value)}\n`, "utf8");
+}
+
 test("task add creates normalized task records", async () => {
   await withHub(async (memoryDir) => {
     const task = parseJson(runCli(memoryDir, [
@@ -217,5 +222,79 @@ test("recipe create validates and creates workflow tasks", async () => {
       "[implement-and-review] Implement the change",
       "[implement-and-review] Review the change"
     ]);
+  });
+});
+
+test("memory search filters by thread-aware references", async () => {
+  await withHub(async (memoryDir) => {
+    await appendJsonl(path.join(memoryDir, "inbox", "events.jsonl"), {
+      id: "event-threaded-memory",
+      ts: "2026-06-09T10:00:00.000Z",
+      source: "codex",
+      text: "Relay lifecycle workflow status is reviewed and ready.",
+      metadata: {
+        kind: "workflow",
+        project: "ai-memory-hub",
+        tags: ["relay"],
+        refs: {
+          thread: "relay-lifecycle-2026-06-09",
+          taskId: "task-relay",
+          workflowId: "workflow-relay",
+          radioId: "radio-relay"
+        }
+      }
+    });
+    await appendJsonl(path.join(memoryDir, "inbox", "events.jsonl"), {
+      id: "event-unrelated-memory",
+      ts: "2026-06-09T10:01:00.000Z",
+      source: "gemini",
+      text: "Dashboard telemetry has a separate review thread.",
+      metadata: {
+        kind: "reference",
+        project: "ai-memory-hub",
+        refs: {
+          thread: "dashboard-ui-2026-06-09",
+          taskId: "task-dashboard"
+        }
+      }
+    });
+
+    const sync = runCli(memoryDir, ["sync"]);
+    assert.equal(sync.status, 0, sync.stderr || sync.stdout);
+
+    const index = JSON.parse(await fs.readFile(path.join(memoryDir, "memories", "index.json"), "utf8"));
+    const threaded = index.records.find((record) => record.localEventId === "event-threaded-memory");
+    assert.equal(threaded.refs.thread, "relay-lifecycle-2026-06-09");
+    assert.equal(threaded.refs.taskId, "task-relay");
+    assert.equal(index.threads.find((item) => item.key === "relay-lifecycle-2026-06-09")?.count, 1);
+
+    const ordinary = runCli(memoryDir, ["search", "relay lifecycle"]);
+    assert.equal(ordinary.status, 0, ordinary.stderr || ordinary.stdout);
+    assert.match(ordinary.stdout, /Relay lifecycle workflow status/);
+
+    const byThread = runCli(memoryDir, ["search", "workflow", "--thread", "relay-lifecycle-2026-06-09"]);
+    assert.equal(byThread.status, 0, byThread.stderr || byThread.stdout);
+    assert.match(byThread.stdout, /thread=relay-lifecycle-2026-06-09/);
+    assert.doesNotMatch(byThread.stdout, /Dashboard telemetry/);
+
+    const byThreadOnly = runCli(memoryDir, ["search", "--thread", "relay-lifecycle-2026-06-09"]);
+    assert.equal(byThreadOnly.status, 0, byThreadOnly.stderr || byThreadOnly.stdout);
+    assert.match(byThreadOnly.stdout, /Relay lifecycle workflow status/);
+
+    const byTask = runCli(memoryDir, ["search", "workflow", "--task", "task-relay"]);
+    assert.equal(byTask.status, 0, byTask.stderr || byTask.stdout);
+    assert.match(byTask.stdout, /taskId=task-relay/);
+
+    const byWorkflow = runCli(memoryDir, ["search", "workflow", "--workflow", "workflow-relay"]);
+    assert.equal(byWorkflow.status, 0, byWorkflow.stderr || byWorkflow.stdout);
+    assert.match(byWorkflow.stdout, /workflowId=workflow-relay/);
+
+    const byRadio = runCli(memoryDir, ["search", "workflow", "--radio", "radio-relay"]);
+    assert.equal(byRadio.status, 0, byRadio.stderr || byRadio.stdout);
+    assert.match(byRadio.stdout, /radioId=radio-relay/);
+
+    const wrongThread = runCli(memoryDir, ["search", "workflow", "--thread", "missing-thread"]);
+    assert.equal(wrongThread.status, 0, wrongThread.stderr || wrongThread.stdout);
+    assert.equal(wrongThread.stdout.trim(), "");
   });
 });

@@ -69,6 +69,8 @@ async function main() {
       return rpcCommand(rest);
     case "notify":
       return notifyCommand(rest);
+    case "context":
+      return contextCommand(rest);
     case "connect":
     case "contact":
       return connectCommand(rest);
@@ -712,6 +714,84 @@ function notifyDeliverCommand(argv) {
 
   updateNotificationStatus(config.memoryDir, notificationId, "delivered", deliveredTo);
   console.log(JSON.stringify({ id: notificationId, deliveredTo, status: "delivered" }, null, 2));
+}
+
+function contextCommand(argv) {
+  const action = argv[0] || "create";
+  switch (action) {
+    case "create":
+      return contextCreateCommand(argv.slice(1));
+    case "show":
+      return contextShowCommand(argv.slice(1));
+    case "list":
+      return contextListCommand(argv.slice(1));
+    default:
+      throw new Error(`Unknown context action: ${action}\nTry: ai-memory-hub context create|show|list`);
+  }
+}
+
+function contextCreateCommand(argv) {
+  const taskId = getOption(argv, "--task") || "";
+  const workflowId = getOption(argv, "--workflow") || "";
+  const project = getOption(argv, "--project") || "";
+  const query = getOption(argv, "--query") || "";
+
+  if (!taskId && !workflowId && !query) {
+    throw new Error("Usage: ai-memory-hub context create [--task <task-id>] [--workflow <workflow-id>] [--project <project>] [--query <search-query>]");
+  }
+
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+
+  const pack = createContextPack({ taskId, workflowId, project, query });
+  const file = writeContextPack(config.memoryDir, pack);
+
+  console.log(JSON.stringify({ ...pack, file }, null, 2));
+}
+
+function contextShowCommand(argv) {
+  const packId = getOption(argv, "--id") || argv[0] || "";
+
+  if (!packId) {
+    throw new Error("Usage: ai-memory-hub context show <pack-id>");
+  }
+
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+
+  const pack = readContextPack(config.memoryDir, packId);
+
+  if (!pack) {
+    throw new Error(`Context pack not found: ${packId}`);
+  }
+
+  console.log(JSON.stringify(pack, null, 2));
+}
+
+function contextListCommand(argv) {
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+
+  const packsDir = path.join(config.memoryDir, "context", "packs");
+
+  if (!fs.existsSync(packsDir)) {
+    console.log(JSON.stringify([], null, 2));
+    return;
+  }
+
+  const files = fs.readdirSync(packsDir).filter((f) => f.endsWith(".json"));
+  const packs = files
+    .map((file) => {
+      try {
+        return readJson(path.join(packsDir, file));
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean)
+    .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+
+  console.log(JSON.stringify(packs, null, 2));
 }
 
 function taskCommand(argv) {
@@ -2480,6 +2560,7 @@ Commands:
   session    Manage session handoff for context transfer between tools.
   rpc        Synchronous request-response RPC calls between tools.
   notify     Send cross-platform notifications with severity-based routing.
+  context    Generate task-specific memory bundles for focused context.
   connect    Check tool connections or send a request/review/handoff to another tool.
   dispatch   Dispatch pending radio/task work to verified CLI runners.
   pull       Rebuild MEMORY.md from the local memory ledger.
@@ -3814,6 +3895,100 @@ function getNotificationChannels(severity, userChannels = []) {
 
   const channels = userChannels.length > 0 ? userChannels : (defaultRouting[severity] || ["console"]);
   return [...new Set(channels)];
+}
+
+// Context Pack Functions
+function createContextPack({ taskId, workflowId, project, query }) {
+  const memoryDir = loadConfig().memoryDir;
+
+  const pack = {
+    id: createId(`context:${taskId || workflowId}:${Date.now()}`),
+    createdAt: new Date().toISOString(),
+    taskId: taskId || "",
+    workflowId: workflowId || "",
+    project: project || "",
+    task: null,
+    workflow: null,
+    relevantMemories: [],
+    recentRadio: [],
+    projectPath: process.cwd(),
+    constraints: [],
+    acceptanceCriteria: []
+  };
+
+  // Load task or workflow details
+  if (taskId) {
+    const tasks = readTasks(memoryDir);
+    pack.task = tasks.find((t) => t.id === taskId || t.id.startsWith(taskId));
+  }
+
+  if (workflowId) {
+    const workflows = readWorkflows(memoryDir);
+    pack.workflow = workflows.find((w) => w.id === workflowId || w.id.startsWith(workflowId));
+  }
+
+  // Search relevant memories
+  if (query || pack.task || pack.workflow) {
+    const searchQuery = query || pack.task?.title || pack.workflow?.title || "";
+    pack.relevantMemories = searchMemoriesForContext(memoryDir, searchQuery, project, 10);
+  }
+
+  // Get recent radio messages for this project
+  if (project) {
+    pack.recentRadio = readRadioMessages(memoryDir)
+      .filter((m) => m.project === project)
+      .sort((a, b) => (b.ts || "").localeCompare(a.ts || ""))
+      .slice(0, 10);
+  }
+
+  return pack;
+}
+
+function searchMemoriesForContext(memoryDir, query, project, limit = 10) {
+  try {
+    const indexFile = path.join(memoryDir, "INDEX.md");
+    if (!fs.existsSync(indexFile)) {
+      return [];
+    }
+
+    const records = parseIndexFile(indexFile);
+    const projectRecords = project ? records.filter((r) => r.project === project) : records;
+
+    if (!query) {
+      return projectRecords.slice(0, limit).map((r) => ({
+        text: r.text,
+        kind: r.kind,
+        source: r.source,
+        project: r.project
+      }));
+    }
+
+    const scored = searchMemories(projectRecords, query);
+    return scored.slice(0, limit).map((r) => ({
+      text: r.text,
+      kind: r.kind,
+      source: r.source,
+      project: r.project,
+      score: r.score
+    }));
+  } catch (error) {
+    return [];
+  }
+}
+
+function writeContextPack(memoryDir, pack) {
+  const file = path.join(memoryDir, "context", "packs", `${pack.id}.json`);
+  ensureDir(path.dirname(file));
+  fs.writeFileSync(file, JSON.stringify(pack, null, 2) + "\n", "utf8");
+  return file;
+}
+
+function readContextPack(memoryDir, packId) {
+  const file = path.join(memoryDir, "context", "packs", `${packId}.json`);
+  if (!fs.existsSync(file)) {
+    return null;
+  }
+  return readJson(file);
 }
 
 function normalizePriority(priority) {

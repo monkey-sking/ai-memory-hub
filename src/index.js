@@ -2103,6 +2103,31 @@ function getToolRunner(tool) {
 
 function runDispatchJob(memoryDir, job, runner) {
   const prompt = renderDispatchPrompt(memoryDir, job);
+
+  // For Windows, use stdin to avoid shell escaping issues
+  if (process.platform === "win32" && runner.command !== "powershell") {
+    const completed = spawnSync(runner.command, runner.args, {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      timeout: 10 * 60 * 1000,
+      windowsHide: true,
+      shell: true,
+      input: prompt
+    });
+
+    const parsed = parseRunnerOutput(memoryDir, job, runner, completed.stdout);
+    return {
+      ...job,
+      runnable: true,
+      exitCode: completed.status,
+      stdout: trimOutput(parsed.stdout),
+      stderr: trimOutput(completed.stderr),
+      error: completed.error ? completed.error.message : "",
+      sessionId: parsed.sessionId || ""
+    };
+  }
+
+  // Original path for non-Windows or PowerShell
   const completed = spawnSync(runner.command, buildRunnerArgs(memoryDir, job, runner, prompt), {
     cwd: process.cwd(),
     encoding: "utf8",

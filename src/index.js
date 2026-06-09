@@ -2060,9 +2060,9 @@ function getToolRunner(tool) {
     }
     return {
       available: true,
-      preview: "codex exec <prompt>",
+      preview: "codex exec --sandbox danger-full-access <prompt>",
       command: "codex",
-      args: ["exec"]
+      args: ["exec", "--sandbox", "danger-full-access"]
     };
   }
   if (tool === "claude") {

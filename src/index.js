@@ -2085,9 +2085,9 @@ function getToolRunner(tool) {
     }
     return {
       available: true,
-      preview: "gemini -p <prompt>",
+      preview: "gemini (stdin)",
       command: "gemini",
-      args: ["-p"]
+      args: []
     };
   }
   if (tool === "qoder-cn" || tool === "opencode") {

@@ -553,6 +553,12 @@ test("dispatch launches resolved runner shim with prompt on stdin", async () => 
     assert.equal(payload.results[0].attempt, 1);
     assert.equal(payload.results[0].maxRetries, 3);
     assert.equal(payload.results[0].nextRetryAt, "");
+    assert.ok(payload.results[0].runId);
+    assert.equal(payload.results[0].runStatus, "completed");
+    assert.equal(payload.results[0].verificationResult, "passed");
+    assert.match(payload.results[0].stdoutLogPath, /^dispatch-runs\/.+\.stdout\.log$/);
+    assert.match(payload.results[0].stderrLogPath, /^dispatch-runs\/.+\.stderr\.log$/);
+    assert.equal(payload.results[0].runRecordPath, "state/dispatch-runs.jsonl");
 
     const stdout = JSON.parse(payload.results[0].stdout);
     assert.deepEqual(stdout.args, ["exec", "--sandbox", "danger-full-access"]);
@@ -561,6 +567,26 @@ test("dispatch launches resolved runner shim with prompt on stdin", async () => 
     assert.match(stdout.stdin, /Do not run git push, delete files/);
     assert.match(stdout.stdin, /Verify stdin dispatch path/);
     assert.match(stdout.stdin, /Payload:\nVerify stdin dispatch path/);
+
+    const runs = await readJsonl(path.join(memoryDir, "state", "dispatch-runs.jsonl"));
+    assert.equal(runs.length, 1);
+    assert.equal(runs[0].runId, payload.results[0].runId);
+    assert.equal(runs[0].dispatchId, "task:task-stdin");
+    assert.equal(runs[0].sourceKind, "task");
+    assert.equal(runs[0].sourceId, "task-stdin");
+    assert.equal(runs[0].threadKey, "codex:test-project:task-stdin");
+    assert.equal(runs[0].status, "completed");
+    assert.equal(runs[0].exitCode, 0);
+    assert.equal(runs[0].verificationResult, "passed");
+    assert.equal(runs[0].cwd, repoRoot);
+    assert.match(runs[0].commandLine, /codex/);
+    assert.match(runs[0].stdoutLogPath, /^dispatch-runs\/.+\.stdout\.log$/);
+    assert.match(runs[0].stderrLogPath, /^dispatch-runs\/.+\.stderr\.log$/);
+
+    const rawStdout = await fs.readFile(path.join(memoryDir, runs[0].stdoutLogPath), "utf8");
+    const rawStderr = await fs.readFile(path.join(memoryDir, runs[0].stderrLogPath), "utf8");
+    assert.match(rawStdout, /Verify stdin dispatch path/);
+    assert.equal(rawStderr, "");
 
     const tasks = await readJsonl(path.join(memoryDir, "tasks", "tasks.jsonl"));
     assert.equal(tasks[0].status, "done");
@@ -582,6 +608,15 @@ test("dispatch launches resolved runner shim with prompt on stdin", async () => 
     const radios = await readJsonl(path.join(memoryDir, "radio", "messages.jsonl"));
     assert.equal(radios.find((message) => message.id === tasks[0].responseRadioId)?.type, "response");
     assert.equal(radios.find((message) => message.id === tasks[0].statusRadioId)?.type, "status");
+
+    const status = runCli(memoryDir, ["dispatch", "status", "--ref-id", "task-stdin", "--project", "test-project"]);
+    assert.equal(status.status, 0, status.stderr || status.stdout);
+    const statusPayload = JSON.parse(status.stdout);
+    assert.equal(statusPayload.summary.latestRunId, runs[0].runId);
+    assert.equal(statusPayload.summary.latestRunStatus, "completed");
+    assert.equal(statusPayload.summary.latestRunExitCode, 0);
+    assert.equal(statusPayload.runHistory.length, 1);
+    assert.equal(statusPayload.runHistory[0].stdoutLogPath, runs[0].stdoutLogPath);
   });
 });
 

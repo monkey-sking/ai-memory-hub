@@ -18,6 +18,7 @@ const DEFAULT_CONFIG_PATH = path.join(DEFAULT_MEMORY_DIR, "config.json");
 const DEFAULT_DISPATCH_ACK_TIMEOUT_MS = 5 * 60 * 1000;
 const DEFAULT_DISPATCH_RUN_TIMEOUT_MS = 10 * 60 * 1000;
 const RESEARCH_REPORTS_DIR = "research-reports";
+const DISPATCH_RUNS_DIR = "dispatch-runs";
 const DAEMON_PID_FILE = "daemon.pid";
 const DAEMON_STATUS_FILE = "daemon-status.json";
 
@@ -1685,7 +1686,14 @@ function dispatchStatusCommand(argv) {
     .filter((entry) => latest.threadKey ? getDispatchThreadKey(entry) === latest.threadKey : true)
     .filter((entry) => (!hasExplicitThreadScope && refId) ? entry.refId === refId || entry.id === refId : true)
     .sort((a, b) => String(a.dispatchedAt || "").localeCompare(String(b.dispatchedAt || "")));
+  const runHistory = readDispatchRuns(config.memoryDir)
+    .filter((entry) => latest.threadKey ? entry.threadKey === latest.threadKey : true)
+    .filter((entry) => (!hasExplicitThreadScope && refId)
+      ? entry.sourceId === refId || entry.dispatchId === refId || entry.dispatchId === `task:${refId}` || entry.dispatchId === `radio:${refId}` || entry.dispatchId === `workflow:${refId}`
+      : true)
+    .sort((a, b) => String(a.startedAt || "").localeCompare(String(b.startedAt || "")));
   const states = all.map((entry) => entry.state).filter(Boolean);
+  const latestRun = runHistory.at(-1) || null;
   const summary = {
     threadKey: latest.threadKey || "",
     thread: latest.thread || "",
@@ -1704,6 +1712,10 @@ function dispatchStatusCommand(argv) {
     progressAt: latest.progressAt || "",
     progressBy: latest.progressBy || "",
     nextRetryAt: latest.nextRetryAt || "",
+    latestRunId: latestRun?.runId || "",
+    latestRunStatus: latestRun?.status || "",
+    latestRunExitCode: latestRun?.exitCode ?? null,
+    latestRunFinishedAt: latestRun?.finishedAt || "",
     firstTs: all[0]?.ts || "",
     latestTs: latest.ts || "",
     timelineLength: all.length,
@@ -1726,6 +1738,7 @@ function dispatchStatusCommand(argv) {
     matchedThreadKeys: [...new Set(all.map((entry) => entry.threadKey).filter(Boolean))],
     latest,
     timeline: all,
+    runHistory,
     dispatchLog
   }, null, 2));
 }
@@ -1824,6 +1837,7 @@ function buildRecentRelayStatusView(memoryDir, { project = "", tool = "", state 
     .filter((entry) => state ? entry.state === state : true)
     .sort((a, b) => String(b.ts || "").localeCompare(String(a.ts || "")));
   const latestEntries = filteredEntries.slice(0, Math.max(1, Number(limit || 20)));
+  const latestRuns = readLatestDispatchRunByThread(memoryDir);
 
   const countsByState = {};
   const countsByTool = {};
@@ -1864,6 +1878,9 @@ function buildRecentRelayStatusView(memoryDir, { project = "", tool = "", state 
       progressAt: entry.progressAt || "",
       progressBy: entry.progressBy || "",
       nextRetryAt: entry.nextRetryAt || "",
+      latestRunId: latestRuns[entry.threadKey || ""]?.runId || "",
+      latestRunStatus: latestRuns[entry.threadKey || ""]?.status || "",
+      latestRunFinishedAt: latestRuns[entry.threadKey || ""]?.finishedAt || "",
       lastError: summarizeText(entry.lastError || "", 120),
       ts: entry.ts || ""
     }))
@@ -2891,9 +2908,46 @@ function runDispatchJob(memoryDir, job, runner) {
   const prompt = renderDispatchPrompt(memoryDir, job);
   const args = buildRunnerArgs(memoryDir, job, runner, prompt);
   const input = runner.promptMode === "stdin" ? prompt : "";
+  const runId = createDispatchRunId(job);
+  const startedAtMs = Date.now();
+  const startedAt = new Date(startedAtMs).toISOString();
+  const invocation = buildRunnerInvocation(runner, args);
   const completed = invokeRunnerCommand(runner, args, input, DEFAULT_DISPATCH_RUN_TIMEOUT_MS);
+  const finishedAtMs = Date.now();
+  const finishedAt = new Date(finishedAtMs).toISOString();
   const parsed = parseRunnerOutput(memoryDir, job, runner, completed.stdout);
   const normalizedStderr = normalizeRunnerStderr(job.tool, completed.stderr);
+  const stdoutLogPath = writeDispatchRunLog(memoryDir, runId, "stdout", completed.stdout);
+  const stderrLogPath = writeDispatchRunLog(memoryDir, runId, "stderr", completed.stderr);
+  const runStatus = getDispatchRunStatus(completed);
+  const verificationResult = getDispatchRunVerificationResult(runStatus, completed.status);
+  const errorSummary = summarizeText(completed.error?.message || normalizedStderr.stderr || "", 220);
+  const runRecord = {
+    runId,
+    dispatchId: job.id,
+    threadKey: getDispatchThreadKey(job),
+    sourceKind: job.kind || "",
+    sourceId: job.refId || "",
+    tool: job.tool || "",
+    project: job.project || "",
+    command: invocation.command,
+    commandArgs: invocation.args,
+    commandLine: invocation.commandLine,
+    cwd: process.cwd(),
+    startedAt,
+    finishedAt,
+    durationMs: Math.max(0, finishedAtMs - startedAtMs),
+    timeoutMs: DEFAULT_DISPATCH_RUN_TIMEOUT_MS,
+    exitCode: completed.status ?? null,
+    status: runStatus,
+    errorSummary,
+    stdoutLogPath,
+    stderrLogPath,
+    stdoutBytes: Buffer.byteLength(String(completed.stdout || ""), "utf8"),
+    stderrBytes: Buffer.byteLength(String(completed.stderr || ""), "utf8"),
+    verificationResult
+  };
+  appendDispatchRunRecord(memoryDir, runRecord);
   return {
     ...job,
     runnable: true,
@@ -2905,13 +2959,35 @@ function runDispatchJob(memoryDir, job, runner) {
     sessionId: parsed.sessionId || "",
     runnerMode: runner.promptMode || "",
     runnerCommand: runner.commandName || runner.command || "",
-    runnerShell: runner.usesShell ? runner.shell || "shell" : ""
+    runnerShell: runner.usesShell ? runner.shell || "shell" : "",
+    runId,
+    runStatus,
+    runStartedAt: startedAt,
+    runFinishedAt: finishedAt,
+    runDurationMs: Math.max(0, finishedAtMs - startedAtMs),
+    stdoutLogPath,
+    stderrLogPath,
+    runRecordPath: path.join("state", "dispatch-runs.jsonl").replace(/\\/g, "/"),
+    verificationResult
+  };
+}
+
+function buildRunnerInvocation(runner, args = []) {
+  const useCmdLauncher = process.platform === "win32" && runner.usesShell;
+  const command = useCmdLauncher ? buildWindowsCmdLine(runner.command, args) : runner.command;
+  const commandArgs = useCmdLauncher ? [] : args;
+  return {
+    command: runner.commandName || runner.command || "",
+    args: args.map((arg) => String(arg)),
+    commandLine: [command, ...commandArgs].filter(Boolean).join(" "),
+    usesShell: useCmdLauncher
   };
 }
 
 function invokeRunnerCommand(runner, args = [], input = "", timeoutMs = DEFAULT_DISPATCH_RUN_TIMEOUT_MS) {
-  const useCmdLauncher = process.platform === "win32" && runner.usesShell;
-  const command = useCmdLauncher ? buildWindowsCmdLine(runner.command, args) : runner.command;
+  const invocation = buildRunnerInvocation(runner, args);
+  const useCmdLauncher = invocation.usesShell;
+  const command = useCmdLauncher ? invocation.commandLine : runner.command;
   const commandArgs = useCmdLauncher ? [] : args;
   return spawnSync(command, commandArgs, {
     cwd: process.cwd(),
@@ -3058,6 +3134,65 @@ function renderDispatchPrompt(memoryDir, job) {
 
 function readDispatchLog(memoryDir) {
   return readEvents(path.join(memoryDir, "state", "dispatch-log.jsonl"));
+}
+
+function readDispatchRuns(memoryDir) {
+  return readEvents(path.join(memoryDir, "state", "dispatch-runs.jsonl"));
+}
+
+function readLatestDispatchRunByThread(memoryDir) {
+  const latest = {};
+  for (const entry of readDispatchRuns(memoryDir)) {
+    const threadKey = entry.threadKey || "";
+    if (!threadKey) {
+      continue;
+    }
+    const current = latest[threadKey];
+    const currentTs = String(current?.finishedAt || current?.startedAt || "");
+    const nextTs = String(entry.finishedAt || entry.startedAt || "");
+    if (!current || nextTs >= currentTs) {
+      latest[threadKey] = entry;
+    }
+  }
+  return latest;
+}
+
+function createDispatchRunId(job) {
+  return createId(`dispatch-run:${job.id}:${job.refId}:${new Date().toISOString()}:${crypto.randomUUID()}`);
+}
+
+function writeDispatchRunLog(memoryDir, runId, stream, text) {
+  const safeRunId = String(runId || "run").replace(/[^a-zA-Z0-9_.-]+/g, "-");
+  const safeStream = stream === "stderr" ? "stderr" : "stdout";
+  const relativePath = path.join(DISPATCH_RUNS_DIR, `${safeRunId}.${safeStream}.log`);
+  const file = path.join(memoryDir, relativePath);
+  ensureDir(path.dirname(file));
+  fs.writeFileSync(file, String(text || ""), "utf8");
+  return relativePath.replace(/\\/g, "/");
+}
+
+function appendDispatchRunRecord(memoryDir, record) {
+  appendJsonl(path.join(memoryDir, "state", "dispatch-runs.jsonl"), record);
+}
+
+function getDispatchRunStatus(completed) {
+  if (completed?.error?.code === "ETIMEDOUT") {
+    return "timed_out";
+  }
+  if (completed?.status === 0) {
+    return "completed";
+  }
+  return "failed";
+}
+
+function getDispatchRunVerificationResult(runStatus, exitCode) {
+  if (runStatus === "completed" && exitCode === 0) {
+    return "passed";
+  }
+  if (runStatus === "timed_out") {
+    return "timed_out";
+  }
+  return "failed";
 }
 
 function appendDispatchLog(memoryDir, result) {

@@ -624,6 +624,8 @@ Direct dispatch only runs radio messages addressed to a concrete tool such as `c
 
 Every runner prompt includes autonomous safety rules: follow the current user/project guardrails, do not run `git push`, delete files, run destructive cleanup, install dependencies, or change system configuration unless the dispatch payload explicitly authorizes it. Local commits are allowed only when user/project rules allow them and verification has passed.
 
+Each executed runner also writes a structured run record to `state/dispatch-runs.jsonl` and raw output logs under `dispatch-runs/`. The record includes `runId`, source task/radio/workflow, command metadata, `cwd`, start/end time, duration, exit code, stdout/stderr log paths, status, error summary, and verification result.
+
 Successful task dispatches are marked `done` and receive a task note with the response summary. If the task is linked from a workflow, the workflow delivery fields are aggregated from its linked tasks, including progress percent/status and response/status radio IDs. Failed or timed-out dispatches keep the task open, write a diagnostic note, and surface the failing state on linked workflows.
 
 ### `dispatch status`
@@ -636,7 +638,7 @@ ai-memory-hub dispatch status --ref-id <task-radio-or-workflow-id>
 ai-memory-hub dispatch status --thread-key claude:ai-memory-hub:<ref>
 ```
 
-Single-source lookups resolve task, radio, and workflow relay sources. Workflow status results include linked tasks in `related.tasks`, so a workflow-level status check shows the current source plus the work items driving its delivery state.
+Single-source lookups resolve task, radio, and workflow relay sources. Workflow status results include linked tasks in `related.tasks`, so a workflow-level status check shows the current source plus the work items driving its delivery state. Status output also includes `summary.latestRunId`, latest run status/exit metadata, and `runHistory` entries pointing to the raw output log files.
 
 ### `dispatch progress`
 

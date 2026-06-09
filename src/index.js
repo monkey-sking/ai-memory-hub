@@ -2632,6 +2632,42 @@ function isDispatchableRadioMessage(message) {
   return true;
 }
 
+function isClosedDispatchSourceState(state) {
+  return ["completed", "delivered", "done", "cancelled"].includes(String(state || "").trim().toLowerCase());
+}
+
+function isDirectDispatchRadioMessage(message, to = "") {
+  if (!isDispatchableRadioMessage(message)) {
+    return false;
+  }
+  if (isClosedDispatchSourceState(message?.deliveryState || message?.status)) {
+    return false;
+  }
+  const target = normalizeToolName(message?.to || "");
+  if (!target || target === "all") {
+    return false;
+  }
+  const requested = normalizeToolName(to || "");
+  return requested ? target === requested : true;
+}
+
+function isRadioLinkedToClosedSource(memoryDir, message) {
+  const refs = [message?.thread, message?.replyTo]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+  if (refs.length === 0) {
+    return false;
+  }
+  const refSet = new Set(refs);
+  const closedTask = readTasks(memoryDir)
+    .some((task) => refSet.has(task.id) && isClosedDispatchSourceState(task.status || task.deliveryState));
+  if (closedTask) {
+    return true;
+  }
+  return readWorkflows(memoryDir)
+    .some((workflow) => refSet.has(workflow.id) && isClosedDispatchSourceState(workflow.status || workflow.deliveryState));
+}
+
 function buildDispatchJobs(memoryDir, { to, project, limit, force }) {
   const relayState = readLatestRelayStatusBySource(memoryDir);
   const dispatched = force ? new Set() : readDispatchLog(memoryDir)
@@ -2639,13 +2675,13 @@ function buildDispatchJobs(memoryDir, { to, project, limit, force }) {
     .reduce((set, item) => set.add(item.id), new Set());
   const messages = readRadioMessages(memoryDir)
     .filter((message) => project ? message.project === project : true)
-    .filter((message) => to ? message.to === to || message.to === "all" : message.to !== "all")
-    .filter(isDispatchableRadioMessage)
+    .filter((message) => isDirectDispatchRadioMessage(message, to))
+    .filter((message) => !isRadioLinkedToClosedSource(memoryDir, message))
     .slice(-limit)
     .map((message) => ({
       id: `radio:${message.id}`,
       kind: "radio",
-      tool: message.to === "all" ? to : message.to,
+      tool: normalizeToolName(message.to),
       project: message.project || "",
       text: message.text,
       refId: message.id,
@@ -2713,10 +2749,12 @@ function rebuildDispatchJobFromRelay(memoryDir, entry) {
   if (entry.sourceKind === "radio") {
     const message = readRadioMessages(memoryDir).find((item) => item.id === entry.sourceId);
     if (!message) return null;
+    if (!isDirectDispatchRadioMessage(message, entry.tool || message.to)) return null;
+    if (isRadioLinkedToClosedSource(memoryDir, message)) return null;
     return {
       id: `radio:${message.id}`,
       kind: "radio",
-      tool: entry.tool || (message.to === "all" ? "" : message.to),
+      tool: normalizeToolName(entry.tool || message.to),
       project: message.project || "",
       text: message.text,
       refId: message.id,
@@ -2726,6 +2764,7 @@ function rebuildDispatchJobFromRelay(memoryDir, entry) {
   if (entry.sourceKind === "task") {
     const task = readTasks(memoryDir).find((item) => item.id === entry.sourceId);
     if (!task) return null;
+    if (isClosedDispatchSourceState(task.status || task.deliveryState)) return null;
     return {
       id: `task:${task.id}`,
       kind: "task",
@@ -2739,6 +2778,7 @@ function rebuildDispatchJobFromRelay(memoryDir, entry) {
   if (entry.sourceKind === "workflow") {
     const workflow = readWorkflows(memoryDir).find((item) => item.id === entry.sourceId);
     if (!workflow) return null;
+    if (isClosedDispatchSourceState(workflow.status || workflow.deliveryState)) return null;
     return {
       id: `workflow:${workflow.id}`,
       kind: "workflow",
@@ -3004,6 +3044,12 @@ function renderDispatchPrompt(memoryDir, job) {
     "- If the payload asks for a design or plan, return concrete steps and state transitions.",
     "- For work expected to take longer than 30 seconds, report heartbeat/progress with: ai-memory-hub dispatch progress --thread-key " + getDispatchThreadKey(job) + " --percent <0-100> --status \"short status\" --by " + (job.tool || "tool"),
     "- If you need to mention follow-up, end with a single 'Next:' line.",
+    "",
+    "Autonomous safety rules:",
+    "- Follow the user's current guardrails, project instructions, and repository policy.",
+    "- Do not run git push, delete files, run destructive cleanup, install dependencies, or change system configuration unless this dispatch payload explicitly authorizes it.",
+    "- Local git commits are allowed only when current user/project rules allow them and the work has passed verification.",
+    "- For important code changes, run focused tests and request cross-AI review when available before closing the source task.",
     "",
     "Payload:",
     job.text

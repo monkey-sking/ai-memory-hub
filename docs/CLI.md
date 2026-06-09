@@ -620,6 +620,10 @@ ai-memory-hub dispatch --run --to claude --project ai-memory-hub --limit 1
 - `--project <name>` - Project filter
 - `--limit <n>` - Maximum jobs
 
+Direct dispatch only runs radio messages addressed to a concrete tool such as `codex`, `gemini`, or `claude`, plus assigned tasks. Radio broadcasts addressed to `all` stay in shared state for tools to poll or reply to, but the daemon does not fan them out into automatic CLI execution. This keeps coordination notes from being retried as stale work.
+
+Every runner prompt includes autonomous safety rules: follow the current user/project guardrails, do not run `git push`, delete files, run destructive cleanup, install dependencies, or change system configuration unless the dispatch payload explicitly authorizes it. Local commits are allowed only when user/project rules allow them and verification has passed.
+
 Successful task dispatches are marked `done` and receive a task note with the response summary. If the task is linked from a workflow, the workflow delivery fields are aggregated from its linked tasks, including progress percent/status and response/status radio IDs. Failed or timed-out dispatches keep the task open, write a diagnostic note, and surface the failing state on linked workflows.
 
 ### `dispatch status`
@@ -656,7 +660,7 @@ Progress entries appear as `progress` in `dispatch status`, `metrics`, and the d
 
 ### `dispatch retry`
 
-Retry failed relay jobs whose `nextRetryAt` is due. With `--run`, this also scans latest relay states for stale `dispatched`, `acked`, `progress`, or `retrying` entries and marks them `failed` or `abandoned` when `ackTimeout` has elapsed.
+Retry failed relay jobs whose `nextRetryAt` is due. With `--run`, this also scans latest relay states for stale `dispatched`, `acked`, `progress`, or `retrying` entries and marks them `failed` or `abandoned` when `ackTimeout` has elapsed. Broadcast radio messages are not retried through direct CLI runners; convert them into targeted radio messages or assigned tasks when executable follow-up is needed. Relays whose source task, workflow, radio message, or linked radio thread is already completed, delivered, done, or cancelled are skipped instead of resurrected as stale work.
 
 ```bash
 ai-memory-hub dispatch retry --run --project ai-memory-hub

@@ -89,6 +89,153 @@ async function readJsonl(file) {
     .map((line) => JSON.parse(line));
 }
 
+test("dispatch preview ignores broadcast radio messages for direct runners", async () => {
+  await withHub(async (memoryDir) => {
+    const now = new Date().toISOString();
+    await appendJsonl(path.join(memoryDir, "radio", "messages.jsonl"), {
+      id: "broadcast-radio",
+      ts: now,
+      from: "claude",
+      to: "all",
+      type: "request",
+      text: "Broadcast coordination only",
+      project: "test-project"
+    });
+    await appendJsonl(path.join(memoryDir, "radio", "messages.jsonl"), {
+      id: "direct-radio",
+      ts: now,
+      from: "claude",
+      to: "codex",
+      type: "request",
+      text: "Direct Codex work",
+      project: "test-project"
+    });
+
+    const result = runCli(memoryDir, ["dispatch", "--to", "codex", "--project", "test-project", "--limit", "5"]);
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.results.length, 1);
+    assert.equal(payload.results[0].refId, "direct-radio");
+    assert.equal(payload.results[0].tool, "codex");
+  });
+});
+
+test("dispatch retry ignores failed broadcast radio messages", async () => {
+  await withHub(async (memoryDir) => {
+    const now = new Date().toISOString();
+    const dueTs = new Date(Date.now() - 1000).toISOString();
+    await appendJsonl(path.join(memoryDir, "radio", "messages.jsonl"), {
+      id: "broadcast-retry",
+      ts: now,
+      from: "claude",
+      to: "all",
+      type: "request",
+      text: "Old broadcast coordination",
+      project: "test-project"
+    });
+    await appendJsonl(path.join(memoryDir, "state", "relay-status.jsonl"), {
+      id: "relay-broadcast-failed",
+      ts: dueTs,
+      threadKey: "codex:test-project:broadcast-retry",
+      sourceKind: "radio",
+      sourceId: "broadcast-retry",
+      dispatchId: "radio:broadcast-retry",
+      state: "failed",
+      attempt: 1,
+      maxRetries: 3,
+      dispatchedAt: "",
+      ackTimeout: 100,
+      sessionId: "",
+      exitCode: 1,
+      lastError: "previous failure",
+      nextRetryAt: dueTs,
+      project: "test-project",
+      tool: "codex",
+      thread: "broadcast-retry"
+    });
+
+    const result = runCli(memoryDir, ["dispatch", "retry", "--to", "codex", "--project", "test-project"]);
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.jobs.length, 0);
+    assert.match(payload.message, /No failed relay jobs/);
+  });
+});
+
+test("dispatch retry ignores failed relays whose sources are already closed", async () => {
+  await withHub(async (memoryDir) => {
+    const now = new Date().toISOString();
+    const dueTs = new Date(Date.now() - 1000).toISOString();
+    await appendJsonl(path.join(memoryDir, "tasks", "tasks.jsonl"), {
+      id: "closed-task",
+      createdAt: now,
+      updatedAt: now,
+      completedAt: now,
+      createdBy: "test",
+      assignee: "codex",
+      status: "done",
+      priority: "normal",
+      project: "test-project",
+      title: "Already closed task",
+      description: "",
+      handoff: "",
+      notes: []
+    });
+    await appendJsonl(path.join(memoryDir, "radio", "messages.jsonl"), {
+      id: "closed-radio",
+      ts: now,
+      from: "claude",
+      to: "codex",
+      type: "request",
+      text: "Already completed radio",
+      project: "test-project",
+      deliveryState: "completed"
+    });
+    await appendJsonl(path.join(memoryDir, "radio", "messages.jsonl"), {
+      id: "linked-closed-radio",
+      ts: now,
+      from: "claude",
+      to: "codex",
+      type: "request",
+      text: "Radio linked to a closed task thread",
+      thread: "closed-task",
+      project: "test-project"
+    });
+    for (const source of [
+      { kind: "task", id: "closed-task" },
+      { kind: "radio", id: "closed-radio" },
+      { kind: "radio", id: "linked-closed-radio" }
+    ]) {
+      await appendJsonl(path.join(memoryDir, "state", "relay-status.jsonl"), {
+        id: `relay-${source.id}-failed`,
+        ts: dueTs,
+        threadKey: `codex:test-project:${source.id}`,
+        sourceKind: source.kind,
+        sourceId: source.id,
+        dispatchId: `${source.kind}:${source.id}`,
+        state: "failed",
+        attempt: 1,
+        maxRetries: 3,
+        dispatchedAt: "",
+        ackTimeout: 100,
+        sessionId: "",
+        exitCode: 1,
+        lastError: "previous failure",
+        nextRetryAt: dueTs,
+        project: "test-project",
+        tool: "codex",
+        thread: source.id
+      });
+    }
+
+    const result = runCli(memoryDir, ["dispatch", "retry", "--to", "codex", "--project", "test-project"]);
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.jobs.length, 0);
+    assert.match(payload.message, /No failed relay jobs/);
+  });
+});
+
 test("dispatch retry --run marks stale dispatched relay as failed", async () => {
   await withHub(async (memoryDir) => {
     const staleTs = new Date(Date.now() - 10 * 60 * 1000).toISOString();
@@ -410,6 +557,8 @@ test("dispatch launches resolved runner shim with prompt on stdin", async () => 
     const stdout = JSON.parse(payload.results[0].stdout);
     assert.deepEqual(stdout.args, ["exec", "--sandbox", "danger-full-access"]);
     assert.match(stdout.stdin, /__AI_MEMORY_THREAD__: codex:test-project:task-stdin/);
+    assert.match(stdout.stdin, /Autonomous safety rules:/);
+    assert.match(stdout.stdin, /Do not run git push, delete files/);
     assert.match(stdout.stdin, /Verify stdin dispatch path/);
     assert.match(stdout.stdin, /Payload:\nVerify stdin dispatch path/);
 

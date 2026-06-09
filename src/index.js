@@ -2077,6 +2077,17 @@ function getToolRunner(tool) {
       mode: process.platform === "win32" ? "claude-windows-powershell" : "claude-json"
     };
   }
+  if (tool === "gemini") {
+    if (!commandExists("gemini")) {
+      return { available: false, reason: "gemini CLI not found in PATH" };
+    }
+    return {
+      available: true,
+      preview: "gemini -p <prompt>",
+      command: "gemini",
+      args: ["-p"]
+    };
+  }
   if (tool === "marvis") {
     return {
       available: false,

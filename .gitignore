@@ -5,6 +5,7 @@ node_modules/
 coverage/
 dist/
 tmp/
+.tmp-amh-test-*/
 
 # Local runtime state. Shared memory is personal machine state and should not be
 # committed or uploaded with this repository.

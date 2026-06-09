@@ -412,10 +412,21 @@
     .badge.priority-low { background: rgba(139,155,180,0.15); color: var(--text-muted); }
 
     .badge.status-open { background: rgba(139,155,180,0.15); color: var(--text-muted); }
+    .badge.status-none { background: rgba(139,155,180,0.15); color: var(--text-muted); }
+    .badge.status-planned { background: rgba(139,155,180,0.15); color: var(--text-muted); }
+    .badge.status-pending { background: rgba(139,155,180,0.15); color: var(--text-muted); }
     .badge.status-claimed { background: rgba(227,179,65,0.15); color: #e3b341; }
     .badge.status-in_progress { background: rgba(56,139,253,0.15); color: #58a6ff; }
+    .badge.status-review { background: rgba(163,113,247,0.15); color: #d2a8ff; }
+    .badge.status-dispatched { background: rgba(56,139,253,0.15); color: #58a6ff; }
+    .badge.status-acked { background: rgba(56,139,253,0.15); color: #58a6ff; }
+    .badge.status-progress { background: rgba(56,139,253,0.15); color: #58a6ff; }
+    .badge.status-retrying { background: rgba(227,179,65,0.15); color: #e3b341; }
     .badge.status-blocked { background: rgba(248,81,73,0.15); color: #ff7b72; }
+    .badge.status-failed { background: rgba(248,81,73,0.15); color: #ff7b72; }
+    .badge.status-abandoned { background: rgba(248,81,73,0.15); color: #ff7b72; }
     .badge.status-done { background: rgba(86,211,100,0.15); color: #56d364; }
+    .badge.status-completed { background: rgba(86,211,100,0.15); color: #56d364; }
     .badge.status-cancelled { background: rgba(72,79,88,0.15); color: #8b949e; }
 
     /* Dashboard Layout */
@@ -595,6 +606,62 @@
     }
     .task-note-item strong { color: #fff; }
 
+    .workflow-stage-strip {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .workflow-stage {
+      border: 1px solid var(--border-color);
+      background: rgba(255,255,255,0.03);
+      border-radius: 8px;
+      padding: 12px;
+      min-height: 92px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .workflow-stage strong {
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .workflow-stage .stage-count {
+      font-family: var(--font-mono);
+      font-size: 28px;
+      color: var(--accent-blue);
+      line-height: 1;
+    }
+    .workflow-stage .stage-detail {
+      color: var(--text-muted);
+      font-size: 11px;
+      line-height: 1.35;
+    }
+    .workflow-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .workflow-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      border-top: 1px solid var(--border-color);
+      padding-top: 10px;
+    }
+    .workflow-title {
+      font-weight: 600;
+      color: #fff;
+      word-break: break-word;
+    }
+    .workflow-meta {
+      color: var(--text-muted);
+      font-size: 11px;
+      margin-top: 4px;
+    }
+
     /* Memory Hub Layout */
     .memory-split {
       display: grid;
@@ -733,6 +800,7 @@
       .dashboard-grid { grid-template-columns: 1fr; }
       .tasks-grid { grid-template-columns: 1fr; }
       .memory-split { grid-template-columns: 1fr; }
+      .workflow-stage-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
 
     /* Modal styles */
@@ -807,7 +875,40 @@
 <body>
   <aside id="sidebar">
     <div class="app-logo">
-      <div class="icon">Ω</div>
+      <div class="icon">
+        <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" style="width: 85%; height: 85%;">
+          <defs>
+            <filter id="coreGlow" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="2.5" result="blur"/>
+              <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+            </filter>
+            <linearGradient id="coreGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" style="stop-color:#00f2fe;stop-opacity:1" />
+              <stop offset="100%" style="stop-color:#4facfe;stop-opacity:1" />
+            </linearGradient>
+          </defs>
+          <!-- 背景连接线 -->
+          <g stroke="url(#coreGrad)" stroke-width="1.5" opacity="0.4">
+            <path d="M50 15 L80 32.5 L80 67.5 L50 85 L20 67.5 L20 32.5 Z" fill="none" />
+            <path d="M50 15 L50 85 M20 32.5 L80 67.5 M20 67.5 L80 32.5" fill="none" />
+            <circle cx="50" cy="50" r="18" fill="none" stroke-dasharray="2 4" />
+          </g>
+          <!-- 核心量子节点 -->
+          <g fill="#fff" filter="url(#coreGlow)">
+            <circle cx="50" cy="15" r="4" />
+            <circle cx="80" cy="32.5" r="4" />
+            <circle cx="80" cy="67.5" r="4" />
+            <circle cx="50" cy="85" r="4" />
+            <circle cx="20" cy="67.5" r="4" />
+            <circle cx="20" cy="32.5" r="4" />
+            <circle cx="50" cy="50" r="7" />
+          </g>
+          <!-- 动态环绕 -->
+          <circle cx="50" cy="50" r="40" fill="none" stroke="#00f2fe" stroke-width="1" stroke-dasharray="10 20" opacity="0.3">
+            <animateTransform attributeName="transform" type="rotate" from="0 50 50" to="360 50 50" dur="10s" repeatCount="indefinite" />
+          </circle>
+        </svg>
+      </div>
       <h1>AI Memory Hub</h1>
     </div>
     <nav>
@@ -876,6 +977,17 @@
             <span data-i18n="backups">Backups</span>
             <strong id="cardBackups">0</strong>
           </div>
+        </div>
+
+        <div class="panel" style="margin-bottom:24px;">
+          <div class="panel-header">
+            <h3 class="panel-title" data-i18n="workflowStages">Workflow Stages</h3>
+            <button class="btn small" onclick="switchTab('dispatch')" data-i18n="relayStatus">Relay Status</button>
+          </div>
+          <div class="workflow-stage-strip" id="workflowStageStrip">
+            <div class="muted" data-i18n="noWorkflows">No workflows recorded.</div>
+          </div>
+          <div class="workflow-list" id="workflowList"></div>
         </div>
 
         <div class="dashboard-grid">
@@ -1133,6 +1245,11 @@
             <h3 class="panel-title" data-i18n="automatedDispatcher">Automated Dispatcher (Cron / Watcher Dispatch Logs)</h3>
             <button class="primary" onclick="triggerDispatcher()" id="btnTriggerDispatch" data-i18n="triggerDispatch">Trigger Dispatch Now</button>
           </div>
+          <h4 style="margin:0 0 10px 0;" data-i18n="relayStatus">Relay Status</h4>
+          <div class="dispatch-log-list" id="dispatchRelay">
+            <div class="muted" data-i18n="noDispatcherEvents">No dispatcher events recorded yet.</div>
+          </div>
+          <h4 style="margin:18px 0 10px 0;" data-i18n="executionLogs">Execution Logs</h4>
           <div class="dispatch-log-list" id="dispatchLogs">
             <div class="muted" data-i18n="noDispatch">No dispatch logs found.</div>
           </div>
@@ -1441,6 +1558,7 @@
         rebuild: "Rebuild Snapshot",
         syncInbox: "Sync Inbox",
         activeTasks: "Active Tasks",
+        workflowStages: "Workflow Stages",
         pendingEvents: "Pending Events",
         radioMessages: "Broadcast Messages",
         durableLedger: "Durable Ledger",
@@ -1489,8 +1607,25 @@
         allPriorities: "All Priorities",
         automatedDispatcher: "Automated Dispatcher (Cron / Watcher logs)",
         triggerDispatch: "Trigger Dispatch Now",
+        relayStatus: "Relay Status",
+        executionLogs: "Execution Logs",
+        progressLabel: "Progress",
+        progressBy: "By",
         noDispatch: "No dispatch logs found.",
         rawCompatibility: "🛠️ Raw JSON / Compatibility Data Panels",
+        noWorkflows: "No workflows recorded.",
+        planningStage: "Planning",
+        executionStage: "Execution",
+        verificationStage: "Verification",
+        reviewStage: "Review",
+        deliveryStage: "Delivery",
+        blockedStage: "Blocked",
+        workflowStageDetail: "{n} workflow(s)",
+        taskStageDetail: "{n} task(s)",
+        relayStageDetail: "{n} relay(s)",
+        durationLabel: "Duration",
+        dispatchStateLabel: "Dispatch",
+        latestNoteLabel: "Latest note",
         
         noActiveTasks: "No active tasks found.",
         noRecentMessages: "No recent messages.",
@@ -1560,6 +1695,7 @@
         rebuild: "重建快照",
         syncInbox: "同步收件箱",
         activeTasks: "活跃任务数",
+        workflowStages: "工作流阶段",
         pendingEvents: "待同步事件",
         radioMessages: "广播消息数",
         durableLedger: "长期记忆账本",
@@ -1608,8 +1744,25 @@
         allPriorities: "所有优先级",
         automatedDispatcher: "自动调度执行日志",
         triggerDispatch: "立即触发调度",
+        relayStatus: "Relay 状态",
+        executionLogs: "执行日志",
+        progressLabel: "进度",
+        progressBy: "上报",
         noDispatch: "暂无调度执行日志。",
         rawCompatibility: "🛠️ 原始数据与兼容性调试",
+        noWorkflows: "暂无工作流记录。",
+        planningStage: "规划",
+        executionStage: "执行",
+        verificationStage: "验证",
+        reviewStage: "评审",
+        deliveryStage: "交付",
+        blockedStage: "阻塞",
+        workflowStageDetail: "{n} 个工作流",
+        taskStageDetail: "{n} 个任务",
+        relayStageDetail: "{n} 个 relay",
+        durationLabel: "持续时间",
+        dispatchStateLabel: "调度",
+        latestNoteLabel: "最新备注",
         
         noActiveTasks: "暂无活跃任务。",
         noRecentMessages: "暂无最近消息。",
@@ -1673,7 +1826,9 @@
       memory: {},
       radio: [],
       tasks: [],
+      workflows: [],
       dispatch: [],
+      relay: [],
       autoRefresh: true,
       refreshInterval: 5000,
       searchRadio: '',
@@ -1793,11 +1948,12 @@
       const btn = document.getElementById('btnRefresh');
       if (btn) btn.disabled = true;
       try {
-        const [statusRes, memoryRes, radioRes, tasksRes, dispatchRes] = await Promise.allSettled([
+        const [statusRes, memoryRes, radioRes, tasksRes, workflowsRes, dispatchRes] = await Promise.allSettled([
           api('/api/status'),
           api('/api/memory'),
           api('/api/radio'),
           api('/api/tasks'),
+          api('/api/workflows'),
           api('/api/dispatch')
         ]);
 
@@ -1823,11 +1979,19 @@
           console.error('Failed to load /api/tasks', tasksRes.reason);
           state.tasks = [];
         }
+        if (workflowsRes.status === 'fulfilled') {
+          state.workflows = (workflowsRes.value && workflowsRes.value.workflows) || [];
+        } else {
+          console.error('Failed to load /api/workflows', workflowsRes.reason);
+          state.workflows = [];
+        }
         if (dispatchRes.status === 'fulfilled') {
           state.dispatch = (dispatchRes.value && dispatchRes.value.logs) || [];
+          state.relay = (dispatchRes.value && dispatchRes.value.relay) || [];
         } else {
           console.error('Failed to load /api/dispatch', dispatchRes.reason);
           state.dispatch = [];
+          state.relay = [];
         }
 
         renderAll();
@@ -1900,6 +2064,7 @@
 
       // Render tab components
       renderDashboardOverview();
+      renderWorkflowStages();
       renderMemoryHub();
       renderRadioFeed();
       renderTasksList();
@@ -2048,6 +2213,50 @@
       return { dispatchRecord, replies, badges, details };
     }
 
+    function formatElapsedTime(startValue, endValue = '') {
+      const startMs = Date.parse(startValue || '');
+      if (Number.isNaN(startMs)) return '';
+      const endMs = Date.parse(endValue || '') || Date.now();
+      const diff = Math.max(0, endMs - startMs);
+      if (diff < 60000) return `${Math.round(diff / 1000)}s`;
+      if (diff < 3600000) return `${Math.round(diff / 60000)}m`;
+      if (diff < 86400000) return `${(diff / 3600000).toFixed(1)}h`;
+      return `${(diff / 86400000).toFixed(1)}d`;
+    }
+
+    function getTaskRelay(task) {
+      return state.relay.find(relay =>
+        relay.sourceKind === 'task' &&
+        (
+          relay.sourceId === task.id ||
+          relay.dispatchId === `task:${task.id}` ||
+          relay.thread === task.id
+        )
+      ) || null;
+    }
+
+    function getLatestTaskNote(task) {
+      const notes = Array.isArray(task.notes) ? task.notes : [];
+      return notes.length > 0 ? notes[notes.length - 1] : null;
+    }
+
+    function renderTaskTelemetry(task) {
+      const relay = getTaskRelay(task);
+      const latestNote = getLatestTaskNote(task);
+      const duration = formatElapsedTime(task.createdAt, task.completedAt || '');
+      const dispatchState = relay?.state || task.deliveryState || 'none';
+      const noteHtml = latestNote
+        ? `<div class="task-handoff"><strong>${t('latestNoteLabel')}:</strong> ${escapeHtml(latestNote.text || '')}</div>`
+        : '';
+      return `
+        <div class="task-meta">
+          <span>${t('durationLabel')}: ${escapeHtml(duration || '-')}</span>
+          <span>${t('dispatchStateLabel')}: <span class="badge status-${escapeHtml(dispatchState)}">${escapeHtml(dispatchState)}</span></span>
+        </div>
+        ${noteHtml}
+      `;
+    }
+
     // Dashboard Overview Tab Rendering
     function renderDashboardOverview() {
       // Render Active Tasks
@@ -2070,6 +2279,7 @@
               </span>
               <span>Project: ${escapeHtml(task.project || t('defaultProj'))}</span>
             </div>
+            ${renderTaskTelemetry(task)}
             <div class="stream-actions">
               <button class="primary small" onclick="updateTaskStatus('${task.id}', 'done')">${t('completeTask')}</button>
             </div>
@@ -2082,6 +2292,98 @@
       const recentRadio = state.radio.slice(-5).reverse();
       const recentRadHtml = recentRadio.length > 0 ? recentRadio.map(renderRadioCardHTML).join('') : `<div class="muted">${t('noRecentMessages')}</div>`;
       document.getElementById('dashboardRadio').innerHTML = recentRadHtml;
+    }
+
+    function renderWorkflowStages() {
+      const workflows = Array.isArray(state.workflows) ? state.workflows : [];
+      const workflowIds = new Set(workflows.map(w => w.id).filter(Boolean));
+      const linkedTaskIds = new Set(workflows.flatMap(w => Array.isArray(w.linkedTasks) ? w.linkedTasks : []));
+      const linkedTasks = state.tasks.filter(task => linkedTaskIds.has(task.id));
+      const activeLinkedTasks = linkedTasks.filter(task => ['claimed', 'in_progress'].includes(task.status));
+      const blockedLinkedTasks = linkedTasks.filter(task => task.status === 'blocked');
+      const workflowRelays = state.relay.filter(relay =>
+        relay.sourceKind === 'workflow' ||
+        workflowIds.has(relay.sourceId) ||
+        workflowIds.has(relay.thread)
+      );
+      const failedWorkflowRelays = workflowRelays.filter(relay => ['failed', 'abandoned'].includes(relay.state));
+
+      const openWorkflows = workflows.filter(w => ['open', 'planned'].includes(w.status));
+      const runningWorkflows = workflows.filter(w => w.status === 'in_progress');
+      const verifyingWorkflows = workflows.filter(w =>
+        !['done', 'cancelled'].includes(w.status) &&
+        Array.isArray(w.results) &&
+        w.results.length > 0 &&
+        (!Array.isArray(w.reviews) || w.reviews.length === 0)
+      );
+      const reviewWorkflows = workflows.filter(w =>
+        w.status === 'review' ||
+        (!['done', 'cancelled'].includes(w.status) && Array.isArray(w.reviews) && w.reviews.length > 0)
+      );
+      const doneWorkflows = workflows.filter(w => w.status === 'done');
+      const blockedWorkflows = workflows.filter(w => w.status === 'blocked');
+
+      const stages = [
+        {
+          label: t('planningStage'),
+          count: openWorkflows.length,
+          detail: t('workflowStageDetail', { n: openWorkflows.length })
+        },
+        {
+          label: t('executionStage'),
+          count: runningWorkflows.length + activeLinkedTasks.length,
+          detail: `${t('workflowStageDetail', { n: runningWorkflows.length })} | ${t('taskStageDetail', { n: activeLinkedTasks.length })}`
+        },
+        {
+          label: t('verificationStage'),
+          count: verifyingWorkflows.length,
+          detail: t('workflowStageDetail', { n: verifyingWorkflows.length })
+        },
+        {
+          label: t('reviewStage'),
+          count: reviewWorkflows.length,
+          detail: t('workflowStageDetail', { n: reviewWorkflows.length })
+        },
+        {
+          label: t('deliveryStage'),
+          count: doneWorkflows.length,
+          detail: t('workflowStageDetail', { n: doneWorkflows.length })
+        },
+        {
+          label: t('blockedStage'),
+          count: blockedWorkflows.length + blockedLinkedTasks.length + failedWorkflowRelays.length,
+          detail: `${t('workflowStageDetail', { n: blockedWorkflows.length })} | ${t('taskStageDetail', { n: blockedLinkedTasks.length })} | ${t('relayStageDetail', { n: failedWorkflowRelays.length })}`
+        }
+      ];
+
+      document.getElementById('workflowStageStrip').innerHTML = stages.map(stage => `
+        <div class="workflow-stage">
+          <strong>${escapeHtml(stage.label)}</strong>
+          <div class="stage-count">${stage.count}</div>
+          <div class="stage-detail">${escapeHtml(stage.detail)}</div>
+        </div>
+      `).join('');
+
+      const workflowRows = workflows.slice(0, 5).map(workflow => {
+        const roles = [
+          ...(workflow.planner || []),
+          ...(workflow.executor || []),
+          ...(workflow.reviewer || [])
+        ].filter(Boolean).slice(0, 4).join(' -> ');
+        const progress = workflow.progressPercent !== undefined && workflow.progressPercent !== null
+          ? ` | ${t('progressLabel')}: ${workflow.progressPercent}%`
+          : '';
+        return `
+          <div class="workflow-row">
+            <div>
+              <div class="workflow-title">${escapeHtml(workflow.title)}</div>
+              <div class="workflow-meta">${escapeHtml(workflow.project || t('defaultProj'))}${roles ? ` | ${escapeHtml(roles)}` : ''}${progress}</div>
+            </div>
+            <span class="badge status-${workflow.status || 'open'}">${escapeHtml(workflow.status || 'open')}</span>
+          </div>
+        `;
+      }).join('');
+      document.getElementById('workflowList').innerHTML = workflowRows || `<div class="muted">${t('noWorkflows')}</div>`;
     }
 
     function renderRadioCardHTML(msg) {
@@ -2281,6 +2583,7 @@
             </span>
             <span>Proj: ${escapeHtml(tItem.project || t('defaultProj'))}</span>
           </div>
+          ${renderTaskTelemetry(tItem)}
           ${notesHtml ? `<div class="task-notes"><h5>Notes:</h5>${notesHtml}</div>` : ''}
           
           <div style="display:flex;gap:6px;align-items:center;margin-top:8px;">
@@ -2297,6 +2600,48 @@
 
     // Dispatch Logs tab rendering
     function renderDispatchLogs() {
+      const relayHtml = state.relay.length > 0 ? state.relay.map(relay => {
+        const toolDisplayName = (toolDisplayNames[state.lang] && toolDisplayNames[state.lang][relay.tool]) || relay.tool || 'unknown';
+        const stateClass = 'status-' + (relay.state || 'open');
+        const progressParts = [];
+        if (relay.progressPercent !== undefined && relay.progressPercent !== null) {
+          progressParts.push(`${t('progressLabel')}: ${relay.progressPercent}%`);
+        }
+        if (relay.progressStatus) {
+          progressParts.push(relay.progressStatus);
+        }
+        if (relay.progressBy) {
+          progressParts.push(`${t('progressBy')}: ${relay.progressBy}`);
+        }
+        const progressHtml = progressParts.length > 0
+          ? `<div class="dispatch-output-box" style="margin-top:8px;">${escapeHtml(progressParts.join(' | '))}</div>`
+          : '';
+        const errorHtml = relay.lastError
+          ? `<div class="dispatch-output-box" style="margin-top:8px;color:#ff7b72;">${escapeHtml(relay.lastError)}</div>`
+          : '';
+
+        return `
+          <div class="dispatch-log-card">
+            <div class="dispatch-log-header">
+              <div class="dispatch-log-meta" style="display:inline-flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                <span class="dispatch-log-tool" style="display:inline-flex;align-items:center;gap:6px;">
+                  ${renderToolIcon(relay.tool, 22)} <strong>${escapeHtml(toolDisplayName)}</strong>
+                </span>
+                <span class="dispatch-log-project">${escapeHtml(relay.project || 'no-project')}</span>
+                <span style="font-size:11px;" class="muted">${formatDateTime(relay.ts || relay.progressAt)}</span>
+              </div>
+              <span class="badge ${stateClass}">${escapeHtml(relay.state || 'unknown')}</span>
+            </div>
+            <div style="font-size:13px;margin-top:8px;">
+              <strong>Thread:</strong> ${escapeHtml(relay.threadKey || relay.thread || relay.sourceId || '')}
+              <span class="muted"> | attempt ${Number(relay.attempt || 0)}/${Number(relay.maxRetries || 0)}</span>
+            </div>
+            ${progressHtml}
+            ${errorHtml}
+          </div>
+        `;
+      }).join('') : `<div class="muted">${t('noDispatcherEvents')}</div>`;
+
       const logsHtml = state.dispatch.length > 0 ? state.dispatch.map(log => {
         const exitText = log.exitCode === 0 ? t('successText') + ' (0)' : t('failedText') + ' (' + log.exitCode + ')';
         const statusClass = log.exitCode === 0 ? 'status-done' : 'status-blocked';
@@ -2329,6 +2674,7 @@
         `;
       }).join('') : `<div class="muted">${t('noDispatch')}</div>`;
       
+      document.getElementById('dispatchRelay').innerHTML = relayHtml;
       document.getElementById('dispatchLogs').innerHTML = logsHtml;
     }
 

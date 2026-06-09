@@ -13,6 +13,8 @@ Complete reference for all `ai-memory-hub` command-line commands.
 - [RPC Communication](#rpc-communication)
 - [Notifications](#notifications)
 - [Context Packs](#context-packs)
+- [Runner Doctor](#runner-doctor)
+- [Dispatch Relay](#dispatch-relay)
 - [Dispatch Queue](#dispatch-queue)
 - [Workflow Recipes](#workflow-recipes)
 - [Metrics](#metrics)
@@ -541,6 +543,105 @@ ai-memory-hub context show <pack-id>
 
 ---
 
+## Runner Doctor
+
+### `doctor`
+
+Inspect AI tool runner compatibility without reading raw PATH or dispatch logs by hand. This is the quickest way to diagnose Windows shim, PowerShell, stdin, and per-tool CLI issues.
+
+```bash
+# Inspect every known runner profile
+ai-memory-hub doctor
+
+# Inspect one tool
+ai-memory-hub doctor --tool claude
+
+# Run optional non-model probes such as --help
+ai-memory-hub doctor --tool gemini --run-probes
+```
+
+**Options:**
+- `--tool <name>` - Limit output to one tool
+- `--run-probes` - Execute optional non-model probes such as `--help`
+- `--skip-version` - Skip the default version probe
+- `--timeout-ms <n>` - Probe timeout in milliseconds (default: 5000)
+
+Doctor reports:
+- whether the tool is directly runnable or shared-state-only
+- resolved command path and shim kind (`.exe`, `.cmd`, `.ps1`, native)
+- prompt mode (`stdin` vs argv)
+- output mode and session-resume capability
+- stderr warnings separated from actionable errors
+
+On Windows, runner profiles prefer `.cmd` or `.exe` shims over `.ps1`. Dispatch prompt payloads are sent over stdin, so long prompts and JSON are not embedded in PowerShell or cmd command text.
+
+---
+
+## Dispatch Relay
+
+### `dispatch`
+
+Preview or run dispatchable radio messages and assigned tasks for verified tool runners.
+
+```bash
+# Preview jobs
+ai-memory-hub dispatch --to codex --project ai-memory-hub --limit 5
+
+# Run jobs
+ai-memory-hub dispatch --run --to claude --project ai-memory-hub --limit 1
+```
+
+**Options:**
+- `--run` - Execute matching jobs instead of previewing
+- `--force` - Ignore previous successful dispatch logs
+- `--to <tool>` - Target tool
+- `--project <name>` - Project filter
+- `--limit <n>` - Maximum jobs
+
+Successful task dispatches are marked `done` and receive a task note with the response summary. Failed or timed-out dispatches keep the task open and write a diagnostic note.
+
+### `dispatch status`
+
+Inspect relay state by thread, source reference, or recent relay entries.
+
+```bash
+ai-memory-hub dispatch status --recent 10 --project ai-memory-hub
+ai-memory-hub dispatch status --ref-id <task-or-radio-id>
+ai-memory-hub dispatch status --thread-key claude:ai-memory-hub:<ref>
+```
+
+### `dispatch progress`
+
+Record a heartbeat/progress update for an existing dispatch thread. This keeps long-running work visible without marking the task complete.
+
+```bash
+ai-memory-hub dispatch progress --thread-key codex:ai-memory-hub:<ref> --percent 40 --status "working" --by codex
+ai-memory-hub dispatch progress --ref-id <task-or-radio-id> --to gemini --project ai-memory-hub --status "reviewing tests"
+```
+
+**Options:**
+- `--thread-key <tool:project:ref>` - Exact relay thread key
+- `--ref-id <id>` - Task or radio ID when thread key is not known
+- `--thread <id>` - Dispatch thread ID
+- `--to <tool>` / `--project <name>` - Narrow the target lookup
+- `--percent <0-100>` - Optional progress percent
+- `--status <text>` - Short progress text
+- `--by <tool>` - Reporter name
+
+Progress entries appear as `progress` in `dispatch status`, `metrics`, and the dashboard dispatch panel. Heartbeats update the timeout base via `progressAt`, but they do not mark tasks `done`.
+
+### `dispatch retry`
+
+Retry failed relay jobs whose `nextRetryAt` is due. With `--run`, this also scans latest relay states for stale `dispatched`, `acked`, `progress`, or `retrying` entries and marks them `failed` or `abandoned` when `ackTimeout` has elapsed.
+
+```bash
+ai-memory-hub dispatch retry --run --project ai-memory-hub
+```
+
+Timed-out entries use `progressAt` first, then `dispatchedAt`, `deliveryUpdatedAt`, `ts`, or `updatedAt` as the fallback timeout base. Timeout failures become visible in `dispatch status`, `metrics`, task notes, and the dashboard dispatch panel.
+
+---
+
 ## Dispatch Queue
 
 ### `queue add`
@@ -820,6 +921,27 @@ ai-memory-hub watch [--interval-ms <ms>]
 **Options:**
 - `--interval-ms <ms>` - Check interval in milliseconds (default: 30000)
 
+### `daemon`
+
+Start the local dispatch daemon. It checks verified runners (`codex`, `gemini`, `claude`), marks stale relay entries timed out, retries due failures, and dispatches new matching tasks or radio messages.
+
+```bash
+ai-memory-hub daemon [--interval-ms <ms>] [--project <name[,name]>] [--limit <n>]
+ai-memory-hub daemon status
+```
+
+**Options:**
+- `--interval-ms <ms>` - Loop interval in milliseconds (default: 10000)
+- `--project <name[,name]>` - Optional project filter list
+- `--limit <n>` - Maximum jobs per tool/project per cycle (default: 10)
+- `--force` - Start even when local daemon metadata says a daemon is already running
+
+The daemon writes runtime metadata to:
+- `state/daemon.pid`
+- `state/daemon-status.json`
+
+Use `ai-memory-hub daemon status` to inspect whether the recorded process is running, stale, stopped, or missing. Use `Ctrl+C` or send `SIGTERM` to stop the daemon cleanly; shutdown updates `daemon-status.json` and removes the PID file when it belongs to the current daemon process.
+
 ### `app`
 
 Start local dashboard web server.
@@ -898,6 +1020,70 @@ ai-memory-hub queue fail <id> --error "Details here"
 
 - `0` - Success
 - `1` - Error (check stderr for details)
+
+## Troubleshooting
+
+### PowerShell blocks `ai-memory-hub` or `npm`
+
+On Windows, PowerShell may refuse to run generated `.ps1` shims:
+
+```text
+cannot be loaded because running scripts is disabled on this system
+```
+
+Use the `.cmd` shim or direct Node entry point:
+
+```powershell
+ai-memory-hub.cmd status
+npm.cmd test
+node src/index.js status
+```
+
+For AI runner failures, run:
+
+```powershell
+node src/index.js doctor --tool claude
+node src/index.js doctor --tool gemini
+```
+
+If doctor reports only a `.ps1` shim, install or expose a `.cmd`/`.exe` command path. If doctor reports a `.cmd` shim, dispatch uses `cmd.exe` only as a shim launcher and still sends prompt payloads on stdin.
+
+### Runner command works manually but dispatch fails
+
+Use `doctor` to separate the failure layer:
+
+```bash
+ai-memory-hub doctor --tool codex
+ai-memory-hub doctor --tool codex --run-probes
+```
+
+Common causes:
+- command is detected through PowerShell `.ps1` instead of `.cmd`/`.exe`
+- the CLI supports prompt only on stdin or only as an argv argument
+- the CLI prints environment warnings to stderr even on success
+- the tool is shared-state-only and should be coordinated through radio/tasks instead of direct dispatch
+
+### Dispatch appears stuck in `dispatched`
+
+Run:
+
+```bash
+ai-memory-hub daemon status
+ai-memory-hub dispatch retry --run --project <project>
+ai-memory-hub dispatch status --recent 10 --project <project>
+```
+
+The retry command marks stale `dispatched`, `acked`, or `retrying` relay entries as failed when `ackTimeout` has elapsed. Running `ai-memory-hub daemon` keeps this check active in the background.
+
+If `daemon status` reports `stale`, the recorded PID no longer points to an active daemon. Start a fresh daemon after checking that no separate terminal is still running one:
+
+```bash
+ai-memory-hub daemon --project <project>
+```
+
+### Gemini warning noise hides real failures
+
+Known Gemini environment warnings such as skill conflicts, true-color warnings, and ripgrep fallback messages are classified as warnings by dispatch. The cleaned `stderr` remains focused on actionable failures, while full runner output is still available in dispatch logs.
 
 ## Environment Variables
 

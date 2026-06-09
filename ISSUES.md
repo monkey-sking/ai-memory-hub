@@ -1,5 +1,17 @@
 # AI Memory Hub - 当前问题清单
 
+## 处理进展（2026-06-09）
+
+- 已修复 P0：`dispatch retry --run` 和 `daemon` 会扫描最新 relay 状态，发现 `dispatched` / `acked` / `retrying` 超过 `ackTimeout` 后写入 `failed` 或 `abandoned`，并同步任务诊断 note。
+- 已修复 P1：任务型 dispatch 成功完成后会自动标记任务 `done`，失败或超时不会误标完成。
+- 已修复 P1：Agent 响应会写入任务 notes；调研/分析/报告类响应会额外保存到 `research-reports/`。
+- 已改善 P2：Gemini 已知 warning（skill conflict、true-color、ripgrep fallback）会从主要 `stderr` 错误流中归类为 warnings。
+- 已改善 P1：新增 Runner Profile 与 `doctor` 检测，Windows 优先使用 `.cmd` / `.exe`，拒绝只解析到 `.ps1` 的直接 dispatch，并统一用 stdin 传 prompt，避免 PowerShell here-string / `@file` / argv quoting 问题。
+- 已改善 P3：daemon 统一使用 dispatch lifecycle 路径，写入 `state/daemon.pid` / `state/daemon-status.json`，支持 `daemon status`、重复启动保护，以及 `Ctrl+C` / `SIGTERM` 优雅退出。
+- 已改善 P2：新增 `dispatch progress` / `heartbeat`，长任务可写入进度并通过 `progressAt` 延长超时窗口。
+- 已补测试：`npm.cmd test` / `node --test` 覆盖 dispatch 超时标记、relay metrics、progress heartbeat、runner doctor 和 daemon status。
+- 仍需后续：更完整架构文档和 Dashboard 视觉验证。
+
 ## 🔴 严重问题
 
 ### 1. Dispatch 超时检测机制不工作

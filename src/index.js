@@ -15,12 +15,107 @@ const APP_NAME = "ai-memory-hub";
 const MEMORY_DIR_ENV = "AI_MEMORY_DIR";
 const DEFAULT_MEMORY_DIR = path.join(os.homedir(), ".ai-memory");
 const DEFAULT_CONFIG_PATH = path.join(DEFAULT_MEMORY_DIR, "config.json");
+const DEFAULT_DISPATCH_ACK_TIMEOUT_MS = 5 * 60 * 1000;
+const DEFAULT_DISPATCH_RUN_TIMEOUT_MS = 10 * 60 * 1000;
+const RESEARCH_REPORTS_DIR = "research-reports";
+const DAEMON_PID_FILE = "daemon.pid";
+const DAEMON_STATUS_FILE = "daemon-status.json";
+
+const RUNNER_PROFILES = {
+  codex: {
+    tool: "codex",
+    commandCandidates: ["codex.cmd", "codex"],
+    args: ["exec", "--sandbox", "danger-full-access"],
+    promptMode: "stdin",
+    outputMode: "text",
+    preview: "codex exec --sandbox danger-full-access <stdin>",
+    versionArgs: ["--version"],
+    probeArgs: ["--help"],
+    capabilities: ["direct-dispatch", "stdin-prompt", "text-output"]
+  },
+  claude: {
+    tool: "claude",
+    commandCandidates: ["claude.cmd", "claude"],
+    args: ["-p", "--output-format", "json", "--permission-mode", "bypassPermissions", "--bare", "--model", "sonnet", "--effort", "low"],
+    promptMode: "stdin",
+    outputMode: "claude-json",
+    preview: "claude -p --output-format json --permission-mode bypassPermissions --bare <stdin>",
+    versionArgs: ["--version"],
+    probeArgs: ["--help"],
+    resumeArgs: (sessionId) => ["--resume", sessionId],
+    capabilities: ["direct-dispatch", "stdin-prompt", "json-output", "session-resume"]
+  },
+  gemini: {
+    tool: "gemini",
+    commandCandidates: ["gemini.cmd", "gemini"],
+    args: [],
+    promptMode: "stdin",
+    outputMode: "text",
+    preview: "gemini <stdin>",
+    versionArgs: ["--version"],
+    probeArgs: ["--help"],
+    capabilities: ["direct-dispatch", "stdin-prompt", "text-output", "warning-filter"]
+  },
+  "qoder-cn": {
+    tool: "qoder-cn",
+    commandCandidates: ["qoder-cn.cmd", "qoder-cn"],
+    args: ["-"],
+    promptMode: "stdin",
+    outputMode: "text",
+    preview: "qoder-cn - <stdin>",
+    versionArgs: ["--version"],
+    probeArgs: ["--help"],
+    capabilities: ["direct-dispatch", "stdin-prompt", "text-output"]
+  },
+  opencode: {
+    tool: "opencode",
+    commandCandidates: ["opencode.cmd", "opencode", "qoder-cn.cmd", "qoder-cn"],
+    args: ["-"],
+    promptMode: "stdin",
+    outputMode: "text",
+    preview: "opencode - <stdin>",
+    versionArgs: ["--version"],
+    probeArgs: ["--help"],
+    capabilities: ["direct-dispatch", "stdin-prompt", "text-output"]
+  },
+  marvis: {
+    tool: "marvis",
+    sharedStateOnly: true,
+    reason: "marvis currently integrates through shared radio/task state only; no verified direct CLI runner is configured on this machine"
+  },
+  qclaw: {
+    tool: "qclaw",
+    sharedStateOnly: true,
+    reason: "qclaw should currently be coordinated through shared tasks/radio or its own gateway; no verified direct prompt runner is configured"
+  },
+  openclaw: {
+    tool: "openclaw",
+    sharedStateOnly: true,
+    reason: "openclaw should currently be coordinated through shared tasks/radio or gateway APIs; no verified direct prompt runner is configured"
+  },
+  antigravity: {
+    tool: "antigravity",
+    sharedStateOnly: true,
+    reason: "antigravity currently integrates through shared memory instructions or desktop automation; no verified direct CLI runner is configured"
+  },
+  "codex-app": {
+    tool: "codex-app",
+    sharedStateOnly: true,
+    reason: "codex-app is a desktop/app target; use shared state or app automation rather than direct CLI dispatch"
+  },
+  "claude-desktop": {
+    tool: "claude-desktop",
+    sharedStateOnly: true,
+    reason: "claude-desktop is a desktop/app target; use shared state or app automation rather than direct CLI dispatch"
+  }
+};
 
 // Unified async call state machine
 const ASYNC_CALL_STATES = {
   PENDING: "pending",
   DISPATCHED: "dispatched",
   ACKED: "acked",
+  PROGRESS: "progress",
   RETRYING: "retrying",
   FAILED: "failed",
   COMPLETED: "completed",
@@ -29,9 +124,10 @@ const ASYNC_CALL_STATES = {
 
 const ASYNC_CALL_TRANSITIONS = {
   "pending": ["dispatched"],
-  "dispatched": ["acked", "failed", "completed"],
-  "acked": ["completed", "failed"],
-  "retrying": ["dispatched", "failed", "abandoned"],
+  "dispatched": ["acked", "progress", "failed", "completed"],
+  "acked": ["progress", "completed", "failed"],
+  "progress": ["progress", "acked", "completed", "failed"],
+  "retrying": ["dispatched", "progress", "failed", "abandoned"],
   "failed": ["retrying", "abandoned"],
   "completed": [],
   "abandoned": []
@@ -85,6 +181,8 @@ async function main() {
     case "connect":
     case "contact":
       return connectCommand(rest);
+    case "doctor":
+      return doctorCommand(rest);
     case "dispatch":
       return dispatchCommand(rest);
     case "sync":
@@ -148,6 +246,120 @@ function detectCommand() {
   console.log(JSON.stringify(tools, null, 2));
 }
 
+function doctorCommand(argv) {
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const tool = getOption(argv, "--tool") || getOption(argv, "--to") || "";
+  const runProbes = hasFlag(argv, "--run-probes");
+  const skipVersion = hasFlag(argv, "--skip-version");
+  const timeoutMs = Number(getOption(argv, "--timeout-ms") || 5000);
+  const tools = tool ? [tool] : getKnownRunnerToolNames();
+  const results = tools.map((name) => inspectRunnerTool(name, {
+    runProbes,
+    skipVersion,
+    timeoutMs
+  }));
+  const summary = {
+    total: results.length,
+    runnable: results.filter((item) => item.available).length,
+    sharedStateOnly: results.filter((item) => item.sharedStateOnly).length,
+    missing: results.filter((item) => !item.available && !item.sharedStateOnly).length,
+    warnings: results.reduce((sum, item) => sum + item.warnings.length, 0)
+  };
+  console.log(JSON.stringify({
+    platform: process.platform,
+    memoryDir: config.memoryDir,
+    runProbes,
+    summary,
+    tools: results
+  }, null, 2));
+}
+
+function inspectRunnerTool(tool, { runProbes = false, skipVersion = false, timeoutMs = 5000 } = {}) {
+  const name = normalizeToolName(tool);
+  const profile = getRunnerProfile(name);
+  const runner = getToolRunner(name);
+  const warnings = getRunnerDoctorWarnings(runner);
+  const versionProbe = runner.available && !skipVersion
+    ? runRunnerProbe(name, runner, runner.versionArgs || ["--version"], "", timeoutMs)
+    : {
+      skipped: true,
+      reason: runner.available ? "Version probe skipped." : "Runner is not directly runnable."
+    };
+  const invocationProbe = runner.available && runProbes
+    ? runRunnerProbe(name, runner, runner.probeArgs || runner.versionArgs || ["--help"], "", timeoutMs)
+    : {
+      skipped: true,
+      reason: runner.available ? "Pass --run-probes to execute optional non-model probe." : "Runner is not directly runnable."
+    };
+
+  return {
+    tool: name,
+    available: Boolean(runner.available),
+    sharedStateOnly: Boolean(runner.sharedStateOnly),
+    reason: runner.available ? "" : runner.reason || "",
+    profile: profile ? {
+      promptMode: profile.promptMode || "",
+      outputMode: profile.outputMode || "",
+      capabilities: profile.capabilities || []
+    } : null,
+    command: runner.commandPath ? {
+      path: runner.commandPath,
+      name: runner.commandName || "",
+      kind: runner.commandKind || "",
+      usesShell: Boolean(runner.usesShell),
+      shell: runner.shell || "",
+      resolved: runner.resolvedCommands || []
+    } : null,
+    warnings,
+    versionProbe,
+    invocationProbe
+  };
+}
+
+function runRunnerProbe(tool, runner, args = [], input = "", timeoutMs = 5000) {
+  const completed = invokeRunnerCommand(runner, args, input, timeoutMs);
+  const normalizedStderr = normalizeRunnerStderr(tool, completed.stderr);
+  return {
+    ok: completed.status === 0,
+    status: completed.status,
+    signal: completed.signal || "",
+    timedOut: Boolean(completed.error?.code === "ETIMEDOUT"),
+    args,
+    shell: runner.usesShell ? runner.shell || "shell" : "",
+    stdout: trimOutput(completed.stdout, 1000),
+    stderr: trimOutput(normalizedStderr.stderr, 1000),
+    stderrWarnings: normalizedStderr.warnings,
+    error: completed.error ? completed.error.message : ""
+  };
+}
+
+function getRunnerDoctorWarnings(runner) {
+  const warnings = [];
+  if (!runner.available) {
+    warnings.push(runner.sharedStateOnly
+      ? "Shared-state-only: dispatch will not launch this tool directly."
+      : runner.reason || "Runner is unavailable.");
+    return warnings;
+  }
+  if (process.platform === "win32") {
+    const resolved = runner.resolvedCommands || [];
+    if (resolved.some((item) => classifyCommandPath(item) === "powershell-shim")) {
+      warnings.push("PowerShell .ps1 shim is present in PATH; this runner resolved a safer .cmd/.exe/native command for automation.");
+    }
+    if (runner.commandKind === "powershell-shim") {
+      warnings.push("Unsafe for automation: only a PowerShell .ps1 shim was found.");
+    }
+    if (runner.usesShell) {
+      warnings.push("Uses cmd.exe only to execute a .cmd/.bat shim; prompt payload remains on stdin.");
+    }
+  }
+  if (runner.promptMode && runner.promptMode !== "stdin") {
+    warnings.push(`Prompt mode is ${runner.promptMode}; long prompts may need temp-file escaping.`);
+  }
+  return warnings;
+}
+
 function statusCommand() {
   console.log(JSON.stringify(getStatusObject(), null, 2));
 }
@@ -172,6 +384,7 @@ function getStatusObject() {
   const lock = readLockStatus(memoryDir);
   const tools = detectTools(memoryDir);
   const toolSummary = summarizeToolConnections(tools);
+  const daemon = buildDaemonStatus(memoryDir);
 
   return {
     memoryDir,
@@ -203,6 +416,7 @@ function getStatusObject() {
       pending: relayLatest.filter((entry) => entry.state === "pending").length,
       dispatched: relayLatest.filter((entry) => entry.state === "dispatched").length,
       acked: relayLatest.filter((entry) => entry.state === "acked").length,
+      progress: relayLatest.filter((entry) => entry.state === "progress").length,
       retrying: relayLatest.filter((entry) => entry.state === "retrying").length,
       failed: relayLatest.filter((entry) => entry.state === "failed").length,
       completed: relayLatest.filter((entry) => entry.state === "completed").length,
@@ -211,6 +425,7 @@ function getStatusObject() {
     },
     backups,
     lock,
+    daemon,
     toolSummary,
     tools
   };
@@ -268,6 +483,11 @@ function connectStatusCommand(argv) {
       configured: tool.configured,
       connected: tool.connected,
       connectionStatus: tool.connectionStatus,
+      runnable: tool.runnable,
+      runnerProfile: tool.runnerProfile,
+      runnerCommandKind: tool.runnerCommandKind,
+      runnerUsesShell: tool.runnerUsesShell,
+      sharedStateOnly: tool.sharedStateOnly,
       action: tool.action,
       instructionFile: tool.instructionFile
     }))
@@ -1353,6 +1573,9 @@ function dispatchCommand(argv) {
   if (action === "status") {
     return dispatchStatusCommand(argv.slice(1));
   }
+  if (action === "progress" || action === "heartbeat") {
+    return dispatchProgressCommand(argv.slice(1));
+  }
   const run = hasFlag(argv, "--run");
   const force = hasFlag(argv, "--force");
   const to = getOption(argv, "--to") || "";
@@ -1476,6 +1699,10 @@ function dispatchStatusCommand(argv) {
     exitCode: latest.exitCode ?? null,
     sessionId: latest.sessionId || "",
     lastError: latest.lastError || "",
+    progressPercent: latest.progressPercent ?? null,
+    progressStatus: latest.progressStatus || "",
+    progressAt: latest.progressAt || "",
+    progressBy: latest.progressBy || "",
     nextRetryAt: latest.nextRetryAt || "",
     firstTs: all[0]?.ts || "",
     latestTs: latest.ts || "",
@@ -1501,6 +1728,93 @@ function dispatchStatusCommand(argv) {
     timeline: all,
     dispatchLog
   }, null, 2));
+}
+
+function dispatchProgressCommand(argv) {
+  const threadKey = getOption(argv, "--thread-key") || "";
+  const thread = getOption(argv, "--thread") || "";
+  const refId = getOption(argv, "--ref-id") || positionalArgs(argv)[0] || "";
+  const project = getOption(argv, "--project") || "";
+  const tool = getOption(argv, "--to") || getOption(argv, "--tool") || "";
+  const by = getOption(argv, "--by") || getOption(argv, "--from") || tool || "manual";
+  const progressPercent = parseProgressPercent(getOption(argv, "--percent") || getOption(argv, "--progress"));
+  const progressStatus = getOption(argv, "--status") || getOption(argv, "--message") || getOption(argv, "--text") || "";
+
+  if (!threadKey && !thread && !refId) {
+    throw new Error("Usage: ai-memory-hub dispatch progress --ref-id <task-or-radio-id> [--thread-key <tool:project:ref> | --thread <thread-id>] [--to <tool>] [--project <project>] [--percent 0-100] [--status <text>] [--by <tool>]");
+  }
+
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+
+  return withHubLock(config.memoryDir, "dispatch-progress", () => {
+    const entry = findLatestRelayStatusEntry(config.memoryDir, {
+      threadKey,
+      thread,
+      refId,
+      project,
+      tool
+    });
+
+    if (!entry) {
+      console.log(JSON.stringify({
+        ok: false,
+        found: false,
+        query: { threadKey, thread, refId, project, tool },
+        message: "No relay status entry matched. Progress can only be attached to an existing dispatch thread."
+      }, null, 2));
+      return;
+    }
+
+    const job = rebuildDispatchJobFromRelay(config.memoryDir, entry) || dispatchJobFromRelayEntry(entry);
+    const progressAt = new Date().toISOString();
+    appendRelayStatus(config.memoryDir, job, {
+      state: ASYNC_CALL_STATES.PROGRESS,
+      attempt: Number(entry.attempt || 1),
+      maxRetries: Number(entry.maxRetries || 3),
+      exitCode: entry.exitCode ?? null,
+      lastError: "",
+      sessionId: entry.sessionId || "",
+      ackTimeout: Number(entry.ackTimeout || DEFAULT_DISPATCH_ACK_TIMEOUT_MS),
+      nextRetryAt: "",
+      progressPercent,
+      progressStatus,
+      progressAt,
+      progressBy: by
+    });
+    updateDispatchSourceState(config.memoryDir, job, {
+      deliveryState: ASYNC_CALL_STATES.PROGRESS,
+      dispatchId: job.id,
+      threadKey: getDispatchThreadKey(job),
+      attempt: Number(entry.attempt || 1),
+      maxRetries: Number(entry.maxRetries || 3),
+      nextRetryAt: "",
+      sessionId: entry.sessionId || "",
+      lastError: "",
+      progressPercent,
+      progressStatus,
+      progressAt,
+      progressBy: by
+    });
+
+    const latest = findLatestRelayStatusEntry(config.memoryDir, {
+      threadKey: getDispatchThreadKey(job)
+    });
+    console.log(JSON.stringify({
+      ok: true,
+      state: ASYNC_CALL_STATES.PROGRESS,
+      threadKey: getDispatchThreadKey(job),
+      sourceKind: job.kind,
+      sourceId: job.refId,
+      tool: job.tool,
+      project: job.project,
+      progressPercent,
+      progressStatus,
+      progressAt,
+      progressBy: by,
+      latest
+    }, null, 2));
+  }, config.sync.lockStaleMs);
 }
 
 function buildRecentRelayStatusView(memoryDir, { project = "", tool = "", state = "", limit = 20 }) {
@@ -1545,6 +1859,10 @@ function buildRecentRelayStatusView(memoryDir, { project = "", tool = "", state 
       sourceId: entry.sourceId || "",
       attempt: Number(entry.attempt || 0),
       maxRetries: Number(entry.maxRetries || 0),
+      progressPercent: entry.progressPercent ?? null,
+      progressStatus: entry.progressStatus || "",
+      progressAt: entry.progressAt || "",
+      progressBy: entry.progressBy || "",
       nextRetryAt: entry.nextRetryAt || "",
       lastError: summarizeText(entry.lastError || "", 120),
       ts: entry.ts || ""
@@ -1573,6 +1891,33 @@ function resolveRelayThreadKeys(memoryDir, { threadKey = "", thread = "", refId 
     }
   }
   return keys;
+}
+
+function findLatestRelayStatusEntry(memoryDir, { threadKey = "", thread = "", refId = "", project = "", tool = "" }) {
+  const matches = readRelayStatus(memoryDir)
+    .filter((entry) => threadKey ? entry.threadKey === threadKey : true)
+    .filter((entry) => thread ? entry.thread === thread || entry.threadKey === thread : true)
+    .filter((entry) => refId
+      ? entry.sourceId === refId
+        || entry.dispatchId === refId
+        || entry.dispatchId === `task:${refId}`
+        || entry.dispatchId === `radio:${refId}`
+      : true)
+    .filter((entry) => project ? entry.project === project : true)
+    .filter((entry) => tool ? entry.tool === tool : true)
+    .sort((a, b) => String(a.ts || a.updatedAt || "").localeCompare(String(b.ts || b.updatedAt || "")));
+  return matches.at(-1) || null;
+}
+
+function parseProgressPercent(value) {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+  const percent = Number(value);
+  if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
+    throw new Error("--percent must be a number from 0 to 100.");
+  }
+  return Math.round(percent);
 }
 
 function resolveRelaySourceObject(memoryDir, entry) {
@@ -1653,7 +1998,7 @@ function executeDispatch(memoryDir, { run = false, force = false, to = "", proje
           exitCode: null,
           lastError: runner.reason,
           sessionId: "",
-          ackTimeout: 5 * 60 * 1000,
+          ackTimeout: DEFAULT_DISPATCH_ACK_TIMEOUT_MS,
           nextRetryAt: computeNextRetryAt(attempt, maxRetries)
         });
         updateDispatchSourceState(memoryDir, job, {
@@ -1666,8 +2011,11 @@ function executeDispatch(memoryDir, { run = false, force = false, to = "", proje
           sessionId: "",
           lastError: runner.reason
         });
-        appendDispatchStatusMessage(memoryDir, job, { ...result, relayState: state });
+        const statusMessage = appendDispatchStatusMessage(memoryDir, job, { ...result, relayState: state });
         appendDispatchLog(memoryDir, result);
+        applyDispatchOutcome(memoryDir, job, { ...result, statusRadioId: statusMessage?.id || "" }, state, {
+          statusMessage
+        });
       }
       results.push(result);
       continue;
@@ -1693,7 +2041,7 @@ function executeDispatch(memoryDir, { run = false, force = false, to = "", proje
       exitCode: null,
       lastError: "",
       sessionId: "",
-      ackTimeout: 5 * 60 * 1000
+      ackTimeout: DEFAULT_DISPATCH_ACK_TIMEOUT_MS
     });
     updateDispatchSourceState(memoryDir, job, {
       deliveryState: "dispatched",
@@ -1714,7 +2062,7 @@ function executeDispatch(memoryDir, { run = false, force = false, to = "", proje
         exitCode: 0,
         lastError: "",
         sessionId: result.sessionId || "",
-        ackTimeout: 5 * 60 * 1000,
+        ackTimeout: DEFAULT_DISPATCH_ACK_TIMEOUT_MS,
         nextRetryAt: ""
       });
       updateDispatchSourceState(memoryDir, job, {
@@ -1730,14 +2078,15 @@ function executeDispatch(memoryDir, { run = false, force = false, to = "", proje
     }
     const finalState = result.exitCode === 0 ? "completed" : getRelayFailureState(attempt, maxRetries);
     const nextRetryAt = result.exitCode === 0 ? "" : computeNextRetryAt(attempt, maxRetries);
+    const lastError = result.exitCode === 0 ? "" : (result.error || result.stderr || "");
     appendRelayStatus(memoryDir, job, {
       state: finalState,
       attempt,
       maxRetries,
       exitCode: result.exitCode,
-      lastError: result.error || result.stderr || "",
+      lastError,
       sessionId: result.sessionId || "",
-      ackTimeout: 5 * 60 * 1000,
+      ackTimeout: DEFAULT_DISPATCH_ACK_TIMEOUT_MS,
       nextRetryAt
     });
     updateDispatchSourceState(memoryDir, job, {
@@ -1748,7 +2097,7 @@ function executeDispatch(memoryDir, { run = false, force = false, to = "", proje
       maxRetries,
       nextRetryAt,
       sessionId: result.sessionId || "",
-      lastError: result.error || result.stderr || ""
+      lastError
     });
     const responseMessage = appendDispatchResponseMessage(memoryDir, job, { ...result, relayState: finalState });
     const statusMessage = appendDispatchStatusMessage(memoryDir, job, { ...result, relayState: finalState });
@@ -1758,15 +2107,22 @@ function executeDispatch(memoryDir, { run = false, force = false, to = "", proje
       statusRadioId: statusMessage?.id || ""
     };
     appendDispatchLog(memoryDir, enrichedResult);
+    applyDispatchOutcome(memoryDir, job, enrichedResult, finalState, {
+      responseMessage,
+      statusMessage
+    });
     results.push(enrichedResult);
   }
   return results;
 }
 
 function executeDispatchRetry(memoryDir, { run = false, to = "", project = "", limit = 10 }) {
+  const timeoutResults = run
+    ? markTimedOutRelayStatuses(memoryDir, { to, project })
+    : [];
   const relayState = readLatestRelayStatusBySource(memoryDir);
   const jobs = buildRetryDispatchJobs(memoryDir, relayState, { to, project, limit });
-  const results = [];
+  const results = [...timeoutResults];
   for (const job of jobs) {
     const runner = getToolRunner(job.tool);
     if (!runner.available) {
@@ -1784,7 +2140,7 @@ function executeDispatchRetry(memoryDir, { run = false, to = "", project = "", l
           exitCode: null,
           lastError: runner.reason,
           sessionId: "",
-          ackTimeout: 5 * 60 * 1000,
+          ackTimeout: DEFAULT_DISPATCH_ACK_TIMEOUT_MS,
           nextRetryAt: computeNextRetryAt(job.attempt, job.maxRetries || 3)
         });
         updateDispatchSourceState(memoryDir, job, {
@@ -1797,8 +2153,11 @@ function executeDispatchRetry(memoryDir, { run = false, to = "", project = "", l
           sessionId: "",
           lastError: runner.reason
         });
-        appendDispatchStatusMessage(memoryDir, job, { ...result, relayState: state });
+        const statusMessage = appendDispatchStatusMessage(memoryDir, job, { ...result, relayState: state });
         appendDispatchLog(memoryDir, result);
+        applyDispatchOutcome(memoryDir, job, { ...result, statusRadioId: statusMessage?.id || "" }, state, {
+          statusMessage
+        });
       }
       results.push(result);
       continue;
@@ -1820,7 +2179,7 @@ function executeDispatchRetry(memoryDir, { run = false, to = "", project = "", l
       exitCode: null,
       lastError: "",
       sessionId: "",
-      ackTimeout: 5 * 60 * 1000,
+      ackTimeout: DEFAULT_DISPATCH_ACK_TIMEOUT_MS,
       nextRetryAt: ""
     });
     updateDispatchSourceState(memoryDir, job, {
@@ -1842,7 +2201,7 @@ function executeDispatchRetry(memoryDir, { run = false, to = "", project = "", l
         exitCode: 0,
         lastError: "",
         sessionId: result.sessionId || "",
-        ackTimeout: 5 * 60 * 1000,
+        ackTimeout: DEFAULT_DISPATCH_ACK_TIMEOUT_MS,
         nextRetryAt: ""
       });
       updateDispatchSourceState(memoryDir, job, {
@@ -1860,14 +2219,15 @@ function executeDispatchRetry(memoryDir, { run = false, to = "", project = "", l
       ? "completed"
       : getRelayFailureState(job.attempt, job.maxRetries || 3);
     const nextRetryAt = result.exitCode === 0 ? "" : computeNextRetryAt(job.attempt, job.maxRetries || 3);
+    const lastError = result.exitCode === 0 ? "" : (result.error || result.stderr || "");
     appendRelayStatus(memoryDir, job, {
       state: finalState,
       attempt: job.attempt,
       maxRetries: job.maxRetries || 3,
       exitCode: result.exitCode,
-      lastError: result.error || result.stderr || "",
+      lastError,
       sessionId: result.sessionId || "",
-      ackTimeout: 5 * 60 * 1000,
+      ackTimeout: DEFAULT_DISPATCH_ACK_TIMEOUT_MS,
       nextRetryAt
     });
     updateDispatchSourceState(memoryDir, job, {
@@ -1878,7 +2238,7 @@ function executeDispatchRetry(memoryDir, { run = false, to = "", project = "", l
       maxRetries: job.maxRetries || 3,
       nextRetryAt,
       sessionId: result.sessionId || "",
-      lastError: result.error || result.stderr || ""
+      lastError
     });
     const responseMessage = appendDispatchResponseMessage(memoryDir, job, { ...result, relayState: finalState });
     const statusMessage = appendDispatchStatusMessage(memoryDir, job, { ...result, relayState: finalState });
@@ -1889,9 +2249,213 @@ function executeDispatchRetry(memoryDir, { run = false, to = "", project = "", l
       statusRadioId: statusMessage?.id || ""
     };
     appendDispatchLog(memoryDir, enrichedResult);
+    applyDispatchOutcome(memoryDir, job, enrichedResult, finalState, {
+      responseMessage,
+      statusMessage
+    });
     results.push(enrichedResult);
   }
   return results;
+}
+
+function markTimedOutRelayStatuses(memoryDir, { to = "", project = "", now = Date.now() } = {}) {
+  const timedOutEntries = Object.values(readLatestRelayStatusBySource(memoryDir))
+    .filter((entry) => to ? entry.tool === to : true)
+    .filter((entry) => project ? entry.project === project : true)
+    .filter((entry) => isRelayTimedOut(entry, now));
+  const results = [];
+
+  for (const entry of timedOutEntries) {
+    const job = rebuildDispatchJobFromRelay(memoryDir, entry) || dispatchJobFromRelayEntry(entry);
+    if (!job?.refId) {
+      continue;
+    }
+
+    const attempt = Number(entry.attempt || 1);
+    const maxRetries = Number(entry.maxRetries || 3);
+    const state = getRelayFailureState(attempt, maxRetries);
+    const timeoutMs = Number(entry.ackTimeout || DEFAULT_DISPATCH_ACK_TIMEOUT_MS);
+    const lastError = `Timeout: no response within ackTimeout (${timeoutMs}ms) while relay was ${entry.state || "unknown"}`;
+    const nextRetryAt = state === ASYNC_CALL_STATES.FAILED
+      ? computeNextRetryAt(attempt, maxRetries)
+      : "";
+    const result = {
+      ...job,
+      runnable: true,
+      timeout: true,
+      exitCode: null,
+      stdout: "",
+      stderr: "",
+      error: lastError,
+      sessionId: entry.sessionId || "",
+      relayState: state
+    };
+
+    appendRelayStatus(memoryDir, job, {
+      state,
+      attempt,
+      maxRetries,
+      exitCode: null,
+      lastError,
+      sessionId: entry.sessionId || "",
+      ackTimeout: timeoutMs,
+      nextRetryAt
+    });
+    updateDispatchSourceState(memoryDir, job, {
+      deliveryState: state,
+      dispatchId: job.id,
+      threadKey: getDispatchThreadKey(job),
+      attempt,
+      maxRetries,
+      nextRetryAt,
+      sessionId: entry.sessionId || "",
+      lastError
+    });
+
+    const statusMessage = appendDispatchStatusMessage(memoryDir, job, result);
+    const enrichedResult = {
+      ...result,
+      statusRadioId: statusMessage?.id || ""
+    };
+    appendDispatchLog(memoryDir, enrichedResult);
+    applyDispatchOutcome(memoryDir, job, enrichedResult, state, { statusMessage });
+    results.push(enrichedResult);
+  }
+
+  return results;
+}
+
+function dispatchJobFromRelayEntry(entry) {
+  return {
+    id: entry.dispatchId || `${entry.sourceKind || "relay"}:${entry.sourceId || entry.id || ""}`,
+    kind: entry.sourceKind || "relay",
+    tool: entry.tool || "",
+    project: entry.project || "",
+    text: "",
+    refId: entry.sourceId || "",
+    thread: entry.thread || entry.sourceId || ""
+  };
+}
+
+function isRelayTimedOut(entry, now = Date.now()) {
+  if (!entry || ![
+    ASYNC_CALL_STATES.DISPATCHED,
+    ASYNC_CALL_STATES.ACKED,
+    ASYNC_CALL_STATES.PROGRESS,
+    ASYNC_CALL_STATES.RETRYING
+  ].includes(entry.state || "")) {
+    return false;
+  }
+  const timeoutMs = Number(entry.ackTimeout || DEFAULT_DISPATCH_ACK_TIMEOUT_MS);
+  if (timeoutMs <= 0) {
+    return false;
+  }
+  const baseMs = getRelayTimeoutBaseMs(entry);
+  return Number.isFinite(baseMs) && baseMs + timeoutMs <= now;
+}
+
+function getRelayTimeoutBaseMs(entry) {
+  const candidates = [
+    entry.progressAt,
+    entry.dispatchedAt,
+    entry.deliveryUpdatedAt,
+    entry.ts,
+    entry.updatedAt
+  ];
+  for (const candidate of candidates) {
+    const parsed = Date.parse(candidate || "");
+    if (!Number.isNaN(parsed)) {
+      return parsed;
+    }
+  }
+  return Number.NaN;
+}
+
+function applyDispatchOutcome(memoryDir, job, result, relayState, { responseMessage = null, statusMessage = null } = {}) {
+  if (job?.kind !== "task" || !job.refId) {
+    return null;
+  }
+  const now = new Date().toISOString();
+  const completed = relayState === ASYNC_CALL_STATES.COMPLETED;
+  const failed = [ASYNC_CALL_STATES.FAILED, ASYNC_CALL_STATES.ABANDONED].includes(relayState);
+  const reportPath = completed ? writeDispatchReportIfUseful(memoryDir, job, result, relayState) : "";
+  const responseSummary = summarizeText(result.stdout || "", 220);
+  const errorSummary = summarizeText(result.error || result.stderr || "", 220);
+
+  return updateTask(memoryDir, job.refId, (task) => {
+    const notes = [...(task.notes || [])];
+    if (completed) {
+      const parts = [`Dispatch completed by ${job.tool || "unknown"}.`];
+      if (responseSummary) {
+        parts.push(`Response: ${responseSummary}`);
+      }
+      if (reportPath) {
+        parts.push(`Report: ${reportPath}`);
+      }
+      notes.push(createTaskNote("ai-memory-hub", parts.join(" ")));
+    } else if (failed) {
+      notes.push(createTaskNote("ai-memory-hub", `Dispatch ${relayState} for ${job.tool || "unknown"}: ${errorSummary || "no error output"}`));
+    }
+
+    return {
+      ...task,
+      status: completed ? "done" : task.status,
+      assignee: task.assignee || job.tool || "",
+      updatedAt: now,
+      completedAt: completed ? now : task.completedAt || "",
+      deliveryState: relayState,
+      deliveryUpdatedAt: now,
+      dispatchId: job.id,
+      threadKey: getDispatchThreadKey(job),
+      attempt: Number(result.attempt || task.attempt || 0),
+      maxRetries: Number(result.maxRetries || task.maxRetries || 0),
+      nextRetryAt: result.nextRetryAt || task.nextRetryAt || "",
+      sessionId: result.sessionId || task.sessionId || "",
+      lastError: failed ? (result.error || result.stderr || task.lastError || "") : "",
+      responseRadioId: responseMessage?.id || task.responseRadioId || "",
+      statusRadioId: statusMessage?.id || task.statusRadioId || "",
+      dispatchReportPath: reportPath || task.dispatchReportPath || "",
+      notes
+    };
+  });
+}
+
+function writeDispatchReportIfUseful(memoryDir, job, result, relayState) {
+  const stdout = String(result.stdout || "").trim();
+  if (!stdout || !shouldPersistDispatchReport(job, stdout)) {
+    return "";
+  }
+  const idPart = String(job.refId || job.id || "dispatch").replace(/[^a-zA-Z0-9_.-]+/g, "-").slice(0, 40);
+  const tsPart = new Date().toISOString().replace(/[:.]/g, "-");
+  const relativePath = path.join(RESEARCH_REPORTS_DIR, `${tsPart}-${idPart}.md`);
+  const file = path.join(memoryDir, relativePath);
+  ensureDir(path.dirname(file));
+  const lines = [
+    `# Dispatch Report: ${job.refId || job.id}`,
+    "",
+    `- Tool: ${job.tool || "unknown"}`,
+    `- Project: ${job.project || ""}`,
+    `- Kind: ${job.kind || ""}`,
+    `- State: ${relayState || ""}`,
+    `- Thread: ${job.thread || ""}`,
+    `- Created: ${new Date().toISOString()}`,
+    "",
+    "## Task",
+    "",
+    job.text || "",
+    "",
+    "## Response",
+    "",
+    stdout,
+    ""
+  ];
+  fs.writeFileSync(file, lines.join("\n"), "utf8");
+  return relativePath.replace(/\\/g, "/");
+}
+
+function shouldPersistDispatchReport(job, stdout) {
+  const text = `${job?.text || ""}\n${stdout || ""}`;
+  return /调研|研究|报告|分析|review|audit|investigat|research|feasibility|评估/i.test(text);
 }
 
 function updateDispatchSourceState(memoryDir, job, patch) {
@@ -1907,7 +2471,11 @@ function updateDispatchSourceState(memoryDir, job, patch) {
     maxRetries: Number(patch.maxRetries || 0),
     nextRetryAt: patch.nextRetryAt || "",
     sessionId: patch.sessionId || "",
-    lastError: String(patch.lastError || "").trim()
+    lastError: String(patch.lastError || "").trim(),
+    progressPercent: patch.progressPercent ?? null,
+    progressStatus: patch.progressStatus || "",
+    progressAt: patch.progressAt || "",
+    progressBy: patch.progressBy || ""
   };
   if (job.kind === "radio") {
     updateRadioMessage(memoryDir, job.refId, statePatch);
@@ -2053,141 +2621,182 @@ function shouldRetryJob(job) {
   return !runner.sharedStateOnly;
 }
 
+function getRunnerProfile(tool) {
+  return RUNNER_PROFILES[normalizeToolName(tool)] || null;
+}
+
+function getKnownRunnerToolNames() {
+  return Object.keys(RUNNER_PROFILES);
+}
+
+function normalizeToolName(tool) {
+  return String(tool || "").trim().toLowerCase();
+}
+
 function getToolRunner(tool) {
-  if (tool === "codex") {
-    if (!commandExists("codex")) {
-      return { available: false, reason: "codex CLI not found in PATH" };
-    }
+  const name = normalizeToolName(tool);
+  const profile = getRunnerProfile(name);
+  if (!profile) {
     return {
-      available: true,
-      preview: "codex exec --sandbox danger-full-access <prompt>",
-      command: "codex",
-      args: ["exec", "--sandbox", "danger-full-access"]
+      tool: name,
+      available: false,
+      reason: `${name || "unknown"} has shared instructions but no verified CLI runner on this machine`
     };
   }
-  if (tool === "claude") {
-    if (!commandExists("claude")) {
-      return { available: false, reason: "claude CLI not found or broken in PATH" };
-    }
+  if (profile.sharedStateOnly) {
     return {
-      available: true,
-      preview: "claude -p --output-format json --permission-mode bypassPermissions --bare <prompt>",
-      command: process.platform === "win32" ? "powershell" : "claude",
-      args: process.platform === "win32"
-        ? ["-NoProfile", "-Command"]
-        : ["-p", "--output-format", "json", "--permission-mode", "bypassPermissions", "--bare", "--model", "sonnet", "--effort", "low"],
-      mode: process.platform === "win32" ? "claude-windows-powershell" : "claude-json"
-    };
-  }
-  if (tool === "gemini") {
-    if (!commandExists("gemini")) {
-      return { available: false, reason: "gemini CLI not found in PATH" };
-    }
-    return {
-      available: true,
-      preview: "gemini (stdin)",
-      command: "gemini",
-      args: []
-    };
-  }
-  if (tool === "qoder-cn" || tool === "opencode") {
-    if (!commandExists("qoder-cn")) {
-      return { available: false, reason: "qoder-cn CLI not found in PATH" };
-    }
-    return {
-      available: true,
-      preview: "qoder-cn - (stdin)",
-      command: "qoder-cn",
-      args: ["-"]
-    };
-  }
-  if (tool === "marvis") {
-    return {
+      ...profile,
       available: false,
       sharedStateOnly: true,
-      reason: "marvis currently integrates through shared radio/task state only; no verified direct CLI runner is configured on this machine"
+      reason: profile.reason || `${profile.tool} is shared-state-only`
     };
   }
+
+  const resolution = resolveRunnerCommand(profile);
+  if (!resolution.path) {
+    return {
+      ...profile,
+      available: false,
+      reason: `${profile.tool} CLI not found in PATH`,
+      commandCandidates: profile.commandCandidates || [profile.command].filter(Boolean),
+      resolvedCommands: resolution.allPaths || []
+    };
+  }
+  if (resolution.kind === "powershell-shim") {
+    return {
+      ...profile,
+      available: false,
+      reason: `${profile.tool} only resolved to a PowerShell .ps1 shim; install a .cmd/.exe shim or use a direct Node entry point for safe dispatch`,
+      commandName: resolution.name,
+      commandKind: resolution.kind,
+      commandPath: resolution.path,
+      resolvedCommands: resolution.allPaths
+    };
+  }
+
+  const shell = shouldUseShellForCommand(resolution.path);
   return {
-    available: false,
-    reason: `${tool} has shared instructions but no verified CLI runner on this machine`
+    ...profile,
+    available: true,
+    command: resolution.path,
+    commandName: resolution.name,
+    commandKind: resolution.kind,
+    commandPath: resolution.path,
+    resolvedCommands: resolution.allPaths,
+    usesShell: shell,
+    shell: shell ? "cmd.exe" : "none",
+    preview: profile.preview || `${profile.tool} <${profile.promptMode || "argv"}>`
+  };
+}
+
+function resolveRunnerCommand(profile) {
+  const candidates = profile.commandCandidates || [profile.command].filter(Boolean);
+  const allPaths = [];
+  for (const candidate of candidates) {
+    for (const found of resolveCommandPaths(candidate)) {
+      if (!allPaths.includes(found)) {
+        allPaths.push(found);
+      }
+    }
+  }
+  const pathValue = choosePreferredCommandPath(allPaths);
+  return {
+    name: pathValue ? path.basename(pathValue) : "",
+    path: pathValue,
+    kind: pathValue ? classifyCommandPath(pathValue) : "",
+    allPaths
   };
 }
 
 function runDispatchJob(memoryDir, job, runner) {
   const prompt = renderDispatchPrompt(memoryDir, job);
-
-  // For Windows, use stdin to avoid shell escaping issues (except for gemini which doesn't support stdin)
-  // Gemini ALSO needs stdin because shell: true breaks multi-word -p arguments
-  if (process.platform === "win32" && runner.command !== "powershell") {
-    const completed = spawnSync(runner.command, runner.args, {
-      cwd: process.cwd(),
-      encoding: "utf8",
-      timeout: 10 * 60 * 1000,
-      windowsHide: true,
-      shell: true,
-      input: prompt
-    });
-
-    const parsed = parseRunnerOutput(memoryDir, job, runner, completed.stdout);
-    return {
-      ...job,
-      runnable: true,
-      exitCode: completed.status,
-      stdout: trimOutput(parsed.stdout),
-      stderr: trimOutput(completed.stderr),
-      error: completed.error ? completed.error.message : "",
-      sessionId: parsed.sessionId || ""
-    };
-  }
-
-  // Original path for non-Windows or PowerShell
-  const completed = spawnSync(runner.command, buildRunnerArgs(memoryDir, job, runner, prompt), {
-    cwd: process.cwd(),
-    encoding: "utf8",
-    timeout: 10 * 60 * 1000,
-    windowsHide: true,
-    shell: true
-  });
+  const args = buildRunnerArgs(memoryDir, job, runner, prompt);
+  const input = runner.promptMode === "stdin" ? prompt : "";
+  const completed = invokeRunnerCommand(runner, args, input, DEFAULT_DISPATCH_RUN_TIMEOUT_MS);
   const parsed = parseRunnerOutput(memoryDir, job, runner, completed.stdout);
+  const normalizedStderr = normalizeRunnerStderr(job.tool, completed.stderr);
   return {
     ...job,
     runnable: true,
     exitCode: completed.status,
     stdout: trimOutput(parsed.stdout),
-    stderr: trimOutput(completed.stderr),
+    stderr: trimOutput(normalizedStderr.stderr),
+    stderrWarnings: normalizedStderr.warnings,
     error: completed.error ? completed.error.message : "",
-    sessionId: parsed.sessionId || ""
+    sessionId: parsed.sessionId || "",
+    runnerMode: runner.promptMode || "",
+    runnerCommand: runner.commandName || runner.command || "",
+    runnerShell: runner.usesShell ? runner.shell || "shell" : ""
   };
 }
 
+function invokeRunnerCommand(runner, args = [], input = "", timeoutMs = DEFAULT_DISPATCH_RUN_TIMEOUT_MS) {
+  const useCmdLauncher = process.platform === "win32" && runner.usesShell;
+  const command = useCmdLauncher ? buildWindowsCmdLine(runner.command, args) : runner.command;
+  const commandArgs = useCmdLauncher ? [] : args;
+  return spawnSync(command, commandArgs, {
+    cwd: process.cwd(),
+    encoding: "utf8",
+    timeout: timeoutMs,
+    windowsHide: true,
+    shell: useCmdLauncher,
+    input
+  });
+}
+
+function buildWindowsCmdLine(command, args = []) {
+  return [command, ...(args || [])].map(quoteWindowsCmdArg).join(" ");
+}
+
+function quoteWindowsCmdArg(value) {
+  const text = String(value ?? "");
+  if (!text) {
+    return "\"\"";
+  }
+  return `"${text.replace(/"/g, "\"\"").replace(/[%^&|<>()]/g, "^$&")}"`;
+}
+
+function normalizeRunnerStderr(tool, stderr) {
+  const text = String(stderr || "");
+  if (!text.trim()) {
+    return { stderr: "", warnings: [] };
+  }
+  const lines = text.split(/\r?\n/);
+  const warnings = [];
+  const kept = [];
+  for (const line of lines) {
+    if (tool === "gemini" && isKnownGeminiWarning(line)) {
+      warnings.push(line.trim());
+      continue;
+    }
+    kept.push(line);
+  }
+  return {
+    stderr: kept.join("\n").trim(),
+    warnings: warnings.filter(Boolean)
+  };
+}
+
+function isKnownGeminiWarning(line) {
+  return /skill conflict|conflicting skill|duplicate skill|true color|256-color|ripgrep is not available/i.test(String(line || ""));
+}
+
 function buildRunnerArgs(memoryDir, job, runner, prompt) {
-  const sessionId = runner.mode && runner.mode.startsWith("claude")
+  const args = [...(runner.args || [])];
+  const sessionId = runner.capabilities?.includes("session-resume")
     ? readClaudeSessionState(memoryDir)[getDispatchThreadKey(job)] || ""
     : "";
-  if (runner.mode === "claude-windows-powershell") {
-    const resumePart = sessionId ? ` --resume ${sessionId}` : "";
-    return [
-      ...runner.args,
-      `$p = @'\n${prompt}\n'@; claude -p --output-format json --permission-mode bypassPermissions --bare --model sonnet --effort low${resumePart} $p`
-    ];
+  if (sessionId && typeof runner.resumeArgs === "function") {
+    args.push(...runner.resumeArgs(sessionId));
   }
-  if (runner.mode === "claude-json") {
-    return sessionId
-      ? [...runner.args, "--resume", sessionId, prompt]
-      : [...runner.args, prompt];
+  if (runner.promptMode === "argv" && prompt) {
+    args.push(prompt);
   }
-  if (runner.mode === "claude-windows-cmd") {
-    return [
-      ...runner.args,
-      `claude -p --output-format text --permission-mode bypassPermissions "${escapeForWindowsCmd(prompt)}"`
-    ];
-  }
-  return [...runner.args, prompt];
+  return args;
 }
 
 function parseRunnerOutput(memoryDir, job, runner, stdout) {
-  if (!runner.mode || !runner.mode.startsWith("claude")) {
+  if (runner.outputMode !== "claude-json") {
     return { stdout, sessionId: "" };
   }
   const text = String(stdout || "").trim();
@@ -2254,6 +2863,7 @@ function renderDispatchPrompt(memoryDir, job) {
     "- Do the dispatched task directly. Do not introduce yourself, list tools, or ask what to work on.",
     "- Keep the response compact: at most 6 short bullets or 1 short paragraph.",
     "- If the payload asks for a design or plan, return concrete steps and state transitions.",
+    "- For work expected to take longer than 30 seconds, report heartbeat/progress with: ai-memory-hub dispatch progress --thread-key " + getDispatchThreadKey(job) + " --percent <0-100> --status \"short status\" --by " + (job.tool || "tool"),
     "- If you need to mention follow-up, end with a single 'Next:' line.",
     "",
     "Payload:",
@@ -2345,6 +2955,7 @@ function getAsyncCallStateMeta(state) {
     "pending": { terminal: false, success: false, retriable: false, label: "Pending" },
     "dispatched": { terminal: false, success: false, retriable: false, label: "Dispatched" },
     "acked": { terminal: false, success: false, retriable: false, label: "Acknowledged" },
+    "progress": { terminal: false, success: false, retriable: false, label: "In progress" },
     "retrying": { terminal: false, success: false, retriable: true, label: "Retrying" },
     "failed": { terminal: false, success: false, retriable: true, label: "Failed" },
     "completed": { terminal: true, success: true, retriable: false, label: "Completed" },
@@ -2380,18 +2991,7 @@ function isRelayRetryCandidate(entry, now = Date.now()) {
     const nextRetryMs = Date.parse(entry.nextRetryAt);
     return !Number.isNaN(nextRetryMs) && nextRetryMs <= now;
   }
-  if (![ASYNC_CALL_STATES.DISPATCHED, ASYNC_CALL_STATES.ACKED, ASYNC_CALL_STATES.RETRYING].includes(entry.state || "")) {
-    return false;
-  }
-  const timeoutMs = Number(entry.ackTimeout || 0);
-  if (timeoutMs <= 0) {
-    return false;
-  }
-  const tsMs = Date.parse(entry.ts || "");
-  if (Number.isNaN(tsMs)) {
-    return false;
-  }
-  return tsMs + timeoutMs <= now;
+  return isRelayTimedOut(entry, now);
 }
 
 function appendRelayStatus(memoryDir, job, patch = {}) {
@@ -2413,10 +3013,14 @@ function appendRelayStatus(memoryDir, job, patch = {}) {
     sessionId: patch.sessionId || "",
     exitCode: patch.exitCode ?? null,
     lastError: String(patch.lastError || "").trim(),
-      nextRetryAt: patch.nextRetryAt || "",
-      project: job.project || "",
-      tool: job.tool || "",
-      thread: job.thread || ""
+    progressPercent: patch.progressPercent ?? null,
+    progressStatus: String(patch.progressStatus || "").trim(),
+    progressAt: patch.progressAt || "",
+    progressBy: patch.progressBy || "",
+    nextRetryAt: patch.nextRetryAt || "",
+    project: job.project || "",
+    tool: job.tool || "",
+    thread: job.thread || ""
   });
 }
 
@@ -2661,23 +3265,75 @@ function watchCommand(argv) {
 }
 
 function daemonCommand(argv) {
+  const action = argv[0] && !argv[0].startsWith("--") ? argv[0] : "";
+  if (action === "status") {
+    return daemonStatusCommand(argv.slice(1));
+  }
+  if (action) {
+    throw new Error("Usage: ai-memory-hub daemon [status] [--interval-ms <ms>] [--project <name[,name]>] [--limit <n>] [--force]");
+  }
+
   const config = loadConfig();
+  ensureHub(config.memoryDir);
   const intervalMs = Number(getOption(argv, "--interval-ms") || 10000);
+  const limit = Number(getOption(argv, "--limit") || 10);
   const projects = getOption(argv, "--project");
   const projectList = projects ? projects.split(",") : [];
+  const force = hasFlag(argv, "--force");
+  const startedAt = new Date().toISOString();
+  const currentStatus = buildDaemonStatus(config.memoryDir);
+  if (currentStatus.running && !force) {
+    throw new Error(`Daemon already appears to be running as pid ${currentStatus.pid}. Use 'ai-memory-hub daemon status' to inspect or pass --force to replace stale local metadata.`);
+  }
+  writeDaemonPid(config.memoryDir, process.pid);
+  writeDaemonStatus(config.memoryDir, {
+    state: "starting",
+    pid: process.pid,
+    startedAt,
+    stoppedAt: "",
+    stopSignal: "",
+    intervalMs,
+    limit,
+    projects: projectList,
+    cycle: 0,
+    lastCycleStartedAt: "",
+    lastCycleFinishedAt: "",
+    lastError: "",
+    memoryDir: config.memoryDir
+  });
 
   console.log(`Starting AI Memory Hub Daemon`);
+  console.log(`PID: ${process.pid}`);
   console.log(`Monitoring: radio messages and tasks`);
   console.log(`Interval: ${intervalMs}ms`);
+  console.log(`Limit per tool/project: ${limit}`);
   if (projectList.length > 0) {
     console.log(`Projects: ${projectList.join(", ")}`);
   }
   console.log("Press Ctrl+C to stop.\n");
 
   let iteration = 0;
+  let timer = null;
+  let stopping = false;
   const runCycle = () => {
+    if (stopping) {
+      return;
+    }
     iteration++;
-    console.log(`[${new Date().toISOString()}] Cycle #${iteration}`);
+    const cycleStartedAt = new Date().toISOString();
+    const cycleErrors = [];
+    writeDaemonStatus(config.memoryDir, {
+      state: "running",
+      pid: process.pid,
+      startedAt,
+      intervalMs,
+      limit,
+      projects: projectList,
+      cycle: iteration,
+      lastCycleStartedAt: cycleStartedAt,
+      lastError: ""
+    });
+    console.log(`[${cycleStartedAt}] Cycle #${iteration}`);
 
     try {
       const tools = ["codex", "gemini", "claude"];
@@ -2692,40 +3348,209 @@ function daemonCommand(argv) {
 
         for (const project of checkProjects) {
           try {
-            const jobs = buildDispatchJobs(config.memoryDir, { to: tool, project });
+            const retryResults = executeDispatchRetry(config.memoryDir, {
+              run: true,
+              to: tool,
+              project,
+              limit
+            });
+            const timeoutResults = retryResults.filter((result) => result.timeout);
+            const retriedResults = retryResults.filter((result) => !result.timeout);
+            if (timeoutResults.length > 0) {
+              console.log(`  -> Marked ${timeoutResults.length} timed-out relay(s) for ${tool}${project ? ` (project: ${project})` : ""}`);
+            }
+            if (retriedResults.length > 0) {
+              console.log(`  -> Retried ${retriedResults.length} relay job(s) for ${tool}${project ? ` (project: ${project})` : ""}`);
+            }
 
-            if (jobs.length > 0) {
-              console.log(`  → Dispatching ${jobs.length} job(s) to ${tool}${project ? ` (project: ${project})` : ""}`);
+            const results = executeDispatch(config.memoryDir, {
+              run: true,
+              to: tool,
+              project,
+              limit
+            });
 
-              for (const job of jobs) {
-                try {
-                  const result = runDispatchJob(config.memoryDir, job, runner);
-                  appendDispatchLog(config.memoryDir, result);
-
-                  if (result.exitCode === 0) {
-                    console.log(`    ✓ ${job.kind}:${job.refId.substring(0, 8)} completed`);
-                  } else {
-                    console.log(`    ✗ ${job.kind}:${job.refId.substring(0, 8)} failed (exit ${result.exitCode})`);
-                  }
-                } catch (err) {
-                  console.error(`    ✗ Dispatch error: ${err.message}`);
+            if (results.length > 0) {
+              console.log(`  -> Dispatched ${results.length} job(s) to ${tool}${project ? ` (project: ${project})` : ""}`);
+              for (const result of results) {
+                if (result.exitCode === 0) {
+                  console.log(`    ok ${result.kind}:${String(result.refId || "").substring(0, 8)} completed`);
+                } else {
+                  console.log(`    fail ${result.kind}:${String(result.refId || "").substring(0, 8)} failed (exit ${result.exitCode})`);
                 }
               }
             }
           } catch (err) {
-            // Continue on errors
+            cycleErrors.push(`${tool}${project ? `/${project}` : ""}: ${err.message || String(err)}`);
+            console.error(`  Cycle tool error for ${tool}: ${err.message}`);
           }
         }
       }
     } catch (err) {
+      cycleErrors.push(err.message || String(err));
       console.error(`Cycle error: ${err.message}`);
     }
+    const cycleFinishedAt = new Date().toISOString();
+    writeDaemonStatus(config.memoryDir, {
+      state: "running",
+      pid: process.pid,
+      startedAt,
+      intervalMs,
+      limit,
+      projects: projectList,
+      cycle: iteration,
+      lastCycleStartedAt: cycleStartedAt,
+      lastCycleFinishedAt: cycleFinishedAt,
+      lastError: cycleErrors.join(" | ")
+    });
 
     console.log("");
   };
 
+  const stop = (signal) => {
+    if (stopping) {
+      return;
+    }
+    stopping = true;
+    if (timer) {
+      clearInterval(timer);
+    }
+    writeDaemonStatus(config.memoryDir, {
+      state: "stopped",
+      pid: process.pid,
+      startedAt,
+      stoppedAt: new Date().toISOString(),
+      stopSignal: signal || "stop",
+      intervalMs,
+      limit,
+      projects: projectList,
+      cycle: iteration
+    });
+    clearDaemonPid(config.memoryDir, process.pid);
+    console.log(`\n${signal || "stop"} received; daemon stopped.`);
+    process.exit(0);
+  };
+  process.on("SIGINT", () => stop("SIGINT"));
+  process.on("SIGTERM", () => stop("SIGTERM"));
+
   runCycle();
-  setInterval(runCycle, intervalMs);
+  timer = setInterval(runCycle, intervalMs);
+}
+
+function daemonStatusCommand() {
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  console.log(JSON.stringify(buildDaemonStatus(config.memoryDir), null, 2));
+}
+
+function buildDaemonStatus(memoryDir) {
+  const paths = getDaemonStatePaths(memoryDir);
+  const status = readDaemonStatus(memoryDir);
+  const pidFromFile = readDaemonPid(memoryDir);
+  const pidFromStatus = Number(status.pid || 0);
+  const pid = pidFromFile || (Number.isInteger(pidFromStatus) && pidFromStatus > 0 ? pidFromStatus : null);
+  const liveness = checkProcessLiveness(pid);
+  const declaredActive = ["starting", "running", "stopping"].includes(status.state || "") || (pidFromFile && !status.state);
+  const running = Boolean(pid && declaredActive && liveness.running);
+  const state = status.state === "invalid"
+    ? "invalid"
+    : running
+      ? (status.state || "running")
+      : status.state === "stopped"
+        ? "stopped"
+        : pid
+          ? "stale"
+          : "not_running";
+
+  return {
+    state,
+    running,
+    stalePid: Boolean(pid && !running),
+    pid,
+    pidFile: paths.pidFile,
+    statusFile: paths.statusFile,
+    liveness,
+    status
+  };
+}
+
+function getDaemonStatePaths(memoryDir) {
+  return {
+    pidFile: path.join(memoryDir, "state", DAEMON_PID_FILE),
+    statusFile: path.join(memoryDir, "state", DAEMON_STATUS_FILE)
+  };
+}
+
+function readDaemonPid(memoryDir) {
+  const text = readTextIfExists(getDaemonStatePaths(memoryDir).pidFile).trim();
+  const pid = Number(text);
+  return Number.isInteger(pid) && pid > 0 ? pid : null;
+}
+
+function writeDaemonPid(memoryDir, pid) {
+  const paths = getDaemonStatePaths(memoryDir);
+  ensureDir(path.dirname(paths.pidFile));
+  fs.writeFileSync(paths.pidFile, `${pid}\n`, "utf8");
+}
+
+function clearDaemonPid(memoryDir, pid) {
+  const paths = getDaemonStatePaths(memoryDir);
+  const currentPid = readDaemonPid(memoryDir);
+  if (currentPid === pid && fs.existsSync(paths.pidFile)) {
+    fs.unlinkSync(paths.pidFile);
+  }
+}
+
+function readDaemonStatus(memoryDir) {
+  const file = getDaemonStatePaths(memoryDir).statusFile;
+  if (!fs.existsSync(file)) {
+    return {};
+  }
+  try {
+    return readJson(file);
+  } catch (error) {
+    return {
+      state: "invalid",
+      error: error.message || String(error)
+    };
+  }
+}
+
+function writeDaemonStatus(memoryDir, patch) {
+  const paths = getDaemonStatePaths(memoryDir);
+  const existing = readDaemonStatus(memoryDir);
+  writeJson(paths.statusFile, {
+    ...existing,
+    ...patch,
+    updatedAt: new Date().toISOString()
+  });
+}
+
+function checkProcessLiveness(pid) {
+  if (!pid) {
+    return {
+      running: false,
+      reason: "missing pid"
+    };
+  }
+  try {
+    process.kill(pid, 0);
+    return {
+      running: true,
+      reason: pid === process.pid ? "current process" : "signal 0 succeeded"
+    };
+  } catch (error) {
+    if (error.code === "EPERM") {
+      return {
+        running: true,
+        reason: "permission denied, process exists"
+      };
+    }
+    return {
+      running: false,
+      reason: error.code || error.message || "not running"
+    };
+  }
 }
 
 function appCommand(argv) {
@@ -2768,6 +3593,14 @@ function appCommand(argv) {
             .filter((task) => status === "all" ? true : status === "active" ? !["done", "cancelled"].includes(task.status) : task.status === status)
             .sort((a, b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")))
             .slice(0, 200)
+        });
+      }
+      if (req.method === "GET" && url.pathname === "/api/workflows") {
+        const config = loadConfig();
+        return sendJson(res, {
+          workflows: readWorkflows(config.memoryDir)
+            .sort((a, b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")))
+            .slice(0, 100)
         });
       }
       if (req.method === "GET" && url.pathname === "/api/dispatch") {
@@ -3076,10 +3909,12 @@ Commands:
   metrics    Show operational metrics for tasks, workflows, relay, and queue.
   update     Check for updates or update to the latest version.
   connect    Check tool connections or send a request/review/handoff to another tool.
+  doctor     Diagnose AI tool runner paths, shims, probes, and prompt mode.
   dispatch   Dispatch pending radio/task work to verified CLI runners.
   pull       Rebuild MEMORY.md from the local memory ledger.
   backup     Back up MEMORY.md, ledger, inbox, profile, radio, task, and workflow files.
   watch      Periodically index pending inbox events.
+  daemon     Run or inspect the local dispatch daemon.
   app        Start the local dashboard app.
   install    Show or apply per-tool instruction snippets. Use --local to write rules in the current project directory.
   help       Show this help.
@@ -3104,6 +3939,7 @@ Examples:
   ${APP_NAME} connect
   ${APP_NAME} connect --apply
   ${APP_NAME} connect request --from gemini --to codex --project ai-memory-hub --text "Please inspect the current task list." --task
+  ${APP_NAME} doctor --tool claude
   ${APP_NAME} workflow create "Review dashboard changes" --from codex --project ai-memory-hub --planner codex --executor opencode --reviewer qclaw --spawn-tasks --notify
   ${APP_NAME} workflow list --status active
   ${APP_NAME} dispatch --project ai-memory-hub
@@ -3111,10 +3947,13 @@ Examples:
   ${APP_NAME} dispatch status --thread <thread-id> --project ai-memory-hub
   ${APP_NAME} dispatch status --recent 10 --project ai-memory-hub
   ${APP_NAME} dispatch status --recent --state failed --to claude
+  ${APP_NAME} dispatch progress --thread-key codex:ai-memory-hub:<ref> --percent 40 --status "working" --by codex
   ${APP_NAME} dispatch retry --project ai-memory-hub --to qclaw --run --limit 1
   ${APP_NAME} pull
   ${APP_NAME} backup --reason manual
   ${APP_NAME} watch --interval-ms 30000
+  ${APP_NAME} daemon status
+  ${APP_NAME} daemon --project ai-memory-hub --interval-ms 10000
   ${APP_NAME} app --port 38787
   ${APP_NAME} install --tool codex
   ${APP_NAME} install --tool codex --apply
@@ -3637,6 +4476,11 @@ function enrichToolConnection(tool, memoryDir) {
     connectionStatus,
     runnable: Boolean(runner.available),
     runnerReason: runner.available ? "" : runner.reason || "",
+    runnerProfile: runner.promptMode || "",
+    runnerCommand: runner.commandPath || "",
+    runnerCommandKind: runner.commandKind || "",
+    runnerUsesShell: Boolean(runner.usesShell),
+    sharedStateOnly: Boolean(runner.sharedStateOnly),
     instructionFile,
     action
   };
@@ -4115,6 +4959,19 @@ function normalizeWorkflow(workflow) {
     reviews: Array.isArray(workflow.reviews) ? workflow.reviews : [],
     linkedTasks: Array.isArray(workflow.linkedTasks) ? workflow.linkedTasks : [],
     linkedRadio: Array.isArray(workflow.linkedRadio) ? workflow.linkedRadio : [],
+    deliveryState: workflow.deliveryState || "",
+    deliveryUpdatedAt: workflow.deliveryUpdatedAt || "",
+    dispatchId: workflow.dispatchId || "",
+    threadKey: workflow.threadKey || "",
+    attempt: Number(workflow.attempt || 0),
+    maxRetries: Number(workflow.maxRetries || 0),
+    nextRetryAt: workflow.nextRetryAt || "",
+    sessionId: workflow.sessionId || "",
+    lastError: workflow.lastError || "",
+    progressPercent: workflow.progressPercent ?? null,
+    progressStatus: workflow.progressStatus || "",
+    progressAt: workflow.progressAt || "",
+    progressBy: workflow.progressBy || "",
     notes: Array.isArray(workflow.notes) ? workflow.notes : []
   };
 }
@@ -4175,6 +5032,22 @@ function normalizeTask(task) {
     title: task.title || task.text || "",
     description: task.description || "",
     handoff: task.handoff || "",
+    deliveryState: task.deliveryState || "",
+    deliveryUpdatedAt: task.deliveryUpdatedAt || "",
+    dispatchId: task.dispatchId || "",
+    threadKey: task.threadKey || "",
+    attempt: Number(task.attempt || 0),
+    maxRetries: Number(task.maxRetries || 0),
+    nextRetryAt: task.nextRetryAt || "",
+    sessionId: task.sessionId || "",
+    lastError: task.lastError || "",
+    progressPercent: task.progressPercent ?? null,
+    progressStatus: task.progressStatus || "",
+    progressAt: task.progressAt || "",
+    progressBy: task.progressBy || "",
+    responseRadioId: task.responseRadioId || "",
+    statusRadioId: task.statusRadioId || "",
+    dispatchReportPath: task.dispatchReportPath || "",
     notes: Array.isArray(task.notes) ? task.notes.map((note) => ({
       ts: note.ts || note.createdAt || now,
       by: note.by || note.source || "unknown",
@@ -4715,7 +5588,8 @@ function createWorkflowFromRecipe(memoryDir, recipeName, toolMapping, variables)
 function calculateMetrics(memoryDir) {
   const tasks = readTasks(memoryDir);
   const workflows = readWorkflows(memoryDir);
-  const relayStatus = readRelayStatus(memoryDir);
+  const relayEvents = readRelayStatus(memoryDir);
+  const relayStatus = Object.values(readLatestRelayStatusByThread(memoryDir));
   const dispatchQueue = readDispatchQueue(memoryDir);
 
   // Task metrics
@@ -4761,12 +5635,14 @@ function calculateMetrics(memoryDir) {
 
   // Relay metrics
   const relayByStatus = relayStatus.reduce((acc, relay) => {
-    acc[relay.deliveryState] = (acc[relay.deliveryState] || 0) + 1;
+    const status = relay.state || relay.deliveryState || "unknown";
+    acc[status] = (acc[status] || 0) + 1;
     return acc;
   }, {});
 
-  const completedRelays = relayStatus.filter((r) => r.deliveryState === "completed");
-  const failedRelays = relayStatus.filter((r) => r.deliveryState === "failed");
+  const completedRelays = relayStatus.filter((r) => (r.state || r.deliveryState) === "completed");
+  const failedRelays = relayStatus.filter((r) => ["failed", "abandoned"].includes(r.state || r.deliveryState));
+  const progressRelays = relayStatus.filter((r) => (r.state || r.deliveryState) === "progress");
 
   const relaySuccessRate = relayStatus.length > 0
     ? ((completedRelays.length / relayStatus.length) * 100).toFixed(2)
@@ -4786,9 +5662,9 @@ function calculateMetrics(memoryDir) {
   const recentFailures = [
     ...failedRelays.slice(-5).map((r) => ({
       type: "relay",
-      id: r.radioId,
+      id: r.dispatchId || r.sourceId || r.id,
       error: r.lastError,
-      time: r.deliveryUpdatedAt
+      time: r.ts || r.deliveryUpdatedAt
     })),
     ...failedQueueEntries.slice(-5).map((q) => ({
       type: "queue",
@@ -4814,9 +5690,11 @@ function calculateMetrics(memoryDir) {
     },
     relay: {
       total: relayStatus.length,
+      eventsTotal: relayEvents.length,
       byStatus: relayByStatus,
       completed: completedRelays.length,
       failed: failedRelays.length,
+      progress: progressRelays.length,
       successRate: `${relaySuccessRate}%`
     },
     queue: {
@@ -5586,6 +6464,10 @@ function readRadioMessages(memoryDir) {
     nextRetryAt: message.nextRetryAt || "",
     sessionId: message.sessionId || "",
     lastError: message.lastError || "",
+    progressPercent: message.progressPercent ?? null,
+    progressStatus: message.progressStatus || "",
+    progressAt: message.progressAt || "",
+    progressBy: message.progressBy || "",
     promoted: Boolean(message.promoted),
     promotedAt: message.promotedAt || ""
   }));
@@ -5775,13 +6657,77 @@ function summarizeDir(dir) {
 }
 
 function commandExists(commandName) {
-  const checker = process.platform === "win32" ? "where" : "command";
-  const args = process.platform === "win32" ? [commandName] : ["-v", commandName];
-  const result = spawnSync(checker, args, {
+  return resolveCommandPaths(commandName).length > 0;
+}
+
+function resolveCommandPaths(commandName) {
+  const name = String(commandName || "").trim();
+  if (!name) {
+    return [];
+  }
+  if (path.isAbsolute(name) || /[\\/]/.test(name)) {
+    return fs.existsSync(name) ? [path.resolve(name)] : [];
+  }
+  if (process.platform === "win32") {
+    const result = spawnSync("where.exe", [name], {
+      encoding: "utf8",
+      windowsHide: true
+    });
+    if (result.status !== 0) {
+      return [];
+    }
+    return String(result.stdout || "")
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+  }
+  const result = spawnSync("sh", ["-lc", `command -v ${shellQuote(name)}`], {
     encoding: "utf8",
     windowsHide: true
   });
-  return result.status === 0;
+  if (result.status !== 0) {
+    return [];
+  }
+  return String(result.stdout || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function choosePreferredCommandPath(paths) {
+  return [...new Set((paths || []).filter(Boolean))]
+    .sort((a, b) => commandPathPriority(a) - commandPathPriority(b))[0] || "";
+}
+
+function commandPathPriority(file) {
+  const kind = classifyCommandPath(file);
+  if (kind === "executable") return 0;
+  if (kind === "native") return process.platform === "win32" ? 30 : 5;
+  if (kind === "cmd-shim") return 10;
+  if (kind === "cmd-script") return 12;
+  if (kind === "powershell-shim") return 90;
+  return 50;
+}
+
+function classifyCommandPath(file) {
+  const ext = path.extname(String(file || "")).toLowerCase();
+  if (ext === ".exe" || ext === ".com") return "executable";
+  if (ext === ".cmd") return "cmd-shim";
+  if (ext === ".bat") return "cmd-script";
+  if (ext === ".ps1") return "powershell-shim";
+  return ext ? "file" : "native";
+}
+
+function shouldUseShellForCommand(file) {
+  if (process.platform !== "win32") {
+    return false;
+  }
+  const kind = classifyCommandPath(file);
+  return kind === "cmd-shim" || kind === "cmd-script";
+}
+
+function shellQuote(value) {
+  return `'${String(value || "").replace(/'/g, "'\\''")}'`;
 }
 
 function trimOutput(value, limit = 4000) {

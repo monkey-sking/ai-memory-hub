@@ -9,6 +9,7 @@
   },
   "scripts": {
     "start": "node src/index.js",
+    "test": "node --test",
     "status": "node src/index.js status",
     "init:hub": "node src/index.js init",
     "detect": "node src/index.js detect",

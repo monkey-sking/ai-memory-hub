@@ -99,6 +99,8 @@ async function main() {
       return backupCommand(rest);
     case "watch":
       return watchCommand(rest);
+    case "daemon":
+      return daemonCommand(rest);
     case "app":
       return appCommand(rest);
     case "install":
@@ -2644,6 +2646,74 @@ function watchCommand(argv) {
 
   tick();
   setInterval(tick, intervalMs);
+}
+
+function daemonCommand(argv) {
+  const config = loadConfig();
+  const intervalMs = Number(getOption(argv, "--interval-ms") || 10000);
+  const projects = getOption(argv, "--project");
+  const projectList = projects ? projects.split(",") : [];
+
+  console.log(`Starting AI Memory Hub Daemon`);
+  console.log(`Monitoring: radio messages and tasks`);
+  console.log(`Interval: ${intervalMs}ms`);
+  if (projectList.length > 0) {
+    console.log(`Projects: ${projectList.join(", ")}`);
+  }
+  console.log("Press Ctrl+C to stop.\n");
+
+  let iteration = 0;
+  const runCycle = () => {
+    iteration++;
+    console.log(`[${new Date().toISOString()}] Cycle #${iteration}`);
+
+    try {
+      const tools = ["codex", "gemini", "claude"];
+
+      for (const tool of tools) {
+        const runner = getToolRunner(tool);
+        if (!runner.available) {
+          continue;
+        }
+
+        const checkProjects = projectList.length > 0 ? projectList : [null];
+
+        for (const project of checkProjects) {
+          try {
+            const jobs = buildDispatchJobs(config.memoryDir, { to: tool, project });
+
+            if (jobs.length > 0) {
+              console.log(`  → Dispatching ${jobs.length} job(s) to ${tool}${project ? ` (project: ${project})` : ""}`);
+
+              for (const job of jobs) {
+                try {
+                  const result = runDispatchJob(config.memoryDir, job, runner);
+                  appendDispatchLog(config.memoryDir, result);
+
+                  if (result.exitCode === 0) {
+                    console.log(`    ✓ ${job.kind}:${job.refId.substring(0, 8)} completed`);
+                  } else {
+                    console.log(`    ✗ ${job.kind}:${job.refId.substring(0, 8)} failed (exit ${result.exitCode})`);
+                  }
+                } catch (err) {
+                  console.error(`    ✗ Dispatch error: ${err.message}`);
+                }
+              }
+            }
+          } catch (err) {
+            // Continue on errors
+          }
+        }
+      }
+    } catch (err) {
+      console.error(`Cycle error: ${err.message}`);
+    }
+
+    console.log("");
+  };
+
+  runCycle();
+  setInterval(runCycle, intervalMs);
 }
 
 function appCommand(argv) {

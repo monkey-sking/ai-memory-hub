@@ -71,6 +71,8 @@ async function main() {
       return notifyCommand(rest);
     case "context":
       return contextCommand(rest);
+    case "queue":
+      return queueCommand(rest);
     case "connect":
     case "contact":
       return connectCommand(rest);
@@ -792,6 +794,157 @@ function contextListCommand(argv) {
     .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
 
   console.log(JSON.stringify(packs, null, 2));
+}
+
+function queueCommand(argv) {
+  const action = argv[0] || "list";
+  switch (action) {
+    case "add":
+      return queueAddCommand(argv.slice(1));
+    case "list":
+      return queueListCommand(argv.slice(1));
+    case "running":
+      return queueRunningCommand(argv.slice(1));
+    case "failed":
+      return queueFailedCommand(argv.slice(1));
+    case "start":
+      return queueStartCommand(argv.slice(1));
+    case "complete":
+      return queueCompleteCommand(argv.slice(1));
+    case "fail":
+      return queueFailCommand(argv.slice(1));
+    default:
+      throw new Error(`Unknown queue action: ${action}\nTry: ai-memory-hub queue add|list|running|failed|start|complete|fail`);
+  }
+}
+
+function queueAddCommand(argv) {
+  const taskId = getOption(argv, "--task") || "";
+  const workflowId = getOption(argv, "--workflow") || "";
+  const radioId = getOption(argv, "--radio") || "";
+  const tool = getOption(argv, "--tool") || "";
+  const priority = getOption(argv, "--priority") || "normal";
+  const timeout = getOption(argv, "--timeout") || "30000";
+  const maxRetries = getOption(argv, "--max-retries") || "3";
+
+  if (!tool || (!taskId && !workflowId && !radioId)) {
+    throw new Error("Usage: ai-memory-hub queue add --tool <tool> [--task <id>] [--workflow <id>] [--radio <id>] [--priority normal] [--timeout 30000] [--max-retries 3]");
+  }
+
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+
+  const entry = createDispatchQueueEntry({
+    taskId,
+    workflowId,
+    radioId,
+    tool,
+    priority,
+    timeout,
+    maxRetries
+  });
+
+  writeDispatchQueueEntry(config.memoryDir, entry);
+  console.log(JSON.stringify(entry, null, 2));
+}
+
+function queueListCommand(argv) {
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+
+  const queued = getQueuedEntries(config.memoryDir);
+  console.log(JSON.stringify(queued, null, 2));
+}
+
+function queueRunningCommand(argv) {
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+
+  const running = getRunningEntries(config.memoryDir);
+  console.log(JSON.stringify(running, null, 2));
+}
+
+function queueFailedCommand(argv) {
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+
+  const failed = getFailedEntries(config.memoryDir);
+  console.log(JSON.stringify(failed, null, 2));
+}
+
+function queueStartCommand(argv) {
+  const entryId = getOption(argv, "--id") || argv[0] || "";
+
+  if (!entryId) {
+    throw new Error("Usage: ai-memory-hub queue start <entry-id>");
+  }
+
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+
+  updateDispatchQueueEntry(config.memoryDir, entryId, {
+    status: "running",
+    startedAt: new Date().toISOString(),
+    attempts: 1,
+    lastAttemptAt: new Date().toISOString()
+  });
+
+  console.log(JSON.stringify({ id: entryId, status: "running" }, null, 2));
+}
+
+function queueCompleteCommand(argv) {
+  const entryId = getOption(argv, "--id") || argv[0] || "";
+
+  if (!entryId) {
+    throw new Error("Usage: ai-memory-hub queue complete <entry-id>");
+  }
+
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+
+  updateDispatchQueueEntry(config.memoryDir, entryId, {
+    status: "completed",
+    completedAt: new Date().toISOString()
+  });
+
+  console.log(JSON.stringify({ id: entryId, status: "completed" }, null, 2));
+}
+
+function queueFailCommand(argv) {
+  const entryId = getOption(argv, "--id") || argv[0] || "";
+  const error = getOption(argv, "--error") || "Unknown error";
+
+  if (!entryId) {
+    throw new Error("Usage: ai-memory-hub queue fail <entry-id> [--error <message>]");
+  }
+
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+
+  const entries = readDispatchQueue(config.memoryDir);
+  const entry = entries.find((e) => e.id === entryId);
+
+  if (!entry) {
+    throw new Error(`Queue entry not found: ${entryId}`);
+  }
+
+  const newAttempts = (entry.attempts || 0) + 1;
+  const shouldRetry = newAttempts < (entry.maxRetries || 3);
+
+  updateDispatchQueueEntry(config.memoryDir, entryId, {
+    status: shouldRetry ? "queued" : "failed",
+    attempts: newAttempts,
+    lastAttemptAt: new Date().toISOString(),
+    lastError: error,
+    completedAt: shouldRetry ? "" : new Date().toISOString()
+  });
+
+  console.log(JSON.stringify({
+    id: entryId,
+    status: shouldRetry ? "queued (will retry)" : "failed",
+    attempts: newAttempts,
+    maxRetries: entry.maxRetries
+  }, null, 2));
 }
 
 function taskCommand(argv) {
@@ -2561,6 +2714,7 @@ Commands:
   rpc        Synchronous request-response RPC calls between tools.
   notify     Send cross-platform notifications with severity-based routing.
   context    Generate task-specific memory bundles for focused context.
+  queue      Manage dispatch queue with priority and retry controls.
   connect    Check tool connections or send a request/review/handoff to another tool.
   dispatch   Dispatch pending radio/task work to verified CLI runners.
   pull       Rebuild MEMORY.md from the local memory ledger.
@@ -3989,6 +4143,80 @@ function readContextPack(memoryDir, packId) {
     return null;
   }
   return readJson(file);
+}
+
+// Scheduler Queue Functions
+function createDispatchQueueEntry({ taskId, workflowId, radioId, tool, priority, timeout, maxRetries }) {
+  return {
+    id: createId(`queue:${tool}:${Date.now()}`),
+    createdAt: new Date().toISOString(),
+    taskId: taskId || "",
+    workflowId: workflowId || "",
+    radioId: radioId || "",
+    tool: tool || "",
+    priority: normalizePriority(priority || "normal"),
+    timeout: Number(timeout || 30000),
+    maxRetries: Number(maxRetries || 3),
+    status: "queued",
+    startedAt: "",
+    completedAt: "",
+    attempts: 0,
+    lastAttemptAt: "",
+    lastError: ""
+  };
+}
+
+function readDispatchQueue(memoryDir) {
+  const file = path.join(memoryDir, "dispatch", "queue.jsonl");
+  return readEvents(file);
+}
+
+function writeDispatchQueueEntry(memoryDir, entry) {
+  const file = path.join(memoryDir, "dispatch", "queue.jsonl");
+  ensureDir(path.dirname(file));
+  appendJsonl(file, entry);
+}
+
+function updateDispatchQueueEntry(memoryDir, entryId, updates) {
+  const file = path.join(memoryDir, "dispatch", "queue.jsonl");
+  const entries = readDispatchQueue(memoryDir).map((entry) => {
+    if (entry.id === entryId) {
+      return {
+        ...entry,
+        ...updates,
+        updatedAt: new Date().toISOString()
+      };
+    }
+    return entry;
+  });
+  ensureDir(path.dirname(file));
+  fs.writeFileSync(file, entries.map((e) => JSON.stringify(e)).join("\n") + "\n", "utf8");
+}
+
+function getQueuedEntries(memoryDir) {
+  return readDispatchQueue(memoryDir)
+    .filter((e) => e.status === "queued")
+    .sort((a, b) => {
+      // Sort by priority first (urgent > high > normal > low)
+      const priorityOrder = { urgent: 0, high: 1, normal: 2, low: 3 };
+      const aPrio = priorityOrder[a.priority] || 2;
+      const bPrio = priorityOrder[b.priority] || 2;
+      if (aPrio !== bPrio) return aPrio - bPrio;
+      // Then by creation time
+      return (a.createdAt || "").localeCompare(b.createdAt || "");
+    });
+}
+
+function getRunningEntries(memoryDir) {
+  return readDispatchQueue(memoryDir)
+    .filter((e) => e.status === "running")
+    .sort((a, b) => (a.startedAt || "").localeCompare(b.startedAt || ""));
+}
+
+function getFailedEntries(memoryDir) {
+  return readDispatchQueue(memoryDir)
+    .filter((e) => e.status === "failed")
+    .sort((a, b) => (b.completedAt || "").localeCompare(a.completedAt || ""));
 }
 
 function normalizePriority(priority) {

@@ -2090,6 +2090,17 @@ function getToolRunner(tool) {
       args: ["-p"]
     };
   }
+  if (tool === "qoder-cn" || tool === "opencode") {
+    if (!commandExists("qoder-cn")) {
+      return { available: false, reason: "qoder-cn CLI not found in PATH" };
+    }
+    return {
+      available: true,
+      preview: "qoder-cn - (stdin)",
+      command: "qoder-cn",
+      args: ["-"]
+    };
+  }
   if (tool === "marvis") {
     return {
       available: false,

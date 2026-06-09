@@ -5,8 +5,11 @@ import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import http from "node:http";
-import { spawnSync } from "node:child_process";
+import { spawnSync, execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const APP_NAME = "ai-memory-hub";
 const MEMORY_DIR_ENV = "AI_MEMORY_DIR";
@@ -77,6 +80,8 @@ async function main() {
       return recipeCommand(rest);
     case "metrics":
       return metricsCommand(rest);
+    case "update":
+      return updateCommand(rest);
     case "connect":
     case "contact":
       return connectCommand(rest);
@@ -1067,6 +1072,117 @@ function metricsCommand(argv) {
 
   const metrics = calculateMetrics(config.memoryDir);
   console.log(JSON.stringify(metrics, null, 2));
+}
+
+function updateCommand(argv) {
+  const check = hasFlag(argv, "--check");
+  const force = hasFlag(argv, "--force");
+
+  if (check) {
+    return checkForUpdates();
+  }
+
+  return performUpdate(force);
+}
+
+function checkForUpdates() {
+  console.log("Checking for updates...");
+
+  try {
+    // Get current version from package.json
+    const packagePath = path.join(__dirname, "..", "package.json");
+    const pkg = readJson(packagePath);
+    const currentVersion = pkg.version || "unknown";
+
+    // Check git remote for updates
+
+    // Fetch latest from remote
+    execSync("git fetch origin main", { stdio: "pipe" });
+
+    // Get local and remote commit hashes
+    const localHash = execSync("git rev-parse HEAD", { encoding: "utf8" }).trim();
+    const remoteHash = execSync("git rev-parse origin/main", { encoding: "utf8" }).trim();
+
+    if (localHash === remoteHash) {
+      console.log(JSON.stringify({
+        upToDate: true,
+        currentVersion,
+        message: "You are running the latest version"
+      }, null, 2));
+    } else {
+      // Get commit count between local and remote
+      const behindCount = execSync(`git rev-list --count HEAD..origin/main`, { encoding: "utf8" }).trim();
+
+      console.log(JSON.stringify({
+        upToDate: false,
+        currentVersion,
+        behindBy: parseInt(behindCount),
+        message: `${behindCount} new commit(s) available. Run 'ai-memory-hub update' to update.`
+      }, null, 2));
+    }
+  } catch (error) {
+    console.error(JSON.stringify({
+      error: true,
+      message: `Failed to check for updates: ${error.message}`
+    }, null, 2));
+    process.exit(1);
+  }
+}
+
+function performUpdate(force) {
+  console.log("Updating ai-memory-hub...");
+
+  try {
+    // Check for uncommitted changes
+    const status = execSync("git status --porcelain", { encoding: "utf8" });
+
+    if (status && !force) {
+      console.error(JSON.stringify({
+        error: true,
+        message: "You have uncommitted changes. Commit or stash them first, or use --force to discard.",
+        uncommittedFiles: status.split("\n").filter(Boolean)
+      }, null, 2));
+      process.exit(1);
+    }
+
+    // Fetch latest changes
+    console.log("Fetching latest changes...");
+    execSync("git fetch origin main", { stdio: "inherit" });
+
+    // Reset to origin/main (discard local changes if --force)
+    if (force) {
+      console.log("Discarding local changes and updating...");
+      execSync("git reset --hard origin/main", { stdio: "inherit" });
+    } else {
+      console.log("Pulling latest changes...");
+      execSync("git pull origin main", { stdio: "inherit" });
+    }
+
+    // Install/update dependencies
+    console.log("Checking dependencies...");
+    const packagePath = path.join(__dirname, "..", "package.json");
+    if (fs.existsSync(packagePath)) {
+      console.log("Updating dependencies...");
+      execSync("npm install", { stdio: "inherit", cwd: path.join(__dirname, "..") });
+    }
+
+    // Get new version
+    const pkg = readJson(packagePath);
+    const newVersion = pkg.version || "unknown";
+
+    console.log(JSON.stringify({
+      success: true,
+      version: newVersion,
+      message: "Update complete! Restart any running processes to use the new version."
+    }, null, 2));
+
+  } catch (error) {
+    console.error(JSON.stringify({
+      error: true,
+      message: `Update failed: ${error.message}`
+    }, null, 2));
+    process.exit(1);
+  }
 }
 
 function taskCommand(argv) {
@@ -2839,6 +2955,7 @@ Commands:
   queue      Manage dispatch queue with priority and retry controls.
   recipe     Manage workflow recipes for reusable collaboration templates.
   metrics    Show operational metrics for tasks, workflows, relay, and queue.
+  update     Check for updates or update to the latest version.
   connect    Check tool connections or send a request/review/handoff to another tool.
   dispatch   Dispatch pending radio/task work to verified CLI runners.
   pull       Rebuild MEMORY.md from the local memory ledger.

@@ -73,6 +73,8 @@ async function main() {
       return contextCommand(rest);
     case "queue":
       return queueCommand(rest);
+    case "recipe":
+      return recipeCommand(rest);
     case "connect":
     case "contact":
       return connectCommand(rest);
@@ -945,6 +947,116 @@ function queueFailCommand(argv) {
     attempts: newAttempts,
     maxRetries: entry.maxRetries
   }, null, 2));
+}
+
+function recipeCommand(argv) {
+  const action = argv[0] || "list";
+  switch (action) {
+    case "list":
+      return recipeListCommand(argv.slice(1));
+    case "show":
+      return recipeShowCommand(argv.slice(1));
+    case "create":
+      return recipeCreateCommand(argv.slice(1));
+    case "validate":
+      return recipeValidateCommand(argv.slice(1));
+    default:
+      throw new Error(`Unknown recipe action: ${action}\nTry: ai-memory-hub recipe list|show|create|validate`);
+  }
+}
+
+function recipeListCommand(argv) {
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+
+  const recipes = listRecipes(config.memoryDir);
+  console.log(JSON.stringify(recipes, null, 2));
+}
+
+function recipeShowCommand(argv) {
+  const recipeName = argv[0] || "";
+
+  if (!recipeName) {
+    throw new Error("Usage: ai-memory-hub recipe show <recipe-name>");
+  }
+
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+
+  const recipe = readRecipe(config.memoryDir, recipeName);
+
+  if (!recipe) {
+    throw new Error(`Recipe not found: ${recipeName}`);
+  }
+
+  console.log(JSON.stringify(recipe, null, 2));
+}
+
+function recipeCreateCommand(argv) {
+  const recipeName = getOption(argv, "--recipe") || "";
+  const project = getOption(argv, "--project") || "";
+  const toolsStr = getOption(argv, "--tools") || "";
+
+  if (!recipeName || !toolsStr) {
+    throw new Error("Usage: ai-memory-hub recipe create --recipe <name> --tools role1:tool1,role2:tool2 [--project <name>] [--var key=value]");
+  }
+
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+
+  // Parse tool mapping: "analyzer:claude,writer:codex,reviewer:gemini"
+  const toolMapping = {};
+  toolsStr.split(",").forEach((pair) => {
+    const [role, tool] = pair.split(":").map((s) => s.trim());
+    if (role && tool) {
+      toolMapping[role] = tool;
+    }
+  });
+
+  // Parse variables: --var priority=high --var scope=docs
+  const variables = { project };
+  argv.forEach((arg, idx) => {
+    if (arg === "--var" && argv[idx + 1]) {
+      const [key, value] = argv[idx + 1].split("=").map((s) => s.trim());
+      if (key && value) {
+        variables[key] = value;
+      }
+    }
+  });
+
+  const result = createWorkflowFromRecipe(config.memoryDir, recipeName, toolMapping, variables);
+
+  console.log(JSON.stringify({
+    workflow: result.workflow,
+    tasks: result.tasks.map((t) => ({ id: t.id, title: t.title, assignee: t.assignee })),
+    recipe: { name: result.recipe.name, steps: result.recipe.steps.length }
+  }, null, 2));
+}
+
+function recipeValidateCommand(argv) {
+  const recipeName = argv[0] || "";
+
+  if (!recipeName) {
+    throw new Error("Usage: ai-memory-hub recipe validate <recipe-name>");
+  }
+
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+
+  const recipe = readRecipe(config.memoryDir, recipeName);
+
+  if (!recipe) {
+    throw new Error(`Recipe not found: ${recipeName}`);
+  }
+
+  const validation = validateRecipe(recipe);
+
+  if (validation.valid) {
+    console.log(JSON.stringify({ valid: true, message: "Recipe is valid" }, null, 2));
+  } else {
+    console.log(JSON.stringify({ valid: false, error: validation.error }, null, 2));
+    process.exit(1);
+  }
 }
 
 function taskCommand(argv) {
@@ -2715,6 +2827,7 @@ Commands:
   notify     Send cross-platform notifications with severity-based routing.
   context    Generate task-specific memory bundles for focused context.
   queue      Manage dispatch queue with priority and retry controls.
+  recipe     Manage workflow recipes for reusable collaboration templates.
   connect    Check tool connections or send a request/review/handoff to another tool.
   dispatch   Dispatch pending radio/task work to verified CLI runners.
   pull       Rebuild MEMORY.md from the local memory ledger.
@@ -4217,6 +4330,138 @@ function getFailedEntries(memoryDir) {
   return readDispatchQueue(memoryDir)
     .filter((e) => e.status === "failed")
     .sort((a, b) => (b.completedAt || "").localeCompare(a.completedAt || ""));
+}
+
+// Workflow Recipe Functions
+function readRecipe(memoryDir, recipeName) {
+  const file = path.join(memoryDir, "recipes", `${recipeName}.json`);
+  if (!fs.existsSync(file)) {
+    return null;
+  }
+  return readJson(file);
+}
+
+function listRecipes(memoryDir) {
+  const recipesDir = path.join(memoryDir, "recipes");
+  if (!fs.existsSync(recipesDir)) {
+    return [];
+  }
+
+  const files = fs.readdirSync(recipesDir).filter((f) => f.endsWith(".json"));
+  return files.map((file) => {
+    try {
+      const recipe = readJson(path.join(recipesDir, file));
+      return {
+        name: recipe.name,
+        title: recipe.title,
+        description: recipe.description,
+        version: recipe.version,
+        roles: Object.keys(recipe.roles || {}),
+        steps: (recipe.steps || []).length
+      };
+    } catch {
+      return null;
+    }
+  }).filter(Boolean);
+}
+
+function validateRecipe(recipe) {
+  if (!recipe.name || !recipe.title) {
+    return { valid: false, error: "Recipe must have name and title" };
+  }
+
+  if (!recipe.roles || Object.keys(recipe.roles).length === 0) {
+    return { valid: false, error: "Recipe must define at least one role" };
+  }
+
+  if (!recipe.steps || recipe.steps.length === 0) {
+    return { valid: false, error: "Recipe must have at least one step" };
+  }
+
+  // Check all step roles are defined
+  for (const step of recipe.steps) {
+    if (!recipe.roles[step.role]) {
+      return { valid: false, error: `Step ${step.id} references undefined role: ${step.role}` };
+    }
+  }
+
+  // Check dependsOn references exist
+  for (const step of recipe.steps) {
+    if (step.dependsOn) {
+      for (const depId of step.dependsOn) {
+        const depExists = recipe.steps.some((s) => s.id === depId);
+        if (!depExists) {
+          return { valid: false, error: `Step ${step.id} depends on non-existent step: ${depId}` };
+        }
+      }
+    }
+  }
+
+  return { valid: true };
+}
+
+function createWorkflowFromRecipe(memoryDir, recipeName, toolMapping, variables) {
+  const recipe = readRecipe(memoryDir, recipeName);
+
+  if (!recipe) {
+    throw new Error(`Recipe not found: ${recipeName}`);
+  }
+
+  const validation = validateRecipe(recipe);
+  if (!validation.valid) {
+    throw new Error(`Invalid recipe: ${validation.error}`);
+  }
+
+  // Merge variables
+  const vars = { ...recipe.variables, ...variables };
+
+  // Create workflow
+  const workflow = createWorkflow({
+    title: `${recipe.title} - ${vars.project || 'default'}`,
+    createdBy: "recipe",
+    project: vars.project || "",
+    priority: vars.priority || "normal",
+    planner: toolMapping[Object.keys(recipe.roles)[0]] || "",
+    executor: toolMapping[Object.keys(recipe.roles)[1]] || "",
+    reviewer: toolMapping[Object.keys(recipe.roles)[2]] || "",
+    observer: "",
+    plan: `Recipe: ${recipeName}\nSteps: ${recipe.steps.length}`,
+    acceptance: recipe.description || ""
+  });
+
+  const workflows = readWorkflows(memoryDir);
+  workflows.push(workflow);
+  writeWorkflows(memoryDir, workflows);
+
+  // Create tasks for each step
+  const tasks = [];
+  for (const step of recipe.steps) {
+    const tool = toolMapping[step.role] || "";
+    const task = createTask({
+      title: `[${recipeName}] ${step.task}`,
+      description: step.task,
+      createdBy: "recipe",
+      project: vars.project || "",
+      priority: vars.priority || "normal"
+    });
+
+    if (tool) {
+      task.assignee = tool;
+    }
+
+    if (step.dependsOn && step.dependsOn.length > 0) {
+      task.handoff = `Depends on: ${step.dependsOn.join(", ")}`;
+    }
+
+    tasks.push(task);
+  }
+
+  // Write tasks
+  const allTasks = readTasks(memoryDir);
+  allTasks.push(...tasks);
+  writeTasks(memoryDir, allTasks);
+
+  return { workflow, tasks, recipe };
 }
 
 function normalizePriority(priority) {

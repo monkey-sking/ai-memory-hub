@@ -217,7 +217,9 @@ Default retention is:
 - Ledger records: retained indefinitely unless a user explicitly performs a
   destructive maintenance operation.
 - Derived indexes and snapshots: rebuilt freely from the ledger.
-- Startup snapshot: bounded by `sync.coreLimit` and `sync.recentLimit`.
+- Startup snapshot: bounded by `sync.snapshotLimit`, `sync.coreLimit`, and
+  `sync.recentLimit`; when core/recent limits are omitted, they are derived
+  from `sync.snapshotLimit`.
 - Backups: governed by `sync.backupRetention`.
 - Indexed inbox events: archived or retained according to
   `sync.archiveIndexedInboxItems`.

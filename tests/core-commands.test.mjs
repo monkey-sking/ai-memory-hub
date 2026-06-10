@@ -500,6 +500,55 @@ test("memory supersedes downranks replaced records and hides them from snapshot"
   });
 });
 
+test("snapshotLimit derives compact snapshot section limits for legacy config", async () => {
+  await withHub(async (memoryDir) => {
+    await fs.writeFile(path.join(memoryDir, "config.json"), JSON.stringify({
+      memoryDir,
+      sync: {
+        archiveIndexedInboxItems: true,
+        snapshotLimit: 20,
+        lockStaleMs: 120000
+      },
+      tools: {}
+    }, null, 2), "utf8");
+
+    for (let index = 0; index < 30; index += 1) {
+      await appendJsonl(path.join(memoryDir, "inbox", "events.jsonl"), {
+        id: `event-core-${index}`,
+        ts: `2026-06-${String(1 + (index % 9)).padStart(2, "0")}T10:00:00.000Z`,
+        source: "codex",
+        text: `Core workflow rule ${index} must stay concise for startup snapshots.`,
+        metadata: {
+          kind: "workflow",
+          project: "ai-memory-hub"
+        }
+      });
+      await appendJsonl(path.join(memoryDir, "inbox", "events.jsonl"), {
+        id: `event-recent-${index}`,
+        ts: `2026-06-${String(1 + (index % 9)).padStart(2, "0")}T11:00:00.000Z`,
+        source: "codex",
+        text: `Recent context note ${index} for snapshot budget testing.`,
+        metadata: {
+          kind: "note",
+          project: "ai-memory-hub"
+        }
+      });
+    }
+
+    const sync = runCli(memoryDir, ["sync"]);
+    assert.equal(sync.status, 0, sync.stderr || sync.stdout);
+
+    const index = JSON.parse(await fs.readFile(path.join(memoryDir, "memories", "index.json"), "utf8"));
+    assert.equal(index.stats.snapshotLimit, 20);
+    assert.equal(index.stats.snapshotCoreLimit, 10);
+    assert.equal(index.stats.snapshotRecentLimit, 5);
+
+    const snapshot = await fs.readFile(path.join(memoryDir, "MEMORY.md"), "utf8");
+    const memoryLines = snapshot.split(/\r?\n/).filter((line) => line.startsWith("- ["));
+    assert.ok(memoryLines.length <= 15);
+  });
+});
+
 test("health command reports memory quality and storage diagnostics", async () => {
   await withHub(async (memoryDir) => {
     const repeatedText = "Repeated workflow rule: run tests before marking ai-memory-hub tasks done.";

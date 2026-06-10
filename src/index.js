@@ -4525,9 +4525,9 @@ function defaultConfig(memoryDir) {
     memoryDir,
     sync: {
       archiveIndexedInboxItems: true,
-      snapshotLimit: 200,
-      coreLimit: 40,
-      recentLimit: 20,
+      snapshotLimit: 120,
+      coreLimit: 30,
+      recentLimit: 18,
       lockStaleMs: 120000
     },
     tools: {
@@ -4607,11 +4607,16 @@ function loadConfig() {
   const cleanConfig = { ...config };
   delete cleanConfig["m" + "e" + "m" + "0"];
   const base = defaultConfig(memoryDir);
+  const sync = { ...base.sync, ...(config.sync || {}) };
+  Object.defineProperty(sync, "_explicitKeys", {
+    value: new Set(Object.keys(config.sync || {})),
+    enumerable: false
+  });
   return {
     ...base,
     ...cleanConfig,
     memoryDir,
-    sync: { ...base.sync, ...(config.sync || {}) },
+    sync,
     tools: { ...base.tools, ...(config.tools || {}) }
   };
 }
@@ -6869,13 +6874,15 @@ function buildMemoryIndex(memories, config) {
   const enrichedRecords = sorted.map((memory, index) => enrichMemory(memory, index, sorted.length));
   const supersededBy = buildMemorySupersededBy(enrichedRecords);
   const records = enrichedRecords.map((record) => applyMemorySupersedeState(record, supersededBy));
+  const snapshotLimits = resolveSnapshotLimits(config);
   const stats = {
     records: records.length,
     core: records.filter((item) => item.layer === "core").length,
     working: records.filter((item) => item.layer === "working").length,
     archive: records.filter((item) => item.layer === "archive").length,
-    snapshotCoreLimit: Number(config.sync?.coreLimit || 40),
-    snapshotRecentLimit: Number(config.sync?.recentLimit || 20),
+    snapshotLimit: snapshotLimits.snapshotLimit,
+    snapshotCoreLimit: snapshotLimits.coreLimit,
+    snapshotRecentLimit: snapshotLimits.recentLimit,
     rebuiltAt: new Date().toISOString()
   };
   return {
@@ -7044,9 +7051,10 @@ function normalizeSupersedeToken(value) {
 }
 
 function renderMemorySnapshot(index, config, options = {}) {
-  const coreLimit = Number(config.sync?.coreLimit || 40);
-  const recentLimit = Number(config.sync?.recentLimit || 20);
-  const totalLimit = Number(options.limit || 0);
+  const snapshotLimits = resolveSnapshotLimits(config);
+  const coreLimit = snapshotLimits.coreLimit;
+  const recentLimit = snapshotLimits.recentLimit;
+  const totalLimit = Number(options.limit || snapshotLimits.snapshotLimit || 0);
   const visibleRecords = index.records.filter((item) => !item.superseded);
   const allCore = visibleRecords
     .filter((item) => item.layer === "core")
@@ -7100,6 +7108,37 @@ function renderMemorySnapshot(index, config, options = {}) {
   lines.push(`- Top projects: ${index.projects.slice(0, 8).map((item) => `${item.key}(${item.count})`).join(", ") || "none"}.`);
   lines.push("");
   return lines.join("\n");
+}
+
+function resolveSnapshotLimits(config = {}) {
+  const snapshotLimit = readPositiveInteger(config.sync?.snapshotLimit, 120);
+  const explicitCoreLimit = hasExplicitSyncKey(config, "coreLimit");
+  const explicitRecentLimit = hasExplicitSyncKey(config, "recentLimit");
+  return {
+    snapshotLimit,
+    coreLimit: explicitCoreLimit
+      ? readPositiveInteger(config.sync.coreLimit, 30)
+      : Math.max(10, Math.round(snapshotLimit * 0.25)),
+    recentLimit: explicitRecentLimit
+      ? readPositiveInteger(config.sync.recentLimit, 18)
+      : Math.max(5, Math.round(snapshotLimit * 0.15))
+  };
+}
+
+function hasExplicitSyncKey(config, key) {
+  const explicitKeys = config.sync?._explicitKeys;
+  if (explicitKeys instanceof Set) {
+    return explicitKeys.has(key);
+  }
+  return Boolean(config.sync && Object.hasOwn(config.sync, key));
+}
+
+function readPositiveInteger(value, fallback) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return fallback;
+  }
+  return Math.floor(numeric);
 }
 
 function renderIndexMarkdown(index) {

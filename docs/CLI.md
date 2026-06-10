@@ -1223,11 +1223,17 @@ Configuration file: `~/.ai-memory/config.json`
 {
   "memoryDir": "~/.ai-memory",
   "sync": {
-    "coreLimit": 40,
-    "recentLimit": 20
+    "snapshotLimit": 120,
+    "coreLimit": 30,
+    "recentLimit": 18
   }
 }
 ```
+
+`snapshotLimit` is the overall startup snapshot budget. When `coreLimit` or
+`recentLimit` is omitted, ai-memory-hub derives compact defaults from
+`snapshotLimit` so legacy configs can reduce startup context size by changing a
+single value.
 
 ---
 

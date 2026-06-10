@@ -536,6 +536,48 @@
       padding-top: 8px;
     }
 
+    .endpoint-errors {
+      border: 1px solid rgba(248,81,73,0.35);
+      background: rgba(248,81,73,0.08);
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 16px;
+      color: #ffb4ad;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .endpoint-errors[hidden] { display: none; }
+    .endpoint-errors-title {
+      color: #ff7b72;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .endpoint-errors-help {
+      color: var(--text-muted);
+      font-size: 12px;
+    }
+    .endpoint-errors-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .endpoint-error-item {
+      border: 1px solid rgba(248,81,73,0.2);
+      background: rgba(0,0,0,0.18);
+      border-radius: 6px;
+      padding: 5px 7px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      max-width: 100%;
+      font-size: 12px;
+    }
+    .endpoint-error-item code {
+      color: #ff7b72;
+      white-space: nowrap;
+    }
+
     /* Tasks Board Layout */
     .tasks-grid {
       display: grid;
@@ -971,6 +1013,8 @@
     </header>
 
     <main>
+      <div id="endpointErrors" class="endpoint-errors" hidden></div>
+
       <!-- Dashboard Overview Tab -->
       <div id="tab-dashboard" class="tab-panel active">
         <div class="summary-grid">
@@ -1643,6 +1687,9 @@
         durationLabel: "Duration",
         dispatchStateLabel: "Dispatch",
         latestNoteLabel: "Latest note",
+        endpointErrorTitle: "Endpoint load errors",
+        endpointErrorSummary: "{n} endpoint(s) failed to load.",
+        endpointLoadWarning: "Showing cached or empty sections until the next successful refresh.",
         
         noActiveTasks: "No active tasks found.",
         noRecentMessages: "No recent messages.",
@@ -1786,6 +1833,9 @@
         durationLabel: "持续时间",
         dispatchStateLabel: "调度",
         latestNoteLabel: "最新备注",
+        endpointErrorTitle: "端点加载错误",
+        endpointErrorSummary: "{n} 个端点加载失败。",
+        endpointLoadWarning: "在下次成功刷新前，相关区域会显示缓存或空数据。",
         
         noActiveTasks: "暂无活跃任务。",
         noRecentMessages: "暂无最近消息。",
@@ -1867,6 +1917,7 @@
       filterRadioProject: '',
       filterTaskProject: '',
       filterTaskPriority: '',
+      endpointErrors: [],
       lang: localStorage.getItem('hub_lang') || 'zh'
     };
 
@@ -1977,6 +2028,12 @@
       const btn = document.getElementById('btnRefresh');
       if (btn) btn.disabled = true;
       try {
+        const endpointErrors = [];
+        const recordEndpointError = (endpoint, reason) => {
+          const message = reason && reason.message ? reason.message : String(reason || 'Unknown error');
+          endpointErrors.push({ endpoint, message });
+          console.error(`Failed to load ${endpoint}`, reason);
+        };
         const [statusRes, memoryRes, radioRes, tasksRes, workflowsRes, dispatchRes] = await Promise.allSettled([
           api('/api/status'),
           api('/api/memory'),
@@ -1989,43 +2046,46 @@
         if (statusRes.status === 'fulfilled') {
           state.status = statusRes.value || {};
         } else {
-          console.error('Failed to load /api/status', statusRes.reason);
+          recordEndpointError('/api/status', statusRes.reason);
         }
         if (memoryRes.status === 'fulfilled') {
           state.memory = memoryRes.value || {};
         } else {
-          console.error('Failed to load /api/memory', memoryRes.reason);
+          recordEndpointError('/api/memory', memoryRes.reason);
         }
         if (radioRes.status === 'fulfilled') {
           state.radio = (radioRes.value && radioRes.value.messages) || [];
         } else {
-          console.error('Failed to load /api/radio', radioRes.reason);
+          recordEndpointError('/api/radio', radioRes.reason);
           state.radio = [];
         }
         if (tasksRes.status === 'fulfilled') {
           state.tasks = (tasksRes.value && tasksRes.value.tasks) || [];
         } else {
-          console.error('Failed to load /api/tasks', tasksRes.reason);
+          recordEndpointError('/api/tasks', tasksRes.reason);
           state.tasks = [];
         }
         if (workflowsRes.status === 'fulfilled') {
           state.workflows = (workflowsRes.value && workflowsRes.value.workflows) || [];
         } else {
-          console.error('Failed to load /api/workflows', workflowsRes.reason);
+          recordEndpointError('/api/workflows', workflowsRes.reason);
           state.workflows = [];
         }
         if (dispatchRes.status === 'fulfilled') {
           state.dispatch = (dispatchRes.value && dispatchRes.value.logs) || [];
           state.relay = (dispatchRes.value && dispatchRes.value.relay) || [];
         } else {
-          console.error('Failed to load /api/dispatch', dispatchRes.reason);
+          recordEndpointError('/api/dispatch', dispatchRes.reason);
           state.dispatch = [];
           state.relay = [];
         }
 
+        state.endpointErrors = endpointErrors;
         renderAll();
       } catch (err) {
         console.error(err);
+        state.endpointErrors = [{ endpoint: 'refreshData', message: err.message || String(err) }];
+        renderEndpointErrors();
       } finally {
         if (btn) btn.disabled = false;
       }
@@ -2034,6 +2094,7 @@
     // Render operations
     function renderAll() {
       const tools = Array.isArray(state.status.tools) ? state.status.tools : [];
+      renderEndpointErrors();
 
       // Top bar info
       document.getElementById('memoryDir').textContent = state.status.memoryDir || 'unavailable';
@@ -2098,6 +2159,29 @@
       renderRadioFeed();
       renderTasksList();
       renderDispatchLogs();
+    }
+
+    function renderEndpointErrors() {
+      const el = document.getElementById('endpointErrors');
+      if (!el) return;
+      const errors = Array.isArray(state.endpointErrors) ? state.endpointErrors : [];
+      if (errors.length === 0) {
+        el.hidden = true;
+        el.innerHTML = '';
+        return;
+      }
+      el.hidden = false;
+      const items = errors.map(err => `
+        <div class="endpoint-error-item">
+          <code>${escapeHtml(err.endpoint)}</code>
+          <span>${escapeHtml(err.message)}</span>
+        </div>
+      `).join('');
+      el.innerHTML = `
+        <div class="endpoint-errors-title">${escapeHtml(t('endpointErrorTitle'))} · ${escapeHtml(t('endpointErrorSummary', { n: errors.length }))}</div>
+        <div class="endpoint-errors-help">${escapeHtml(t('endpointLoadWarning'))}</div>
+        <div class="endpoint-errors-list">${items}</div>
+      `;
     }
 
     function populateFilterOptions() {

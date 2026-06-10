@@ -455,6 +455,104 @@ test("memory search filters by thread-aware references", async () => {
   });
 });
 
+test("memory search tracks access heat in ledger and index ranking", async () => {
+  await withHub(async (memoryDir) => {
+    await appendJsonl(path.join(memoryDir, "inbox", "events.jsonl"), {
+      id: "event-hot-access-memory",
+      ts: "2026-06-08T10:00:00.000Z",
+      source: "codex",
+      text: "Memory hub ranking note with rare-hot-access-term must stay easy to find.",
+      metadata: {
+        kind: "note",
+        project: "ai-memory-hub"
+      }
+    });
+    await appendJsonl(path.join(memoryDir, "inbox", "events.jsonl"), {
+      id: "event-cold-access-memory",
+      ts: "2026-06-09T10:00:00.000Z",
+      source: "codex",
+      text: "Memory hub ranking note with rare-cold-access-term must stay easy to find.",
+      metadata: {
+        kind: "note",
+        project: "ai-memory-hub"
+      }
+    });
+
+    const sync = runCli(memoryDir, ["sync"]);
+    assert.equal(sync.status, 0, sync.stderr || sync.stdout);
+
+    for (let index = 0; index < 5; index += 1) {
+      const search = runCli(memoryDir, ["search", "rare-hot-access-term", "--limit", "1"]);
+      assert.equal(search.status, 0, search.stderr || search.stdout);
+      assert.match(search.stdout, /rare-hot-access-term/);
+      assert.doesNotMatch(search.stdout, /rare-cold-access-term/);
+    }
+
+    const ledger = (await fs.readFile(path.join(memoryDir, "memories", "ledger.jsonl"), "utf8"))
+      .trim()
+      .split(/\r?\n/)
+      .map((line) => JSON.parse(line));
+    const hotLedger = ledger.find((record) => record.localEventId === "event-hot-access-memory");
+    const coldLedger = ledger.find((record) => record.localEventId === "event-cold-access-memory");
+    assert.equal(hotLedger.accessCount, 5);
+    assert.match(hotLedger.lastAccessedAt, /^\d{4}-\d{2}-\d{2}T/);
+    assert.equal(hotLedger.metadata.lifecycle.access.accessCount, 5);
+    assert.equal(coldLedger.accessCount, undefined);
+
+    const memoryIndex = JSON.parse(await fs.readFile(path.join(memoryDir, "memories", "index.json"), "utf8"));
+    const hotRecord = memoryIndex.records.find((record) => record.localEventId === "event-hot-access-memory");
+    const coldRecord = memoryIndex.records.find((record) => record.localEventId === "event-cold-access-memory");
+    assert.equal(hotRecord.accessCount, 5);
+    assert.ok(hotRecord.accessHeat > 0);
+    assert.ok(hotRecord.importance > coldRecord.importance);
+  });
+});
+
+test("long-unaccessed memory search telemetry downgrades snapshot layer", async () => {
+  await withHub(async (memoryDir) => {
+    const oldAccess = new Date(Date.now() - 120 * 86400000).toISOString();
+    await appendJsonl(path.join(memoryDir, "inbox", "events.jsonl"), {
+      id: "event-stale-access-memory",
+      ts: "2026-06-10T10:00:00.000Z",
+      source: "codex",
+      text: "Memory ranking signal must remain useful for stale access cooling.",
+      metadata: {
+        kind: "note",
+        project: "ai-memory-hub",
+        lifecycle: {
+          access: {
+            accessCount: 1,
+            lastAccessedAt: oldAccess
+          }
+        }
+      }
+    });
+    await appendJsonl(path.join(memoryDir, "inbox", "events.jsonl"), {
+      id: "event-recent-access-memory",
+      ts: "2026-06-10T10:01:00.000Z",
+      source: "codex",
+      text: "Memory ranking signal must remain useful for recent access cooling.",
+      metadata: {
+        kind: "note",
+        project: "ai-memory-hub"
+      }
+    });
+
+    const sync = runCli(memoryDir, ["sync"]);
+    assert.equal(sync.status, 0, sync.stderr || sync.stdout);
+
+    const memoryIndex = JSON.parse(await fs.readFile(path.join(memoryDir, "memories", "index.json"), "utf8"));
+    const staleRecord = memoryIndex.records.find((record) => record.localEventId === "event-stale-access-memory");
+    const recentRecord = memoryIndex.records.find((record) => record.localEventId === "event-recent-access-memory");
+    assert.equal(staleRecord.accessCount, 1);
+    assert.ok(staleRecord.staleAccessPenalty > 0);
+    assert.equal(staleRecord.layer, "archive");
+    assert.equal(recentRecord.layer, "working");
+    assert.ok(staleRecord.importance < 45);
+    assert.ok(recentRecord.importance >= 45);
+  });
+});
+
 test("memory supersedes downranks replaced records and hides them from snapshot", async () => {
   await withHub(async (memoryDir) => {
     const oldText = "Old workflow rule must not remain in the shared AI memory snapshot.";

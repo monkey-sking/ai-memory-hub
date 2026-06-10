@@ -44,6 +44,8 @@ The index schema uses these lifecycle-relevant fields:
 - `confidence`: numeric value from `0` to `1`; missing values default to `1`.
 - `importance`: derived score used for ranking.
 - `layer`: derived snapshot tier: `core`, `working`, or `archive`.
+- `accessCount`: number of times the record has been returned by memory search.
+- `lastAccessedAt`: ISO timestamp for the most recent search result access.
 - `refs`: normalized context references used by thread-aware search:
   - `refs.thread`: conversation, radio, dispatch, task, or workflow thread id.
   - `refs.threadKey`: exact relay thread key when known.
@@ -82,8 +84,11 @@ Layers describe how likely a memory is to appear in startup context:
 - `archive`: low-priority or raw history retained in the ledger and index, but
   excluded from startup snapshots by default.
 
-Layer assignment is derived from `kind`, `importance`, and topic signals during
-index rebuilds. It is not a deletion or retention state.
+Layer assignment is derived from `kind`, `importance`, topic signals, and access
+heat during index rebuilds. It is not a deletion or retention state. Search
+commands update returned ledger records with `accessCount` and `lastAccessedAt`,
+then rebuild indexes so frequently accessed memories receive a capped boost and
+long-unaccessed memories receive a capped downgrade.
 
 ## Stale And Superseded Memories
 
@@ -99,11 +104,13 @@ thread-aware linking tasks define how records reference one another.
 
 ## Operation Abstraction
 
-Memory updates must be modeled as append-only operations over durable records,
-not as in-place edits to `memories/ledger.jsonl`. The operation log is the
-auditable source of lifecycle intent; rebuilt indexes apply those operations as
-an overlay when deciding search ranking, snapshot visibility, and lifecycle
-links.
+Semantic memory updates should be modeled as append-only operations over durable
+records, not as in-place edits to `memories/ledger.jsonl`. Search access
+telemetry is the current narrow exception: `accessCount` and `lastAccessedAt`
+are mutable operational fields used only for ranking and snapshot exposure. The
+operation log is the auditable source of lifecycle intent; rebuilt indexes apply
+those operations as an overlay when deciding search ranking, snapshot
+visibility, and lifecycle links.
 
 The planned storage surface is:
 

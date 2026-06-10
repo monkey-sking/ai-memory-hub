@@ -20,6 +20,11 @@ const DEFAULT_DISPATCH_RUN_TIMEOUT_MS = 10 * 60 * 1000;
 const DEFAULT_TASK_SPEC_TIMEOUT_MS = 10 * 60 * 1000;
 const STALE_OPERATIONAL_RADIO_AFTER_DAYS = 7;
 const OPERATIONAL_RADIO_DECAY_RATE_PER_DAY = 8;
+const MEMORY_ACCESS_RECENT_DAYS = 7;
+const MEMORY_ACCESS_STALE_AFTER_DAYS = 45;
+const MEMORY_ACCESS_STALE_DECAY_RATE_PER_DAY = 0.5;
+const MEMORY_ACCESS_MAX_HEAT = 12;
+const MEMORY_ACCESS_MAX_STALE_PENALTY = 24;
 const CORRUPTION_MARKER_PATTERN = /[\u0000\ufffd]/;
 const TOOL_DETECTION_CACHE_TTL_MS = 30 * 1000;
 const DEFAULT_TASK_SPEC_FILES = [
@@ -3751,17 +3756,40 @@ function searchCommand(argv) {
   const limit = Number(getOption(argv, "--limit") || 10);
   const filters = parseMemoryFilters(argv);
   const hasFilter = hasMemoryFilters(filters);
+  const trackAccess = !hasFlag(argv, "--no-track") && !hasFlag(argv, "--no-access-track");
   if (!query && !hasFilter) {
-    throw new Error("Usage: ai-memory-hub search [query] [--limit 10] [--project <name>] [--tag <tag>|--tags <a,b>] [--thread <id>] [--task <id>] [--workflow <id>] [--radio <id>]");
+    throw new Error("Usage: ai-memory-hub search [query] [--limit 10] [--project <name>] [--tag <tag>|--tags <a,b>] [--thread <id>] [--task <id>] [--workflow <id>] [--radio <id>] [--no-track]");
   }
-  const index = buildMemoryIndex(readLedger(config.memoryDir), config);
-  const records = filterMemoryRecords(index.records, filters);
-  const results = (query
-    ? searchMemories(records, query)
-    : [...records]
-      .sort((a, b) => String(b.ts || "").localeCompare(String(a.ts || "")))
-      .map((record) => ({ ...record, score: Number(record.importance || 0) / 100 }))
-  ).slice(0, limit);
+
+  const runSearch = () => {
+    const ledger = readLedger(config.memoryDir);
+    const index = buildMemoryIndex(ledger, config);
+    const records = filterMemoryRecords(index.records, filters);
+    const results = (query
+      ? searchMemories(records, query)
+      : [...records]
+        .sort((a, b) => String(b.ts || "").localeCompare(String(a.ts || "")))
+        .map((record) => ({ ...record, score: Number(record.importance || 0) / 100 }))
+    ).slice(0, limit);
+
+    if (trackAccess && results.length > 0) {
+      const updated = recordMemoryAccess(ledger, results);
+      if (updated.updated > 0) {
+        writeLedger(config.memoryDir, updated.ledger);
+        rebuildMemoryOutputs(config, updated.ledger);
+      }
+    }
+
+    printMemorySearchResults(results);
+  };
+
+  if (trackAccess) {
+    return withHubLock(config.memoryDir, "search-access", runSearch, config.sync.lockStaleMs);
+  }
+  return runSearch();
+}
+
+function printMemorySearchResults(results) {
   for (const item of results) {
     const kind = item.metadata?.kind || "note";
     const topics = (item.topics || []).slice(0, 4).join(",");
@@ -6555,8 +6583,11 @@ function readTextIfExists(file) {
 function readLedger(memoryDir) {
   return readEvents(path.join(memoryDir, "memories", "ledger.jsonl"))
     .map((item) => {
-      const metadata = normalizeMemoryMetadata(item.metadata || {}, item);
-      return {
+      const baseMetadata = normalizeMemoryMetadata(item.metadata || {}, item);
+      const access = getMemoryAccessStats({ ...item, metadata: baseMetadata });
+      const metadata = mergeMemoryAccessMetadata(baseMetadata, access);
+      const record = {
+        ...item,
         id: item.id || createId(item.text || JSON.stringify(item)),
         localEventId: item.localEventId || item.local_event_id || "",
         schemaVersion: item.schemaVersion || 1,
@@ -6566,6 +6597,7 @@ function readLedger(memoryDir) {
         text: item.text || item.memory || "",
         metadata
       };
+      return applyMemoryAccessFields(record, access);
     })
     .filter((item) => item.text);
 }
@@ -8067,6 +8099,170 @@ function normalizeConfidence(value) {
   return Math.max(0, Math.min(1, numeric));
 }
 
+function recordMemoryAccess(ledger, results, accessedAt = new Date().toISOString()) {
+  const resultKeys = new Set(results.flatMap((result) => getMemoryIdentityKeys(result)));
+  if (resultKeys.size === 0) {
+    return { ledger, updated: 0 };
+  }
+
+  let updated = 0;
+  const updatedLedger = ledger.map((record) => {
+    const matched = getMemoryIdentityKeys(record).some((key) => resultKeys.has(key));
+    if (!matched) {
+      return record;
+    }
+    updated++;
+    return touchMemoryAccess(record, accessedAt);
+  });
+
+  return { ledger: updatedLedger, updated };
+}
+
+function touchMemoryAccess(record, accessedAt = new Date().toISOString()) {
+  const current = getMemoryAccessStats(record);
+  const access = {
+    ...current,
+    accessCount: current.accessCount + 1,
+    firstAccessedAt: current.firstAccessedAt || accessedAt,
+    lastAccessedAt: normalizeMemoryAccessTimestamp(accessedAt),
+    hasAccessTelemetry: true
+  };
+  const metadata = mergeMemoryAccessMetadata(record.metadata || {}, access);
+  return applyMemoryAccessFields({ ...record, metadata }, access);
+}
+
+function getMemoryAccessStats(memory = {}) {
+  const lifecycle = isPlainObject(memory.metadata?.lifecycle) ? memory.metadata.lifecycle : {};
+  const lifecycleAccess = isPlainObject(lifecycle.access) ? lifecycle.access : {};
+  const accessCountValue = firstDefinedValue(
+    memory.accessCount,
+    memory.metadata?.accessCount,
+    lifecycleAccess.accessCount,
+    lifecycleAccess.count
+  );
+  const firstAccessedAt = normalizeMemoryAccessTimestamp(firstDefinedValue(
+    memory.firstAccessedAt,
+    memory.metadata?.firstAccessedAt,
+    lifecycleAccess.firstAccessedAt
+  ));
+  const lastAccessedAt = normalizeMemoryAccessTimestamp(firstDefinedValue(
+    memory.lastAccessedAt,
+    memory.metadata?.lastAccessedAt,
+    lifecycleAccess.lastAccessedAt
+  ));
+  const hasAccessTelemetry = [
+    memory.accessCount,
+    memory.lastAccessedAt,
+    memory.firstAccessedAt,
+    memory.metadata?.accessCount,
+    memory.metadata?.lastAccessedAt,
+    memory.metadata?.firstAccessedAt,
+    lifecycleAccess.accessCount,
+    lifecycleAccess.count,
+    lifecycleAccess.lastAccessedAt,
+    lifecycleAccess.firstAccessedAt
+  ].some((value) => value !== undefined && value !== null && value !== "");
+
+  return {
+    accessCount: normalizeMemoryAccessCount(accessCountValue),
+    firstAccessedAt,
+    lastAccessedAt,
+    hasAccessTelemetry
+  };
+}
+
+function mergeMemoryAccessMetadata(metadata = {}, access = {}, derived = {}) {
+  if (!access.hasAccessTelemetry) {
+    return metadata;
+  }
+  const lifecycle = isPlainObject(metadata.lifecycle) ? metadata.lifecycle : {};
+  const lifecycleAccess = isPlainObject(lifecycle.access) ? lifecycle.access : {};
+  return {
+    ...metadata,
+    lifecycle: {
+      ...lifecycle,
+      access: {
+        ...lifecycleAccess,
+        accessCount: access.accessCount,
+        count: access.accessCount,
+        ...(access.firstAccessedAt ? { firstAccessedAt: access.firstAccessedAt } : {}),
+        ...(access.lastAccessedAt ? { lastAccessedAt: access.lastAccessedAt } : {}),
+        ...(derived.heat !== undefined ? { heat: Number(derived.heat || 0) } : {}),
+        ...(derived.stalePenalty !== undefined ? { stalePenalty: Number(derived.stalePenalty || 0) } : {})
+      }
+    }
+  };
+}
+
+function applyMemoryAccessFields(record, access = {}) {
+  if (!access.hasAccessTelemetry) {
+    return record;
+  }
+  return {
+    ...record,
+    accessCount: access.accessCount,
+    ...(access.firstAccessedAt ? { firstAccessedAt: access.firstAccessedAt } : {}),
+    lastAccessedAt: access.lastAccessedAt || ""
+  };
+}
+
+function normalizeMemoryAccessCount(value) {
+  const count = Number(value || 0);
+  if (!Number.isFinite(count) || count < 0) {
+    return 0;
+  }
+  return Math.floor(count);
+}
+
+function normalizeMemoryAccessTimestamp(value) {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return "";
+  }
+  const timestamp = Date.parse(raw);
+  if (!Number.isFinite(timestamp)) {
+    return "";
+  }
+  return new Date(timestamp).toISOString();
+}
+
+function firstDefinedValue(...values) {
+  return values.find((value) => value !== undefined && value !== null && value !== "");
+}
+
+function scoreMemoryAccessHeat(access = {}) {
+  const count = normalizeMemoryAccessCount(access.accessCount);
+  if (count <= 0) {
+    return 0;
+  }
+  const countBoost = Math.min(MEMORY_ACCESS_MAX_HEAT, Math.log2(count + 1) * 3);
+  const daysSinceAccess = getDaysSinceTimestamp(access.lastAccessedAt);
+  const recencyBoost = access.lastAccessedAt && daysSinceAccess <= MEMORY_ACCESS_RECENT_DAYS ? 2 : 0;
+  return Math.min(MEMORY_ACCESS_MAX_HEAT, Math.round(countBoost + recencyBoost));
+}
+
+function scoreStaleMemoryAccessPenalty(access = {}) {
+  if (!access.hasAccessTelemetry || !access.lastAccessedAt) {
+    return 0;
+  }
+  const daysSinceAccess = getDaysSinceTimestamp(access.lastAccessedAt);
+  if (daysSinceAccess <= MEMORY_ACCESS_STALE_AFTER_DAYS) {
+    return 0;
+  }
+  return Math.min(
+    MEMORY_ACCESS_MAX_STALE_PENALTY,
+    Math.ceil((daysSinceAccess - MEMORY_ACCESS_STALE_AFTER_DAYS) * MEMORY_ACCESS_STALE_DECAY_RATE_PER_DAY)
+  );
+}
+
+function getDaysSinceTimestamp(value) {
+  const time = Date.parse(value || "");
+  if (!Number.isFinite(time)) {
+    return 0;
+  }
+  return Math.max(0, (Date.now() - time) / 86400000);
+}
+
 function rebuildMemoryOutputs(config, ledger) {
   const index = buildMemoryIndex(ledger, config);
   fs.writeFileSync(path.join(config.memoryDir, "MEMORY.md"), renderMemorySnapshot(index, config), "utf8");
@@ -8129,11 +8325,27 @@ function enrichMemory(memory, ordinal, total) {
     }
   };
   const topics = inferTopics(canonicalMemory);
-  const importance = scoreImportance(canonicalMemory, topics, ordinal, total);
+  const access = getMemoryAccessStats(canonicalMemory);
+  const accessHeat = scoreMemoryAccessHeat(access);
+  const staleAccessPenalty = scoreStaleMemoryAccessPenalty(access);
+  const importance = scoreImportance(canonicalMemory, topics, ordinal, total, {
+    accessHeat,
+    staleAccessPenalty
+  });
   const confidence = normalizeConfidence(metadata.confidence);
   const staleWorkingContext = isStaleOperationalRadioMemory(canonicalMemory, memory.text);
   const layer = staleWorkingContext ? "archive" : chooseMemoryLayer(kind, importance);
   const scope = normalizeMemoryScope(metadata.scope) || inferScope(kind, topics, project);
+  const enrichedMetadata = mergeMemoryAccessMetadata({
+    ...metadata,
+    kind,
+    project,
+    tags,
+    scope,
+    confidence,
+    staleWorkingContext,
+    refs
+  }, access, { heat: accessHeat, stalePenalty: staleAccessPenalty });
   return {
     ...memory,
     schemaVersion: 2,
@@ -8142,18 +8354,13 @@ function enrichMemory(memory, ordinal, total) {
     tags,
     refs,
     confidence,
-    metadata: {
-      ...metadata,
-      kind,
-      project,
-      tags,
-      scope,
-      confidence,
-      staleWorkingContext,
-      refs
-    },
+    metadata: enrichedMetadata,
     layer,
     importance,
+    accessCount: access.accessCount,
+    lastAccessedAt: access.lastAccessedAt,
+    accessHeat,
+    staleAccessPenalty,
     staleWorkingContext,
     scope,
     topics,
@@ -9261,6 +9468,8 @@ function searchMemories(records, query) {
         }
       }
       score += Number(memory.importance || 0) / 100;
+      score += Number(memory.accessHeat || 0) / 50;
+      score -= Number(memory.staleAccessPenalty || 0) / 50;
       return { ...memory, score };
     })
     .filter((memory) => memory.score > 0)
@@ -9277,7 +9486,7 @@ function chooseMemoryLayer(kind, importance) {
   return "archive";
 }
 
-function scoreImportance(memory, topics, ordinal, total) {
+function scoreImportance(memory, topics, ordinal, total, access = {}) {
   const text = String(memory.text || "");
   const kind = memory.metadata?.kind || "note";
   let score = 20;
@@ -9289,6 +9498,8 @@ function scoreImportance(memory, topics, ordinal, total) {
   if (topics.length > 0) score += Math.min(10, topics.length * 2);
   const recency = total > 0 ? ordinal / total : 0;
   score += Math.round(recency * 8);
+  score += Number(access.accessHeat || 0);
+  score -= Number(access.staleAccessPenalty || 0);
   score -= getStaleWorkingContextPenalty(memory, text);
   return Math.max(1, Math.min(100, score));
 }

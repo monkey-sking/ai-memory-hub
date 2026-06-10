@@ -6926,7 +6926,8 @@ function enrichMemory(memory, ordinal, total) {
   const topics = inferTopics(canonicalMemory);
   const importance = scoreImportance(canonicalMemory, topics, ordinal, total);
   const confidence = normalizeConfidence(metadata.confidence);
-  const layer = chooseMemoryLayer(kind, importance);
+  const staleWorkingContext = isStaleOperationalRadioMemory(canonicalMemory, memory.text);
+  const layer = staleWorkingContext ? "archive" : chooseMemoryLayer(kind, importance);
   const scope = normalizeMemoryScope(metadata.scope) || inferScope(kind, topics, project);
   return {
     ...memory,
@@ -6943,10 +6944,12 @@ function enrichMemory(memory, ordinal, total) {
       tags,
       scope,
       confidence,
+      staleWorkingContext,
       refs
     },
     layer,
     importance,
+    staleWorkingContext,
     scope,
     topics,
     keywords: extractKeywords(`${memory.text} ${project} ${tags.join(" ")} ${flattenMemoryRefs(refs).join(" ")} ${(topics || []).join(" ")}`)
@@ -7060,7 +7063,7 @@ function renderMemorySnapshot(index, config, options = {}) {
     .filter((item) => item.layer === "core")
     .sort(sortByImportance);
   const allRecent = [...visibleRecords]
-    .filter((item) => item.layer !== "core")
+    .filter((item) => item.layer === "working")
     .sort((a, b) => String(b.ts || "").localeCompare(String(a.ts || "")));
   let core = allCore.slice(0, coreLimit);
   let recent = allRecent.slice(0, recentLimit);
@@ -7591,7 +7594,39 @@ function scoreImportance(memory, topics, ordinal, total) {
   if (topics.length > 0) score += Math.min(10, topics.length * 2);
   const recency = total > 0 ? ordinal / total : 0;
   score += Math.round(recency * 8);
+  score -= getStaleWorkingContextPenalty(memory, text);
   return Math.max(1, Math.min(100, score));
+}
+
+function getStaleWorkingContextPenalty(memory, text) {
+  if (!isStaleOperationalRadioMemory(memory, text)) {
+    return 0;
+  }
+  const ageDays = getMemoryAgeDays(memory);
+  return Math.min(90, Math.ceil(ageDays * OPERATIONAL_RADIO_DECAY_RATE_PER_DAY));
+}
+
+function isStaleOperationalRadioMemory(memory, text) {
+  return isOperationalRadioMemory(memory, text) && getMemoryAgeDays(memory) > STALE_OPERATIONAL_RADIO_AFTER_DAYS;
+}
+
+function isOperationalRadioMemory(memory, text) {
+  const source = String(memory.source || "").toLowerCase();
+  const kind = String(memory.metadata?.kind || memory.kind || "").toLowerCase();
+  const hasRadioRef = normalizeRefValues(memory.refs?.radioId || memory.metadata?.refs?.radioId).length > 0;
+  const isRadio = source.startsWith("radio") || kind === "radio" || hasRadioRef;
+  if (!isRadio) {
+    return false;
+  }
+  return /status|progress|dispatch|completed|done|pass|failed|review|heartbeat|状态|进度|完成|已完成|通过|失败|审核/i.test(String(text || ""));
+}
+
+function getMemoryAgeDays(memory) {
+  const time = Date.parse(memory.ts || memory.indexedAt || "");
+  if (!Number.isFinite(time)) {
+    return 0;
+  }
+  return Math.max(0, (Date.now() - time) / 86400000);
 }
 
 function inferScope(kind, topics, project = "") {

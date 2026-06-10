@@ -549,6 +549,56 @@ test("snapshotLimit derives compact snapshot section limits for legacy config", 
   });
 });
 
+test("stale operational radio memories age out of working snapshot", async () => {
+  await withHub(async (memoryDir) => {
+    const staleTs = new Date(Date.now() - 8 * 86400000).toISOString();
+    const oldText = "Dispatch completed status update for ai-memory-hub review must age out after eight days.";
+    const recentText = "Dispatch completed status update for ai-memory-hub review must remain current.";
+    await appendJsonl(path.join(memoryDir, "inbox", "events.jsonl"), {
+      id: "event-old-radio-status",
+      ts: staleTs,
+      source: "radio:codex",
+      text: oldText,
+      metadata: {
+        kind: "reference",
+        project: "ai-memory-hub",
+        refs: {
+          radioId: "old-radio-status"
+        }
+      }
+    });
+    await appendJsonl(path.join(memoryDir, "inbox", "events.jsonl"), {
+      id: "event-recent-radio-status",
+      ts: new Date().toISOString(),
+      source: "radio:codex",
+      text: recentText,
+      metadata: {
+        kind: "reference",
+        project: "ai-memory-hub",
+        refs: {
+          radioId: "recent-radio-status"
+        }
+      }
+    });
+
+    const sync = runCli(memoryDir, ["sync"]);
+    assert.equal(sync.status, 0, sync.stderr || sync.stdout);
+
+    const index = JSON.parse(await fs.readFile(path.join(memoryDir, "memories", "index.json"), "utf8"));
+    const oldRecord = index.records.find((record) => record.localEventId === "event-old-radio-status");
+    const recentRecord = index.records.find((record) => record.localEventId === "event-recent-radio-status");
+    assert.equal(oldRecord.layer, "archive");
+    assert.equal(recentRecord.layer, "working");
+    assert.ok(oldRecord.importance < 45);
+    assert.ok(recentRecord.importance >= 45);
+    assert.ok(oldRecord.importance < recentRecord.importance);
+
+    const snapshot = await fs.readFile(path.join(memoryDir, "MEMORY.md"), "utf8");
+    assert.doesNotMatch(snapshot, new RegExp(oldText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.match(snapshot, new RegExp(recentText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  });
+});
+
 test("health command reports memory quality and storage diagnostics", async () => {
   await withHub(async (memoryDir) => {
     const repeatedText = "Repeated workflow rule: run tests before marking ai-memory-hub tasks done.";

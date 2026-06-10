@@ -4102,9 +4102,6 @@ function appCommand(argv) {
           exitCode: result.status
         });
       }
-      if (req.method === "GET" && url.pathname === "/api/detect") {
-        return sendJson(res, { tools: detectTools(config.memoryDir) });
-      }
       if (req.method === "POST" && url.pathname === "/api/record") {
         const body = await readRequestJson(req);
         if (!body.text || typeof body.text !== "string") {
@@ -5585,28 +5582,36 @@ function renderDashboard() {
 }
 
 function sendStaticFile(res, pathname) {
-  const publicDir = path.join(__dirname, "..", "public");
-  const filePath = path.join(publicDir, pathname);
+  const publicDir = path.join(projectRoot(), "public");
+  const relativePath = pathname.replace(/^\/+/, "");
+  const filePath = path.join(publicDir, relativePath);
+  const normalizedFilePath = path.resolve(filePath);
+  const normalizedPublicDir = path.resolve(publicDir);
 
-  if (!fs.existsSync(filePath)) {
-    res.writeHead(404, { "Content-Type": "text/plain" });
+  if (!normalizedFilePath.startsWith(normalizedPublicDir + path.sep) && normalizedFilePath !== normalizedPublicDir) {
+    res.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("Forbidden");
+    return;
+  }
+
+  if (!fs.existsSync(normalizedFilePath) || !fs.statSync(normalizedFilePath).isFile()) {
+    res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
     res.end("Not Found");
     return;
   }
 
-  const ext = path.extname(filePath);
+  const ext = path.extname(normalizedFilePath);
   const contentTypeMap = {
     ".css": "text/css; charset=utf-8",
     ".js": "application/javascript; charset=utf-8",
     ".json": "application/json; charset=utf-8"
   };
 
-  const content = fs.readFileSync(filePath, "utf8");
   res.writeHead(200, {
     "Content-Type": contentTypeMap[ext] || "text/plain",
     "Cache-Control": "public, max-age=3600"
   });
-  res.end(content);
+  fs.createReadStream(normalizedFilePath).pipe(res);
 }
 
 function sendHtml(res, html) {

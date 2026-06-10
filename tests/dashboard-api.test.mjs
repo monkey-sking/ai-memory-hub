@@ -260,6 +260,20 @@ test("dashboard serves externalized virtual-scroll assets", async () => {
       assert.match(html, /<link rel="stylesheet" href="\/css\/dashboard\.css">/);
       assert.match(html, /<script src="\/js\/dashboard\.js"><\/script>\s*<\/body>/);
       assert.doesNotMatch(html, /<script>\s*\/\/\s*Global tool icon/);
+
+      const cssRes = await fetch(`http://127.0.0.1:${port}/css/dashboard.css`);
+      assert.equal(cssRes.status, 200);
+      assert.match(cssRes.headers.get("content-type") || "", /text\/css/);
+      assert.match(await cssRes.text(), /--bg-main/);
+
+      const jsRes = await fetch(`http://127.0.0.1:${port}/js/dashboard.js`);
+      assert.equal(jsRes.status, 200);
+      assert.match(jsRes.headers.get("content-type") || "", /application\/javascript/);
+      assert.match(await jsRes.text(), /function renderVirtualList/);
+
+      const traversalRes = await fetch(`http://127.0.0.1:${port}/js/%2e%2e/%2e%2e/package.json`);
+      assert.notEqual(traversalRes.status, 200);
+      assert.doesNotMatch(await traversalRes.text(), /"name": "ai-memory-hub"/);
     } finally {
       await stopServer(child);
     }

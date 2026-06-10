@@ -226,6 +226,12 @@
         agentRadio: "Collaboration Broadcast",
         tasksBoard: "Tasks Board",
         dispatchLogs: "⚡ Dispatch Logs",
+        workflowsPanel: "🔄 Workflows",
+        analyticsPanel: "📈 Analytics",
+        settingsPanel: "⚙️ Settings",
+        healthPanel: "💊 Health",
+        searchPanel: "🔍 Search",
+        toolsPanel: "🔧 Tools",
         detectedTools: "Detected Tools",
         scanning: "Scanning...",
         operations: "Hub Operations",
@@ -368,7 +374,9 @@
         analytics: "📈 Analytics",
         memoryGrowth: "Memory Growth",
         taskCompletion: "Task Completion",
-        radioActivity: "Radio Activity"
+        radioActivity: "Radio Activity",
+        memoryGrowthTrend: "🧠 Memory Growth Trend",
+        taskCompletionRate: "📋 Task Completion Rate"
       },
       zh: {
         overview: "📊 概览看板",
@@ -376,6 +384,14 @@
         agentRadio: "协作广播",
         tasksBoard: "任务看板",
         dispatchLogs: "⚡ 调度日志",
+        workflowsPanel: "🔄 工作流",
+        analyticsPanel: "📈 数据分析",
+        settingsPanel: "⚙️ 设置",
+        healthPanel: "💊 健康检查",
+        searchPanel: "🔍 搜索",
+        toolsPanel: "🔧 工具管理",
+        memoryGrowthTrend: "🧠 记忆增长趋势",
+        taskCompletionRate: "📋 任务完成率",
         detectedTools: "已检测工具",
         scanning: "扫描中...",
         operations: "操作面板",
@@ -518,7 +534,9 @@
         analytics: "📈 数据分析",
         memoryGrowth: "记忆增长趋势",
         taskCompletion: "任务完成率",
-        radioActivity: "Radio活跃度"
+        radioActivity: "Radio活跃度",
+        memoryGrowthTrend: "🧠 记忆增长趋势",
+        taskCompletionRate: "📋 任务完成率"
       }
     };
 
@@ -825,12 +843,19 @@
       document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
       document.querySelectorAll('.tab-panel').forEach(el => el.classList.remove('active'));
 
-      const tabs = ['dashboard', 'memory', 'radio', 'tasks', 'dispatch', 'analytics'];
+      const tabs = ['dashboard', 'memory', 'radio', 'tasks', 'dispatch', 'workflows', 'analytics', 'settings', 'health', 'search', 'tools'];
       const index = tabs.indexOf(tabId);
       if (index !== -1) {
         document.querySelectorAll('.nav-item')[index].classList.add('active');
       }
-      document.getElementById('tab-' + tabId).classList.add('active');
+      const panel = document.getElementById('tab-' + tabId);
+      if (!panel) {
+        state.activeTab = 'dashboard';
+        document.getElementById('tab-dashboard').classList.add('active');
+        document.querySelectorAll('.nav-item')[0]?.classList.add('active');
+        return;
+      }
+      panel.classList.add('active');
       localStorage.setItem('hub_active_tab', tabId);
       
       document.getElementById('sidebar').classList.remove('active');
@@ -838,6 +863,8 @@
         if (tabId === 'memory') renderMemoryHub();
         if (tabId === 'radio') renderRadioFeed();
         if (tabId === 'tasks') renderTasksList();
+        if (tabId === 'workflows') renderWorkflowsPanel();
+        if (tabId === 'tools') renderToolsPanel();
         if (tabId === 'analytics') renderAnalytics();
       });
     }
@@ -1063,6 +1090,8 @@
       
       const activeTasksCount = state.tasks.filter(t => ['claimed', 'in_progress', 'blocked'].includes(t.status)).length;
       document.getElementById('sidebarTasks').textContent = activeTasksCount;
+      const workflowBadge = document.getElementById('sidebarWorkflows');
+      if (workflowBadge) workflowBadge.textContent = state.workflows.length;
 
       // Overview Metrics cards
       document.getElementById('cardActiveTasks').textContent = activeTasksCount;
@@ -1117,6 +1146,9 @@
       renderRadioFeed();
       renderTasksList();
       renderDispatchLogs();
+      renderWorkflowsPanel();
+      renderToolsPanel();
+      renderSettingsPanel();
       renderAnalytics();
     }
 
@@ -2018,89 +2050,79 @@
 
     async function renderAnalytics() {
       if (state.activeTab !== 'analytics') return;
-      await loadChartJs();
-
-      // Memory Growth Chart (Distribution)
-      const memCtx = document.getElementById('memoryGrowthChart').getContext('2d');
-      if (charts.memory) charts.memory.destroy();
-      
       const ledgerCount = state.status.ledgerEvents || 0;
       const pendingCount = state.status.pendingEvents || 0;
       const backupCount = state.status.backups || 0;
-
-      charts.memory = new Chart(memCtx, {
-        type: 'bar',
-        data: {
-          labels: [t('durableLedger'), t('pendingEvents'), t('backups')],
-          datasets: [{
-            label: 'Counts',
-            data: [ledgerCount, pendingCount, backupCount],
-            backgroundColor: ['#388bfd', '#bc8cff', '#2ea44f'],
-            borderRadius: 6
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
-          scales: { y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' } } }
-        }
-      });
-
-      // Task Completion Chart
-      const taskCtx = document.getElementById('taskCompletionChart').getContext('2d');
-      if (charts.tasks) charts.tasks.destroy();
-
       const openTasks = state.tasks.filter(t => t.status === 'open').length;
       const activeTasks = state.tasks.filter(t => ['claimed', 'in_progress', 'blocked'].includes(t.status)).length;
       const doneTasks = state.tasks.filter(t => t.status === 'done').length;
-
-      charts.tasks = new Chart(taskCtx, {
-        type: 'doughnut',
-        data: {
-          labels: [t('noOpenTasks'), t('activeTasks'), t('completeTask')],
-          datasets: [{
-            data: [openTasks, activeTasks, doneTasks],
-            backgroundColor: ['#f39c12', '#388bfd', '#2ea44f'],
-            borderWidth: 0
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { position: 'bottom', labels: { color: '#8b949e' } } }
-        }
-      });
-
-      // Radio Activity Chart
-      const radioCtx = document.getElementById('radioActivityChart').getContext('2d');
-      if (charts.radio) charts.radio.destroy();
-
       const activityMap = {};
       state.radio.forEach(msg => {
-        activityMap[msg.from] = (activityMap[msg.from] || 0) + 1;
+        const key = msg.from || 'unknown';
+        activityMap[key] = (activityMap[key] || 0) + 1;
       });
-      const labels = Object.keys(activityMap);
-      const data = Object.values(activityMap);
+      if (!window.echarts) {
+        ['chartMemoryGrowth', 'chartTaskCompletion', 'chartRadioActivity'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.innerHTML = `<div class="muted">${escapeHtml(t('scanning'))}</div>`;
+        });
+        return;
+      }
 
-      charts.radio = new Chart(radioCtx, {
-        type: 'bar',
-        data: {
-          labels: labels,
-          datasets: [{
-            label: t('radioMessages'),
-            data: data,
-            backgroundColor: '#ff79c6',
-            borderRadius: 6
-          }]
-        },
-        options: {
-          indexAxis: 'y',
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
-          scales: { x: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' } } }
+      const getChart = (key, id) => {
+        const el = document.getElementById(id);
+        if (!el) return null;
+        if (!charts[key] || charts[key].getDom?.() !== el) {
+          charts[key]?.dispose?.();
+          charts[key] = echarts.init(el, 'dark');
         }
+        return charts[key];
+      };
+
+      getChart('memory', 'chartMemoryGrowth')?.setOption({
+        backgroundColor: 'transparent',
+        tooltip: { trigger: 'axis' },
+        xAxis: { type: 'category', data: [t('durableLedger'), t('pendingEvents'), t('backups')] },
+        yAxis: { type: 'value' },
+        series: [{
+          type: 'bar',
+          data: [ledgerCount, pendingCount, backupCount],
+          itemStyle: { color: '#4facfe' }
+        }]
+      });
+
+      getChart('tasks', 'chartTaskCompletion')?.setOption({
+        backgroundColor: 'transparent',
+        tooltip: { trigger: 'item' },
+        legend: { bottom: 0, textStyle: { color: '#8b9bb4' } },
+        series: [{
+          type: 'pie',
+          radius: ['40%', '70%'],
+          data: [
+            { name: 'Open', value: openTasks },
+            { name: 'Active', value: activeTasks },
+            { name: 'Done', value: doneTasks }
+          ],
+          emphasis: {
+            itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0, 0, 0, 0.5)' }
+          }
+        }]
+      });
+
+      getChart('radio', 'chartRadioActivity')?.setOption({
+        backgroundColor: 'transparent',
+        tooltip: { trigger: 'axis' },
+        xAxis: { type: 'value' },
+        yAxis: {
+          type: 'category',
+          data: Object.keys(activityMap),
+          axisLabel: { color: '#8b9bb4' }
+        },
+        series: [{
+          type: 'bar',
+          data: Object.values(activityMap),
+          itemStyle: { color: '#00f2fe' }
+        }]
       });
     }
 
@@ -2240,6 +2262,159 @@
       } finally {
         btn.textContent = originalText;
         btn.disabled = false;
+      }
+    }
+
+    function renderWorkflowsPanel() {
+      const container = document.getElementById('workflowsList');
+      if (!container) return;
+      const workflows = Array.isArray(state.workflows) ? state.workflows : [];
+      if (workflows.length === 0) {
+        container.innerHTML = `<div class="muted">${t('noWorkflows')}</div>`;
+        return;
+      }
+      container.innerHTML = workflows.map(workflow => {
+        const roles = ['planner', 'executor', 'reviewer', 'observer']
+          .map(role => {
+            const values = Array.isArray(workflow[role]) ? workflow[role] : workflow[role] ? [workflow[role]] : [];
+            return values.length > 0 ? `${role}: ${values.join(', ')}` : '';
+          })
+          .filter(Boolean)
+          .join(' | ');
+        const results = Array.isArray(workflow.results) ? workflow.results.length : 0;
+        const reviews = Array.isArray(workflow.reviews) ? workflow.reviews.length : 0;
+        return `
+          <div class="workflow-row">
+            <div>
+              <div class="workflow-title">${escapeHtml(workflow.title || 'Untitled Workflow')}</div>
+              <div class="workflow-meta">${escapeHtml(workflow.project || t('defaultProj'))}${roles ? ` | ${escapeHtml(roles)}` : ''}</div>
+              <div class="workflow-meta">${results} result(s) | ${reviews} review(s)</div>
+            </div>
+            <span class="badge status-${escapeHtml(workflow.status || 'open')}">${escapeHtml(workflow.status || 'open')}</span>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function createWorkflow() {
+      alert(state.lang === 'zh'
+        ? '当前面板仅展示工作流。创建工作流请先使用 ai-memory-hub workflow create。'
+        : 'This panel is read-only. Create workflows with ai-memory-hub workflow create.');
+    }
+
+    function renderSettingsPanel() {
+      const refreshInput = document.getElementById('settingRefreshInterval');
+      const languageInput = document.getElementById('settingLanguage');
+      if (refreshInput) refreshInput.value = String(Math.max(1, Math.round(state.refreshInterval / 1000)));
+      if (languageInput) languageInput.value = state.lang;
+    }
+
+    function saveSettings() {
+      const refreshInput = document.getElementById('settingRefreshInterval');
+      const languageInput = document.getElementById('settingLanguage');
+      const nextInterval = Number(refreshInput?.value || 5);
+      if (Number.isFinite(nextInterval) && nextInterval >= 1) {
+        state.refreshInterval = nextInterval * 1000;
+        state.fallbackRefreshInterval = Math.max(5000, nextInterval * 1000);
+        if (state.autoRefresh) startInterval();
+      }
+      if (languageInput?.value && languageInput.value !== state.lang) {
+        state.lang = languageInput.value;
+        localStorage.setItem('hub_lang', state.lang);
+        translatePage();
+      }
+      renderAll();
+    }
+
+    function renderToolsPanel() {
+      const tools = Array.isArray(state.status.tools) ? state.status.tools : [];
+      const connected = tools.filter(tool => tool.connected).length;
+      const cliTools = tools.filter(tool => tool.kind === 'cli-config').length;
+      const apps = tools.filter(tool => ['app-state', 'local-model-runtime'].includes(tool.kind)).length;
+      const setText = (id, value) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = value;
+      };
+      setText('toolsConnected', connected);
+      setText('toolsRunnable', tools.filter(tool => tool.runnable || tool.installed || tool.connected).length);
+      setText('toolsCLI', cliTools);
+      setText('toolsApps', apps);
+
+      const grid = document.getElementById('toolsGrid');
+      if (!grid) return;
+      grid.innerHTML = tools.map(tool => {
+        const displayName = (toolDisplayNames[state.lang] && toolDisplayNames[state.lang][tool.name]) || tool.name;
+        const kindBadge = (toolKindBadges[state.lang] && toolKindBadges[state.lang][tool.kind]) || tool.kind || '';
+        return `
+          <div class="tool-card" onclick="showToolInstallModal('${escapeHtml(tool.name)}')">
+            <div style="display:flex;align-items:center;gap:10px;">
+              ${renderToolIcon(tool.name, 28, tool.kind)}
+              <div>
+                <strong>${escapeHtml(displayName)}</strong>
+                <div class="muted" style="font-size:12px;">${escapeHtml(kindBadge)}</div>
+              </div>
+            </div>
+            <span class="badge ${tool.connected ? 'status-done' : 'status-open'}">${tool.connected ? 'connected' : 'missing'}</span>
+          </div>
+        `;
+      }).join('') || `<div class="muted">${t('scanning')}</div>`;
+    }
+
+    async function refreshTools() {
+      const response = await api('/api/detect');
+      state.status.tools = Array.isArray(response.tools) ? response.tools : [];
+      renderToolsPanel();
+    }
+
+    function performSearch() {
+      const query = String(document.getElementById('searchQuery')?.value || '').trim().toLowerCase();
+      const type = document.getElementById('searchType')?.value || 'all';
+      const target = document.getElementById('searchResults');
+      if (!target) return;
+      if (!query) {
+        target.innerHTML = `<div class="muted">Enter a query to search...</div>`;
+        return;
+      }
+      const results = [];
+      const include = (kind) => type === 'all' || type === kind;
+      if (include('memory')) {
+        String(state.memory.memory || '').split(/\r?\n/).forEach((line, index) => {
+          if (line.toLowerCase().includes(query)) results.push({ kind: 'Memory', title: `MEMORY.md:${index + 1}`, text: line });
+        });
+      }
+      if (include('task')) {
+        state.tasks.forEach(task => {
+          const text = [task.title, task.description, task.project, task.assignee, task.status].filter(Boolean).join(' ');
+          if (text.toLowerCase().includes(query)) results.push({ kind: 'Task', title: task.title, text });
+        });
+      }
+      if (include('radio')) {
+        state.radio.forEach(message => {
+          const text = [message.from, message.to, message.type, message.project, message.text].filter(Boolean).join(' ');
+          if (text.toLowerCase().includes(query)) results.push({ kind: 'Radio', title: `${message.from || '?'} -> ${message.to || '?'}`, text });
+        });
+      }
+      target.innerHTML = results.slice(0, 50).map(result => `
+        <div class="stream-card">
+          <div class="stream-header">
+            <strong>${escapeHtml(result.kind)}: ${escapeHtml(result.title || '')}</strong>
+          </div>
+          <div class="stream-body">${escapeHtml(result.text || '')}</div>
+        </div>
+      `).join('') || `<div class="muted">No matching results.</div>`;
+    }
+
+    async function runHealthCheck() {
+      const target = document.getElementById('healthReport');
+      if (!target) return;
+      target.innerHTML = `<div class="muted">${t('scanning')}</div>`;
+      try {
+        const report = await api('/api/health');
+        target.innerHTML = `
+          <pre style="white-space:pre-wrap;font-family:var(--font-mono);font-size:12px;">${escapeHtml(report.stdout || report.stderr || 'No health output.')}</pre>
+        `;
+      } catch (error) {
+        target.innerHTML = `<div class="endpoint-error-item">${escapeHtml(error.message || String(error))}</div>`;
       }
     }
 

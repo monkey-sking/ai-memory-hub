@@ -1,5 +1,9 @@
 # Session Relay Protocol Design
 
+For target identity semantics, see [Actor Model](actor-model.md). In this
+document the `{tool}` segment of `threadKey` is a concrete target tool actor,
+not a session id or workflow role.
+
 ## Thread ID Schema
 
 **Unified Format**: `{tool}:{project}:{ref}`

@@ -162,6 +162,8 @@ async function main() {
       return statusCommand();
     case "record":
       return recordCommand(rest);
+    case "memory":
+      return memoryCommand(rest);
     case "radio":
       return radioCommand(rest);
     case "task":
@@ -202,6 +204,8 @@ async function main() {
       return indexCommand(rest);
     case "search":
       return searchCommand(rest);
+    case "snapshot":
+      return snapshotCommand(rest);
     case "pull":
       return pullCommand(rest);
     case "backup":
@@ -3634,21 +3638,27 @@ function indexCommand() {
   }, config.sync.lockStaleMs);
 }
 
+function memoryCommand(argv) {
+  const subcommand = argv[0] || "help";
+  const rest = argv.slice(1);
+  if (subcommand === "search") {
+    return searchCommand(rest);
+  }
+  if (subcommand === "snapshot") {
+    return snapshotCommand(rest);
+  }
+  throw new Error("Usage: ai-memory-hub memory <search|snapshot> [options]");
+}
+
 function searchCommand(argv) {
   const query = positionalArgs(argv).join(" ").trim();
   const config = loadConfig();
   ensureHub(config.memoryDir);
   const limit = Number(getOption(argv, "--limit") || 10);
-  const filters = {
-    project: getOption(argv, "--project") || "",
-    thread: getOption(argv, "--thread") || "",
-    taskId: getOption(argv, "--task") || getOption(argv, "--task-id") || "",
-    workflowId: getOption(argv, "--workflow") || getOption(argv, "--workflow-id") || "",
-    radioId: getOption(argv, "--radio") || getOption(argv, "--radio-id") || ""
-  };
-  const hasFilter = Object.values(filters).some(Boolean);
+  const filters = parseMemoryFilters(argv);
+  const hasFilter = hasMemoryFilters(filters);
   if (!query && !hasFilter) {
-    throw new Error("Usage: ai-memory-hub search [query] [--limit 10] [--project <name>] [--thread <id>] [--task <id>] [--workflow <id>] [--radio <id>]");
+    throw new Error("Usage: ai-memory-hub search [query] [--limit 10] [--project <name>] [--tag <tag>|--tags <a,b>] [--thread <id>] [--task <id>] [--workflow <id>] [--radio <id>]");
   }
   const index = buildMemoryIndex(readLedger(config.memoryDir), config);
   const records = filterMemoryRecords(index.records, filters);
@@ -3662,8 +3672,25 @@ function searchCommand(argv) {
     const kind = item.metadata?.kind || "note";
     const topics = (item.topics || []).slice(0, 4).join(",");
     const refs = formatMemoryRefs(item.refs);
-    console.log(`[${item.score.toFixed(2)}] ${item.source}/${kind} ${topics ? `(${topics}) ` : ""}${refs ? `[${refs}] ` : ""}${item.text}`);
+    const project = item.project ? `project=${item.project} ` : "";
+    const tags = item.tags?.length ? `tags=${item.tags.slice(0, 5).join(",")} ` : "";
+    console.log(`[${item.score.toFixed(2)}] ${item.source}/${kind} ${project}${tags}${topics ? `(${topics}) ` : ""}${refs ? `[${refs}] ` : ""}${item.text}`);
   }
+}
+
+function snapshotCommand(argv) {
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const rawLimit = getOption(argv, "--limit");
+  const limit = rawLimit ? parsePositiveIntegerOption(rawLimit, "--limit") : 0;
+  const filters = parseMemoryFilters(argv);
+  const baseIndex = buildMemoryIndex(readLedger(config.memoryDir), config);
+  const records = filterMemoryRecords(baseIndex.records, filters);
+  const index = hasMemoryFilters(filters) ? buildMemoryIndex(records, config) : baseIndex;
+  console.log(renderMemorySnapshot(index, config, {
+    limit,
+    filterSummary: formatMemoryFilterSummary(filters)
+  }));
 }
 
 function pullCommand() {
@@ -4409,6 +4436,7 @@ Commands:
   sync       Index pending inbox events into the local memory ledger.
   index      Rebuild MEMORY.md, INDEX.md, and the structured local index.
   search     Search indexed local memories.
+  snapshot   Print a filtered memory snapshot view without rewriting MEMORY.md.
   task       Share task/todo state across AI tools.
   workflow   Coordinate planner/executor/reviewer/observer work across AI tools.
   session    Manage session handoff for context transfer between tools.
@@ -4441,7 +4469,8 @@ Examples:
   ${APP_NAME} sync --dry-run
   ${APP_NAME} sync
   ${APP_NAME} index
-  ${APP_NAME} search "git commit rules" --limit 5
+  ${APP_NAME} search "git commit rules" --limit 5 --tag workflow
+  ${APP_NAME} snapshot --project ai-memory-hub --tags workflow,git --limit 20
   ${APP_NAME} task add "Review README task-list section" --description "Goal: check task docs. Scope: README only. Acceptance: examples are accurate." --handoff "Next: reviewer verifies wording." --from codex --project ai-memory-hub --priority high
   ${APP_NAME} task list --status active
   ${APP_NAME} task claim --id <task-id> --by claude
@@ -6688,13 +6717,75 @@ function formatMemoryRefs(refs = {}) {
   return parts.join(" ");
 }
 
+function parseMemoryFilters(argv) {
+  return {
+    project: getOption(argv, "--project") || "",
+    tags: parseMemoryTagFilters(argv),
+    thread: getOption(argv, "--thread") || "",
+    taskId: getOption(argv, "--task") || getOption(argv, "--task-id") || "",
+    workflowId: getOption(argv, "--workflow") || getOption(argv, "--workflow-id") || "",
+    radioId: getOption(argv, "--radio") || getOption(argv, "--radio-id") || ""
+  };
+}
+
+function parseMemoryTagFilters(argv) {
+  return normalizeList([
+    getOption(argv, "--tag"),
+    getOption(argv, "--tags")
+  ]);
+}
+
+function hasMemoryFilters(filters = {}) {
+  return Boolean(
+    filters.project ||
+    (filters.tags && filters.tags.length > 0) ||
+    filters.thread ||
+    filters.taskId ||
+    filters.workflowId ||
+    filters.radioId
+  );
+}
+
+function formatMemoryFilterSummary(filters = {}) {
+  const parts = [];
+  if (filters.project) {
+    parts.push(`project=${normalizeMemoryProject(filters.project)}`);
+  }
+  if (filters.tags?.length) {
+    parts.push(`tags=${filters.tags.join(",")}`);
+  }
+  if (filters.thread) {
+    parts.push(`thread=${normalizeRefToken(filters.thread)}`);
+  }
+  if (filters.taskId) {
+    parts.push(`taskId=${normalizeRefToken(filters.taskId)}`);
+  }
+  if (filters.workflowId) {
+    parts.push(`workflowId=${normalizeRefToken(filters.workflowId)}`);
+  }
+  if (filters.radioId) {
+    parts.push(`radioId=${normalizeRefToken(filters.radioId)}`);
+  }
+  return parts.join(" ");
+}
+
 function filterMemoryRecords(records, filters = {}) {
   return records
     .filter((record) => filters.project ? record.project === normalizeMemoryProject(filters.project) : true)
+    .filter((record) => matchesMemoryTags(record, filters.tags))
     .filter((record) => matchesMemoryRef(record, "thread", filters.thread))
     .filter((record) => matchesMemoryRef(record, "taskId", filters.taskId))
     .filter((record) => matchesMemoryRef(record, "workflowId", filters.workflowId))
     .filter((record) => matchesMemoryRef(record, "radioId", filters.radioId));
+}
+
+function matchesMemoryTags(memory, queryTags = []) {
+  const requested = normalizeList(queryTags);
+  if (requested.length === 0) {
+    return true;
+  }
+  const candidates = normalizeList(memory.tags?.length ? memory.tags : memory.metadata?.tags);
+  return requested.every((tag) => candidates.includes(tag));
 }
 
 function matchesMemoryRef(memory, key, query) {
@@ -6817,17 +6908,23 @@ function enrichMemory(memory, ordinal, total) {
   };
 }
 
-function renderMemorySnapshot(index, config) {
+function renderMemorySnapshot(index, config, options = {}) {
   const coreLimit = Number(config.sync?.coreLimit || 40);
   const recentLimit = Number(config.sync?.recentLimit || 20);
-  const core = index.records
+  const totalLimit = Number(options.limit || 0);
+  const allCore = index.records
     .filter((item) => item.layer === "core")
-    .sort(sortByImportance)
-    .slice(0, coreLimit);
-  const recent = [...index.records]
+    .sort(sortByImportance);
+  const allRecent = [...index.records]
     .filter((item) => item.layer !== "core")
-    .sort((a, b) => String(b.ts || "").localeCompare(String(a.ts || "")))
-    .slice(0, recentLimit);
+    .sort((a, b) => String(b.ts || "").localeCompare(String(a.ts || "")));
+  let core = allCore.slice(0, coreLimit);
+  let recent = allRecent.slice(0, recentLimit);
+  if (totalLimit > 0) {
+    core = allCore.slice(0, Math.min(coreLimit, totalLimit));
+    const remaining = Math.max(0, totalLimit - core.length);
+    recent = allRecent.slice(0, Math.min(recentLimit, remaining));
+  }
   const lines = [
     "# Shared AI Memory",
     "",
@@ -6840,6 +6937,10 @@ function renderMemorySnapshot(index, config) {
     "## Core Memory",
     ""
   ];
+  if (options.filterSummary) {
+    lines.push(`Filtered view: ${options.filterSummary}.`);
+    lines.push("");
+  }
   if (index.records.length === 0) {
     lines.push("No memories found.");
     lines.push("");

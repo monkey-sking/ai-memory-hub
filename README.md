@@ -194,8 +194,8 @@ ai-memory-hub update            # 更新到最新版本
 #### 记忆管理
 
 ```bash
-ai-memory-hub memory search <query>        # 搜索记忆
-ai-memory-hub memory snapshot --limit 40   # 生成快照
+ai-memory-hub memory search <query> --project <name> --tag <tag>   # 搜索记忆
+ai-memory-hub memory snapshot --project <name> --tags a,b --limit 40 # 过滤快照视图
 ```
 
 #### 消息总线

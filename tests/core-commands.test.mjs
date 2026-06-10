@@ -314,7 +314,7 @@ test("memory search filters by thread-aware references", async () => {
       metadata: {
         kind: "workflow",
         project: "ai-memory-hub",
-        tags: ["relay"],
+        tags: ["relay", "review"],
         refs: {
           thread: "relay-lifecycle-2026-06-09",
           taskId: "task-relay",
@@ -337,6 +337,17 @@ test("memory search filters by thread-aware references", async () => {
         }
       }
     });
+    await appendJsonl(path.join(memoryDir, "inbox", "events.jsonl"), {
+      id: "event-other-project-memory",
+      ts: "2026-06-09T10:02:00.000Z",
+      source: "claude",
+      text: "Relay lifecycle belongs to another project.",
+      metadata: {
+        kind: "reference",
+        project: "other-project",
+        tags: ["relay", "review"]
+      }
+    });
 
     const sync = runCli(memoryDir, ["sync"]);
     assert.equal(sync.status, 0, sync.stderr || sync.stdout);
@@ -350,6 +361,27 @@ test("memory search filters by thread-aware references", async () => {
     const ordinary = runCli(memoryDir, ["search", "relay lifecycle"]);
     assert.equal(ordinary.status, 0, ordinary.stderr || ordinary.stdout);
     assert.match(ordinary.stdout, /Relay lifecycle workflow status/);
+
+    const byProject = runCli(memoryDir, ["search", "relay", "--project", "ai-memory-hub"]);
+    assert.equal(byProject.status, 0, byProject.stderr || byProject.stdout);
+    assert.match(byProject.stdout, /project=ai-memory-hub/);
+    assert.doesNotMatch(byProject.stdout, /another project/);
+
+    const byTag = runCli(memoryDir, ["search", "--tag", "relay"]);
+    assert.equal(byTag.status, 0, byTag.stderr || byTag.stdout);
+    assert.match(byTag.stdout, /tags=relay,review/);
+
+    const byTagsAndProject = runCli(memoryDir, ["memory", "search", "--tags", "relay,review", "--project", "ai-memory-hub"]);
+    assert.equal(byTagsAndProject.status, 0, byTagsAndProject.stderr || byTagsAndProject.stdout);
+    assert.match(byTagsAndProject.stdout, /Relay lifecycle workflow status/);
+    assert.doesNotMatch(byTagsAndProject.stdout, /another project/);
+
+    const snapshot = runCli(memoryDir, ["memory", "snapshot", "--project", "ai-memory-hub", "--tag", "relay", "--limit", "1"]);
+    assert.equal(snapshot.status, 0, snapshot.stderr || snapshot.stdout);
+    assert.match(snapshot.stdout, /Filtered view: project=ai-memory-hub tags=relay/);
+    assert.match(snapshot.stdout, /Relay lifecycle workflow status/);
+    assert.doesNotMatch(snapshot.stdout, /Dashboard telemetry/);
+    assert.doesNotMatch(snapshot.stdout, /another project/);
 
     const byThread = runCli(memoryDir, ["search", "workflow", "--thread", "relay-lifecycle-2026-06-09"]);
     assert.equal(byThread.status, 0, byThread.stderr || byThread.stdout);

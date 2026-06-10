@@ -95,13 +95,16 @@ ai-memory-hub update --force
 Search through memory index.
 
 ```bash
-ai-memory-hub search [query] [--limit <n>] [--project <name>] [--thread <id>] [--task <id>] [--workflow <id>] [--radio <id>]
+ai-memory-hub search [query] [--limit <n>] [--project <name>] [--tag <tag>|--tags <a,b>] [--thread <id>] [--task <id>] [--workflow <id>] [--radio <id>]
+ai-memory-hub memory search [query] [--limit <n>] [--project <name>] [--tag <tag>|--tags <a,b>]
 ```
 
 **Examples:**
 ```bash
 ai-memory-hub search "git commit rules"
 ai-memory-hub search "project setup" --limit 10
+ai-memory-hub search "dispatch" --project ai-memory-hub --tag workflow
+ai-memory-hub memory search --tags relay,review --project ai-memory-hub
 ai-memory-hub search "relay lifecycle" --thread relay-lifecycle-2026-06-09
 ai-memory-hub search --thread relay-lifecycle-2026-06-09
 ai-memory-hub search "review result" --task task-relay --project ai-memory-hub
@@ -109,19 +112,23 @@ ai-memory-hub search "review result" --task task-relay --project ai-memory-hub
 
 Search reads the rebuilt memory index and can filter by thread-aware references
 stored in `refs.thread`, `refs.taskId`, `refs.workflowId`, and `refs.radioId`.
-Plain text search still works without any reference filters. If a reference
-filter is provided without a query, search returns the newest matching records.
+It can also filter by normalized project and tags. Multiple tags are treated as
+an AND filter. Plain text search still works without any filters. If a filter is
+provided without a query, search returns the newest matching records.
 
 ### `memory snapshot`
 
-Generate memory snapshot.
+Print a filtered memory snapshot view to stdout without rewriting `MEMORY.md`.
 
 ```bash
-ai-memory-hub memory snapshot [--limit <n>]
+ai-memory-hub snapshot [--limit <n>] [--project <name>] [--tag <tag>|--tags <a,b>]
+ai-memory-hub memory snapshot [--limit <n>] [--project <name>] [--tag <tag>|--tags <a,b>]
 ```
 
 **Options:**
 - `--limit` - Maximum number of records in snapshot (default: 40)
+- `--project` - Include only memories for a normalized project
+- `--tag` / `--tags` - Include only memories matching all requested tags
 
 ### Planned `memory op`
 

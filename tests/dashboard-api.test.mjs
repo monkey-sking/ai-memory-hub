@@ -259,12 +259,27 @@ test("dashboard serves externalized virtual-scroll assets", async () => {
       const html = await res.text();
       assert.match(html, /<link rel="stylesheet" href="\/css\/dashboard\.css">/);
       assert.match(html, /<script src="\/js\/dashboard\.js"><\/script>\s*<\/body>/);
+      assert.match(html, /id="tab-backups"/);
+      assert.match(html, /id="backupReason"/);
+      assert.match(html, /id="settingAutoRefresh"/);
+      assert.match(html, /id="settingNotifications"/);
+      assert.match(html, /id="settingShortcutsEnabled"/);
+      assert.match(html, /id="shortcutFocusSearch"/);
+      assert.match(html, /id="toastStack"/);
+      assert.match(html, /id="shortcutHelp"/);
+      assert.match(html, /id="shortcutHelpGrid"/);
       assert.doesNotMatch(html, /<script>\s*\/\/\s*Global tool icon/);
 
       const cssRes = await fetch(`http://127.0.0.1:${port}/css/dashboard.css`);
       assert.equal(cssRes.status, 200);
       assert.match(cssRes.headers.get("content-type") || "", /text\/css/);
-      assert.match(await cssRes.text(), /--bg-main/);
+      const dashboardCss = await cssRes.text();
+      assert.match(dashboardCss, /--bg-main/);
+      assert.match(dashboardCss, /body\[data-theme="light"\]/);
+      assert.match(dashboardCss, /\.backup-row/);
+      assert.match(dashboardCss, /\.toast-stack/);
+      assert.match(dashboardCss, /\.shortcut-grid/);
+      assert.match(dashboardCss, /max-width:\s*640px/);
 
       const jsRes = await fetch(`http://127.0.0.1:${port}/js/dashboard.js`);
       assert.equal(jsRes.status, 200);
@@ -273,6 +288,20 @@ test("dashboard serves externalized virtual-scroll assets", async () => {
       assert.match(dashboardScript, /function renderVirtualList/);
       assert.match(dashboardScript, /new Chart\(el/);
       assert.match(dashboardScript, /memoryGrowthChart/);
+      assert.match(dashboardScript, /function renderHealthReport/);
+      assert.match(dashboardScript, /function runHealthAction/);
+      assert.match(dashboardScript, /function renderBackupsPanel/);
+      assert.match(dashboardScript, /function showToast/);
+      assert.match(dashboardScript, /function handleGlobalShortcuts/);
+      assert.match(dashboardScript, /function normalizeShortcutBinding/);
+      assert.match(dashboardScript, /function renderShortcutHelp/);
+      assert.match(dashboardScript, /function applySettingsDraft/);
+      assert.match(dashboardScript, /function applyTheme/);
+      assert.match(dashboardScript, /api\('\/api\/backups'/);
+      assert.match(dashboardScript, /new URLSearchParams/);
+      assert.match(dashboardScript, /api\(`\/api\/search\?\$\{params\.toString\(\)\}`\)/);
+      assert.match(dashboardScript, /api\(action\.endpoint/);
+      assert.match(dashboardScript, /settingNotifications/);
       assert.doesNotMatch(dashboardScript, /echarts\.init/);
 
       const traversalRes = await fetch(`http://127.0.0.1:${port}/js/%2e%2e/%2e%2e/package.json`);
@@ -297,7 +326,329 @@ test("dashboard serves externalized virtual-scroll assets", async () => {
   assert.match(dashboardJs, /memoryGrowthChart/);
   assert.match(dashboardJs, /taskCompletionChart/);
   assert.match(dashboardJs, /radioActivityChart/);
+  assert.match(dashboardJs, /function renderHealthReport/);
+  assert.match(dashboardJs, /function runHealthAction/);
+  assert.match(dashboardJs, /function renderBackupsPanel/);
+  assert.match(dashboardJs, /function showToast/);
+  assert.match(dashboardJs, /function handleGlobalShortcuts/);
+  assert.match(dashboardJs, /function normalizeShortcutBinding/);
+  assert.match(dashboardJs, /function renderShortcutHelp/);
+  assert.match(dashboardJs, /function applySettingsDraft/);
+  assert.match(dashboardJs, /function applyTheme/);
+  assert.match(dashboardJs, /api\('\/api\/backups'/);
+  assert.match(dashboardJs, /new URLSearchParams/);
+  assert.match(dashboardJs, /api\(`\/api\/search\?\$\{params\.toString\(\)\}`\)/);
+  assert.match(dashboardJs, /api\(action\.endpoint/);
   assert.doesNotMatch(dashboardJs, /echarts\.init/);
+});
+
+test("dashboard settings API persists editable runtime preferences", async () => {
+  await withHub(async (memoryDir) => {
+    const port = await getFreePort();
+    const child = spawn(process.execPath, [cliPath, "app", "--port", String(port)], {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        AI_MEMORY_DIR: memoryDir
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true
+    });
+    const stderr = [];
+    child.stderr.on("data", (chunk) => stderr.push(String(chunk)));
+    try {
+      await waitForServer(port, child);
+      const beforeRes = await fetch(`http://127.0.0.1:${port}/api/settings`);
+      assert.equal(beforeRes.status, 200);
+      const before = await beforeRes.json();
+      assert.equal(before.sync.snapshotLimit, 120);
+      assert.equal(before.dashboard.autoRefresh, true);
+      assert.equal(before.dashboard.notifications, true);
+      assert.equal(before.dashboard.shortcuts.enabled, true);
+      assert.equal(before.dashboard.shortcuts.bindings.focusSearch, "/");
+      assert.equal(before.dashboard.shortcuts.bindings.openSearch, "mod+k");
+      assert.equal(before.dashboard.shortcuts.tabBindings.dashboard, "1");
+
+      const updateRes = await fetch(`http://127.0.0.1:${port}/api/settings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sync: { snapshotLimit: 88 },
+          dashboard: {
+            autoRefresh: false,
+            refreshIntervalMs: 12000,
+            language: "en",
+            theme: "light",
+            notifications: false,
+            shortcuts: {
+              enabled: false,
+              bindings: {
+                focusSearch: "alt+f",
+                openSearch: "ctrl+shift+k",
+                showHelp: "ctrl+shift+/",
+                closeLayer: "escape"
+              },
+              tabBindings: {
+                dashboard: "alt+1",
+                memory: "alt+2",
+                radio: "alt+3",
+                tasks: "alt+4",
+                dispatch: "alt+5",
+                workflows: "alt+6",
+                analytics: "alt+7",
+                backups: "alt+8",
+                settings: "alt+9",
+                health: "alt+0"
+              }
+            }
+          }
+        })
+      });
+      if (updateRes.status !== 200) {
+        assert.fail(await updateRes.text());
+      }
+      const update = await updateRes.json();
+      assert.equal(update.ok, true);
+      assert.equal(update.settings.sync.snapshotLimit, 88);
+      assert.equal(update.settings.dashboard.autoRefresh, false);
+      assert.equal(update.settings.dashboard.refreshIntervalMs, 12000);
+      assert.equal(update.settings.dashboard.language, "en");
+      assert.equal(update.settings.dashboard.theme, "light");
+      assert.equal(update.settings.dashboard.notifications, false);
+      assert.equal(update.settings.dashboard.shortcuts.enabled, false);
+      assert.equal(update.settings.dashboard.shortcuts.bindings.focusSearch, "alt+f");
+      assert.equal(update.settings.dashboard.shortcuts.bindings.openSearch, "ctrl+shift+k");
+      assert.equal(update.settings.dashboard.shortcuts.tabBindings.dashboard, "alt+1");
+      assert.equal(update.settings.dashboard.shortcuts.tabBindings.health, "alt+0");
+
+      const config = JSON.parse(await fs.readFile(path.join(memoryDir, "config.json"), "utf8"));
+      assert.equal(config.sync.snapshotLimit, 88);
+      assert.equal(config.dashboard.autoRefresh, false);
+      assert.equal(config.dashboard.refreshIntervalMs, 12000);
+      assert.equal(config.dashboard.language, "en");
+      assert.equal(config.dashboard.theme, "light");
+      assert.equal(config.dashboard.notifications, false);
+      assert.equal(config.dashboard.shortcuts.enabled, false);
+      assert.equal(config.dashboard.shortcuts.bindings.focusSearch, "alt+f");
+      assert.equal(config.dashboard.shortcuts.tabBindings.dashboard, "alt+1");
+    } finally {
+      await stopServer(child);
+    }
+    assert.deepEqual(stderr, []);
+  });
+});
+
+test("dashboard search and backup APIs expose cross-hub data", async () => {
+  await withHub(async (memoryDir) => {
+    const now = new Date().toISOString();
+    await appendJsonl(path.join(memoryDir, "inbox", "events.jsonl"), {
+      id: "search-memory",
+      ts: now,
+      source: "codex",
+      text: "dashboard-signal memory record for dashboard search API coverage",
+      metadata: { kind: "workflow", project: "ai-memory-hub" }
+    });
+    const sync = runCli(memoryDir, ["sync"]);
+    assert.equal(sync.status, 0, sync.stderr || sync.stdout);
+    await appendJsonl(path.join(memoryDir, "tasks", "tasks.jsonl"), {
+      id: "search-task",
+      createdAt: now,
+      updatedAt: now,
+      completedAt: "",
+      createdBy: "test",
+      assignee: "codex",
+      status: "claimed",
+      priority: "normal",
+      project: "ai-memory-hub",
+      title: "dashboard-signal task search target",
+      description: "Task result should be included in dashboard search.",
+      handoff: "",
+      notes: []
+    });
+    await appendJsonl(path.join(memoryDir, "radio", "messages.jsonl"), {
+      id: "search-radio",
+      ts: now,
+      source: "test",
+      from: "codex",
+      to: "gemini",
+      type: "note",
+      project: "ai-memory-hub",
+      text: "dashboard-signal radio search target"
+    });
+    await appendJsonl(path.join(memoryDir, "workflows", "workflows.jsonl"), {
+      id: "search-workflow",
+      createdAt: now,
+      updatedAt: now,
+      completedAt: "",
+      createdBy: "test",
+      status: "in_progress",
+      priority: "normal",
+      project: "ai-memory-hub",
+      title: "dashboard-signal workflow search target",
+      planner: ["codex"],
+      executor: ["codex"],
+      reviewer: ["gemini"],
+      observer: [],
+      plan: "Verify dashboard search aggregates workflows.",
+      acceptance: "",
+      risks: [],
+      results: [],
+      reviews: [],
+      linkedTasks: [],
+      linkedRadio: [],
+      notes: []
+    });
+
+    const port = await getFreePort();
+    const child = spawn(process.execPath, [cliPath, "app", "--port", String(port)], {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        AI_MEMORY_DIR: memoryDir
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true
+    });
+    const stderr = [];
+    child.stderr.on("data", (chunk) => stderr.push(String(chunk)));
+    try {
+      await waitForServer(port, child);
+      const searchRes = await fetch(`http://127.0.0.1:${port}/api/search?q=dashboard-signal&type=all&limit=20`);
+      assert.equal(searchRes.status, 200);
+      const search = await searchRes.json();
+      assert.equal(search.query, "dashboard-signal");
+      const kinds = new Set(search.results.map((item) => item.kind));
+      assert.ok(kinds.has("memory"));
+      assert.ok(kinds.has("task"));
+      assert.ok(kinds.has("radio"));
+      assert.ok(kinds.has("workflow"));
+      assert.ok(search.results.every((item) => item.preview.includes("dashboard-signal")));
+
+      const taskSearchRes = await fetch(`http://127.0.0.1:${port}/api/search?q=dashboard-signal&type=task`);
+      assert.equal(taskSearchRes.status, 200);
+      const taskSearch = await taskSearchRes.json();
+      assert.ok(taskSearch.results.length > 0);
+      assert.ok(taskSearch.results.every((item) => item.kind === "task"));
+
+      const backupsRes = await fetch(`http://127.0.0.1:${port}/api/backups`);
+      assert.equal(backupsRes.status, 200);
+      const beforeBackups = await backupsRes.json();
+      assert.ok(Array.isArray(beforeBackups.backups));
+      assert.ok(beforeBackups.policy.daily >= 1);
+
+      const createBackupRes = await fetch(`http://127.0.0.1:${port}/api/backups/create`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: "dashboard-api-test" })
+      });
+      if (createBackupRes.status !== 200) {
+        assert.fail(await createBackupRes.text());
+      }
+      const createdBackup = await createBackupRes.json();
+      assert.equal(createdBackup.ok, true);
+      assert.equal(createdBackup.backup.reason, "dashboard-api-test");
+      assert.ok(createdBackup.backups.count >= beforeBackups.count + 1);
+
+      const pruneRes = await fetch(`http://127.0.0.1:${port}/api/backups/prune`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apply: false, daily: 1, weekly: 1, preSync: 1 })
+      });
+      if (pruneRes.status !== 200) {
+        assert.fail(await pruneRes.text());
+      }
+      const prune = await pruneRes.json();
+      assert.equal(prune.ok, true);
+      assert.equal(prune.apply, false);
+      assert.ok(Array.isArray(prune.candidates));
+      assert.equal(prune.backups.count, createdBackup.backups.count);
+    } finally {
+      await stopServer(child);
+    }
+    assert.deepEqual(stderr, []);
+  });
+});
+
+test("dashboard health API returns structured diagnostics and repair suggestions", async () => {
+  await withHub(async (memoryDir) => {
+    const repeatedText = "Repeated health rule: always verify ai-memory-hub dashboard changes.";
+    await appendJsonl(path.join(memoryDir, "inbox", "events.jsonl"), {
+      id: "health-duplicate-a",
+      ts: "2026-06-08T10:00:00.000Z",
+      source: "codex",
+      text: repeatedText,
+      metadata: { kind: "workflow", project: "ai-memory-hub" }
+    });
+    await appendJsonl(path.join(memoryDir, "inbox", "events.jsonl"), {
+      id: "health-duplicate-b",
+      ts: "2026-06-09T10:00:00.000Z",
+      source: "gemini",
+      text: repeatedText,
+      metadata: { kind: "workflow", project: "ai-memory-hub" }
+    });
+    await appendJsonl(path.join(memoryDir, "inbox", "events.jsonl"), {
+      id: "health-corrupted",
+      ts: "2026-06-10T10:00:00.000Z",
+      source: "raw",
+      text: "Broken health record \u0000 \ufffd",
+      metadata: { kind: "raw", project: "ai-memory-hub" }
+    });
+    const sync = runCli(memoryDir, ["sync"]);
+    assert.equal(sync.status, 0, sync.stderr || sync.stdout);
+    await appendJsonl(path.join(memoryDir, "inbox", "events.jsonl"), {
+      id: "health-pending",
+      ts: "2026-06-10T11:00:00.000Z",
+      source: "codex",
+      text: "Pending event to verify sync suggestion.",
+      metadata: { kind: "note", project: "ai-memory-hub" }
+    });
+
+    const port = await getFreePort();
+    const child = spawn(process.execPath, [cliPath, "app", "--port", String(port)], {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        AI_MEMORY_DIR: memoryDir
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true
+    });
+    const stderr = [];
+    child.stderr.on("data", (chunk) => stderr.push(String(chunk)));
+    try {
+      await waitForServer(port, child);
+      const res = await fetch(`http://127.0.0.1:${port}/api/health`);
+      assert.equal(res.status, 200);
+      const payload = await res.json();
+      assert.equal(payload.ok, true);
+      assert.match(payload.report, /## Recommended Actions/);
+      assert.equal(payload.analysis.duplicateRecords, 1);
+      assert.equal(payload.analysis.corruptedRecordsCount, 1);
+      assert.ok(payload.analysis.issues.some((issue) => issue.title === "Pending inbox events"));
+      assert.ok(payload.analysis.repairSuggestions.some((action) => action.endpoint === "/api/sync"));
+      assert.ok(payload.analysis.repairSuggestions.some((action) => action.command === "ai-memory-hub sync"));
+      assert.equal(payload.analysis.duplicateGroups[0].count, 2);
+      assert.equal(payload.analysis.corruptedRecords[0].pointer.includes("health-corrupted"), true);
+
+      const repairPreviewRes = await fetch(`http://127.0.0.1:${port}/api/health/repair`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apply: false, limit: 5 })
+      });
+      if (repairPreviewRes.status !== 200) {
+        assert.fail(await repairPreviewRes.text());
+      }
+      const repairPreview = await repairPreviewRes.json();
+      assert.equal(repairPreview.ok, true);
+      assert.equal(repairPreview.apply, false);
+      assert.equal(repairPreview.backup, null);
+      assert.equal(repairPreview.plan.totalActions, 2);
+      assert.equal(repairPreview.applied.ledgerRecordsUpdated, 0);
+    } finally {
+      await stopServer(child);
+    }
+    assert.deepEqual(stderr, []);
+  });
 });
 
 test("dashboard task review API records approval on task and linked workflow", async () => {

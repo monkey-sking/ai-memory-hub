@@ -657,10 +657,113 @@ test("health command reports memory quality and storage diagnostics", async () =
     assert.match(health.stdout, /## Issues/);
     assert.match(health.stdout, /Corrupted records detected/);
     assert.match(health.stdout, /Duplicate memory content/);
+    assert.match(health.stdout, /## Recommended Actions/);
+    assert.match(health.stdout, /Repair corrupted records/);
+    assert.match(health.stdout, /Supersede duplicate records/);
     assert.match(health.stdout, /## Duplicate Examples/);
     assert.match(health.stdout, /Repeated workflow rule/);
     assert.match(health.stdout, /## Corrupted Record Examples/);
     assert.match(health.stdout, /event-corrupted/);
+  });
+});
+
+test("health repair archives corrupted records and supersedes duplicate records", async () => {
+  await withHub(async (memoryDir) => {
+    const repeatedText = "Repeated health repair workflow rule must keep only one active copy.";
+    await appendJsonl(path.join(memoryDir, "inbox", "events.jsonl"), {
+      id: "repair-duplicate-old",
+      ts: "2026-06-08T10:00:00.000Z",
+      source: "codex",
+      text: repeatedText,
+      metadata: {
+        kind: "workflow",
+        project: "ai-memory-hub"
+      }
+    });
+    await appendJsonl(path.join(memoryDir, "inbox", "events.jsonl"), {
+      id: "repair-duplicate-new",
+      ts: "2026-06-09T10:00:00.000Z",
+      source: "gemini",
+      text: repeatedText,
+      metadata: {
+        kind: "workflow",
+        project: "ai-memory-hub"
+      }
+    });
+    await appendJsonl(path.join(memoryDir, "inbox", "events.jsonl"), {
+      id: "repair-corrupted",
+      ts: "2026-06-10T10:00:00.000Z",
+      source: "raw",
+      text: "Broken health repair record \u0000 \ufffd",
+      metadata: {
+        kind: "raw",
+        project: "ai-memory-hub"
+      }
+    });
+
+    const sync = runCli(memoryDir, ["sync"]);
+    assert.equal(sync.status, 0, sync.stderr || sync.stdout);
+
+    const dryRun = parseJson(runCli(memoryDir, ["health", "repair", "--limit", "5"]));
+    assert.equal(dryRun.apply, false);
+    assert.equal(dryRun.plan.corruptedRecords, 1);
+    assert.equal(dryRun.plan.duplicateRecordsToSupersede, 1);
+
+    const repair = parseJson(runCli(memoryDir, ["health", "repair", "--apply", "--limit", "5"]));
+    assert.equal(repair.apply, true);
+    assert.equal(repair.applied.corruptedArchived, 1);
+    assert.equal(repair.applied.duplicateSuperseded, 1);
+    assert.match(repair.backup.dir, /pre-health-repair/);
+    assert.equal(repair.after.corruptedRecords, 0);
+    assert.equal(repair.after.duplicateRecords, 0);
+
+    const index = JSON.parse(await fs.readFile(path.join(memoryDir, "memories", "index.json"), "utf8"));
+    const oldDuplicate = index.records.find((record) => record.localEventId === "repair-duplicate-old");
+    const corrupted = index.records.find((record) => record.localEventId === "repair-corrupted");
+    assert.equal(oldDuplicate.superseded, true);
+    assert.equal(corrupted.healthExcluded, true);
+    assert.equal(corrupted.metadata.lifecycle.healthRepair.status, "archived-corrupted");
+
+    const health = runCli(memoryDir, ["health", "--limit", "5"]);
+    assert.equal(health.status, 0, health.stderr || health.stdout);
+    assert.match(health.stdout, /Duplicate records: 0 \(0\.0%\)/);
+    assert.match(health.stdout, /Corrupted records: 0/);
+  });
+});
+
+test("backup list and prune expose retention candidates without applying by default", async () => {
+  await withHub(async (memoryDir) => {
+    const backupsDir = path.join(memoryDir, "backups");
+    const fixtures = [
+      ["2026-06-10T10-00-00-000Z-pre-sync", "2026-06-10T10:00:00.000Z"],
+      ["2026-06-09T10-00-00-000Z-pre-sync", "2026-06-09T10:00:00.000Z"],
+      ["2026-06-08T10-00-00-000Z-pre-sync", "2026-06-08T10:00:00.000Z"]
+    ];
+    for (const [name, createdAt] of fixtures) {
+      const dir = path.join(backupsDir, name);
+      await fs.mkdir(dir, { recursive: true });
+      await fs.writeFile(path.join(dir, "manifest.json"), JSON.stringify({
+        createdAt,
+        reason: "pre-sync",
+        dir,
+        retention: {
+          tier: "pre-sync",
+          key: createdAt
+        },
+        files: ["memory-ledger.jsonl"]
+      }, null, 2), "utf8");
+      await fs.writeFile(path.join(dir, "memory-ledger.jsonl"), `${createdAt}\n`, "utf8");
+    }
+
+    const listed = parseJson(runCli(memoryDir, ["backup", "list", "--limit", "10"]));
+    assert.equal(listed.count, 3);
+    assert.equal(listed.policy.daily, 7);
+    assert.equal(listed.backups[0].retention, "keep");
+
+    const prune = parseJson(runCli(memoryDir, ["backup", "prune", "--daily", "1", "--weekly", "1", "--pre-sync", "1"]));
+    assert.equal(prune.apply, false);
+    assert.equal(prune.prune, 2);
+    assert.equal((await fs.readdir(backupsDir)).length, 3);
   });
 });
 

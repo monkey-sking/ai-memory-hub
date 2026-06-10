@@ -57,6 +57,7 @@
       <div class="nav-item" onclick="switchTab('dispatch')" data-i18n="dispatchLogs">⚡ Dispatch Logs</div>
       <div class="nav-item" onclick="switchTab('workflows')"><span data-i18n="workflowsPanel">🔄 Workflows</span> <span class="badge" id="sidebarWorkflows">0</span></div>
       <div class="nav-item" onclick="switchTab('analytics')" data-i18n="analyticsPanel">📈 Analytics</div>
+      <div class="nav-item" onclick="switchTab('backups')" data-i18n="backupsPanel">🗄️ Backups</div>
       <div class="nav-item" onclick="switchTab('settings')" data-i18n="settingsPanel">⚙️ Settings</div>
       <div class="nav-item" onclick="switchTab('health')" data-i18n="healthPanel">💊 Health</div>
       <div class="nav-item" onclick="switchTab('search')" data-i18n="searchPanel">🔍 Search</div>
@@ -438,38 +439,246 @@
         </div>
       </div>
 
+      <!-- Backups Tab -->
+      <div id="tab-backups" class="tab-panel">
+        <div class="summary-grid">
+          <div class="summary-card">
+            <span data-i18n="backupCountLabel">Backup Sets</span>
+            <strong id="backupsTotal">0</strong>
+          </div>
+          <div class="summary-card">
+            <span data-i18n="backupSizeLabel">Storage Used</span>
+            <strong id="backupsBytes">0 B</strong>
+          </div>
+          <div class="summary-card">
+            <span data-i18n="backupKeepLabel">Retained</span>
+            <strong id="backupsKeep">0</strong>
+          </div>
+          <div class="summary-card">
+            <span data-i18n="backupPruneLabel">Cleanup Preview</span>
+            <strong id="backupsPrune">0</strong>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header">
+            <h3 class="panel-title" data-i18n="backupManagement">🗄️ Backup Management</h3>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <button class="btn small" onclick="loadBackups()" data-i18n="refresh">Refresh</button>
+              <button class="primary small" onclick="createBackup()" data-i18n="createBackup">Create Backup</button>
+              <button class="btn small" onclick="previewBackupPrune()" data-i18n="previewCleanup">Preview Cleanup</button>
+              <button class="btn small" onclick="saveBackupPolicy()" data-i18n="saveBackupPolicy">Save Schedule</button>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label data-i18n="backupReason">Backup Reason</label>
+              <input id="backupReason" type="text" value="dashboard-manual">
+            </div>
+            <div class="form-group">
+              <label data-i18n="dailyRetention">Daily Retention</label>
+              <input id="backupDailyRetention" type="number" min="1" max="30" value="7">
+            </div>
+            <div class="form-group">
+              <label data-i18n="weeklyRetention">Weekly Retention</label>
+              <input id="backupWeeklyRetention" type="number" min="1" max="12" value="4">
+            </div>
+            <div class="form-group">
+              <label data-i18n="preSyncRetention">Pre-sync Retention</label>
+              <input id="backupPreSyncRetention" type="number" min="1" max="100" value="20">
+            </div>
+            <div class="form-group">
+              <label data-i18n="pruneAfterSync">Prune After Sync</label>
+              <label class="switch">
+                <input type="checkbox" id="backupPruneAfterSync" checked>
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+          <div id="backupPrunePreview" class="muted" style="margin-bottom:12px;"></div>
+          <div class="backup-management-grid">
+            <div id="backupsList" class="backup-list">
+              <div class="muted" data-i18n="loadingBackups">Loading backups...</div>
+            </div>
+            <div class="backup-detail">
+              <div class="backup-detail-header">
+                <div>
+                  <h4 id="backupDetailTitle" data-i18n="backupFileBrowser">Backup File Browser</h4>
+                  <div id="backupDetailMeta" class="muted" data-i18n="selectBackupPrompt">Select a backup to inspect files.</div>
+                </div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                  <button class="btn small" onclick="previewBackupRestore()" data-i18n="previewRestore">Preview Restore</button>
+                  <button class="danger small" onclick="restoreSelectedBackup()" data-i18n="restoreBackup">Restore</button>
+                </div>
+              </div>
+              <div id="backupRestoreSummary" class="backup-restore-summary"></div>
+              <div id="backupFilesList" class="backup-file-list">
+                <div class="muted" data-i18n="selectBackupPrompt">Select a backup to inspect files.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Settings Tab -->
       <div id="tab-settings" class="tab-panel">
+        <div class="summary-grid settings-summary">
+          <div class="summary-card">
+            <span data-i18n="settingsCurrentSnapshot">Snapshot Limit</span>
+            <strong id="settingsSnapshotValue">120</strong>
+          </div>
+          <div class="summary-card">
+            <span data-i18n="settingsCurrentRefresh">Refresh Interval</span>
+            <strong id="settingsRefreshValue">5s</strong>
+          </div>
+          <div class="summary-card">
+            <span data-i18n="settingsCurrentTheme">Theme</span>
+            <strong id="settingsThemeValue">Dark</strong>
+          </div>
+          <div class="summary-card">
+            <span data-i18n="settingsCurrentAlerts">Notifications</span>
+            <strong id="settingsNotificationsValue">On</strong>
+          </div>
+        </div>
+
         <div class="panel">
           <div class="panel-header">
             <h3 class="panel-title" data-i18n="systemSettings">⚙️ System Settings</h3>
+            <span id="settingsSaveStatus" class="muted"></span>
           </div>
 
-          <div class="form-group">
-            <label data-i18n="snapshotLimit">Snapshot Limit</label>
-            <input type="number" id="settingSnapshotLimit" value="200" min="50" max="500">
-            <small style="color:var(--text-muted)" data-i18n="snapshotLimitDesc">Max records in MEMORY.md (current: 200)</small>
-          </div>
+          <div class="settings-grid">
+            <section class="settings-section">
+              <h4 data-i18n="settingsSnapshotSection">Memory Snapshot</h4>
+              <div class="form-group">
+                <label data-i18n="snapshotLimit">Snapshot Limit</label>
+                <input type="number" id="settingSnapshotLimit" value="120" min="1" max="1000" oninput="applySettingsDraft()">
+                <small data-i18n="snapshotLimitDesc">Records included in generated MEMORY.md snapshots.</small>
+              </div>
+            </section>
 
-          <div class="form-group">
-            <label data-i18n="refreshInterval">Auto Refresh Interval (seconds)</label>
-            <input type="number" id="settingRefreshInterval" value="5" min="1" max="60">
-          </div>
+            <section class="settings-section">
+              <h4 data-i18n="settingsRefreshSection">Refresh</h4>
+              <div class="setting-toggle-row">
+                <div>
+                  <strong data-i18n="settingsAutoRefresh">Auto Refresh</strong>
+                  <small data-i18n="settingsAutoRefreshDesc">Keep the dashboard connected to live hub updates.</small>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="settingAutoRefresh" onchange="applySettingsDraft()">
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="form-group">
+                <label data-i18n="refreshInterval">Refresh Interval (seconds)</label>
+                <input type="number" id="settingRefreshInterval" value="5" min="1" max="60" oninput="applySettingsDraft()">
+              </div>
+            </section>
 
-          <div class="form-group">
-            <label data-i18n="themeLabel">Theme</label>
-            <select id="settingTheme">
-              <option value="dark" selected data-i18n="darkMode">Dark Mode</option>
-              <option value="light" data-i18n="lightMode">Light Mode (Coming Soon)</option>
-            </select>
-          </div>
+            <section class="settings-section">
+              <h4 data-i18n="settingsAppearanceSection">Appearance</h4>
+              <div class="form-group">
+                <label data-i18n="themeLabel">Theme</label>
+                <select id="settingTheme" onchange="applySettingsDraft()">
+                  <option value="dark" selected data-i18n="darkMode">Dark Mode</option>
+                  <option value="light" data-i18n="lightMode">Light Mode</option>
+                </select>
+              </div>
 
-          <div class="form-group">
-            <label data-i18n="languageLabel">Language</label>
-            <select id="settingLanguage">
-              <option value="zh">中文</option>
-              <option value="en">English</option>
-            </select>
+              <div class="form-group">
+                <label data-i18n="languageLabel">Language</label>
+                <select id="settingLanguage" onchange="applySettingsDraft()">
+                  <option value="zh">中文</option>
+                  <option value="en">English</option>
+                </select>
+              </div>
+            </section>
+
+            <section class="settings-section">
+              <h4 data-i18n="settingsNotificationSection">Notifications</h4>
+              <div class="setting-toggle-row">
+                <div>
+                  <strong data-i18n="notificationLabel">Dashboard Notifications</strong>
+                  <small data-i18n="notificationDesc">Show success and status notifications for dashboard actions.</small>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="settingNotifications" onchange="applySettingsDraft()">
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </section>
+
+            <section class="settings-section settings-section-wide">
+              <h4 data-i18n="settingsShortcutsSection">Global Shortcuts</h4>
+              <div class="setting-toggle-row">
+                <div>
+                  <strong data-i18n="shortcutEnableLabel">Keyboard Shortcuts</strong>
+                  <small data-i18n="shortcutEnableDesc">Enable global dashboard shortcuts for search, panels, and overlays.</small>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="settingShortcutsEnabled" onchange="applySettingsDraft()">
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="shortcut-bindings-grid">
+                <div class="form-group">
+                  <label data-i18n="shortcutSearch">Focus search</label>
+                  <input type="text" id="shortcutFocusSearch" value="/" oninput="applySettingsDraft()">
+                </div>
+                <div class="form-group">
+                  <label data-i18n="shortcutCommand">Open search</label>
+                  <input type="text" id="shortcutOpenSearch" value="mod+k" oninput="applySettingsDraft()">
+                </div>
+                <div class="form-group">
+                  <label data-i18n="shortcutShowHelp">Show shortcuts</label>
+                  <input type="text" id="shortcutShowHelpInput" value="ctrl+/" oninput="applySettingsDraft()">
+                </div>
+                <div class="form-group">
+                  <label data-i18n="shortcutClose">Close modal or sidebar</label>
+                  <input type="text" id="shortcutCloseLayer" value="escape" oninput="applySettingsDraft()">
+                </div>
+                <div class="form-group">
+                  <label data-i18n="overview">Overview</label>
+                  <input type="text" id="shortcutTabDashboard" value="1" oninput="applySettingsDraft()">
+                </div>
+                <div class="form-group">
+                  <label data-i18n="memoryHub">Memory Hub</label>
+                  <input type="text" id="shortcutTabMemory" value="2" oninput="applySettingsDraft()">
+                </div>
+                <div class="form-group">
+                  <label data-i18n="agentRadio">Agent Radio</label>
+                  <input type="text" id="shortcutTabRadio" value="3" oninput="applySettingsDraft()">
+                </div>
+                <div class="form-group">
+                  <label data-i18n="tasksBoard">Tasks Board</label>
+                  <input type="text" id="shortcutTabTasks" value="4" oninput="applySettingsDraft()">
+                </div>
+                <div class="form-group">
+                  <label data-i18n="dispatchLogs">Dispatch Logs</label>
+                  <input type="text" id="shortcutTabDispatch" value="5" oninput="applySettingsDraft()">
+                </div>
+                <div class="form-group">
+                  <label data-i18n="workflowsPanel">Workflows</label>
+                  <input type="text" id="shortcutTabWorkflows" value="6" oninput="applySettingsDraft()">
+                </div>
+                <div class="form-group">
+                  <label data-i18n="analyticsPanel">Analytics</label>
+                  <input type="text" id="shortcutTabAnalytics" value="7" oninput="applySettingsDraft()">
+                </div>
+                <div class="form-group">
+                  <label data-i18n="backupsPanel">Backups</label>
+                  <input type="text" id="shortcutTabBackups" value="8" oninput="applySettingsDraft()">
+                </div>
+                <div class="form-group">
+                  <label data-i18n="settingsPanel">Settings</label>
+                  <input type="text" id="shortcutTabSettings" value="9" oninput="applySettingsDraft()">
+                </div>
+                <div class="form-group">
+                  <label data-i18n="healthPanel">Health</label>
+                  <input type="text" id="shortcutTabHealth" value="0" oninput="applySettingsDraft()">
+                </div>
+              </div>
+              <small data-i18n="shortcutFormatHint">Use keys like /, escape, ctrl+k, mod+k, or alt+1.</small>
+            </section>
           </div>
 
           <button class="primary" onclick="saveSettings()" data-i18n="saveSettings">Save Settings</button>
@@ -478,7 +687,7 @@
 
       <!-- Tools Tab -->
       <div id="tab-tools" class="tab-panel">
-        <div class="summary-grid">
+        <div class="summary-grid tools-summary">
           <div class="summary-card">
             <span data-i18n="connectedTools">Connected Tools</span>
             <strong id="toolsConnected">0</strong>
@@ -495,14 +704,58 @@
             <span data-i18n="appTools">Apps</span>
             <strong id="toolsApps">0</strong>
           </div>
+          <div class="summary-card">
+            <span data-i18n="dispatchSuccess">Dispatch Success</span>
+            <strong id="toolsSuccessRate">0%</strong>
+          </div>
+          <div class="summary-card">
+            <span data-i18n="activeDispatches">Active Dispatches</span>
+            <strong id="toolsActiveDispatches">0</strong>
+          </div>
         </div>
         <div class="panel">
           <div class="panel-header">
-            <h3 class="panel-title" data-i18n="toolManagement">🔧 Tool Management</h3>
-            <button class="primary" onclick="refreshTools()" data-i18n="refreshTools">Refresh</button>
+            <div>
+              <h3 class="panel-title" data-i18n="toolManagement">🔧 Tool Management</h3>
+              <div id="toolsLastUpdated" class="muted" style="font-size:12px;margin-top:4px;"></div>
+            </div>
+            <div class="tools-toolbar">
+              <select id="toolsStatusFilter" onchange="renderToolsPanel()">
+                <option value="all" data-i18n="toolsStatusAll">All tools</option>
+                <option value="connected" data-i18n="toolsStatusConnected">Connected</option>
+                <option value="needs-config" data-i18n="toolsStatusNeedsConfig">Needs config</option>
+                <option value="missing" data-i18n="toolsStatusMissing">Missing</option>
+              </select>
+              <button class="primary" onclick="refreshTools()" data-i18n="refreshTools">Refresh</button>
+            </div>
           </div>
-          <div id="toolsGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:16px;">
-            <div class="muted" data-i18n="loadingTools">Loading tools...</div>
+          <div class="tools-management-layout">
+            <section class="tools-status-section">
+              <div class="section-title" data-i18n="liveToolStatus">Live Tool Status</div>
+              <div id="toolsGrid" class="tools-grid">
+                <div class="muted" data-i18n="loadingTools">Loading tools...</div>
+              </div>
+            </section>
+            <aside class="tools-insights">
+              <section class="tools-insight-section">
+                <div class="section-title" data-i18n="performanceMonitoring">Performance Monitoring</div>
+                <div id="toolPerformanceBars" class="tool-performance-bars">
+                  <div class="muted" data-i18n="noRuns">No dispatch runs yet.</div>
+                </div>
+              </section>
+              <section class="tools-insight-section">
+                <div class="section-title" data-i18n="usageStats">Usage Statistics</div>
+                <div id="toolUsageChart" class="tool-usage-chart">
+                  <div class="muted" data-i18n="scanning">Scanning...</div>
+                </div>
+              </section>
+              <section class="tools-insight-section">
+                <div class="section-title" data-i18n="toolConfigManagement">Configuration Management</div>
+                <div id="toolConfigPanel" class="tool-config-panel">
+                  <div class="muted" data-i18n="selectToolConfig">Select a tool to inspect configuration.</div>
+                </div>
+              </section>
+            </aside>
           </div>
         </div>
       </div>
@@ -512,18 +765,39 @@
         <div class="panel">
           <div class="panel-header">
             <h3 class="panel-title" data-i18n="globalSearch">🔍 Global Search</h3>
+            <span id="searchMeta" class="muted"></span>
           </div>
-          <div class="form-group">
-            <input type="text" id="searchQuery" data-i18n-placeholder="searchPlaceholder" placeholder="Search across memories, tasks, and messages..." onkeyup="if(event.key==='Enter')performSearch()">
+          <div class="search-toolbar">
+            <input type="text" id="searchQuery" data-i18n-placeholder="searchPlaceholder" placeholder="Search across memories, tasks, and messages..." oninput="scheduleSearch()" onkeydown="if(event.key==='Enter')performSearch()">
+            <button class="primary" onclick="performSearch()" data-i18n="searchButton">Search</button>
           </div>
-          <div class="filter-strip">
-            <select id="searchType">
+          <div class="filter-strip search-filter-strip">
+            <select id="searchType" onchange="performSearch()">
               <option value="all" data-i18n="searchAll">All</option>
               <option value="memory" data-i18n="searchMemories">Memories</option>
               <option value="task" data-i18n="searchTasks">Tasks</option>
               <option value="radio" data-i18n="searchRadio">Radio Messages</option>
+              <option value="workflow" data-i18n="searchWorkflows">Workflows</option>
             </select>
-            <button class="primary" onclick="performSearch()" data-i18n="searchButton">Search</button>
+            <select id="searchRange" onchange="performSearch()">
+              <option value="all" data-i18n="searchAnyTime">Any time</option>
+              <option value="24h" data-i18n="search24h">Last 24 hours</option>
+              <option value="7d" data-i18n="search7d">Last 7 days</option>
+              <option value="30d" data-i18n="search30d">Last 30 days</option>
+              <option value="90d" data-i18n="search90d">Last 90 days</option>
+            </select>
+            <select id="searchSort" onchange="performSearch()">
+              <option value="relevance" data-i18n="sortRelevance">Relevance</option>
+              <option value="newest" data-i18n="sortNewest">Newest</option>
+              <option value="oldest" data-i18n="sortOldest">Oldest</option>
+            </select>
+            <button class="btn small" id="searchClearTag" onclick="clearSearchTag()" hidden data-i18n="searchClearTag">Clear tag</button>
+          </div>
+          <div class="search-facets">
+            <div class="search-section-label" data-i18n="searchTagCloud">Tag cloud</div>
+            <div id="searchTagCloud" class="tag-cloud">
+              <span class="muted" data-i18n="scanning">Scanning...</span>
+            </div>
           </div>
           <div id="searchResults">
             <div class="muted" data-i18n="searchPrompt">Enter a query to search...</div>
@@ -566,6 +840,17 @@
           </div>
         </div>
       </details>
+
+      <div id="toastStack" class="toast-stack" aria-live="polite"></div>
+      <div id="shortcutHelp" class="modal-overlay" style="display:none;" onclick="closeShortcutHelp(event)">
+        <div class="modal-card">
+          <div class="modal-header">
+            <h3 data-i18n="keyboardShortcuts">Keyboard Shortcuts</h3>
+            <button class="btn small" onclick="closeShortcutHelp()">×</button>
+          </div>
+          <div id="shortcutHelpGrid" class="modal-body shortcut-grid"></div>
+        </div>
+      </div>
       
       <!-- Hidden backward-compatible DOM tags for scrapers -->
       <div style="display:none;">

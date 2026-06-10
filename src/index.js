@@ -31,6 +31,24 @@ const RESEARCH_REPORTS_DIR = "research-reports";
 const DISPATCH_RUNS_DIR = "dispatch-runs";
 const DAEMON_PID_FILE = "daemon.pid";
 const DAEMON_STATUS_FILE = "daemon-status.json";
+const DEFAULT_DASHBOARD_SHORTCUT_BINDINGS = Object.freeze({
+  focusSearch: "/",
+  openSearch: "mod+k",
+  showHelp: "ctrl+/",
+  closeLayer: "escape"
+});
+const DEFAULT_DASHBOARD_TAB_BINDINGS = Object.freeze({
+  dashboard: "1",
+  memory: "2",
+  radio: "3",
+  tasks: "4",
+  dispatch: "5",
+  workflows: "6",
+  analytics: "7",
+  backups: "8",
+  settings: "9",
+  health: "0"
+});
 
 let toolDetectionCache = null;
 
@@ -1405,14 +1423,46 @@ function metricsCommand(argv) {
 }
 
 function healthCommand(argv) {
+  const action = argv[0] && !argv[0].startsWith("--") ? argv[0] : "report";
+  if (action === "repair" || action === "fix") {
+    return healthRepairCommand(argv.slice(1));
+  }
+  if (action !== "report") {
+    throw new Error("Usage: ai-memory-hub health [--limit N] | ai-memory-hub health repair [--apply] [--limit N]");
+  }
   const config = loadConfig();
   ensureHub(config.memoryDir);
-  const ledger = readLedger(config.memoryDir);
-  const index = buildMemoryIndex(ledger, config);
   const issueLimit = getOption(argv, "--limit")
     ? parsePositiveIntegerOption(getOption(argv, "--limit"), "--limit")
     : 5;
-  console.log(renderMemoryHealthReport(config, index, { issueLimit }));
+  const report = buildMemoryHealthDiagnostic(config, { issueLimit });
+  console.log(report.markdown);
+}
+
+function healthRepairCommand(argv) {
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const apply = hasFlag(argv, "--apply");
+  const issueLimit = getOption(argv, "--limit")
+    ? parsePositiveIntegerOption(getOption(argv, "--limit"), "--limit")
+    : 10;
+  const result = apply
+    ? withHubLock(config.memoryDir, "health-repair", () => runMemoryHealthRepair(config, { apply, issueLimit }), config.sync.lockStaleMs)
+    : runMemoryHealthRepair(config, { apply, issueLimit });
+  console.log(JSON.stringify(result, null, 2));
+}
+
+function buildMemoryHealthDiagnostic(config, options = {}) {
+  const ledger = readLedger(config.memoryDir);
+  const index = buildMemoryIndex(ledger, config);
+  const analysis = analyzeMemoryHealth(config, index, options);
+  return {
+    analysis,
+    markdown: renderMemoryHealthReport(config, index, {
+      ...options,
+      analysis
+    })
+  };
 }
 
 function updateCommand(argv) {
@@ -3580,12 +3630,21 @@ function syncCommand(argv) {
 function syncIndexedEvents(config, dryRun) {
   const inboxPath = path.join(config.memoryDir, "inbox", "events.jsonl");
   const events = readEvents(inboxPath);
+  const backupRun = dryRun
+    ? null
+    : runAutomaticBackupStrategy(config, {
+      trigger: "sync",
+      includePreSync: events.length > 0
+    });
   if (events.length === 0) {
     console.log("No pending memory events.");
+    if (backupRun?.created.length) {
+      console.log(`Created ${backupRun.created.length} scheduled backup(s).`);
+    }
     return;
   }
 
-  const backup = dryRun ? null : backupHub(config.memoryDir, "pre-sync");
+  const backup = backupRun?.preSync || null;
   let synced = 0;
   const remaining = [];
   const ledger = readLedger(config.memoryDir);
@@ -3642,7 +3701,17 @@ function syncIndexedEvents(config, dryRun) {
       syncedAt: new Date().toISOString(),
       indexed: newRecords.length,
       pending: remaining.length,
-      backupDir: backup?.dir || ""
+      backupDir: backup?.dir || "",
+      backups: backupRun
+        ? {
+          created: backupRun.created.map((item) => ({
+            reason: item.reason,
+            dir: item.dir,
+            retention: item.retention
+          })),
+          pruned: backupRun.pruned?.pruned || []
+        }
+        : null
     });
     if (config.sync.archiveIndexedInboxItems !== false) {
       archiveInbox(config.memoryDir, events.filter((event) => !remaining.includes(event)));
@@ -3738,6 +3807,35 @@ function pullCommand() {
 function backupCommand(argv) {
   const config = loadConfig();
   ensureHub(config.memoryDir);
+  const retention = getBackupRetentionConfig(config);
+  const action = argv[0] && !argv[0].startsWith("--") ? argv[0] : "create";
+  if (action === "list") {
+    const limit = getOption(argv, "--limit")
+      ? parsePositiveIntegerOption(getOption(argv, "--limit"), "--limit")
+      : 50;
+    console.log(JSON.stringify(getBackupSummary(config.memoryDir, { limit, ...retention }), null, 2));
+    return;
+  }
+  if (action === "prune") {
+    const apply = hasFlag(argv, "--apply");
+    const daily = getOption(argv, "--daily")
+      ? parsePositiveIntegerOption(getOption(argv, "--daily"), "--daily")
+      : retention.daily;
+    const weekly = getOption(argv, "--weekly")
+      ? parsePositiveIntegerOption(getOption(argv, "--weekly"), "--weekly")
+      : retention.weekly;
+    const preSync = getOption(argv, "--pre-sync")
+      ? parsePositiveIntegerOption(getOption(argv, "--pre-sync"), "--pre-sync")
+      : retention.preSync;
+    const result = apply
+      ? withHubLock(config.memoryDir, "backup-prune", () => pruneBackups(config.memoryDir, { apply, daily, weekly, preSync }), config.sync.lockStaleMs)
+      : pruneBackups(config.memoryDir, { apply, daily, weekly, preSync });
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+  if (action !== "create") {
+    throw new Error("Usage: ai-memory-hub backup [--reason manual] | ai-memory-hub backup list [--limit N] | ai-memory-hub backup prune [--daily 7] [--weekly 4] [--pre-sync 20] [--apply]");
+  }
   const reason = getOption(argv, "--reason") || positionalArgs(argv).join(" ").trim() || "manual";
   const backup = withHubLock(config.memoryDir, "backup", () => backupHub(config.memoryDir, reason), config.sync.lockStaleMs);
   console.log(JSON.stringify(backup, null, 2));
@@ -4097,20 +4195,96 @@ function appCommand(argv) {
         return sendJson(res, getDashboardDispatch(config.memoryDir));
       }
       if (req.method === "GET" && url.pathname === "/api/detect") {
-        return sendJson(res, { tools: detectTools(config.memoryDir) });
+        const tools = refreshDetectedTools(config.memoryDir);
+        return sendJson(res, { tools, summary: summarizeToolConnections(tools) });
+      }
+      if (req.method === "GET" && url.pathname === "/api/tools") {
+        return sendJson(res, getDashboardTools(config.memoryDir, {
+          refresh: url.searchParams.get("refresh") === "1"
+        }));
+      }
+      if (req.method === "GET" && url.pathname === "/api/backups") {
+        return sendJson(res, getDashboardBackups(config));
+      }
+      if (req.method === "GET" && url.pathname === "/api/backups/detail") {
+        return sendJson(res, getBackupDetail(config.memoryDir, url.searchParams.get("name") || ""));
+      }
+      if (req.method === "POST" && url.pathname === "/api/backups/create") {
+        const body = await readRequestJson(req);
+        const reason = String(body.reason || "dashboard-manual").trim() || "dashboard-manual";
+        const backup = withHubLock(config.memoryDir, "backup", () => backupHub(config.memoryDir, reason), config.sync.lockStaleMs);
+        broadcastDashboardUpdate("backup:create");
+        return sendJson(res, { ok: true, backup, backups: getDashboardBackups(config) });
+      }
+      if (req.method === "POST" && url.pathname === "/api/backups/prune") {
+        const body = await readRequestJson(req);
+        const retention = getBackupRetentionConfig(config);
+        const daily = Number.isInteger(Number(body.daily)) && Number(body.daily) > 0 ? Number(body.daily) : retention.daily;
+        const weekly = Number.isInteger(Number(body.weekly)) && Number(body.weekly) > 0 ? Number(body.weekly) : retention.weekly;
+        const preSync = Number.isInteger(Number(body.preSync)) && Number(body.preSync) > 0 ? Number(body.preSync) : retention.preSync;
+        const apply = Boolean(body.apply);
+        const result = apply
+          ? withHubLock(config.memoryDir, "backup-prune", () => pruneBackups(config.memoryDir, { apply, daily, weekly, preSync }), config.sync.lockStaleMs)
+          : pruneBackups(config.memoryDir, { apply, daily, weekly, preSync });
+        if (apply) {
+          broadcastDashboardUpdate("backup:prune");
+        }
+        return sendJson(res, { ok: true, ...result, backups: getDashboardBackups(config) });
+      }
+      if (req.method === "POST" && url.pathname === "/api/backups/restore") {
+        const body = await readRequestJson(req);
+        const apply = Boolean(body.apply);
+        const result = apply
+          ? withHubLock(config.memoryDir, "backup-restore", () => restoreBackup(config.memoryDir, body.name, {
+            apply,
+            confirm: body.confirm
+          }), config.sync.lockStaleMs)
+          : restoreBackup(config.memoryDir, body.name, { apply: false });
+        if (apply) {
+          broadcastDashboardUpdate("backup:restore");
+        }
+        return sendJson(res, { ok: true, ...result, backups: getDashboardBackups(config) });
+      }
+      if (req.method === "GET" && url.pathname === "/api/search") {
+        return sendJson(res, getDashboardSearch(config.memoryDir, {
+          query: url.searchParams.get("q") || url.searchParams.get("query") || "",
+          type: url.searchParams.get("type") || "all",
+          tag: url.searchParams.get("tag") || "",
+          range: url.searchParams.get("range") || "all",
+          sort: url.searchParams.get("sort") || "relevance",
+          limit: Number(url.searchParams.get("limit") || 50)
+        }));
+      }
+      if (req.method === "GET" && url.pathname === "/api/settings") {
+        return sendJson(res, getDashboardSettings());
+      }
+      if (req.method === "POST" && url.pathname === "/api/settings") {
+        const body = await readRequestJson(req);
+        const settings = updateDashboardSettings(body);
+        broadcastDashboardUpdate("settings:update");
+        return sendJson(res, { ok: true, settings });
       }
       if (req.method === "GET" && url.pathname === "/api/health") {
-        const result = spawnSync("node", [__filename, "health"], {
-          cwd: process.cwd(),
-          env: { ...process.env, [MEMORY_DIR_ENV]: config.memoryDir },
-          encoding: "utf8",
-          timeout: 30000
-        });
+        const diagnostic = buildMemoryHealthDiagnostic(config, { issueLimit: 10 });
         return sendJson(res, {
-          stdout: result.stdout,
-          stderr: result.stderr,
-          exitCode: result.status
+          ok: true,
+          stdout: diagnostic.markdown,
+          report: diagnostic.markdown,
+          analysis: formatHealthAnalysisForDashboard(diagnostic.analysis),
+          exitCode: 0
         });
+      }
+      if (req.method === "POST" && url.pathname === "/api/health/repair") {
+        const body = await readRequestJson(req);
+        const apply = body.apply !== false;
+        const result = withHubLock(config.memoryDir, "health-repair", () => runMemoryHealthRepair(config, {
+          apply,
+          issueLimit: Number(body.limit || 10)
+        }), config.sync.lockStaleMs);
+        if (apply && result.applied.ledgerRecordsUpdated > 0) {
+          broadcastDashboardUpdate("health:repair");
+        }
+        return sendJson(res, result);
       }
       if (req.method === "POST" && url.pathname === "/api/record") {
         const body = await readRequestJson(req);
@@ -4412,6 +4586,7 @@ function appCommand(argv) {
         
         ensureDir(path.dirname(target.file));
         appendIfMissing(target.file, snippet, "Shared AI Memory");
+        invalidateToolDetectionCache(config.memoryDir);
         broadcastDashboardUpdate("install:apply");
         return sendJson(res, { success: true, file: target.file });
       }
@@ -4445,7 +4620,10 @@ function getDashboardSnapshot(memoryDir) {
     radio: getDashboardRadio(memoryDir),
     tasks: getDashboardTasks(memoryDir),
     workflows: getDashboardWorkflows(memoryDir),
-    dispatch: getDashboardDispatch(memoryDir)
+    dispatch: getDashboardDispatch(memoryDir),
+    tools: getDashboardTools(memoryDir),
+    backups: getDashboardBackups(memoryDir),
+    settings: getDashboardSettings()
   };
 }
 
@@ -4488,6 +4666,621 @@ function getDashboardDispatch(memoryDir) {
     logs: readDispatchLog(memoryDir).slice(-100).reverse(),
     relay
   };
+}
+
+function getDashboardTools(memoryDir, { refresh = false } = {}) {
+  const tools = refresh ? refreshDetectedTools(memoryDir) : getCachedDetectedTools(memoryDir);
+  const runs = readDispatchRuns(memoryDir);
+  const relay = Object.values(readLatestRelayStatusByThread(memoryDir));
+  const tasks = readTasks(memoryDir);
+  const radio = readRadioMessages(memoryDir);
+  const metricsByTool = buildToolMetricsByName({ runs, relay, tasks, radio });
+  const enrichedTools = tools.map((tool) => {
+    const metrics = metricsByTool[normalizeToolName(tool.name)] || createEmptyToolMetrics();
+    return {
+      ...tool,
+      metrics,
+      performance: {
+        successRate: metrics.totalRuns ? metrics.completedRuns / metrics.totalRuns : null,
+        avgDurationMs: metrics.durationSamples ? Math.round(metrics.durationMs / metrics.durationSamples) : null,
+        lastRunAt: metrics.lastRunAt,
+        lastStatus: metrics.lastStatus,
+        lastError: metrics.lastError
+      },
+      usage: {
+        activeTasks: metrics.activeTasks,
+        assignedTasks: metrics.assignedTasks,
+        radioMessages: metrics.radioMessages,
+        activeRelays: metrics.activeRelays,
+        totalRuns: metrics.totalRuns,
+        score: metrics.usageScore
+      },
+      config: {
+        instructionFile: tool.instructionFile || "",
+        configured: Boolean(tool.configured),
+        runnerCommand: tool.runnerCommand || "",
+        runnerCommandKind: tool.runnerCommandKind || "",
+        sharedStateOnly: Boolean(tool.sharedStateOnly),
+        action: tool.action || ""
+      }
+    };
+  });
+  const runSummary = summarizeToolRunMetrics(enrichedTools);
+  return {
+    ok: true,
+    generatedAt: new Date().toISOString(),
+    summary: {
+      ...summarizeToolConnections(tools),
+      activeDispatches: relay.filter((entry) => ["dispatched", "acked", "progress", "retrying"].includes(entry.state)).length,
+      runs: runSummary,
+      kindBreakdown: countToolsByKind(tools)
+    },
+    tools: enrichedTools
+  };
+}
+
+function createEmptyToolMetrics() {
+  return {
+    totalRuns: 0,
+    completedRuns: 0,
+    failedRuns: 0,
+    timedOutRuns: 0,
+    durationMs: 0,
+    durationSamples: 0,
+    stdoutBytes: 0,
+    stderrBytes: 0,
+    lastRunAt: "",
+    lastStatus: "",
+    lastError: "",
+    activeRelays: 0,
+    relayStates: {},
+    assignedTasks: 0,
+    activeTasks: 0,
+    createdTasks: 0,
+    radioMessages: 0,
+    usageScore: 0
+  };
+}
+
+function buildToolMetricsByName({ runs = [], relay = [], tasks = [], radio = [] } = {}) {
+  const metricsByTool = {};
+  const entryFor = (name) => {
+    const key = normalizeToolName(name);
+    if (!key) {
+      return null;
+    }
+    metricsByTool[key] ||= createEmptyToolMetrics();
+    return metricsByTool[key];
+  };
+
+  for (const run of runs) {
+    const metrics = entryFor(run.tool);
+    if (!metrics) continue;
+    metrics.totalRuns += 1;
+    const status = String(run.status || "").toLowerCase();
+    if (status === "completed" || run.exitCode === 0) {
+      metrics.completedRuns += 1;
+    } else if (status === "timed_out") {
+      metrics.timedOutRuns += 1;
+      metrics.failedRuns += 1;
+    } else {
+      metrics.failedRuns += 1;
+    }
+    const durationMs = Number(run.durationMs || 0);
+    if (Number.isFinite(durationMs) && durationMs > 0) {
+      metrics.durationMs += durationMs;
+      metrics.durationSamples += 1;
+    }
+    metrics.stdoutBytes += Number(run.stdoutBytes || 0) || 0;
+    metrics.stderrBytes += Number(run.stderrBytes || 0) || 0;
+    const runAt = String(run.finishedAt || run.startedAt || "");
+    if (runAt && runAt >= String(metrics.lastRunAt || "")) {
+      metrics.lastRunAt = runAt;
+      metrics.lastStatus = run.status || "";
+      metrics.lastError = run.errorSummary || "";
+    }
+  }
+
+  for (const entry of relay) {
+    const metrics = entryFor(entry.tool);
+    if (!metrics) continue;
+    const state = String(entry.state || "pending");
+    metrics.relayStates[state] = (metrics.relayStates[state] || 0) + 1;
+    if (["dispatched", "acked", "progress", "retrying"].includes(state)) {
+      metrics.activeRelays += 1;
+    }
+  }
+
+  for (const task of tasks) {
+    const assigned = entryFor(task.assignee);
+    if (assigned) {
+      assigned.assignedTasks += 1;
+      if (!["done", "cancelled"].includes(task.status)) {
+        assigned.activeTasks += 1;
+      }
+    }
+    const created = entryFor(task.createdBy);
+    if (created) {
+      created.createdTasks += 1;
+    }
+  }
+
+  for (const message of radio) {
+    const fromMetrics = entryFor(message.from);
+    if (fromMetrics) fromMetrics.radioMessages += 1;
+    const toMetrics = entryFor(message.to);
+    if (toMetrics && normalizeToolName(message.to) !== normalizeToolName(message.from)) {
+      toMetrics.radioMessages += 1;
+    }
+  }
+
+  for (const metrics of Object.values(metricsByTool)) {
+    metrics.usageScore = metrics.totalRuns + metrics.activeRelays + metrics.activeTasks + metrics.assignedTasks + metrics.createdTasks + metrics.radioMessages;
+  }
+
+  return metricsByTool;
+}
+
+function summarizeToolRunMetrics(tools) {
+  const totals = tools.reduce((acc, tool) => {
+    const metrics = tool.metrics || {};
+    acc.total += Number(metrics.totalRuns || 0);
+    acc.completed += Number(metrics.completedRuns || 0);
+    acc.failed += Number(metrics.failedRuns || 0);
+    acc.timedOut += Number(metrics.timedOutRuns || 0);
+    acc.durationMs += Number(metrics.durationMs || 0);
+    acc.durationSamples += Number(metrics.durationSamples || 0);
+    return acc;
+  }, {
+    total: 0,
+    completed: 0,
+    failed: 0,
+    timedOut: 0,
+    durationMs: 0,
+    durationSamples: 0
+  });
+  return {
+    ...totals,
+    successRate: totals.total ? totals.completed / totals.total : null,
+    avgDurationMs: totals.durationSamples ? Math.round(totals.durationMs / totals.durationSamples) : null
+  };
+}
+
+function countToolsByKind(tools) {
+  return tools.reduce((counts, tool) => {
+    const kind = tool.kind || "unknown";
+    counts[kind] = (counts[kind] || 0) + 1;
+    return counts;
+  }, {});
+}
+
+function getDashboardBackups(config) {
+  const effectiveConfig = typeof config === "string"
+    ? { ...loadConfig(), memoryDir: config }
+    : config;
+  return getBackupSummary(effectiveConfig.memoryDir, { limit: 100, ...getBackupRetentionConfig(effectiveConfig) });
+}
+
+function getDashboardSearch(memoryDir, { query = "", type = "all", tag = "", range = "all", sort = "relevance", limit = 50 } = {}) {
+  const startedAt = Date.now();
+  const cleanQuery = String(query || "").trim();
+  const cleanType = normalizeDashboardSearchOption(type, ["all", "memory", "task", "radio", "workflow"], "all");
+  const cleanTag = sanitizeInlineText(tag);
+  const cleanRange = normalizeDashboardSearchOption(range, ["all", "24h", "7d", "30d", "90d"], "all");
+  const cleanSort = normalizeDashboardSearchOption(sort, ["relevance", "newest", "oldest"], "relevance");
+  const maxResults = Math.max(0, Math.min(200, Number.isFinite(Number(limit)) ? Number(limit) : 50));
+  const corpus = buildDashboardSearchCorpus(memoryDir);
+  const facets = buildDashboardSearchFacets(corpus);
+  const hasActiveSearch = Boolean(cleanQuery || cleanTag || cleanType !== "all" || cleanRange !== "all");
+  const highlightQuery = cleanQuery || cleanTag;
+
+  const results = hasActiveSearch
+    ? corpus
+      .filter((item) => cleanType === "all" || item.kind === cleanType)
+      .filter((item) => !cleanTag || dashboardSearchItemHasTag(item, cleanTag))
+      .filter((item) => isDashboardSearchItemInRange(item, cleanRange))
+      .map((item) => {
+        const score = cleanQuery
+          ? scoreDashboardSearchText(item.searchText || item.text, cleanQuery)
+          : 1;
+        return { ...item, score };
+      })
+      .filter((item) => !cleanQuery || item.score > 0)
+    : [];
+
+  return {
+    query: cleanQuery,
+    type: cleanType,
+    tag: cleanTag,
+    range: cleanRange,
+    sort: cleanSort,
+    count: results.length,
+    elapsedMs: Date.now() - startedAt,
+    facets,
+    results: sortDashboardSearchResults(results, cleanSort)
+      .slice(0, maxResults)
+      .map((item) => ({
+        kind: item.kind,
+        title: item.title,
+        text: item.text,
+        score: item.score,
+        ts: item.ts,
+        tags: item.tags,
+        meta: item.meta,
+        preview: makeDashboardSearchPreview(item.text, highlightQuery)
+      }))
+  };
+}
+
+function buildDashboardSearchCorpus(memoryDir) {
+  const config = { ...loadConfig(), memoryDir };
+  const index = buildMemoryIndex(readLedger(memoryDir), config);
+  const memoryItems = index.records
+    .filter((record) => !record.superseded)
+    .map((record) => {
+      const tags = uniqueDashboardSearchTags([
+        record.kind || record.metadata?.kind,
+        record.project,
+        ...(record.tags || []),
+        ...(record.topics || [])
+      ]);
+      const title = `${record.source || "unknown"}/${record.kind || record.metadata?.kind || "note"}`;
+      const text = record.text || "";
+      return {
+        kind: "memory",
+        title,
+        text,
+        searchText: [title, text, record.project, tags.join(" ")].filter(Boolean).join(" "),
+        ts: record.ts || record.indexedAt || "",
+        tags,
+        meta: {
+          project: record.project || "",
+          tags: record.tags || [],
+          id: record.localEventId || record.id || "",
+          source: record.source || "unknown"
+        }
+      };
+    });
+
+  const taskItems = readTasks(memoryDir).map((task) => {
+    const tags = uniqueDashboardSearchTags([
+      task.project,
+      task.status,
+      task.priority,
+      task.assignee
+    ]);
+    const text = [
+      task.title,
+      task.description,
+      task.handoff,
+      task.project,
+      task.assignee,
+      task.status,
+      task.priority,
+      ...(task.notes || []).map((note) => note.text)
+    ].filter(Boolean).join(" ");
+    return {
+      kind: "task",
+      title: task.title,
+      text,
+      searchText: [task.title, text, tags.join(" ")].filter(Boolean).join(" "),
+      ts: task.updatedAt || task.createdAt || "",
+      tags,
+      meta: {
+        id: task.id,
+        project: task.project,
+        status: task.status,
+        priority: task.priority,
+        assignee: task.assignee
+      }
+    };
+  });
+
+  const radioItems = readRadioMessages(memoryDir).map((message) => {
+    const tags = uniqueDashboardSearchTags([
+      message.project,
+      message.type,
+      message.from,
+      message.to,
+      message.thread
+    ]);
+    const title = `${message.from || "?"} -> ${message.to || "?"}`;
+    const text = [message.from, message.to, message.type, message.project, message.thread, message.text].filter(Boolean).join(" ");
+    return {
+      kind: "radio",
+      title,
+      text,
+      searchText: [title, text, tags.join(" ")].filter(Boolean).join(" "),
+      ts: message.ts || "",
+      tags,
+      meta: {
+        id: message.id,
+        project: message.project,
+        type: message.type,
+        thread: message.thread,
+        from: message.from,
+        to: message.to
+      }
+    };
+  });
+
+  const workflowItems = readWorkflows(memoryDir).map((workflow) => {
+    const roleTags = [
+      ...(workflow.planner || []),
+      ...(workflow.executor || []),
+      ...(workflow.reviewer || []),
+      ...(workflow.observer || [])
+    ];
+    const tags = uniqueDashboardSearchTags([
+      workflow.project,
+      workflow.status,
+      workflow.priority,
+      ...roleTags
+    ]);
+    const text = [
+      workflow.title,
+      workflow.plan,
+      workflow.acceptance,
+      workflow.project,
+      workflow.status,
+      workflow.priority,
+      ...roleTags,
+      ...(workflow.risks || []),
+      ...(workflow.results || []).map((item) => item.text),
+      ...(workflow.reviews || []).map((item) => item.text),
+      ...(workflow.notes || []).map((item) => item.text)
+    ].filter(Boolean).join(" ");
+    return {
+      kind: "workflow",
+      title: workflow.title,
+      text,
+      searchText: [workflow.title, text, tags.join(" ")].filter(Boolean).join(" "),
+      ts: workflow.updatedAt || workflow.createdAt || "",
+      tags,
+      meta: {
+        id: workflow.id,
+        project: workflow.project,
+        status: workflow.status,
+        priority: workflow.priority
+      }
+    };
+  });
+
+  return [...memoryItems, ...taskItems, ...radioItems, ...workflowItems];
+}
+
+function buildDashboardSearchFacets(items) {
+  return {
+    types: countBy(items.map((item) => item.kind)).map((item) => ({
+      ...item,
+      label: titleCase(item.key)
+    })),
+    tags: countBy(items.flatMap((item) => item.tags || [])).slice(0, 40),
+    projects: countBy(items.map((item) => item.meta?.project).filter(Boolean)).slice(0, 20)
+  };
+}
+
+function normalizeDashboardSearchOption(value, allowed, fallback) {
+  const normalized = String(value || fallback).trim().toLowerCase();
+  return allowed.includes(normalized) ? normalized : fallback;
+}
+
+function uniqueDashboardSearchTags(values) {
+  const seen = new Set();
+  const tags = [];
+  for (const value of values.flatMap((item) => normalizeList(item))) {
+    const tag = sanitizeInlineText(value);
+    const key = normalizeSearchText(tag);
+    if (!tag || !key || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    tags.push(tag);
+  }
+  return tags.slice(0, 30);
+}
+
+function dashboardSearchItemHasTag(item, tag) {
+  const normalizedTag = normalizeSearchText(tag);
+  return (item.tags || []).some((itemTag) => normalizeSearchText(itemTag) === normalizedTag);
+}
+
+function isDashboardSearchItemInRange(item, range) {
+  if (range === "all") {
+    return true;
+  }
+  const time = Date.parse(item.ts || "");
+  if (!Number.isFinite(time)) {
+    return false;
+  }
+  const ranges = {
+    "24h": 24 * 60 * 60 * 1000,
+    "7d": 7 * 24 * 60 * 60 * 1000,
+    "30d": 30 * 24 * 60 * 60 * 1000,
+    "90d": 90 * 24 * 60 * 60 * 1000
+  };
+  return time >= Date.now() - ranges[range];
+}
+
+function sortDashboardSearchResults(results, sort) {
+  const byRelevance = (a, b) =>
+    Number(b.score || 0) - Number(a.score || 0) ||
+    getDashboardSearchTime(b) - getDashboardSearchTime(a) ||
+    String(a.title || "").localeCompare(String(b.title || ""));
+  if (sort === "newest") {
+    return [...results].sort((a, b) => getDashboardSearchTime(b) - getDashboardSearchTime(a) || byRelevance(a, b));
+  }
+  if (sort === "oldest") {
+    return [...results].sort((a, b) => getDashboardSearchTime(a) - getDashboardSearchTime(b) || byRelevance(a, b));
+  }
+  return [...results].sort(byRelevance);
+}
+
+function getDashboardSearchTime(item) {
+  const time = Date.parse(item.ts || "");
+  return Number.isFinite(time) ? time : 0;
+}
+
+function scoreDashboardSearchText(text, query) {
+  const normalizedText = normalizeSearchText(text);
+  const normalizedQuery = normalizeSearchText(query);
+  if (!normalizedQuery || !normalizedText) {
+    return 0;
+  }
+  let score = normalizedText.includes(normalizedQuery) ? 8 : 0;
+  for (const term of extractSearchTerms(normalizedQuery)) {
+    if (term && normalizedText.includes(term)) {
+      score += term.length >= 4 ? 3 : 1;
+    }
+  }
+  return score;
+}
+
+function makeDashboardSearchPreview(text, query, radius = 120) {
+  const source = sanitizeInlineText(text);
+  const normalizedSource = normalizeSearchText(source);
+  const normalizedQuery = normalizeSearchText(query);
+  const index = normalizedQuery ? normalizedSource.indexOf(normalizedQuery) : -1;
+  if (index === -1) {
+    return truncateText(source, radius * 2);
+  }
+  const start = Math.max(0, index - radius);
+  const end = Math.min(source.length, index + normalizedQuery.length + radius);
+  return `${start > 0 ? "..." : ""}${source.slice(start, end)}${end < source.length ? "..." : ""}`;
+}
+
+function defaultDashboardShortcuts() {
+  return {
+    enabled: true,
+    bindings: { ...DEFAULT_DASHBOARD_SHORTCUT_BINDINGS },
+    tabBindings: { ...DEFAULT_DASHBOARD_TAB_BINDINGS }
+  };
+}
+
+function normalizeDashboardShortcutMap(defaults, patch = {}) {
+  const source = patch && typeof patch === "object" ? patch : {};
+  const result = {};
+  for (const [key, fallback] of Object.entries(defaults)) {
+    const raw = Object.prototype.hasOwnProperty.call(source, key) ? source[key] : fallback;
+    const value = String(raw ?? "").trim();
+    result[key] = value ? value.slice(0, 40) : fallback;
+  }
+  return result;
+}
+
+function normalizeDashboardShortcuts(input = {}) {
+  const defaults = defaultDashboardShortcuts();
+  const source = input && typeof input === "object" ? input : {};
+  return {
+    enabled: source.enabled !== undefined ? Boolean(source.enabled) : defaults.enabled,
+    bindings: normalizeDashboardShortcutMap(defaults.bindings, source.bindings),
+    tabBindings: normalizeDashboardShortcutMap(defaults.tabBindings, source.tabBindings)
+  };
+}
+
+function getDashboardSettings() {
+  const config = loadConfig();
+  const backupRetention = getBackupRetentionConfig(config);
+  return {
+    memoryDir: config.memoryDir,
+    sync: {
+      snapshotLimit: config.sync.snapshotLimit,
+      coreLimit: config.sync.coreLimit,
+      recentLimit: config.sync.recentLimit,
+      lockStaleMs: config.sync.lockStaleMs
+    },
+    dashboard: {
+      autoRefresh: config.dashboard?.autoRefresh ?? true,
+      refreshIntervalMs: config.dashboard?.refreshIntervalMs || 5000,
+      language: config.dashboard?.language || "zh",
+      theme: config.dashboard?.theme || "dark",
+      notifications: config.dashboard?.notifications ?? true,
+      shortcuts: normalizeDashboardShortcuts(config.dashboard?.shortcuts)
+    },
+    backupPolicy: {
+      daily: backupRetention.daily,
+      weekly: backupRetention.weekly,
+      preSync: backupRetention.preSync,
+      pruneAfterSync: backupRetention.pruneAfterSync
+    }
+  };
+}
+
+function updateDashboardSettings(body = {}) {
+  const config = loadConfig();
+  const configPath = path.join(config.memoryDir, "config.json");
+  const current = readJsonSafe(configPath, defaultConfig(config.memoryDir));
+  const next = { ...current };
+  const syncPatch = body.sync || {};
+  const dashboardPatch = body.dashboard || {};
+  const backupPatch = body.backupPolicy || body.backups || {};
+
+  next.sync = { ...(current.sync || {}) };
+  for (const key of ["snapshotLimit", "coreLimit", "recentLimit", "lockStaleMs"]) {
+    if (syncPatch[key] !== undefined && syncPatch[key] !== "") {
+      const numeric = Number(syncPatch[key]);
+      if (!Number.isInteger(numeric) || numeric <= 0) {
+        throw new Error(`settings.sync.${key} must be a positive integer`);
+      }
+      next.sync[key] = numeric;
+    }
+  }
+
+  next.dashboard = { ...(defaultConfig(config.memoryDir).dashboard || {}), ...(current.dashboard || {}) };
+  if (dashboardPatch.autoRefresh !== undefined) {
+    next.dashboard.autoRefresh = Boolean(dashboardPatch.autoRefresh);
+  }
+  if (dashboardPatch.refreshIntervalMs !== undefined && dashboardPatch.refreshIntervalMs !== "") {
+    const interval = Number(dashboardPatch.refreshIntervalMs);
+    if (!Number.isInteger(interval) || interval < 1000 || interval > 60000) {
+      throw new Error("settings.dashboard.refreshIntervalMs must be between 1000 and 60000");
+    }
+    next.dashboard.refreshIntervalMs = interval;
+  }
+  if (dashboardPatch.language) {
+    next.dashboard.language = ["zh", "en"].includes(dashboardPatch.language) ? dashboardPatch.language : "zh";
+  }
+  if (dashboardPatch.theme) {
+    next.dashboard.theme = ["dark", "light"].includes(dashboardPatch.theme) ? dashboardPatch.theme : "dark";
+  }
+  if (dashboardPatch.notifications !== undefined) {
+    next.dashboard.notifications = Boolean(dashboardPatch.notifications);
+  }
+  next.dashboard.shortcuts = normalizeDashboardShortcuts(next.dashboard.shortcuts);
+  if (dashboardPatch.shortcuts !== undefined) {
+    const shortcutPatch = dashboardPatch.shortcuts && typeof dashboardPatch.shortcuts === "object"
+      ? dashboardPatch.shortcuts
+      : {};
+    next.dashboard.shortcuts = normalizeDashboardShortcuts({
+      ...next.dashboard.shortcuts,
+      ...shortcutPatch,
+      bindings: {
+        ...(next.dashboard.shortcuts.bindings || {}),
+        ...(shortcutPatch.bindings || {})
+      },
+      tabBindings: {
+        ...(next.dashboard.shortcuts.tabBindings || {}),
+        ...(shortcutPatch.tabBindings || {})
+      }
+    });
+  }
+
+  next.sync.backupRetention = { ...(current.sync?.backupRetention || {}) };
+  for (const key of ["daily", "weekly", "preSync"]) {
+    if (backupPatch[key] !== undefined && backupPatch[key] !== "") {
+      const numeric = Number(backupPatch[key]);
+      if (!Number.isInteger(numeric) || numeric <= 0) {
+        throw new Error(`settings.backupPolicy.${key} must be a positive integer`);
+      }
+      next.sync.backupRetention[key] = numeric;
+    }
+  }
+  if (backupPatch.pruneAfterSync !== undefined) {
+    next.sync.backupRetention.pruneAfterSync = Boolean(backupPatch.pruneAfterSync);
+  }
+
+  writeJson(configPath, next);
+  return getDashboardSettings();
 }
 
 function createDashboardRealtime(memoryDir) {
@@ -4790,7 +5583,7 @@ Commands:
   doctor     Diagnose AI tool runner paths, shims, probes, and prompt mode.
   dispatch   Dispatch pending radio/task work to verified CLI runners.
   pull       Rebuild MEMORY.md from the local memory ledger.
-  backup     Back up MEMORY.md, ledger, inbox, profile, radio, task, and workflow files.
+  backup     Back up hub files and inspect/prune daily, weekly, and pre-sync retention.
   watch      Periodically index pending inbox events.
   daemon     Run or inspect the local dispatch daemon.
   app        Start the local dashboard app.
@@ -4834,6 +5627,8 @@ Examples:
   ${APP_NAME} health
   ${APP_NAME} pull
   ${APP_NAME} backup --reason manual
+  ${APP_NAME} backup list --limit 20
+  ${APP_NAME} backup prune --daily 7 --weekly 4 --pre-sync 20 --apply
   ${APP_NAME} watch --interval-ms 30000
   ${APP_NAME} daemon status
   ${APP_NAME} daemon --project ai-memory-hub --interval-ms 10000
@@ -4852,7 +5647,21 @@ function defaultConfig(memoryDir) {
       snapshotLimit: 120,
       coreLimit: 30,
       recentLimit: 18,
-      lockStaleMs: 120000
+      lockStaleMs: 120000,
+      backupRetention: {
+        daily: 7,
+        weekly: 4,
+        preSync: 20,
+        pruneAfterSync: true
+      }
+    },
+    dashboard: {
+      autoRefresh: true,
+      refreshIntervalMs: 5000,
+      language: "zh",
+      theme: "dark",
+      notifications: true,
+      shortcuts: defaultDashboardShortcuts()
     },
     tools: {
       codex: { enabled: true },
@@ -4932,6 +5741,12 @@ function loadConfig() {
   delete cleanConfig["m" + "e" + "m" + "0"];
   const base = defaultConfig(memoryDir);
   const sync = { ...base.sync, ...(config.sync || {}) };
+  const dashboard = { ...base.dashboard, ...(config.dashboard || {}) };
+  sync.backupRetention = {
+    ...base.sync.backupRetention,
+    ...(config.backups || {}),
+    ...(config.sync?.backupRetention || {})
+  };
   Object.defineProperty(sync, "_explicitKeys", {
     value: new Set(Object.keys(config.sync || {})),
     enumerable: false
@@ -4941,6 +5756,7 @@ function loadConfig() {
     ...cleanConfig,
     memoryDir,
     sync,
+    dashboard,
     tools: { ...base.tools, ...(config.tools || {}) }
   };
 }
@@ -4957,6 +5773,18 @@ function getCachedDetectedTools(memoryDir = resolveMemoryDir()) {
   const tools = detectTools(memoryDir);
   toolDetectionCache = { memoryDir, ts: now, tools };
   return tools;
+}
+
+function refreshDetectedTools(memoryDir = resolveMemoryDir()) {
+  const tools = detectTools(memoryDir);
+  toolDetectionCache = { memoryDir, ts: Date.now(), tools };
+  return tools;
+}
+
+function invalidateToolDetectionCache(memoryDir = resolveMemoryDir()) {
+  if (!toolDetectionCache || toolDetectionCache.memoryDir === memoryDir) {
+    toolDetectionCache = null;
+  }
 }
 
 function detectTools(memoryDir = resolveMemoryDir()) {
@@ -5740,6 +6568,12 @@ function readLedger(memoryDir) {
       };
     })
     .filter((item) => item.text);
+}
+
+function writeLedger(memoryDir, ledger) {
+  const file = path.join(memoryDir, "memories", "ledger.jsonl");
+  ensureDir(path.dirname(file));
+  fs.writeFileSync(file, ledger.map((item) => JSON.stringify(item)).join("\n") + (ledger.length ? "\n" : ""), "utf8");
 }
 
 function readTasks(memoryDir) {
@@ -7563,7 +8397,7 @@ function renderIndexMarkdown(index) {
 }
 
 function renderMemoryHealthReport(config, index, options = {}) {
-  const analysis = analyzeMemoryHealth(config, index, options);
+  const analysis = options.analysis || analyzeMemoryHealth(config, index, options);
   const lines = [
     "# AI Memory Hub Health Report",
     "",
@@ -7615,6 +8449,18 @@ function renderMemoryHealthReport(config, index, options = {}) {
     }
   }
 
+  lines.push("");
+  lines.push("## Recommended Actions");
+  lines.push("");
+  if (analysis.repairSuggestions.length === 0) {
+    lines.push("- No repair actions suggested.");
+  } else {
+    for (const action of analysis.repairSuggestions) {
+      const command = action.command ? ` Command: \`${action.command}\`.` : "";
+      lines.push(`- ${action.label}: ${action.detail}${command}`);
+    }
+  }
+
   if (analysis.duplicateGroups.length > 0) {
     lines.push("");
     lines.push("## Duplicate Examples");
@@ -7640,42 +8486,81 @@ function renderMemoryHealthReport(config, index, options = {}) {
 function analyzeMemoryHealth(config, index, options = {}) {
   const records = index.records || [];
   const totalRecords = records.length;
+  const qualityRecords = records.filter((record) => !isMemoryHealthExcluded(record));
   const issueLimit = Number(options.issueLimit || 5);
-  const duplicateGroups = findDuplicateMemoryGroups(records);
+  const duplicateGroups = findDuplicateMemoryGroups(qualityRecords);
   const duplicateRecords = duplicateGroups.reduce((sum, group) => sum + group.count - 1, 0);
-  const duplicateRate = totalRecords > 0 ? duplicateRecords / totalRecords : 0;
-  const corruptedRecords = records.filter(isCorruptedMemoryRecord);
+  const duplicateRate = qualityRecords.length > 0 ? duplicateRecords / qualityRecords.length : 0;
+  const corruptedRecords = qualityRecords.filter(isCorruptedMemoryRecord);
   const storage = getMemoryStorageSummary(config.memoryDir);
   const growthTrend = getMemoryGrowthTrend(records, 14);
   const pendingInbox = countJsonlLines(path.join(config.memoryDir, "inbox", "events.jsonl"));
   const issues = [];
+  const repairSuggestions = [];
+
+  const addIssue = (issue) => {
+    issues.push(issue);
+    if (issue.action) {
+      repairSuggestions.push(issue.action);
+    }
+  };
 
   if (corruptedRecords.length > 0) {
-    issues.push({
+    addIssue({
       level: "high",
       title: "Corrupted records detected",
-      detail: `${corruptedRecords.length} record(s) contain null bytes, replacement characters, or raw unparsed JSONL text.`
+      detail: `${corruptedRecords.length} record(s) contain null bytes, replacement characters, or raw unparsed JSONL text.`,
+      action: createHealthRepairAction({
+        id: "repair-corrupted-records",
+        label: "Repair corrupted records",
+        command: "ai-memory-hub health repair --apply",
+        detail: "Create a backup, recover parseable raw JSON records, archive unrecoverable corrupted records, and rebuild generated memory outputs.",
+        endpoint: "/api/health/repair",
+        method: "POST"
+      })
     });
   }
   if (duplicateRecords > 0) {
-    issues.push({
+    addIssue({
       level: duplicateRate >= 0.1 ? "high" : "medium",
       title: "Duplicate memory content",
-      detail: `${duplicateRecords} duplicate record(s) across ${duplicateGroups.length} repeated text group(s).`
+      detail: `${duplicateRecords} duplicate record(s) across ${duplicateGroups.length} repeated text group(s).`,
+      action: createHealthRepairAction({
+        id: "repair-duplicate-groups",
+        label: "Supersede duplicate records",
+        command: "ai-memory-hub health repair --apply",
+        detail: "Keep the highest-quality record in each duplicate group, mark older duplicate records as superseded, and rebuild generated memory outputs.",
+        endpoint: "/api/health/repair",
+        method: "POST"
+      })
     });
   }
   if (pendingInbox > 0) {
-    issues.push({
+    addIssue({
       level: pendingInbox >= 50 ? "medium" : "low",
       title: "Pending inbox events",
-      detail: `${pendingInbox} event(s) remain in inbox/events.jsonl; run sync when ready.`
+      detail: `${pendingInbox} event(s) remain in inbox/events.jsonl; run sync when ready.`,
+      action: createHealthRepairAction({
+        id: "sync-pending-inbox",
+        label: "Sync pending inbox",
+        command: "ai-memory-hub sync",
+        detail: "Index pending inbox events into the ledger and rebuild the readable snapshot.",
+        endpoint: "/api/sync",
+        method: "POST"
+      })
     });
   }
   if (storage.backupsBytes > storage.ledgerBytes && storage.backupsBytes > 0) {
-    issues.push({
+    addIssue({
       level: "low",
       title: "Backup storage exceeds ledger size",
-      detail: `backups/ uses ${formatBytes(storage.backupsBytes)} versus ledger ${formatBytes(storage.ledgerBytes)}.`
+      detail: `backups/ uses ${formatBytes(storage.backupsBytes)} versus ledger ${formatBytes(storage.ledgerBytes)}.`,
+      action: createHealthRepairAction({
+        id: "backup-storage-review",
+        label: "Review backup storage",
+        command: "ai-memory-hub backup list",
+        detail: "Inspect backup age and retention status before running any explicit prune operation."
+      })
     });
   }
 
@@ -7689,6 +8574,7 @@ function analyzeMemoryHealth(config, index, options = {}) {
     score,
     status: score >= 90 ? "good" : score >= 70 ? "needs attention" : "critical",
     totalRecords,
+    qualityRecords: qualityRecords.length,
     duplicateGroups,
     duplicateRecords,
     duplicateRate,
@@ -7696,8 +8582,425 @@ function analyzeMemoryHealth(config, index, options = {}) {
     storage,
     growthTrend,
     issues,
+    repairSuggestions,
     issueLimit
   };
+}
+
+function createHealthRepairAction({
+  id,
+  label,
+  command = "",
+  detail = "",
+  endpoint = "",
+  method = "POST"
+}) {
+  return {
+    id,
+    label,
+    command,
+    detail,
+    endpoint,
+    method,
+    destructive: false
+  };
+}
+
+function formatHealthAnalysisForDashboard(analysis) {
+  const issueLimit = Number(analysis.issueLimit || 10);
+  return {
+    generatedAt: analysis.generatedAt,
+    score: analysis.score,
+    status: analysis.status,
+    totalRecords: analysis.totalRecords,
+    qualityRecords: analysis.qualityRecords,
+    duplicateRecords: analysis.duplicateRecords,
+    duplicateRate: analysis.duplicateRate,
+    duplicateRatePercent: formatPercent(analysis.duplicateRate),
+    corruptedRecordsCount: analysis.corruptedRecords.length,
+    storage: {
+      totalBytes: analysis.storage.totalBytes,
+      totalDisplay: formatBytes(analysis.storage.totalBytes),
+      ledgerBytes: analysis.storage.ledgerBytes,
+      ledgerDisplay: formatBytes(analysis.storage.ledgerBytes),
+      backupsBytes: analysis.storage.backupsBytes,
+      backupsDisplay: formatBytes(analysis.storage.backupsBytes),
+      items: analysis.storage.items.map((item) => ({
+        label: item.label,
+        bytes: item.bytes,
+        display: formatBytes(item.bytes)
+      }))
+    },
+    growthTrend: analysis.growthTrend,
+    issues: analysis.issues.map((issue) => ({
+      level: issue.level,
+      title: issue.title,
+      detail: issue.detail,
+      action: issue.action || null
+    })),
+    repairSuggestions: analysis.repairSuggestions,
+    duplicateGroups: analysis.duplicateGroups.slice(0, issueLimit).map((group) => ({
+      count: group.count,
+      example: group.example,
+      records: group.records.slice(0, issueLimit).map((record) => ({
+        pointer: formatMemoryRecordPointer(record),
+        id: sanitizeInlineText(record.localEventId || record.id || ""),
+        source: sanitizeInlineText(record.source || "unknown"),
+        kind: sanitizeInlineText(record.kind || record.metadata?.kind || "note"),
+        ts: sanitizeInlineText(record.ts || record.indexedAt || "")
+      }))
+    })),
+    corruptedRecords: analysis.corruptedRecords.slice(0, issueLimit).map((record) => ({
+      pointer: formatMemoryRecordPointer(record),
+      text: truncateText(record.text, 160)
+    }))
+  };
+}
+
+function isMemoryHealthExcluded(record) {
+  const lifecycle = record.metadata?.lifecycle || {};
+  const repair = lifecycle.healthRepair || record.metadata?.healthRepair || {};
+  return Boolean(
+    record.superseded ||
+    record.metadata?.superseded ||
+    record.healthExcluded ||
+    record.metadata?.healthExcluded ||
+    lifecycle.healthExcluded ||
+    repair.healthExcluded ||
+    repair.status === "archived-corrupted" ||
+    repair.status === "superseded-duplicate"
+  );
+}
+
+function runMemoryHealthRepair(config, { apply = false, issueLimit = 10 } = {}) {
+  const beforeDiagnostic = buildMemoryHealthDiagnostic(config, { issueLimit });
+  const plan = buildMemoryHealthRepairPlan(beforeDiagnostic.analysis);
+  const result = {
+    ok: true,
+    apply,
+    generatedAt: new Date().toISOString(),
+    before: summarizeHealthAnalysisForRepair(beforeDiagnostic.analysis),
+    plan: formatMemoryHealthRepairPlan(plan),
+    backup: null,
+    applied: {
+      ledgerRecordsUpdated: 0,
+      corruptedRecovered: 0,
+      corruptedArchived: 0,
+      duplicateSuperseded: 0
+    },
+    after: null
+  };
+
+  if (!apply || plan.totalActions === 0) {
+    return result;
+  }
+
+  const backup = backupHub(config.memoryDir, "pre-health-repair");
+  const ledger = readLedger(config.memoryDir);
+  const applied = applyMemoryHealthRepairPlan(ledger, plan);
+  writeLedger(config.memoryDir, applied.ledger);
+  rebuildMemoryOutputs(config, applied.ledger);
+
+  const afterDiagnostic = buildMemoryHealthDiagnostic(config, { issueLimit });
+  return {
+    ...result,
+    backup,
+    applied: applied.summary,
+    after: summarizeHealthAnalysisForRepair(afterDiagnostic.analysis)
+  };
+}
+
+function buildMemoryHealthRepairPlan(analysis) {
+  const corrupted = analysis.corruptedRecords.map((record) => ({
+    key: getMemoryPrimaryKey(record) || record.id || "",
+    id: record.localEventId || record.id || "",
+    pointer: formatMemoryRecordPointer(record),
+    text: truncateText(record.text, 160),
+    recoverable: Boolean(recoverMemoryEventFromRawText(record.text))
+  })).filter((item) => item.key);
+
+  const duplicateGroups = analysis.duplicateGroups.map((group) => {
+    const keeper = chooseDuplicateKeeper(group.records);
+    const keeperKey = getMemoryPrimaryKey(keeper) || keeper.id || "";
+    const losers = group.records
+      .filter((record) => record !== keeper)
+      .map((record) => ({
+        key: getMemoryPrimaryKey(record) || record.id || "",
+        id: record.localEventId || record.id || "",
+        pointer: formatMemoryRecordPointer(record),
+        ts: record.ts || record.indexedAt || ""
+      }))
+      .filter((item) => item.key);
+    return {
+      keeperKey,
+      keeperId: keeper.localEventId || keeper.id || "",
+      example: group.example,
+      count: group.count,
+      losers
+    };
+  }).filter((group) => group.keeperKey && group.losers.length > 0);
+
+  const duplicateLosers = duplicateGroups.reduce((sum, group) => sum + group.losers.length, 0);
+  return {
+    corrupted,
+    duplicateGroups,
+    totalActions: corrupted.length + duplicateLosers
+  };
+}
+
+function formatMemoryHealthRepairPlan(plan) {
+  return {
+    totalActions: plan.totalActions,
+    corruptedRecords: plan.corrupted.length,
+    recoverableCorruptedRecords: plan.corrupted.filter((item) => item.recoverable).length,
+    duplicateGroups: plan.duplicateGroups.length,
+    duplicateRecordsToSupersede: plan.duplicateGroups.reduce((sum, group) => sum + group.losers.length, 0),
+    corrupted: plan.corrupted.slice(0, 20),
+    duplicates: plan.duplicateGroups.slice(0, 20).map((group) => ({
+      keeperId: group.keeperId,
+      keeperKey: group.keeperKey,
+      example: group.example,
+      losers: group.losers
+    }))
+  };
+}
+
+function summarizeHealthAnalysisForRepair(analysis) {
+  return {
+    score: analysis.score,
+    status: analysis.status,
+    totalRecords: analysis.totalRecords,
+    qualityRecords: analysis.qualityRecords,
+    duplicateRecords: analysis.duplicateRecords,
+    corruptedRecords: analysis.corruptedRecords.length,
+    storageDisplay: formatBytes(analysis.storage.totalBytes)
+  };
+}
+
+function applyMemoryHealthRepairPlan(ledger, plan) {
+  const now = new Date().toISOString();
+  const corruptedByKey = new Map(plan.corrupted.map((item) => [item.key, item]));
+  const duplicateByKey = new Map();
+  for (const group of plan.duplicateGroups) {
+    for (const loser of group.losers) {
+      duplicateByKey.set(loser.key, group);
+    }
+  }
+  const summary = {
+    ledgerRecordsUpdated: 0,
+    corruptedRecovered: 0,
+    corruptedArchived: 0,
+    duplicateSuperseded: 0
+  };
+
+  const repairedLedger = ledger.map((record) => {
+    const key = getMemoryPrimaryKey(record) || record.id || "";
+    let next = record;
+    if (corruptedByKey.has(key)) {
+      const repaired = repairCorruptedLedgerRecord(next, now);
+      next = repaired.record;
+      summary.ledgerRecordsUpdated += 1;
+      if (repaired.action === "recovered") {
+        summary.corruptedRecovered += 1;
+      } else {
+        summary.corruptedArchived += 1;
+      }
+    }
+    const duplicateGroup = duplicateByKey.get(key);
+    if (duplicateGroup && !isMemoryHealthExcluded(next)) {
+      next = markDuplicateLedgerRecordSuperseded(next, duplicateGroup.keeperKey, now);
+      summary.ledgerRecordsUpdated += 1;
+      summary.duplicateSuperseded += 1;
+    }
+    return next;
+  });
+
+  return { ledger: repairedLedger, summary };
+}
+
+function chooseDuplicateKeeper(records) {
+  return [...records].sort((a, b) => {
+    const corruptDelta = Number(isCorruptedMemoryRecord(a)) - Number(isCorruptedMemoryRecord(b));
+    if (corruptDelta !== 0) return corruptDelta;
+    const importanceDelta = Number(b.importance || 0) - Number(a.importance || 0);
+    if (importanceDelta !== 0) return importanceDelta;
+    return String(b.ts || b.indexedAt || "").localeCompare(String(a.ts || a.indexedAt || ""));
+  })[0];
+}
+
+function repairCorruptedLedgerRecord(record, repairedAt) {
+  const recovered = recoverMemoryEventFromRawText(record.text);
+  if (recovered && recovered.text && !containsCorruptionMarker(recovered.text)) {
+    return {
+      action: "recovered",
+      record: {
+        ...record,
+        source: recovered.source || (record.source === "raw" ? "health-repair" : record.source),
+        text: sanitizeLedgerText(recovered.text),
+        metadata: normalizeMemoryMetadata({
+          ...record.metadata,
+          ...recovered.metadata,
+          lifecycle: {
+            ...(record.metadata?.lifecycle || {}),
+            healthRepair: {
+              status: "recovered-corrupted",
+              repairedAt,
+              originalSource: record.source || "",
+              originalKind: record.metadata?.kind || record.kind || ""
+            }
+          }
+        }, recovered)
+      }
+    };
+  }
+
+  return {
+    action: "archived",
+    record: {
+      ...record,
+      source: record.source === "raw" ? "health-repair" : record.source,
+      text: sanitizeLedgerText(record.text),
+      superseded: true,
+      supersededBy: ["health-repair"],
+      healthExcluded: true,
+      metadata: normalizeMemoryMetadata({
+        ...record.metadata,
+        kind: "archived",
+        scope: "archive",
+        confidence: 0.1,
+        tags: [...normalizeList(record.metadata?.tags), "health-repair", "corrupted"],
+        superseded: true,
+        supersededBy: ["health-repair"],
+        healthExcluded: true,
+        lifecycle: {
+          ...(record.metadata?.lifecycle || {}),
+          healthExcluded: true,
+          healthRepair: {
+            status: "archived-corrupted",
+            healthExcluded: true,
+            repairedAt,
+            originalSource: record.source || "",
+            originalKind: record.metadata?.kind || record.kind || ""
+          }
+        }
+      }, record)
+    }
+  };
+}
+
+function markDuplicateLedgerRecordSuperseded(record, keeperKey, repairedAt) {
+  return {
+    ...record,
+    superseded: true,
+    supersededBy: [keeperKey],
+    healthExcluded: true,
+    metadata: normalizeMemoryMetadata({
+      ...record.metadata,
+      superseded: true,
+      supersededBy: [keeperKey],
+      healthExcluded: true,
+      lifecycle: {
+        ...(record.metadata?.lifecycle || {}),
+        superseded: true,
+        supersededBy: [keeperKey],
+        healthExcluded: true,
+        healthRepair: {
+          status: "superseded-duplicate",
+          healthExcluded: true,
+          repairedAt,
+          duplicateOf: keeperKey
+        }
+      }
+    }, record)
+  };
+}
+
+function recoverMemoryEventFromRawText(rawText) {
+  const cleaned = sanitizeRawJsonCandidate(rawText);
+  if (!cleaned) {
+    return null;
+  }
+  const parsed = parseJsonObjectCandidate(cleaned) || parseLooseJsonMemoryEvent(cleaned);
+  if (!parsed || !parsed.text) {
+    return null;
+  }
+  const event = normalizeMemoryEvent(parsed);
+  if (parsed.type && (!parsed.metadata || !parsed.metadata.kind)) {
+    event.metadata.kind = normalizeMemoryKind(parsed.type);
+  }
+  event.text = sanitizeLedgerText(event.text);
+  return event.text ? event : null;
+}
+
+function sanitizeRawJsonCandidate(value) {
+  return String(value || "")
+    .replace(/\u0000/g, "")
+    .replace(/[\u0001-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "")
+    .trim();
+}
+
+function parseJsonObjectCandidate(text) {
+  if (!text.startsWith("{") || !text.endsWith("}")) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(text);
+    return isPlainObject(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function parseLooseJsonMemoryEvent(text) {
+  if (!text.startsWith("{")) {
+    return null;
+  }
+  const source = extractLooseJsonStringField(text, "source") || "health-repair";
+  const type = extractLooseJsonStringField(text, "type") || "";
+  const memoryText = extractLooseJsonStringField(text, "text") || "";
+  if (!memoryText) {
+    return null;
+  }
+  const kind = extractLooseJsonStringField(text, "kind") || type || "reference";
+  const project = extractLooseJsonStringField(text, "project") || "";
+  return {
+    source,
+    text: memoryText,
+    metadata: {
+      kind,
+      project
+    }
+  };
+}
+
+function extractLooseJsonStringField(text, field) {
+  const marker = `"${field}"`;
+  const markerIndex = text.indexOf(marker);
+  if (markerIndex === -1) {
+    return "";
+  }
+  const colonIndex = text.indexOf(":", markerIndex + marker.length);
+  if (colonIndex === -1) {
+    return "";
+  }
+  const firstQuote = text.indexOf("\"", colonIndex + 1);
+  if (firstQuote === -1) {
+    return "";
+  }
+  const boundaryPattern = /"\s*(?:,\s*"|})/g;
+  boundaryPattern.lastIndex = firstQuote + 1;
+  let match;
+  while ((match = boundaryPattern.exec(text))) {
+    const raw = text.slice(firstQuote + 1, match.index);
+    if (raw) {
+      return sanitizeLedgerText(raw.replace(/\\"/g, "\"").replace(/\\n/g, "\n").replace(/\\r/g, "\r").replace(/\\t/g, "\t"));
+    }
+  }
+  return "";
+}
+
+function sanitizeLedgerText(value) {
+  return sanitizeDisplayText(value).trim();
 }
 
 function findDuplicateMemoryGroups(records) {
@@ -7730,6 +9033,9 @@ function normalizeDuplicateMemoryText(text) {
 }
 
 function isCorruptedMemoryRecord(record) {
+  if (isMemoryHealthExcluded(record)) {
+    return false;
+  }
   const text = String(record.text || "");
   return record.source === "raw" ||
     record.kind === "raw" ||
@@ -8130,39 +9436,547 @@ function writeInboxEvents(inboxPath, events) {
   fs.writeFileSync(inboxPath, events.map((event) => JSON.stringify(event)).join("\n") + (events.length ? "\n" : ""), "utf8");
 }
 
-function backupHub(memoryDir, reason) {
-  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+function getBackupFileCatalog(memoryDir) {
+  return [
+    { name: "MEMORY.md", target: path.join(memoryDir, "MEMORY.md"), kind: "snapshot" },
+    { name: "profile.md", target: path.join(memoryDir, "profile.md"), kind: "profile" },
+    { name: "inbox-events.jsonl", target: path.join(memoryDir, "inbox", "events.jsonl"), kind: "inbox" },
+    { name: "memory-ledger.jsonl", target: path.join(memoryDir, "memories", "ledger.jsonl"), kind: "memory" },
+    { name: "radio-messages.jsonl", target: path.join(memoryDir, "radio", "messages.jsonl"), kind: "radio" },
+    { name: "tasks.jsonl", target: path.join(memoryDir, "tasks", "tasks.jsonl"), kind: "tasks" },
+    { name: "workflows.jsonl", target: path.join(memoryDir, "workflows", "workflows.jsonl"), kind: "workflows" },
+    { name: "config.json", target: path.join(memoryDir, "config.json"), kind: "config" }
+  ];
+}
+
+function backupHub(memoryDir, reason, options = {}) {
+  const createdAt = (options.now instanceof Date ? options.now : new Date()).toISOString();
+  const stamp = createdAt.replace(/[:.]/g, "-");
   const safeReason = String(reason || "manual").replace(/[^A-Za-z0-9_.-]+/g, "-").slice(0, 48) || "manual";
   const backupDir = path.join(memoryDir, "backups", `${stamp}-${safeReason}`);
   ensureDir(backupDir);
 
-  const files = [
-    ["MEMORY.md", path.join(memoryDir, "MEMORY.md")],
-    ["profile.md", path.join(memoryDir, "profile.md")],
-    ["inbox-events.jsonl", path.join(memoryDir, "inbox", "events.jsonl")],
-    ["memory-ledger.jsonl", path.join(memoryDir, "memories", "ledger.jsonl")],
-    ["radio-messages.jsonl", path.join(memoryDir, "radio", "messages.jsonl")],
-    ["tasks.jsonl", path.join(memoryDir, "tasks", "tasks.jsonl")],
-    ["workflows.jsonl", path.join(memoryDir, "workflows", "workflows.jsonl")],
-    ["config.json", path.join(memoryDir, "config.json")]
-  ];
-
+  const files = getBackupFileCatalog(memoryDir);
   const copied = [];
-  for (const [name, source] of files) {
-    if (fs.existsSync(source)) {
-      fs.copyFileSync(source, path.join(backupDir, name));
-      copied.push(name);
+  for (const file of files) {
+    if (fs.existsSync(file.target)) {
+      fs.copyFileSync(file.target, path.join(backupDir, file.name));
+      copied.push(file.name);
     }
   }
 
   const manifest = {
-    createdAt: new Date().toISOString(),
+    id: createId(`backup:${createdAt}:${reason}:${backupDir}`),
+    createdAt,
     reason,
     dir: backupDir,
+    trigger: options.trigger || "",
+    retention: {
+      tier: options.retentionTier || inferBackupRetentionTier(reason),
+      key: options.retentionKey || "",
+      policy: options.retentionPolicy || ""
+    },
     files: copied
   };
   writeJson(path.join(backupDir, "manifest.json"), manifest);
   return manifest;
+}
+
+function getBackupDetail(memoryDir, name) {
+  const backupDir = resolveBackupDirectory(memoryDir, name);
+  const backup = listBackupDirectories(memoryDir).find((item) => item.name === path.basename(backupDir)) || null;
+  const manifest = readBackupManifest(backupDir);
+  const restore = buildBackupRestorePlan(memoryDir, name);
+  return {
+    ok: true,
+    backup,
+    manifest,
+    files: listBackupFiles(memoryDir, name),
+    restore
+  };
+}
+
+function restoreBackup(memoryDir, name, { apply = false, confirm = "" } = {}) {
+  const plan = buildBackupRestorePlan(memoryDir, name);
+  if (!apply) {
+    return {
+      apply: false,
+      plan
+    };
+  }
+  if (confirm !== "RESTORE") {
+    throw new Error("Restore requires confirm=RESTORE.");
+  }
+
+  const safetyBackup = backupHub(memoryDir, "pre-restore", {
+    trigger: "restore",
+    retentionTier: "protected",
+    retentionKey: new Date().toISOString(),
+    retentionPolicy: "protected pre-restore backup"
+  });
+  const backupDir = resolveBackupDirectory(memoryDir, name);
+  const catalog = new Map(getBackupFileCatalog(memoryDir).map((file) => [file.name, file]));
+  const memoryRoot = path.resolve(memoryDir);
+  const restored = [];
+
+  for (const file of plan.files) {
+    if (!file.restorable) {
+      continue;
+    }
+    const spec = catalog.get(file.name);
+    const backupFile = path.join(backupDir, file.name);
+    const target = path.resolve(spec.target);
+    if (!isPathInsideDirectory(target, memoryRoot)) {
+      throw new Error(`Refusing to restore outside memory dir: ${file.name}`);
+    }
+    if (fs.existsSync(target) && fs.lstatSync(target).isSymbolicLink()) {
+      throw new Error(`Refusing to overwrite symlink target: ${file.currentPath}`);
+    }
+    ensureDir(path.dirname(target));
+    fs.copyFileSync(backupFile, target);
+    restored.push(file.name);
+  }
+
+  if (restored.includes("memory-ledger.jsonl")) {
+    rebuildMemoryOutputs(loadConfig(), readLedger(memoryDir));
+  }
+
+  return {
+    apply: true,
+    backup: safetyBackup,
+    restored,
+    before: plan,
+    after: buildBackupRestorePlan(memoryDir, name)
+  };
+}
+
+function buildBackupRestorePlan(memoryDir, name) {
+  const backupDir = resolveBackupDirectory(memoryDir, name);
+  const files = listBackupFiles(memoryDir, name).filter((file) => file.restorable);
+  const changed = files.filter((file) => file.status !== "unchanged");
+  return {
+    name: path.basename(backupDir),
+    generatedAt: new Date().toISOString(),
+    requiresConfirmation: "RESTORE",
+    destructive: changed.some((file) => file.status === "different"),
+    summary: {
+      total: files.length,
+      changed: changed.length,
+      missingCurrent: files.filter((file) => file.status === "missing-current").length,
+      different: files.filter((file) => file.status === "different").length,
+      unchanged: files.filter((file) => file.status === "unchanged").length,
+      bytes: changed.reduce((sum, file) => sum + file.bytes, 0),
+      display: formatBytes(changed.reduce((sum, file) => sum + file.bytes, 0))
+    },
+    files: files.map((file) => ({
+      name: file.name,
+      kind: file.kind,
+      bytes: file.bytes,
+      display: file.display,
+      currentPath: file.currentPath,
+      currentExists: file.currentExists,
+      currentDisplay: file.currentDisplay,
+      status: file.status,
+      restorable: file.restorable
+    }))
+  };
+}
+
+function listBackupFiles(memoryDir, name) {
+  const backupDir = resolveBackupDirectory(memoryDir, name);
+  const catalog = new Map(getBackupFileCatalog(memoryDir).map((file) => [file.name, file]));
+  return fs.readdirSync(backupDir, { withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => describeBackupFile(memoryDir, backupDir, entry.name, catalog.get(entry.name)))
+    .sort((a, b) => Number(b.restorable) - Number(a.restorable) || a.name.localeCompare(b.name));
+}
+
+function describeBackupFile(memoryDir, backupDir, name, spec) {
+  const backupFile = path.join(backupDir, name);
+  const backupStat = fs.statSync(backupFile);
+  const currentExists = Boolean(spec && fs.existsSync(spec.target));
+  const currentBytes = currentExists ? fs.statSync(spec.target).size : 0;
+  const backupHash = getFileHash(backupFile);
+  const currentHash = currentExists ? getFileHash(spec.target) : "";
+  const status = !spec
+    ? "browse-only"
+    : !currentExists
+      ? "missing-current"
+      : backupHash === currentHash
+        ? "unchanged"
+        : "different";
+  return {
+    name,
+    kind: spec?.kind || "metadata",
+    bytes: backupStat.size,
+    display: formatBytes(backupStat.size),
+    modifiedAt: backupStat.mtime.toISOString(),
+    restorable: Boolean(spec),
+    currentPath: spec ? path.relative(memoryDir, spec.target).replace(/\\/g, "/") : "",
+    currentExists,
+    currentBytes,
+    currentDisplay: formatBytes(currentBytes),
+    status,
+    preview: getBackupFilePreview(backupFile)
+  };
+}
+
+function resolveBackupDirectory(memoryDir, name) {
+  const rawName = String(name || "").trim();
+  if (!rawName || rawName.includes("/") || rawName.includes("\\") || rawName === "." || rawName === "..") {
+    throw new Error("A valid backup name is required.");
+  }
+  const backupsRoot = path.resolve(memoryDir, "backups");
+  const backupDir = path.resolve(backupsRoot, rawName);
+  if (!isPathInsideDirectory(backupDir, backupsRoot)) {
+    throw new Error("Backup path is outside backups directory.");
+  }
+  if (!fs.existsSync(backupDir) || !fs.statSync(backupDir).isDirectory()) {
+    throw new Error(`Backup not found: ${rawName}`);
+  }
+  return backupDir;
+}
+
+function readBackupManifest(backupDir) {
+  const manifestPath = path.join(backupDir, "manifest.json");
+  return fs.existsSync(manifestPath) ? readJsonSafe(manifestPath, {}) : {};
+}
+
+function getFileHash(file) {
+  if (!fs.existsSync(file) || !fs.statSync(file).isFile()) {
+    return "";
+  }
+  return crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex");
+}
+
+function getBackupFilePreview(file) {
+  const ext = path.extname(file).toLowerCase();
+  const basename = path.basename(file).toLowerCase();
+  if (![".json", ".jsonl", ".md", ".txt"].includes(ext) && basename !== "manifest.json") {
+    return "";
+  }
+  const buffer = fs.readFileSync(file);
+  const sample = buffer.subarray(0, Math.min(buffer.length, 2000)).toString("utf8");
+  if (sample.includes("\u0000")) {
+    return "";
+  }
+  return truncateText(sample, 1000);
+}
+
+function runAutomaticBackupStrategy(config, { trigger = "sync", includePreSync = true, now = new Date() } = {}) {
+  const retention = getBackupRetentionConfig(config);
+  const result = {
+    trigger,
+    policy: retention,
+    created: [],
+    skipped: [],
+    preSync: null,
+    daily: null,
+    weekly: null,
+    pruned: null
+  };
+
+  if (includePreSync) {
+    result.preSync = backupHub(config.memoryDir, "pre-sync", {
+      now,
+      trigger,
+      retentionTier: "pre-sync",
+      retentionKey: createdAtRetentionKey(now),
+      retentionPolicy: `keep latest ${retention.preSync} pre-sync backups`
+    });
+    result.created.push(result.preSync);
+  }
+
+  result.daily = createScheduledBackupIfDue(config.memoryDir, {
+    now,
+    trigger,
+    tier: "daily",
+    key: formatBackupDay(now),
+    reason: "daily",
+    policy: `keep latest ${retention.daily} daily backups`
+  });
+  if (result.daily) {
+    result.created.push(result.daily);
+  } else {
+    result.skipped.push({ tier: "daily", reason: "already-current", key: formatBackupDay(now) });
+  }
+
+  result.weekly = createScheduledBackupIfDue(config.memoryDir, {
+    now,
+    trigger,
+    tier: "weekly",
+    key: getIsoWeekKey(now),
+    reason: "weekly",
+    policy: `keep latest ${retention.weekly} weekly backups`
+  });
+  if (result.weekly) {
+    result.created.push(result.weekly);
+  } else {
+    result.skipped.push({ tier: "weekly", reason: "already-current", key: getIsoWeekKey(now) });
+  }
+
+  if (retention.pruneAfterSync !== false) {
+    result.pruned = pruneBackups(config.memoryDir, {
+      apply: true,
+      daily: retention.daily,
+      weekly: retention.weekly,
+      preSync: retention.preSync
+    });
+  }
+
+  return result;
+}
+
+function createScheduledBackupIfDue(memoryDir, { now, trigger, tier, key, reason, policy }) {
+  if (!key || hasBackupForRetentionKey(memoryDir, tier, key)) {
+    return null;
+  }
+  return backupHub(memoryDir, reason, {
+    now,
+    trigger,
+    retentionTier: tier,
+    retentionKey: key,
+    retentionPolicy: policy
+  });
+}
+
+function hasBackupForRetentionKey(memoryDir, tier, key) {
+  return listBackupDirectories(memoryDir).some((backup) => backup.retentionTier === tier && backup.retentionKey === key);
+}
+
+function getBackupRetentionConfig(config = {}) {
+  const defaults = defaultConfig(config.memoryDir || resolveMemoryDir()).sync.backupRetention;
+  const raw = {
+    ...defaults,
+    ...(config.backups || {}),
+    ...(config.sync?.backupRetention || {})
+  };
+  return {
+    daily: readPositiveInteger(raw.daily, defaults.daily),
+    weekly: readPositiveInteger(raw.weekly, defaults.weekly),
+    preSync: readPositiveInteger(raw.preSync ?? raw.pre_sync, defaults.preSync),
+    pruneAfterSync: raw.pruneAfterSync !== false
+  };
+}
+
+function getBackupSummary(memoryDir, { limit = 50, daily = 7, weekly = 4, preSync = 20, pruneAfterSync = true } = {}) {
+  const backups = listBackupDirectories(memoryDir);
+  const retention = planBackupRetention(backups, { daily, weekly, preSync });
+  const retentionByName = new Map(retention.backups.map((item) => [item.name, item]));
+  return {
+    dir: path.join(memoryDir, "backups"),
+    count: backups.length,
+    totalBytes: backups.reduce((sum, backup) => sum + backup.bytes, 0),
+    totalDisplay: formatBytes(backups.reduce((sum, backup) => sum + backup.bytes, 0)),
+    policy: {
+      daily,
+      weekly,
+      preSync,
+      pruneAfterSync,
+      note: "Manual backups are protected; daily, weekly, and pre-sync backups are pruned only inside backups/."
+    },
+    retention: {
+      keep: retention.keep.length,
+      prune: retention.prune.length,
+      pruneBytes: retention.prune.reduce((sum, backup) => sum + backup.bytes, 0),
+      pruneDisplay: formatBytes(retention.prune.reduce((sum, backup) => sum + backup.bytes, 0))
+    },
+    backups: backups.slice(0, limit).map((backup) => ({
+      ...backup,
+      retention: retentionByName.get(backup.name)?.retention || "prune",
+      retentionReason: retentionByName.get(backup.name)?.retentionReason || "outside retention policy"
+    }))
+  };
+}
+
+function pruneBackups(memoryDir, { apply = false, daily = 7, weekly = 4, preSync = 20 } = {}) {
+  const backups = listBackupDirectories(memoryDir);
+  const retention = planBackupRetention(backups, { daily, weekly, preSync });
+  const backupsRoot = path.resolve(memoryDir, "backups");
+  const pruned = [];
+  if (apply) {
+    for (const backup of retention.prune) {
+      const target = path.resolve(backup.dir);
+      if (!isPathInsideDirectory(target, backupsRoot)) {
+        throw new Error(`Refusing to prune backup outside backups dir: ${backup.dir}`);
+      }
+      fs.rmSync(target, { recursive: true, force: true });
+      pruned.push(backup);
+    }
+  }
+  return {
+    apply,
+    policy: { daily, weekly, preSync },
+    total: backups.length,
+    keep: retention.keep.length,
+    prune: retention.prune.length,
+    pruneBytes: retention.prune.reduce((sum, backup) => sum + backup.bytes, 0),
+    pruneDisplay: formatBytes(retention.prune.reduce((sum, backup) => sum + backup.bytes, 0)),
+    pruned: pruned.map((backup) => backup.name),
+    candidates: retention.prune.map((backup) => ({
+      name: backup.name,
+      createdAt: backup.createdAt,
+      reason: backup.reason,
+      bytes: backup.bytes,
+      display: backup.display,
+      retentionReason: backup.retentionReason
+    }))
+  };
+}
+
+function listBackupDirectories(memoryDir) {
+  const dir = path.join(memoryDir, "backups");
+  if (!fs.existsSync(dir)) {
+    return [];
+  }
+  return fs.readdirSync(dir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => {
+      const backupDir = path.join(dir, entry.name);
+      const manifestPath = path.join(backupDir, "manifest.json");
+      const manifest = fs.existsSync(manifestPath) ? readJsonSafe(manifestPath) : {};
+      const stat = fs.statSync(backupDir);
+      const createdAt = manifest.createdAt || parseBackupTimestampFromName(entry.name) || stat.mtime.toISOString();
+      const reason = manifest.reason || inferBackupReasonFromName(entry.name);
+      const retentionTier = manifest.retention?.tier || inferBackupRetentionTier(reason);
+      const bytes = getPathSize(backupDir);
+      return {
+        name: entry.name,
+        dir: backupDir,
+        createdAt,
+        reason,
+        retentionTier,
+        retentionKey: manifest.retention?.key || inferBackupRetentionKey(retentionTier, createdAt),
+        retentionPolicy: manifest.retention?.policy || "",
+        files: Array.isArray(manifest.files) ? manifest.files : [],
+        bytes,
+        display: formatBytes(bytes),
+        manifest: Boolean(manifest.createdAt)
+      };
+    })
+    .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+}
+
+function planBackupRetention(backups, { daily = 7, weekly = 4, preSync = 20 } = {}) {
+  const keep = new Map();
+  const markKeep = (backup, reason) => {
+    if (!backup || keep.has(backup.name)) return;
+    keep.set(backup.name, { ...backup, retention: "keep", retentionReason: reason });
+  };
+  const sorted = [...backups].sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+  markKeep(sorted[0], "latest");
+
+  markProtectedBackups(sorted, markKeep);
+  markTieredBackups(sorted, {
+    tier: "daily",
+    limit: daily,
+    keyForBackup: (backup) => backup.retentionKey || formatBackupDay(backup.createdAt),
+    label: "daily"
+  }, markKeep);
+  markTieredBackups(sorted, {
+    tier: "weekly",
+    limit: weekly,
+    keyForBackup: (backup) => backup.retentionKey || getIsoWeekKey(backup.createdAt),
+    label: "weekly"
+  }, markKeep);
+  markTieredBackups(sorted, {
+    tier: "pre-sync",
+    limit: preSync,
+    keyForBackup: (backup) => backup.name,
+    label: "pre-sync"
+  }, markKeep);
+
+  const keepList = sorted.map((backup) => keep.get(backup.name)).filter(Boolean);
+  const prune = sorted
+    .filter((backup) => !keep.has(backup.name))
+    .map((backup) => ({ ...backup, retention: "prune", retentionReason: "outside retention policy" }));
+  return {
+    backups: [...keepList, ...prune].sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || ""))),
+    keep: keepList,
+    prune
+  };
+}
+
+function markProtectedBackups(backups, markKeep) {
+  for (const backup of backups) {
+    if (backup.retentionTier === "manual" || backup.retentionTier === "pre-pull" || backup.retentionTier === "protected") {
+      markKeep(backup, `${backup.retentionTier}-protected`);
+    }
+  }
+}
+
+function markTieredBackups(backups, { tier, limit, keyForBackup, label }, markKeep) {
+  const seen = new Set();
+  for (const backup of backups) {
+    if (backup.retentionTier !== tier) {
+      continue;
+    }
+    const key = keyForBackup(backup);
+    if (!key || seen.has(key)) {
+      continue;
+    }
+    if (seen.size >= limit) {
+      continue;
+    }
+    seen.add(key);
+    markKeep(backup, `${label}-${seen.size}`);
+  }
+}
+
+function parseBackupTimestampFromName(name) {
+  const match = String(name || "").match(/^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z/);
+  if (!match) {
+    return "";
+  }
+  return `${match[1]}T${match[2]}:${match[3]}:${match[4]}.${match[5]}Z`;
+}
+
+function inferBackupReasonFromName(name) {
+  return String(name || "").replace(/^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z-?/, "") || "manual";
+}
+
+function inferBackupRetentionTier(reason) {
+  const value = String(reason || "").toLowerCase();
+  if (value.startsWith("pre-sync")) return "pre-sync";
+  if (value.startsWith("daily")) return "daily";
+  if (value.startsWith("weekly")) return "weekly";
+  if (value.startsWith("pre-pull")) return "pre-pull";
+  return "manual";
+}
+
+function inferBackupRetentionKey(tier, createdAt) {
+  if (tier === "daily") return formatBackupDay(createdAt);
+  if (tier === "weekly") return getIsoWeekKey(createdAt);
+  if (tier === "pre-sync") return createdAtRetentionKey(createdAt);
+  return "";
+}
+
+function createdAtRetentionKey(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
+}
+
+function formatBackupDay(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString().slice(0, 10);
+}
+
+function getIsoWeekKey(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  const utc = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const day = utc.getUTCDay() || 7;
+  utc.setUTCDate(utc.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(utc.getUTCFullYear(), 0, 1));
+  const week = Math.ceil((((utc - yearStart) / 86400000) + 1) / 7);
+  return `${utc.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
+}
+
+function isPathInsideDirectory(target, root) {
+  const relative = path.relative(root, target);
+  return Boolean(relative) && !relative.startsWith("..") && !path.isAbsolute(relative);
 }
 
 function withHubLock(memoryDir, owner, fn, staleMs = 120000) {
@@ -8555,6 +10369,14 @@ function ensureDir(dir) {
 
 function readJson(file) {
   return JSON.parse(fs.readFileSync(file, "utf8"));
+}
+
+function readJsonSafe(file, fallback = {}) {
+  try {
+    return readJson(file);
+  } catch {
+    return fallback;
+  }
 }
 
 function writeJson(file, value) {

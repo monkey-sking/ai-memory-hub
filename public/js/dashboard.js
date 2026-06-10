@@ -246,6 +246,7 @@
         radioMessages: "Broadcast Messages",
         durableLedger: "Durable Ledger",
         backups: "Backups",
+        backupsPanel: "Backups",
         activeTasksKanban: "⭐ Active Tasks Kanban",
         fullBoard: "Full Board",
         liveRadioFeed: "📻 Live Broadcast Feed",
@@ -376,32 +377,150 @@
         createWorkflow: "+ New Workflow",
         loadingWorkflows: "Loading workflows...",
         systemSettings: "⚙️ System Settings",
+        settingsCurrentSnapshot: "Snapshot Limit",
+        settingsCurrentRefresh: "Refresh Interval",
+        settingsCurrentTheme: "Theme",
+        settingsCurrentAlerts: "Notifications",
+        settingsSnapshotSection: "Memory Snapshot",
+        settingsRefreshSection: "Refresh",
+        settingsAppearanceSection: "Appearance",
+        settingsNotificationSection: "Notifications",
+        settingsShortcutsSection: "Global Shortcuts",
         snapshotLimit: "Snapshot Limit",
-        snapshotLimitDesc: "Max records in MEMORY.md (current: 200)",
-        refreshInterval: "Auto Refresh Interval (seconds)",
+        snapshotLimitDesc: "Records included in generated MEMORY.md snapshots.",
+        refreshInterval: "Refresh Interval (seconds)",
+        settingsAutoRefresh: "Auto Refresh",
+        settingsAutoRefreshDesc: "Keep the dashboard connected to live hub updates.",
         themeLabel: "Theme",
         darkMode: "Dark Mode",
-        lightMode: "Light Mode (Coming Soon)",
+        lightMode: "Light Mode",
         languageLabel: "Language",
+        notificationLabel: "Dashboard Notifications",
+        notificationDesc: "Show success and status notifications for dashboard actions.",
+        shortcutEnableLabel: "Keyboard Shortcuts",
+        shortcutEnableDesc: "Enable global dashboard shortcuts for search, panels, and overlays.",
+        shortcutShowHelp: "Show shortcuts",
+        shortcutFormatHint: "Use keys like /, escape, ctrl+k, mod+k, or alt+1.",
+        shortcutDisabled: "Keyboard shortcuts are disabled.",
+        enabled: "On",
+        disabled: "Off",
+        invalidSettings: "Settings contain invalid values.",
         saveSettings: "Save Settings",
         connectedTools: "Connected Tools",
         runnableTools: "Runnable",
         cliTools: "CLI Tools",
         appTools: "Apps",
+        configuredTools: "Configured",
+        dispatchSuccess: "Dispatch Success",
+        activeDispatches: "Active Dispatches",
         toolManagement: "🔧 Tool Management",
         refreshTools: "Refresh",
         loadingTools: "Loading tools...",
+        liveToolStatus: "Live Tool Status",
+        performanceMonitoring: "Performance Monitoring",
+        usageStats: "Usage Statistics",
+        toolConfigManagement: "Configuration Management",
+        toolsStatusAll: "All tools",
+        toolsStatusConnected: "Connected",
+        toolsStatusNeedsConfig: "Needs config",
+        toolsStatusMissing: "Missing",
+        selectToolConfig: "Select a tool to inspect configuration.",
+        noToolsMatch: "No tools match this filter.",
+        noRuns: "No dispatch runs yet.",
+        runsLabel: "Runs",
+        successRate: "Success",
+        avgRuntime: "Avg runtime",
+        lastRun: "Last run",
+        latestError: "Latest error",
+        connectionStatus: "Connection",
+        instructionFile: "Instruction file",
+        runnerCommand: "Runner command",
+        detectionPath: "Detection path",
+        manageConfig: "Manage config",
+        configHotUpdate: "Config changes refresh status immediately.",
+        runnerReady: "Runner ready",
+        setupRequired: "Setup required",
+        sharedStateOnly: "Shared state only",
         globalSearch: "🔍 Global Search",
         searchPlaceholder: "Search across memories, tasks, and messages...",
         searchAll: "All",
         searchMemories: "Memories",
         searchTasks: "Tasks",
         searchRadio: "Radio Messages",
+        searchWorkflows: "Workflows",
+        searchAnyTime: "Any time",
+        search24h: "Last 24 hours",
+        search7d: "Last 7 days",
+        search30d: "Last 30 days",
+        search90d: "Last 90 days",
+        sortRelevance: "Relevance",
+        sortNewest: "Newest",
+        sortOldest: "Oldest",
+        searchTagCloud: "Tag cloud",
+        searchClearTag: "Clear tag",
+        searchTagged: "Tag: {tag}",
+        searchResultSummary: "{n} result(s) in {ms} ms",
         searchButton: "Search",
         searchPrompt: "Enter a query to search...",
+        noSearchResults: "No matching results.",
         healthReport: "💊 System Health Report",
         runHealthCheck: "Run Health Check",
         healthPrompt: "Click \"Run Health Check\" to generate report...",
+        healthScore: "Health Score",
+        healthStatus: "Status",
+        totalRecords: "Memory Records",
+        duplicateRecords: "Duplicates",
+        corruptedRecords: "Corrupted",
+        storageUsed: "Storage Used",
+        healthIssues: "Issues",
+        repairSuggestions: "Repair Suggestions",
+        duplicateExamples: "Duplicate Examples",
+        corruptedExamples: "Corrupted Examples",
+        storageBreakdown: "Storage Breakdown",
+        commandLabel: "Command",
+        copyCommand: "Copy command",
+        runAction: "Run action",
+        noHealthIssues: "No optimization issues detected.",
+        noHealthExamples: "No examples to show.",
+        actionCopied: "Command copied.",
+        repairApplied: "Health repair completed.",
+        backupManagement: "🗄️ Backup Management",
+        backupCountLabel: "Backup Sets",
+        backupSizeLabel: "Storage Used",
+        backupKeepLabel: "Retained",
+        backupPruneLabel: "Cleanup Preview",
+        createBackup: "Create Backup",
+        previewCleanup: "Preview Cleanup",
+        backupReason: "Backup Reason",
+        dailyRetention: "Daily Retention",
+        weeklyRetention: "Weekly Retention",
+        preSyncRetention: "Pre-sync Retention",
+        pruneAfterSync: "Prune After Sync",
+        saveBackupPolicy: "Save Schedule",
+        backupPolicySaved: "Backup schedule saved.",
+        backupFileBrowser: "Backup File Browser",
+        selectBackupPrompt: "Select a backup to inspect files.",
+        browseFiles: "Browse",
+        previewRestore: "Preview Restore",
+        restoreBackup: "Restore",
+        restorePreviewReady: "Restore preview ready.",
+        restoreComplete: "Backup restored.",
+        restoreConfirm: "Restoring will overwrite current hub files from the selected backup after creating a pre-restore backup. Continue?",
+        restorePrompt: "Type RESTORE to apply this backup.",
+        restoreTokenMismatch: "Restore cancelled: confirmation text did not match.",
+        noBackups: "No backups found.",
+        changedFiles: "Changed files",
+        noRestoreChanges: "No restore changes detected.",
+        loadingBackups: "Loading backups...",
+        backupCreated: "Backup created.",
+        backupPreviewReady: "Cleanup preview ready.",
+        settingsSaved: "Settings saved.",
+        keyboardShortcuts: "Keyboard Shortcuts",
+        shortcutSearch: "Focus search",
+        shortcutCommand: "Open search",
+        shortcutTabs: "Switch panels",
+        shortcutClose: "Close modal or sidebar",
+        healthRawReport: "Raw Report",
         loadingMemory: "Loading MEMORY.md...",
         loadingProfile: "Loading profile.md...",
         memoryTab: "MEMORY.md",
@@ -448,6 +567,7 @@
         radioMessages: "广播消息数",
         durableLedger: "长期记忆账本",
         backups: "备份文件数",
+        backupsPanel: "备份管理",
         activeTasksKanban: "⭐ 活跃任务看板",
         fullBoard: "完整看板",
         liveRadioFeed: "📻 实时协作广播",
@@ -578,13 +698,34 @@
         createWorkflow: "+ 创建工作流",
         loadingWorkflows: "加载工作流中...",
         systemSettings: "⚙️ 系统设置",
+        settingsCurrentSnapshot: "快照限制",
+        settingsCurrentRefresh: "刷新间隔",
+        settingsCurrentTheme: "主题",
+        settingsCurrentAlerts: "通知",
+        settingsSnapshotSection: "记忆快照",
+        settingsRefreshSection: "刷新",
+        settingsAppearanceSection: "外观",
+        settingsNotificationSection: "通知",
+        settingsShortcutsSection: "全局快捷键",
         snapshotLimit: "快照限制",
-        snapshotLimitDesc: "MEMORY.md 最大记录数 (当前: 200)",
-        refreshInterval: "自动刷新间隔 (秒)",
+        snapshotLimitDesc: "生成 MEMORY.md 快照时包含的记录数。",
+        refreshInterval: "刷新间隔 (秒)",
+        settingsAutoRefresh: "自动刷新",
+        settingsAutoRefreshDesc: "让看板保持连接并接收实时更新。",
         themeLabel: "主题",
         darkMode: "深色模式",
-        lightMode: "浅色模式 (即将推出)",
+        lightMode: "浅色模式",
         languageLabel: "语言",
+        notificationLabel: "看板通知",
+        notificationDesc: "显示看板操作的成功和状态通知。",
+        shortcutEnableLabel: "键盘快捷键",
+        shortcutEnableDesc: "启用搜索、面板切换和弹层关闭的全局看板快捷键。",
+        shortcutShowHelp: "显示快捷键",
+        shortcutFormatHint: "可使用 /、escape、ctrl+k、mod+k 或 alt+1 这类组合。",
+        shortcutDisabled: "键盘快捷键已关闭。",
+        enabled: "开",
+        disabled: "关",
+        invalidSettings: "设置项包含无效值。",
         saveSettings: "保存设置",
         connectedTools: "已连接工具",
         runnableTools: "可运行",
@@ -599,11 +740,80 @@
         searchMemories: "记忆",
         searchTasks: "任务",
         searchRadio: "广播消息",
+        searchWorkflows: "工作流",
+        searchAnyTime: "不限时间",
+        search24h: "近 24 小时",
+        search7d: "近 7 天",
+        search30d: "近 30 天",
+        search90d: "近 90 天",
+        sortRelevance: "相关性",
+        sortNewest: "最新优先",
+        sortOldest: "最早优先",
+        searchTagCloud: "标签云",
+        searchClearTag: "清除标签",
+        searchTagged: "标签：{tag}",
+        searchResultSummary: "{n} 条结果，用时 {ms} ms",
         searchButton: "搜索",
         searchPrompt: "输入搜索关键词...",
+        noSearchResults: "没有匹配结果。",
         healthReport: "💊 系统健康报告",
         runHealthCheck: "运行健康检查",
         healthPrompt: "点击“运行健康检查”生成报告...",
+        healthScore: "健康评分",
+        healthStatus: "状态",
+        totalRecords: "记忆记录",
+        duplicateRecords: "重复记录",
+        corruptedRecords: "损坏记录",
+        storageUsed: "存储占用",
+        healthIssues: "问题列表",
+        repairSuggestions: "修复建议",
+        duplicateExamples: "重复示例",
+        corruptedExamples: "损坏示例",
+        storageBreakdown: "存储明细",
+        commandLabel: "命令",
+        copyCommand: "复制命令",
+        runAction: "执行操作",
+        noHealthIssues: "未检测到需要优化的问题。",
+        noHealthExamples: "暂无示例。",
+        actionCopied: "命令已复制。",
+        repairApplied: "健康修复已完成。",
+        backupManagement: "🗄️ 备份管理",
+        backupCountLabel: "备份集",
+        backupSizeLabel: "存储占用",
+        backupKeepLabel: "保留数量",
+        backupPruneLabel: "清理预览",
+        createBackup: "创建备份",
+        previewCleanup: "预览清理",
+        backupReason: "备份原因",
+        dailyRetention: "每日保留",
+        weeklyRetention: "每周保留",
+        preSyncRetention: "同步前保留",
+        pruneAfterSync: "同步后自动清理",
+        saveBackupPolicy: "保存计划",
+        backupPolicySaved: "备份计划已保存。",
+        backupFileBrowser: "备份文件浏览",
+        selectBackupPrompt: "选择一个备份查看文件。",
+        browseFiles: "浏览",
+        previewRestore: "预览恢复",
+        restoreBackup: "恢复",
+        restorePreviewReady: "恢复预览已生成。",
+        restoreComplete: "备份已恢复。",
+        restoreConfirm: "恢复会先创建 pre-restore 备份，然后用所选备份覆盖当前 Hub 文件。是否继续？",
+        restorePrompt: "输入 RESTORE 以应用该备份。",
+        restoreTokenMismatch: "恢复已取消：确认文本不匹配。",
+        noBackups: "暂无备份。",
+        changedFiles: "变更文件",
+        noRestoreChanges: "未检测到需要恢复的变更。",
+        loadingBackups: "加载备份中...",
+        backupCreated: "备份已创建。",
+        backupPreviewReady: "清理预览已生成。",
+        settingsSaved: "设置已保存。",
+        keyboardShortcuts: "键盘快捷键",
+        shortcutSearch: "聚焦搜索",
+        shortcutCommand: "打开搜索",
+        shortcutTabs: "切换面板",
+        shortcutClose: "关闭弹窗或侧栏",
+        healthRawReport: "原始报告",
         loadingMemory: "加载 MEMORY.md 中...",
         loadingProfile: "加载 profile.md 中...",
         memoryTab: "MEMORY.md",
@@ -624,6 +834,48 @@
       }
     };
 
+    const DEFAULT_SHORTCUTS = {
+      enabled: true,
+      bindings: {
+        focusSearch: '/',
+        openSearch: 'mod+k',
+        showHelp: 'ctrl+/',
+        closeLayer: 'escape'
+      },
+      tabBindings: {
+        dashboard: '1',
+        memory: '2',
+        radio: '3',
+        tasks: '4',
+        dispatch: '5',
+        workflows: '6',
+        analytics: '7',
+        backups: '8',
+        settings: '9',
+        health: '0'
+      }
+    };
+
+    const SHORTCUT_COMMAND_INPUTS = [
+      { id: 'focusSearch', inputId: 'shortcutFocusSearch', labelKey: 'shortcutSearch' },
+      { id: 'openSearch', inputId: 'shortcutOpenSearch', labelKey: 'shortcutCommand' },
+      { id: 'showHelp', inputId: 'shortcutShowHelpInput', labelKey: 'shortcutShowHelp' },
+      { id: 'closeLayer', inputId: 'shortcutCloseLayer', labelKey: 'shortcutClose' }
+    ];
+
+    const SHORTCUT_TAB_INPUTS = [
+      { tab: 'dashboard', inputId: 'shortcutTabDashboard', labelKey: 'overview' },
+      { tab: 'memory', inputId: 'shortcutTabMemory', labelKey: 'memoryHub' },
+      { tab: 'radio', inputId: 'shortcutTabRadio', labelKey: 'agentRadio' },
+      { tab: 'tasks', inputId: 'shortcutTabTasks', labelKey: 'tasksBoard' },
+      { tab: 'dispatch', inputId: 'shortcutTabDispatch', labelKey: 'dispatchLogs' },
+      { tab: 'workflows', inputId: 'shortcutTabWorkflows', labelKey: 'workflowsPanel' },
+      { tab: 'analytics', inputId: 'shortcutTabAnalytics', labelKey: 'analyticsPanel' },
+      { tab: 'backups', inputId: 'shortcutTabBackups', labelKey: 'backupsPanel' },
+      { tab: 'settings', inputId: 'shortcutTabSettings', labelKey: 'settingsPanel' },
+      { tab: 'health', inputId: 'shortcutTabHealth', labelKey: 'healthPanel' }
+    ];
+
     const state = {
       activeTab: 'dashboard',
       memorySubTab: 'md',
@@ -634,8 +886,16 @@
       workflows: [],
       dispatch: [],
       relay: [],
-      autoRefresh: true,
-      refreshInterval: 5000,
+      tools: null,
+      selectedTool: '',
+      backups: null,
+      selectedBackupName: '',
+      backupDetail: null,
+      backupRestorePlan: null,
+      settings: null,
+      health: null,
+      autoRefresh: localStorage.getItem('hub_auto_refresh') !== 'false',
+      refreshInterval: Number(localStorage.getItem('hub_refresh_interval_ms') || 5000),
       fallbackRefreshInterval: 30000,
       realtime: {
         connected: false,
@@ -643,6 +903,11 @@
         status: 'idle'
       },
       searchRadio: '',
+      search: {
+        tag: '',
+        lastPayload: null,
+        debounceTimer: null
+      },
       filterRadioType: '',
       filterRadioFrom: '',
       filterRadioTo: '',
@@ -650,8 +915,13 @@
       filterTaskProject: '',
       filterTaskPriority: '',
       endpointErrors: [],
+      notifications: localStorage.getItem('hub_notifications') !== 'false',
+      shortcuts: cloneDefaultShortcuts(),
       lang: localStorage.getItem('hub_lang') || 'zh'
     };
+
+    state.refreshInterval = Number.isFinite(state.refreshInterval) && state.refreshInterval >= 1000 ? state.refreshInterval : 5000;
+    state.fallbackRefreshInterval = Math.max(5000, state.refreshInterval);
 
     let timer = null;
     let socket = null;
@@ -665,8 +935,269 @@
       return val;
     }
 
+    function normalizeLanguage(value) {
+      return ['zh', 'en'].includes(value) ? value : 'zh';
+    }
+
+    function normalizeTheme(value) {
+      return ['dark', 'light'].includes(value) ? value : 'dark';
+    }
+
+    function cloneDefaultShortcuts() {
+      return {
+        enabled: DEFAULT_SHORTCUTS.enabled,
+        bindings: { ...DEFAULT_SHORTCUTS.bindings },
+        tabBindings: { ...DEFAULT_SHORTCUTS.tabBindings }
+      };
+    }
+
+    function normalizeShortcutBinding(value, fallback = '') {
+      const raw = String(value ?? '').trim();
+      if (!raw) return fallback;
+      const clean = raw
+        .toLowerCase()
+        .replace(/\s+/g, '')
+        .replace(/command/g, 'meta')
+        .replace(/cmd/g, 'meta')
+        .replace(/option/g, 'alt')
+        .replace(/^esc$/, 'escape');
+      const parts = clean.split('+').filter(Boolean);
+      const modifiers = ['ctrl', 'mod', 'meta', 'alt', 'shift'].filter(mod => parts.includes(mod));
+      let key = parts.find(part => !['ctrl', 'mod', 'meta', 'alt', 'shift'].includes(part)) || '';
+      if (key === 'esc') key = 'escape';
+      if (key === 'spacebar') key = 'space';
+      if (!key) return fallback;
+      return [...modifiers, key].join('+');
+    }
+
+    function normalizeShortcutList(value, fallback = '') {
+      const rawItems = String(value ?? '').split(/[|,]/).map(item => item.trim()).filter(Boolean);
+      const source = rawItems.length ? rawItems : [fallback];
+      const normalized = source
+        .map(item => normalizeShortcutBinding(item, ''))
+        .filter(Boolean);
+      return normalized.length ? normalized.join(',') : fallback;
+    }
+
+    function normalizeShortcutSettings(input = {}) {
+      const defaults = cloneDefaultShortcuts();
+      const source = input && typeof input === 'object' ? input : {};
+      const bindings = {};
+      Object.keys(defaults.bindings).forEach(key => {
+        bindings[key] = normalizeShortcutList(source.bindings?.[key], defaults.bindings[key]);
+      });
+      const tabBindings = {};
+      Object.keys(defaults.tabBindings).forEach(key => {
+        tabBindings[key] = normalizeShortcutList(source.tabBindings?.[key], defaults.tabBindings[key]);
+      });
+      return {
+        enabled: source.enabled !== undefined ? Boolean(source.enabled) : defaults.enabled,
+        bindings,
+        tabBindings
+      };
+    }
+
+    function normalizeEventKey(key) {
+      const raw = String(key || '').toLowerCase();
+      if (raw === ' ') return 'space';
+      if (raw === 'esc') return 'escape';
+      return raw;
+    }
+
+    function shortcutEventToBinding(event) {
+      const key = normalizeEventKey(event.key);
+      if (!key || ['control', 'meta', 'alt', 'shift'].includes(key)) return '';
+      const modifiers = [];
+      if (event.ctrlKey) modifiers.push('ctrl');
+      if (event.metaKey) modifiers.push('meta');
+      if (event.altKey) modifiers.push('alt');
+      if (event.shiftKey) modifiers.push('shift');
+      return [...modifiers, key].join('+');
+    }
+
+    function expandShortcutBinding(binding) {
+      return normalizeShortcutList(binding)
+        .split(',')
+        .map(item => item.trim())
+        .filter(Boolean)
+        .flatMap(item => item.includes('mod+')
+          ? [item.replace('mod+', 'ctrl+'), item.replace('mod+', 'meta+')]
+          : [item]);
+    }
+
+    function shortcutMatches(event, binding) {
+      const eventBinding = shortcutEventToBinding(event);
+      return Boolean(eventBinding && expandShortcutBinding(binding).includes(eventBinding));
+    }
+
+    function formatShortcutLabel(binding) {
+      return String(binding || '')
+        .split('+')
+        .filter(Boolean)
+        .map(part => {
+          const labels = { ctrl: 'Ctrl', mod: 'Ctrl/Cmd', meta: 'Cmd', alt: 'Alt', shift: 'Shift', escape: 'Esc', space: 'Space' };
+          return labels[part] || part.toUpperCase();
+        });
+    }
+
+    function renderShortcutKeys(binding) {
+      const groups = normalizeShortcutList(binding)
+        .split(',')
+        .map(item => item.trim())
+        .filter(Boolean);
+      return `<span class="shortcut-keyset">${groups.map((item, index) => {
+        const keys = formatShortcutLabel(item).map(part => `<kbd>${escapeHtml(part)}</kbd>`).join('');
+        return `${index > 0 ? '<span class="shortcut-separator">,</span>' : ''}${keys}`;
+      }).join('')}</span>`;
+    }
+
+    function setInputValue(input, value) {
+      if (!input || document.activeElement === input) return;
+      input.value = value;
+    }
+
+    function mergeLocalSettings(syncPatch = {}, dashboardPatch = {}) {
+      const current = state.settings || {};
+      state.settings = {
+        ...current,
+        sync: {
+          ...(current.sync || {}),
+          ...syncPatch
+        },
+        dashboard: {
+          ...(current.dashboard || {}),
+          ...dashboardPatch
+        }
+      };
+      return state.settings;
+    }
+
+    function getDashboardSettingValues(settings = state.settings) {
+      const dashboard = settings?.dashboard || {};
+      const refreshIntervalMs = Number(dashboard.refreshIntervalMs || state.refreshInterval || 5000);
+      return {
+        autoRefresh: dashboard.autoRefresh !== undefined ? Boolean(dashboard.autoRefresh) : state.autoRefresh,
+        notifications: dashboard.notifications !== undefined ? Boolean(dashboard.notifications) : state.notifications,
+        refreshIntervalMs: Number.isFinite(refreshIntervalMs) && refreshIntervalMs >= 1000 ? Math.min(60000, refreshIntervalMs) : 5000,
+        language: normalizeLanguage(dashboard.language || state.lang || localStorage.getItem('hub_lang')),
+        theme: normalizeTheme(dashboard.theme || localStorage.getItem('hub_theme') || 'dark'),
+        shortcuts: normalizeShortcutSettings(dashboard.shortcuts || state.shortcuts)
+      };
+    }
+
+    function applyTheme(theme) {
+      const nextTheme = normalizeTheme(theme);
+      document.body.setAttribute('data-theme', nextTheme);
+      localStorage.setItem('hub_theme', nextTheme);
+    }
+
+    function applyRuntimeSettings(settings = state.settings, options = {}) {
+      const values = getDashboardSettingValues(settings);
+      state.autoRefresh = values.autoRefresh;
+      state.notifications = values.notifications;
+      state.shortcuts = values.shortcuts;
+      state.refreshInterval = values.refreshIntervalMs;
+      state.fallbackRefreshInterval = Math.max(5000, values.refreshIntervalMs);
+      localStorage.setItem('hub_auto_refresh', values.autoRefresh ? 'true' : 'false');
+      localStorage.setItem('hub_notifications', values.notifications ? 'true' : 'false');
+      localStorage.setItem('hub_refresh_interval_ms', String(values.refreshIntervalMs));
+
+      const languageChanged = state.lang !== values.language;
+      state.lang = values.language;
+      localStorage.setItem('hub_lang', state.lang);
+      applyTheme(values.theme);
+
+      const topAutoRefresh = document.getElementById('autoRefreshCheckbox');
+      if (topAutoRefresh) topAutoRefresh.checked = state.autoRefresh;
+      const settingsAutoRefresh = document.getElementById('settingAutoRefresh');
+      if (settingsAutoRefresh) settingsAutoRefresh.checked = state.autoRefresh;
+      const settingsNotifications = document.getElementById('settingNotifications');
+      if (settingsNotifications) settingsNotifications.checked = state.notifications;
+      const settingsShortcuts = document.getElementById('settingShortcutsEnabled');
+      if (settingsShortcuts) settingsShortcuts.checked = state.shortcuts.enabled;
+
+      if (languageChanged || options.translate) {
+        translatePage();
+      } else {
+        document.getElementById('btnLang').textContent = state.lang === 'zh' ? '🌐 English' : '🌐 中文';
+      }
+
+      if (options.reconnect !== false) {
+        if (state.autoRefresh) startInterval();
+        else stopRealtime();
+      }
+      updateSettingsSummary();
+      renderShortcutHelp();
+    }
+
+    function buildSettingsPayload() {
+      const snapshotInput = document.getElementById('settingSnapshotLimit');
+      const refreshInput = document.getElementById('settingRefreshInterval');
+      const autoRefreshInput = document.getElementById('settingAutoRefresh');
+      const notificationsInput = document.getElementById('settingNotifications');
+      const languageInput = document.getElementById('settingLanguage');
+      const themeInput = document.getElementById('settingTheme');
+      const shortcutInput = document.getElementById('settingShortcutsEnabled');
+
+      const snapshotLimit = Number(snapshotInput?.value || state.settings?.sync?.snapshotLimit || 120);
+      const refreshSeconds = Number(refreshInput?.value || Math.round(state.refreshInterval / 1000) || 5);
+      if (!Number.isInteger(snapshotLimit) || snapshotLimit <= 0 || !Number.isFinite(refreshSeconds) || refreshSeconds < 1 || refreshSeconds > 60) {
+        throw new Error(t('invalidSettings'));
+      }
+
+      return {
+        sync: {
+          snapshotLimit
+        },
+        dashboard: {
+          autoRefresh: autoRefreshInput ? autoRefreshInput.checked : state.autoRefresh,
+          refreshIntervalMs: Math.round(refreshSeconds * 1000),
+          language: normalizeLanguage(languageInput?.value || state.lang),
+          theme: normalizeTheme(themeInput?.value || localStorage.getItem('hub_theme') || 'dark'),
+          notifications: notificationsInput ? notificationsInput.checked : state.notifications,
+          shortcuts: buildShortcutSettingsPayload(shortcutInput ? shortcutInput.checked : state.shortcuts.enabled)
+        }
+      };
+    }
+
+    function buildShortcutSettingsPayload(enabled) {
+      const defaults = cloneDefaultShortcuts();
+      const bindings = {};
+      SHORTCUT_COMMAND_INPUTS.forEach(item => {
+        bindings[item.id] = normalizeShortcutList(
+          document.getElementById(item.inputId)?.value,
+          defaults.bindings[item.id]
+        );
+      });
+      const tabBindings = {};
+      SHORTCUT_TAB_INPUTS.forEach(item => {
+        tabBindings[item.tab] = normalizeShortcutList(
+          document.getElementById(item.inputId)?.value,
+          defaults.tabBindings[item.tab]
+        );
+      });
+      return { enabled: Boolean(enabled), bindings, tabBindings };
+    }
+
+    function applySettingsDraft() {
+      let payload;
+      try {
+        payload = buildSettingsPayload();
+      } catch {
+        updateSettingsSummary();
+        return null;
+      }
+      mergeLocalSettings(payload.sync, payload.dashboard);
+      applyRuntimeSettings(state.settings, { reconnect: true, translate: true });
+      const status = document.getElementById('settingsSaveStatus');
+      if (status) status.textContent = '';
+      renderSettingsPanel();
+      return payload;
+    }
+
     function toggleLanguage() {
       state.lang = state.lang === 'zh' ? 'en' : 'zh';
+      mergeLocalSettings({}, { language: state.lang });
       localStorage.setItem('hub_lang', state.lang);
       translatePage();
       renderAll();
@@ -682,6 +1213,7 @@
         el.placeholder = t(key);
       });
       document.getElementById('btnLang').textContent = state.lang === 'zh' ? '🌐 English' : '🌐 中文';
+      renderShortcutHelp();
     }
 
     // Helper: Escaping HTML safely
@@ -694,6 +1226,15 @@
         '"': '&quot;',
         "'": '&#39;'
       }[ch]));
+    }
+
+    function escapeJsString(val) {
+      return String(val || '')
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'")
+        .replace(/\r/g, '\\r')
+        .replace(/\n/g, '\\n')
+        .replace(/</g, '\\x3c');
     }
 
     // Lightweight markdown parser for memory.md
@@ -917,9 +1458,36 @@
 
     async function api(path, options = {}) {
       const res = await fetch(path, options);
-      const json = await res.json();
+      const text = await res.text();
+      const json = text ? JSON.parse(text) : {};
       if (!res.ok) throw new Error(json.error || res.statusText);
       return json;
+    }
+
+    function showToast(message, type = 'info') {
+      if (!state.notifications && type !== 'error') return;
+      const stack = document.getElementById('toastStack');
+      if (!stack) return;
+      const toast = document.createElement('div');
+      toast.className = `toast toast-${type}`;
+      toast.textContent = message;
+      stack.appendChild(toast);
+      setTimeout(() => {
+        toast.classList.add('leaving');
+        setTimeout(() => toast.remove(), 220);
+      }, 3600);
+    }
+
+    function setButtonLoading(button, loading, label) {
+      if (!button) return;
+      if (loading) {
+        button.dataset.originalText = button.textContent;
+        button.disabled = true;
+        button.innerHTML = `<span class="spinner"></span> ${escapeHtml(label || t('scanning'))}`;
+      } else {
+        button.disabled = false;
+        button.textContent = button.dataset.originalText || button.textContent;
+      }
     }
 
     function switchTab(tabId) {
@@ -927,7 +1495,7 @@
       document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
       document.querySelectorAll('.tab-panel').forEach(el => el.classList.remove('active'));
 
-      const tabs = ['dashboard', 'memory', 'radio', 'tasks', 'dispatch', 'workflows', 'analytics', 'settings', 'health', 'search', 'tools'];
+      const tabs = ['dashboard', 'memory', 'radio', 'tasks', 'dispatch', 'workflows', 'analytics', 'backups', 'settings', 'health', 'search', 'tools'];
       const index = tabs.indexOf(tabId);
       if (index !== -1) {
         document.querySelectorAll('.nav-item')[index].classList.add('active');
@@ -948,8 +1516,21 @@
         if (tabId === 'radio') renderRadioFeed();
         if (tabId === 'tasks') renderTasksList();
         if (tabId === 'workflows') renderWorkflowsPanel();
+        if (tabId === 'backups') {
+          renderBackupsPanel();
+          if (!state.backups) loadBackups();
+        }
+        if (tabId === 'settings') renderSettingsPanel();
+        if (tabId === 'search') {
+          renderSearchPanel();
+          document.getElementById('searchQuery')?.focus();
+        }
         if (tabId === 'tools') renderToolsPanel();
         if (tabId === 'analytics') renderAnalytics();
+        if (tabId === 'health') {
+          if (state.health) renderHealthReport();
+          else runHealthCheck();
+        }
       });
     }
 
@@ -966,12 +1547,9 @@
 
     // Realtime refresh handlers
     function toggleAutoRefresh(checked) {
-      state.autoRefresh = checked;
-      if (checked) {
-        startInterval();
-      } else {
-        stopRealtime();
-      }
+      mergeLocalSettings({}, { autoRefresh: Boolean(checked) });
+      applyRuntimeSettings(state.settings, { reconnect: true });
+      renderSettingsPanel();
     }
 
     function startInterval() {
@@ -1076,6 +1654,10 @@
       state.workflows = (snapshot.workflows && snapshot.workflows.workflows) || [];
       state.dispatch = (snapshot.dispatch && snapshot.dispatch.logs) || [];
       state.relay = (snapshot.dispatch && snapshot.dispatch.relay) || [];
+      state.tools = snapshot.tools || state.tools;
+      state.backups = snapshot.backups || state.backups;
+      state.settings = snapshot.settings || state.settings;
+      if (state.settings) applyRuntimeSettings(state.settings, { reconnect: true });
       state.endpointErrors = [];
       renderAll();
     }
@@ -1100,13 +1682,16 @@
           recordEndpointError('/api/dashboard', dashboardErr);
         }
 
-        const [statusRes, memoryRes, radioRes, tasksRes, workflowsRes, dispatchRes] = await Promise.allSettled([
+        const [statusRes, memoryRes, radioRes, tasksRes, workflowsRes, dispatchRes, toolsRes, backupsRes, settingsRes] = await Promise.allSettled([
           api('/api/status'),
           api('/api/memory'),
           api('/api/radio'),
           api('/api/tasks'),
           api('/api/workflows'),
-          api('/api/dispatch')
+          api('/api/dispatch'),
+          api('/api/tools'),
+          api('/api/backups'),
+          api('/api/settings')
         ]);
 
         if (statusRes.status === 'fulfilled') {
@@ -1145,6 +1730,29 @@
           state.dispatch = [];
           state.relay = [];
         }
+        if (toolsRes.status === 'fulfilled') {
+          state.tools = toolsRes.value || null;
+          if (Array.isArray(state.tools?.tools)) {
+            state.status.tools = state.tools.tools;
+            state.status.toolSummary = state.tools.summary || state.status.toolSummary;
+          }
+        } else {
+          recordEndpointError('/api/tools', toolsRes.reason);
+          state.tools = null;
+        }
+        if (backupsRes.status === 'fulfilled') {
+          state.backups = backupsRes.value || null;
+        } else {
+          recordEndpointError('/api/backups', backupsRes.reason);
+          state.backups = null;
+        }
+        if (settingsRes.status === 'fulfilled') {
+          state.settings = settingsRes.value || null;
+          if (state.settings) applyRuntimeSettings(state.settings, { reconnect: true });
+        } else {
+          recordEndpointError('/api/settings', settingsRes.reason);
+          state.settings = null;
+        }
 
         state.endpointErrors = endpointErrors;
         renderAll();
@@ -1167,6 +1775,8 @@
 
       // Top bar info
       document.getElementById('memoryDir').textContent = state.status.memoryDir || 'unavailable';
+      const autoRefreshCheckbox = document.getElementById('autoRefreshCheckbox');
+      if (autoRefreshCheckbox) autoRefreshCheckbox.checked = state.autoRefresh;
 
       // Sidebar badges
       document.getElementById('sidebarPending').textContent = state.status.pendingEvents || 0;
@@ -1231,6 +1841,7 @@
       renderTasksList();
       renderDispatchLogs();
       renderWorkflowsPanel();
+      renderBackupsPanel();
       renderToolsPanel();
       renderSettingsPanel();
       renderAnalytics();
@@ -2065,7 +2676,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: messageId })
       });
-      alert(t('alertPromoted'));
+      showToast(t('alertPromoted'), 'success');
       await refreshData();
     }
 
@@ -2364,11 +2975,11 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ tool: currentSelectedTool, scope: scope })
         });
-        alert((state.lang === 'zh' ? '已成功将规则写入文件：\n' : 'Successfully wrote rules to:\n') + res.file);
+        showToast((state.lang === 'zh' ? '已写入规则: ' : 'Rules written: ') + res.file, 'success');
         closeToolModal();
         await refreshData();
       } catch (err) {
-        alert(err.message);
+        showToast(err.message, 'error');
       } finally {
         btn.textContent = originalText;
         btn.disabled = false;
@@ -2412,26 +3023,336 @@
         : 'This panel is read-only. Create workflows with ai-memory-hub workflow create.');
     }
 
-    function renderSettingsPanel() {
-      const refreshInput = document.getElementById('settingRefreshInterval');
-      const languageInput = document.getElementById('settingLanguage');
-      if (refreshInput) refreshInput.value = String(Math.max(1, Math.round(state.refreshInterval / 1000)));
-      if (languageInput) languageInput.value = state.lang;
+    function renderBackupsPanel() {
+      const backups = state.backups || {};
+      const list = Array.isArray(backups.backups) ? backups.backups : [];
+      const setText = (id, value) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = value;
+      };
+      setText('backupsTotal', backups.count ?? state.status.backups ?? 0);
+      setText('backupsBytes', backups.totalDisplay || '0 B');
+      setText('backupsKeep', backups.retention?.keep ?? 0);
+      setText('backupsPrune', backups.retention?.prune ?? 0);
+
+      const daily = document.getElementById('backupDailyRetention');
+      const weekly = document.getElementById('backupWeeklyRetention');
+      const preSync = document.getElementById('backupPreSyncRetention');
+      const pruneAfterSync = document.getElementById('backupPruneAfterSync');
+      const policy = backups.policy || state.settings?.backupPolicy || {};
+      if (daily && policy.daily) daily.value = String(policy.daily);
+      if (weekly && policy.weekly) weekly.value = String(policy.weekly);
+      if (preSync && policy.preSync) preSync.value = String(policy.preSync);
+      if (pruneAfterSync && policy.pruneAfterSync !== undefined) pruneAfterSync.checked = policy.pruneAfterSync !== false;
+      if (!state.selectedBackupName && list[0]?.name) {
+        state.selectedBackupName = list[0].name;
+      }
+
+      const target = document.getElementById('backupsList');
+      if (!target) {
+        renderBackupDetailPanel();
+        return;
+      }
+      if (list.length === 0) {
+        target.innerHTML = `<div class="muted">${state.backups ? t('noBackups') : t('loadingBackups')}</div>`;
+        renderBackupDetailPanel();
+        return;
+      }
+      target.innerHTML = list.map(backup => `
+        <div class="backup-row ${backup.name === state.selectedBackupName ? 'active' : ''}">
+          <div>
+            <strong>${escapeHtml(backup.name || '')}</strong>
+            <div class="muted">${escapeHtml([backup.createdAt, backup.reason, backup.display].filter(Boolean).join(' · '))}</div>
+            <div class="muted">${escapeHtml((backup.files || []).slice(0, 8).join(', '))}</div>
+          </div>
+          <div class="backup-row-actions">
+            <span class="badge ${backup.retention === 'keep' ? 'status-done' : 'status-open'}">${escapeHtml(backup.retentionReason || backup.retention || '')}</span>
+            <button class="btn small" data-backup-action="browse" data-backup-name="${escapeHtml(backup.name || '')}">${escapeHtml(t('browseFiles'))}</button>
+            <button class="btn small" data-backup-action="preview" data-backup-name="${escapeHtml(backup.name || '')}">${escapeHtml(t('previewRestore'))}</button>
+          </div>
+        </div>
+      `).join('');
+      target.querySelectorAll('[data-backup-action]').forEach(button => {
+        button.addEventListener('click', () => {
+          const name = button.getAttribute('data-backup-name') || '';
+          const action = button.getAttribute('data-backup-action');
+          if (action === 'preview') previewBackupRestore(name);
+          else loadBackupDetail(name);
+        });
+      });
+      renderBackupDetailPanel();
     }
 
-    function saveSettings() {
-      const refreshInput = document.getElementById('settingRefreshInterval');
-      const languageInput = document.getElementById('settingLanguage');
-      const nextInterval = Number(refreshInput?.value || 5);
-      if (Number.isFinite(nextInterval) && nextInterval >= 1) {
-        state.refreshInterval = nextInterval * 1000;
-        state.fallbackRefreshInterval = Math.max(5000, nextInterval * 1000);
-        if (state.autoRefresh) startInterval();
+    async function loadBackups() {
+      const target = document.getElementById('backupsList');
+      if (target) target.innerHTML = `<div class="skeleton-list"><div></div><div></div><div></div></div>`;
+      try {
+        state.backups = await api('/api/backups');
+        renderBackupsPanel();
+        const list = Array.isArray(state.backups.backups) ? state.backups.backups : [];
+        const selected = state.selectedBackupName || list[0]?.name || '';
+        if (selected) await loadBackupDetail(selected, { silent: true });
+      } catch (error) {
+        if (target) target.innerHTML = `<div class="endpoint-error-item">${escapeHtml(error.message || String(error))}</div>`;
+        showToast(error.message || String(error), 'error');
       }
-      if (languageInput?.value && languageInput.value !== state.lang) {
-        state.lang = languageInput.value;
-        localStorage.setItem('hub_lang', state.lang);
-        translatePage();
+    }
+
+    async function createBackup() {
+      const reason = document.getElementById('backupReason')?.value || 'dashboard-manual';
+      try {
+        const result = await api('/api/backups/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reason })
+        });
+        state.backups = result.backups || state.backups;
+        showToast(t('backupCreated'), 'success');
+        renderBackupsPanel();
+        await refreshData();
+      } catch (error) {
+        showToast(error.message || String(error), 'error');
+      }
+    }
+
+    function getBackupPolicyInputs() {
+      const daily = Number(document.getElementById('backupDailyRetention')?.value || 7);
+      const weekly = Number(document.getElementById('backupWeeklyRetention')?.value || 4);
+      const preSync = Number(document.getElementById('backupPreSyncRetention')?.value || 20);
+      const pruneAfterSync = document.getElementById('backupPruneAfterSync')?.checked !== false;
+      if (![daily, weekly, preSync].every(value => Number.isInteger(value) && value > 0)) {
+        throw new Error(t('invalidSettings'));
+      }
+      return { daily, weekly, preSync, pruneAfterSync };
+    }
+
+    async function previewBackupPrune() {
+      const preview = document.getElementById('backupPrunePreview');
+      if (preview) preview.innerHTML = `<span class="spinner"></span> ${escapeHtml(t('scanning'))}`;
+      try {
+        const policy = getBackupPolicyInputs();
+        const result = await api('/api/backups/prune', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ apply: false, ...policy })
+        });
+        state.backups = result.backups || state.backups;
+        if (preview) {
+          preview.textContent = `${result.prune || 0} backup(s), ${result.pruneDisplay || '0 B'} outside retention policy.`;
+        }
+        showToast(t('backupPreviewReady'), 'success');
+        renderBackupsPanel();
+      } catch (error) {
+        if (preview) preview.textContent = error.message || String(error);
+        showToast(error.message || String(error), 'error');
+      }
+    }
+
+    async function saveBackupPolicy() {
+      try {
+        const policy = getBackupPolicyInputs();
+        const response = await api('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ backupPolicy: policy })
+        });
+        state.settings = response.settings || state.settings;
+        showToast(t('backupPolicySaved'), 'success');
+        await loadBackups();
+      } catch (error) {
+        showToast(error.message || String(error), 'error');
+      }
+    }
+
+    async function loadBackupDetail(name, options = {}) {
+      if (!name) return;
+      state.selectedBackupName = name;
+      const filesTarget = document.getElementById('backupFilesList');
+      if (!options.silent && filesTarget) {
+        filesTarget.innerHTML = `<div class="skeleton-list"><div></div><div></div><div></div></div>`;
+      }
+      renderBackupsPanel();
+      try {
+        const detail = await api(`/api/backups/detail?name=${encodeURIComponent(name)}`);
+        state.backupDetail = detail;
+        state.backupRestorePlan = detail.restore || null;
+        renderBackupsPanel();
+      } catch (error) {
+        if (filesTarget) filesTarget.innerHTML = `<div class="endpoint-error-item">${escapeHtml(error.message || String(error))}</div>`;
+        showToast(error.message || String(error), 'error');
+      }
+    }
+
+    function renderBackupDetailPanel() {
+      const title = document.getElementById('backupDetailTitle');
+      const meta = document.getElementById('backupDetailMeta');
+      const summary = document.getElementById('backupRestoreSummary');
+      const filesTarget = document.getElementById('backupFilesList');
+      const detail = state.backupDetail;
+      if (!filesTarget) return;
+      if (!detail?.backup) {
+        if (title) title.textContent = t('backupFileBrowser');
+        if (meta) meta.textContent = t('selectBackupPrompt');
+        if (summary) summary.innerHTML = '';
+        filesTarget.innerHTML = `<div class="muted">${t('selectBackupPrompt')}</div>`;
+        return;
+      }
+      if (title) title.textContent = detail.backup.name || t('backupFileBrowser');
+      if (meta) meta.textContent = [detail.backup.createdAt, detail.backup.reason, detail.backup.display].filter(Boolean).join(' · ');
+      renderBackupRestoreSummary(state.backupRestorePlan || detail.restore);
+      const files = Array.isArray(detail.files) ? detail.files : [];
+      filesTarget.innerHTML = files.length ? files.map(file => `
+        <div class="backup-file-row">
+          <div style="display:flex;gap:8px;justify-content:space-between;align-items:flex-start;">
+            <strong>${escapeHtml(file.name || '')}</strong>
+            <span class="badge ${backupStatusBadgeClass(file.status)}">${escapeHtml(formatBackupFileStatus(file.status))}</span>
+          </div>
+          <div class="backup-file-meta">${escapeHtml([file.kind, file.display, file.currentPath ? `${file.currentPath}: ${file.currentExists ? file.currentDisplay : 'missing'}` : 'backup metadata'].filter(Boolean).join(' · '))}</div>
+          ${file.preview ? `<pre class="backup-file-preview">${escapeHtml(file.preview)}</pre>` : ''}
+        </div>
+      `).join('') : `<div class="muted">${t('noBackups')}</div>`;
+    }
+
+    function renderBackupRestoreSummary(plan) {
+      const summary = document.getElementById('backupRestoreSummary');
+      if (!summary) return;
+      if (!plan?.summary) {
+        summary.innerHTML = '';
+        return;
+      }
+      const changed = plan.summary.changed || 0;
+      const text = changed
+        ? `${t('changedFiles')}: ${changed}/${plan.summary.total || 0} (${plan.summary.display || '0 B'})`
+        : t('noRestoreChanges');
+      summary.innerHTML = `<div class="endpoint-error-item">${escapeHtml(text)}</div>`;
+    }
+
+    function backupStatusBadgeClass(status) {
+      if (status === 'unchanged') return 'status-done';
+      if (status === 'different') return 'status-blocked';
+      if (status === 'missing-current') return 'status-claimed';
+      return 'status-open';
+    }
+
+    function formatBackupFileStatus(status) {
+      const labels = state.lang === 'zh'
+        ? { unchanged: '未变更', different: '将覆盖', 'missing-current': '将创建', 'browse-only': '仅浏览' }
+        : { unchanged: 'unchanged', different: 'will overwrite', 'missing-current': 'will create', 'browse-only': 'browse only' };
+      return labels[status] || status || '';
+    }
+
+    async function previewBackupRestore(name = state.selectedBackupName) {
+      const selected = name || state.backups?.backups?.[0]?.name || '';
+      if (!selected) return;
+      try {
+        state.selectedBackupName = selected;
+        const result = await api('/api/backups/restore', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: selected, apply: false })
+        });
+        state.backupRestorePlan = result.plan || null;
+        if (!state.backupDetail || state.backupDetail.backup?.name !== selected) {
+          await loadBackupDetail(selected, { silent: true });
+        } else {
+          renderBackupsPanel();
+        }
+        showToast(t('restorePreviewReady'), 'success');
+      } catch (error) {
+        showToast(error.message || String(error), 'error');
+      }
+    }
+
+    async function restoreSelectedBackup() {
+      const selected = state.selectedBackupName || state.backups?.backups?.[0]?.name || '';
+      if (!selected) return;
+      if (!window.confirm(t('restoreConfirm'))) return;
+      const confirmText = window.prompt(t('restorePrompt'), '');
+      if (confirmText !== 'RESTORE') {
+        showToast(t('restoreTokenMismatch'), 'error');
+        return;
+      }
+      try {
+        const result = await api('/api/backups/restore', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: selected, apply: true, confirm: confirmText })
+        });
+        state.backups = result.backups || state.backups;
+        state.backupRestorePlan = result.after || null;
+        showToast(t('restoreComplete'), 'success');
+        await refreshData();
+        await loadBackupDetail(selected, { silent: true });
+      } catch (error) {
+        showToast(error.message || String(error), 'error');
+      }
+    }
+
+    function renderSettingsPanel() {
+      const snapshotInput = document.getElementById('settingSnapshotLimit');
+      const refreshInput = document.getElementById('settingRefreshInterval');
+      const autoRefreshInput = document.getElementById('settingAutoRefresh');
+      const notificationsInput = document.getElementById('settingNotifications');
+      const languageInput = document.getElementById('settingLanguage');
+      const themeInput = document.getElementById('settingTheme');
+      const settings = state.settings || {};
+      const values = getDashboardSettingValues(settings);
+      setInputValue(snapshotInput, String(settings.sync?.snapshotLimit || 120));
+      setInputValue(refreshInput, String(Math.max(1, Math.round(values.refreshIntervalMs / 1000))));
+      if (autoRefreshInput) autoRefreshInput.checked = values.autoRefresh;
+      if (notificationsInput) notificationsInput.checked = values.notifications;
+      if (languageInput) languageInput.value = values.language;
+      if (themeInput) themeInput.value = values.theme;
+      const shortcutsInput = document.getElementById('settingShortcutsEnabled');
+      if (shortcutsInput) shortcutsInput.checked = values.shortcuts.enabled;
+      SHORTCUT_COMMAND_INPUTS.forEach(item => {
+        setInputValue(document.getElementById(item.inputId), values.shortcuts.bindings[item.id]);
+      });
+      SHORTCUT_TAB_INPUTS.forEach(item => {
+        setInputValue(document.getElementById(item.inputId), values.shortcuts.tabBindings[item.tab]);
+      });
+      updateSettingsSummary();
+    }
+
+    function updateSettingsSummary() {
+      const settings = state.settings || {};
+      const values = getDashboardSettingValues(settings);
+      const snapshot = settings.sync?.snapshotLimit || Number(document.getElementById('settingSnapshotLimit')?.value || 120);
+      const refreshSeconds = Math.max(1, Math.round(values.refreshIntervalMs / 1000));
+      const setText = (id, value) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = value;
+      };
+      setText('settingsSnapshotValue', String(snapshot));
+      setText('settingsRefreshValue', `${refreshSeconds}s`);
+      setText('settingsThemeValue', values.theme === 'light' ? t('lightMode') : t('darkMode'));
+      setText('settingsNotificationsValue', values.notifications ? t('enabled') : t('disabled'));
+    }
+
+    async function saveSettings() {
+      const status = document.getElementById('settingsSaveStatus');
+      let payload;
+      try {
+        payload = applySettingsDraft() || buildSettingsPayload();
+      } catch (error) {
+        if (status) status.textContent = error.message || String(error);
+        showToast(error.message || String(error), 'error');
+        return;
+      }
+      try {
+        if (status) status.innerHTML = `<span class="spinner"></span> ${escapeHtml(t('scanning'))}`;
+        const response = await api('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        state.settings = response.settings || state.settings;
+        if (state.settings) applyRuntimeSettings(state.settings, { reconnect: true, translate: true });
+        if (status) status.textContent = t('settingsSaved');
+        showToast(t('settingsSaved'), 'success');
+      } catch (error) {
+        if (status) status.textContent = error.message || String(error);
+        showToast(error.message || String(error), 'error');
       }
       renderAll();
     }
@@ -2455,6 +3376,7 @@
       grid.innerHTML = tools.map(tool => {
         const displayName = (toolDisplayNames[state.lang] && toolDisplayNames[state.lang][tool.name]) || tool.name;
         const kindBadge = (toolKindBadges[state.lang] && toolKindBadges[state.lang][tool.kind]) || tool.kind || '';
+        const detail = [tool.connectionStatus, tool.runnerCommandKind, tool.action || tool.dir].filter(Boolean).join(' · ');
         return `
           <div class="tool-card" onclick="showToolInstallModal('${escapeHtml(tool.name)}')">
             <div style="display:flex;align-items:center;gap:10px;">
@@ -2462,6 +3384,7 @@
               <div>
                 <strong>${escapeHtml(displayName)}</strong>
                 <div class="muted" style="font-size:12px;">${escapeHtml(kindBadge)}</div>
+                <div class="muted tool-card-detail">${escapeHtml(detail || 'not detected')}</div>
               </div>
             </div>
             <span class="badge ${tool.connected ? 'status-done' : 'status-open'}">${tool.connected ? 'connected' : 'missing'}</span>
@@ -2471,47 +3394,158 @@
     }
 
     async function refreshTools() {
-      const response = await api('/api/detect');
-      state.status.tools = Array.isArray(response.tools) ? response.tools : [];
-      renderToolsPanel();
+      try {
+        const response = await api('/api/detect');
+        state.status.tools = Array.isArray(response.tools) ? response.tools : [];
+        renderToolsPanel();
+        showToast(t('refreshTools'), 'success');
+      } catch (error) {
+        showToast(error.message || String(error), 'error');
+      }
     }
 
-    function performSearch() {
-      const query = String(document.getElementById('searchQuery')?.value || '').trim().toLowerCase();
+    function scheduleSearch() {
+      clearTimeout(state.search.debounceTimer);
+      state.search.debounceTimer = setTimeout(performSearch, 180);
+    }
+
+    async function renderSearchPanel() {
+      if (!state.search.lastPayload) {
+        await loadSearchFacets();
+      } else {
+        renderSearchFacets(state.search.lastPayload);
+        updateSearchMeta(state.search.lastPayload);
+      }
+    }
+
+    async function loadSearchFacets() {
+      try {
+        const payload = await api('/api/search?limit=0');
+        state.search.lastPayload = payload;
+        renderSearchFacets(payload);
+        updateSearchMeta(payload);
+      } catch (error) {
+        const tagCloud = document.getElementById('searchTagCloud');
+        if (tagCloud) {
+          tagCloud.innerHTML = `<span class="endpoint-error-item">${escapeHtml(error.message || String(error))}</span>`;
+        }
+      }
+    }
+
+    async function performSearch() {
+      clearTimeout(state.search.debounceTimer);
+      const rawQuery = String(document.getElementById('searchQuery')?.value || '').trim();
       const type = document.getElementById('searchType')?.value || 'all';
+      const range = document.getElementById('searchRange')?.value || 'all';
+      const sort = document.getElementById('searchSort')?.value || 'relevance';
+      const tag = state.search.tag || '';
       const target = document.getElementById('searchResults');
       if (!target) return;
-      if (!query) {
-        target.innerHTML = `<div class="muted">Enter a query to search...</div>`;
-        return;
+
+      const params = new URLSearchParams({
+        q: rawQuery,
+        type,
+        range,
+        sort,
+        limit: rawQuery || tag ? '80' : '0'
+      });
+      if (tag) params.set('tag', tag);
+
+      if (!rawQuery && !tag) {
+        target.innerHTML = `<div class="muted">${t('searchPrompt')}</div>`;
+      } else {
+        target.innerHTML = `<div class="skeleton-list"><div></div><div></div><div></div></div>`;
       }
-      const results = [];
-      const include = (kind) => type === 'all' || type === kind;
-      if (include('memory')) {
-        String(state.memory.memory || '').split(/\r?\n/).forEach((line, index) => {
-          if (line.toLowerCase().includes(query)) results.push({ kind: 'Memory', title: `MEMORY.md:${index + 1}`, text: line });
-        });
+
+      try {
+        const payload = await api(`/api/search?${params.toString()}`);
+        state.search.lastPayload = payload;
+        renderSearchFacets(payload);
+        updateSearchMeta(payload);
+
+        const results = Array.isArray(payload.results) ? payload.results : [];
+        const highlightQuery = rawQuery || tag;
+        if (!rawQuery && !tag) {
+          return;
+        }
+        target.innerHTML = results.map(result => {
+          const meta = [
+            result.meta?.project,
+            result.meta?.status,
+            result.meta?.priority,
+            result.meta?.type,
+            result.ts
+          ].filter(Boolean).join(' · ');
+          const tags = Array.isArray(result.tags) && result.tags.length
+            ? `<div class="search-result-tags">${result.tags.slice(0, 6).map(item => `<span>${escapeHtml(item)}</span>`).join('')}</div>`
+            : '';
+          return `
+            <div class="stream-card search-result-card">
+              <div class="stream-header">
+                <strong>${escapeHtml(String(result.kind || '').toUpperCase())}: ${escapeHtml(result.title || '')}</strong>
+                <span class="badge status-open">${escapeHtml(String(Math.round(Number(result.score || 0) * 10) / 10))}</span>
+              </div>
+              <div class="stream-body">${highlightSearchText(result.preview || result.text || '', highlightQuery)}</div>
+              ${tags}
+              <div class="muted">${escapeHtml(meta)}</div>
+            </div>
+          `;
+        }).join('') || `<div class="muted">${t('noSearchResults')}</div>`;
+      } catch (error) {
+        target.innerHTML = `<div class="endpoint-error-item">${escapeHtml(error.message || String(error))}</div>`;
+        showToast(error.message || String(error), 'error');
       }
-      if (include('task')) {
-        state.tasks.forEach(task => {
-          const text = [task.title, task.description, task.project, task.assignee, task.status].filter(Boolean).join(' ');
-          if (text.toLowerCase().includes(query)) results.push({ kind: 'Task', title: task.title, text });
-        });
+    }
+
+    function renderSearchFacets(payload) {
+      const tagCloud = document.getElementById('searchTagCloud');
+      if (!tagCloud) return;
+      const tags = (payload?.facets?.tags || []).slice(0, 28);
+      if (!tags.length) {
+        tagCloud.innerHTML = `<span class="muted">${t('noSearchResults')}</span>`;
+      } else {
+        tagCloud.innerHTML = tags.map(item => {
+          const key = String(item.key || '');
+          const activeClass = key.toLowerCase() === String(state.search.tag || '').toLowerCase() ? ' active' : '';
+          return `<button class="tag-chip${activeClass}" onclick="setSearchTag('${escapeJsString(key)}')">${escapeHtml(key)} <span>${escapeHtml(String(item.count || 0))}</span></button>`;
+        }).join('');
       }
-      if (include('radio')) {
-        state.radio.forEach(message => {
-          const text = [message.from, message.to, message.type, message.project, message.text].filter(Boolean).join(' ');
-          if (text.toLowerCase().includes(query)) results.push({ kind: 'Radio', title: `${message.from || '?'} -> ${message.to || '?'}`, text });
-        });
+      const clearButton = document.getElementById('searchClearTag');
+      if (clearButton) {
+        clearButton.hidden = !state.search.tag;
+        clearButton.textContent = state.search.tag ? t('searchTagged', { tag: state.search.tag }) : t('searchClearTag');
       }
-      target.innerHTML = results.slice(0, 50).map(result => `
-        <div class="stream-card">
-          <div class="stream-header">
-            <strong>${escapeHtml(result.kind)}: ${escapeHtml(result.title || '')}</strong>
-          </div>
-          <div class="stream-body">${escapeHtml(result.text || '')}</div>
-        </div>
-      `).join('') || `<div class="muted">No matching results.</div>`;
+    }
+
+    function updateSearchMeta(payload) {
+      const target = document.getElementById('searchMeta');
+      if (!target || !payload) return;
+      target.textContent = t('searchResultSummary', {
+        n: String(payload.count || 0),
+        ms: String(payload.elapsedMs ?? 0)
+      });
+    }
+
+    function setSearchTag(tag) {
+      state.search.tag = String(tag || '');
+      performSearch();
+    }
+
+    function clearSearchTag() {
+      state.search.tag = '';
+      performSearch();
+    }
+
+    function highlightSearchText(text, query) {
+      const source = String(text || '');
+      const needle = String(query || '').trim();
+      if (!needle) return escapeHtml(source);
+      const escapedNeedle = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      try {
+        return escapeHtml(source).replace(new RegExp(escapedNeedle, 'ig'), (match) => `<mark>${match}</mark>`);
+      } catch {
+        return escapeHtml(source);
+      }
     }
 
     async function runHealthCheck() {
@@ -2520,15 +3554,304 @@
       target.innerHTML = `<div class="muted">${t('scanning')}</div>`;
       try {
         const report = await api('/api/health');
-        target.innerHTML = `
-          <pre style="white-space:pre-wrap;font-family:var(--font-mono);font-size:12px;">${escapeHtml(report.stdout || report.stderr || 'No health output.')}</pre>
-        `;
+        state.health = report;
+        renderHealthReport();
       } catch (error) {
         target.innerHTML = `<div class="endpoint-error-item">${escapeHtml(error.message || String(error))}</div>`;
+        showToast(error.message || String(error), 'error');
       }
     }
 
+    function getHealthAction(actionId) {
+      const actions = (state.health?.analysis?.repairSuggestions || []);
+      return actions.find(action => action.id === actionId) || null;
+    }
+
+    async function copyHealthActionCommand(actionId) {
+      const action = getHealthAction(actionId);
+      if (!action?.command) return;
+      try {
+        await navigator.clipboard.writeText(action.command);
+        showToast(t('actionCopied'), 'success');
+      } catch {
+        prompt(t('copyCommand'), action.command);
+      }
+    }
+
+    async function runHealthAction(actionId) {
+      const action = getHealthAction(actionId);
+      if (!action?.endpoint) {
+        await copyHealthActionCommand(actionId);
+        return;
+      }
+      const message = `${action.label}\n\n${action.detail || ''}\n\n${t('commandLabel')}: ${action.command || action.endpoint}`;
+      if (!confirm(message)) return;
+      const target = document.getElementById('healthReport');
+      if (target) target.innerHTML = `<div class="muted">${t('scanning')}</div>`;
+      try {
+        const response = await api(action.endpoint, {
+          method: action.method || 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ apply: true })
+        });
+        if (response?.applied) {
+          showToast(`${t('repairApplied')} ${response.applied.ledgerRecordsUpdated || 0}`, 'success');
+        } else {
+          showToast(action.label || t('runAction'), 'success');
+        }
+        await runHealthCheck();
+      } catch (error) {
+        if (target) target.innerHTML = `<div class="endpoint-error-item">${escapeHtml(error.message || String(error))}</div>`;
+        showToast(error.message || String(error), 'error');
+      }
+    }
+
+    function renderHealthReport() {
+      const target = document.getElementById('healthReport');
+      if (!target) return;
+      const report = state.health;
+      if (!report?.analysis) {
+        target.innerHTML = `<div class="muted">${t('healthPrompt')}</div>`;
+        return;
+      }
+
+      const analysis = report.analysis;
+      const issues = Array.isArray(analysis.issues) ? analysis.issues : [];
+      const actions = Array.isArray(analysis.repairSuggestions) ? analysis.repairSuggestions : [];
+      const duplicateGroups = Array.isArray(analysis.duplicateGroups) ? analysis.duplicateGroups : [];
+      const corruptedRecords = Array.isArray(analysis.corruptedRecords) ? analysis.corruptedRecords : [];
+      const storageItems = Array.isArray(analysis.storage?.items) ? analysis.storage.items : [];
+      const scoreClass = analysis.score >= 90 ? 'good' : analysis.score >= 70 ? 'warn' : 'bad';
+
+      const renderActionButton = (action) => {
+        if (!action) return '';
+        const id = escapeJsString(action.id);
+        const label = action.endpoint ? t('runAction') : t('copyCommand');
+        const handler = action.endpoint ? `runHealthAction('${id}')` : `copyHealthActionCommand('${id}')`;
+        const buttonClass = action.endpoint ? 'primary small' : 'btn small';
+        return `<button class="${buttonClass}" onclick="${handler}">${escapeHtml(label)}</button>`;
+      };
+
+      const issueHtml = issues.length
+        ? issues.map(issue => `
+          <div class="health-issue-row level-${escapeHtml(issue.level || 'low')}">
+            <div>
+              <div class="health-issue-title">
+                <span class="badge status-${escapeHtml(issue.level === 'high' ? 'blocked' : issue.level === 'medium' ? 'claimed' : 'open')}">${escapeHtml(issue.level || 'low')}</span>
+                <strong>${escapeHtml(issue.title || '')}</strong>
+              </div>
+              <div class="muted">${escapeHtml(issue.detail || '')}</div>
+              ${issue.action?.command ? `<code class="health-command">${escapeHtml(issue.action.command)}</code>` : ''}
+            </div>
+            <div class="health-row-action">${renderActionButton(issue.action)}</div>
+          </div>
+        `).join('')
+        : `<div class="muted">${t('noHealthIssues')}</div>`;
+
+      const actionHtml = actions.length
+        ? actions.map(action => `
+          <div class="health-action-row">
+            <div>
+              <strong>${escapeHtml(action.label || '')}</strong>
+              <div class="muted">${escapeHtml(action.detail || '')}</div>
+              ${action.command ? `<code class="health-command">${escapeHtml(action.command)}</code>` : ''}
+            </div>
+            <div>${renderActionButton(action)}</div>
+          </div>
+        `).join('')
+        : `<div class="muted">${t('noHealthIssues')}</div>`;
+
+      const duplicateHtml = duplicateGroups.length
+        ? duplicateGroups.map(group => `
+          <div class="health-example">
+            <div><strong>${escapeHtml(String(group.count || 0))}x</strong> ${escapeHtml(group.example || '')}</div>
+            <div class="muted">${(group.records || []).map(record => escapeHtml(record.pointer || record.id || '')).join(' · ')}</div>
+          </div>
+        `).join('')
+        : `<div class="muted">${t('noHealthExamples')}</div>`;
+
+      const corruptedHtml = corruptedRecords.length
+        ? corruptedRecords.map(record => `
+          <div class="health-example">
+            <div><strong>${escapeHtml(record.pointer || '')}</strong></div>
+            <div class="muted">${escapeHtml(record.text || '')}</div>
+          </div>
+        `).join('')
+        : `<div class="muted">${t('noHealthExamples')}</div>`;
+
+      const storageHtml = storageItems.map(item => `
+        <div class="health-storage-row">
+          <span>${escapeHtml(item.label || '')}</span>
+          <strong>${escapeHtml(item.display || String(item.bytes || 0))}</strong>
+        </div>
+      `).join('');
+
+      target.innerHTML = `
+        <div class="health-summary">
+          <div class="health-score ${scoreClass}">
+            <span>${t('healthScore')}</span>
+            <strong>${escapeHtml(String(analysis.score ?? 0))}</strong>
+            <small>${escapeHtml(analysis.status || '')}</small>
+          </div>
+          <div class="health-metric"><span>${t('totalRecords')}</span><strong>${escapeHtml(String(analysis.totalRecords || 0))}</strong></div>
+          <div class="health-metric"><span>${t('duplicateRecords')}</span><strong>${escapeHtml(String(analysis.duplicateRecords || 0))}</strong><small>${escapeHtml(analysis.duplicateRatePercent || '0.0%')}</small></div>
+          <div class="health-metric"><span>${t('corruptedRecords')}</span><strong>${escapeHtml(String(analysis.corruptedRecordsCount || 0))}</strong></div>
+          <div class="health-metric"><span>${t('storageUsed')}</span><strong>${escapeHtml(analysis.storage?.totalDisplay || '0 B')}</strong></div>
+        </div>
+
+        <div class="health-grid">
+          <section class="health-section">
+            <div class="health-section-header">
+              <h4>${t('healthIssues')}</h4>
+              <span class="badge status-${issues.length ? 'claimed' : 'done'}">${escapeHtml(String(issues.length))}</span>
+            </div>
+            ${issueHtml}
+          </section>
+
+          <section class="health-section">
+            <div class="health-section-header">
+              <h4>${t('repairSuggestions')}</h4>
+              <span class="badge status-${actions.length ? 'progress' : 'done'}">${escapeHtml(String(actions.length))}</span>
+            </div>
+            ${actionHtml}
+          </section>
+
+          <section class="health-section">
+            <div class="health-section-header"><h4>${t('duplicateExamples')}</h4></div>
+            ${duplicateHtml}
+          </section>
+
+          <section class="health-section">
+            <div class="health-section-header"><h4>${t('corruptedExamples')}</h4></div>
+            ${corruptedHtml}
+          </section>
+
+          <section class="health-section">
+            <div class="health-section-header"><h4>${t('storageBreakdown')}</h4></div>
+            <div class="health-storage-list">${storageHtml}</div>
+          </section>
+
+          <section class="health-section">
+            <details>
+              <summary>${t('healthRawReport')}</summary>
+              <pre class="health-raw">${escapeHtml(report.report || report.stdout || '')}</pre>
+            </details>
+          </section>
+        </div>
+      `;
+    }
+
+    function isTypingTarget(target) {
+      const tag = String(target?.tagName || '').toLowerCase();
+      return tag === 'input' || tag === 'textarea' || tag === 'select' || target?.isContentEditable;
+    }
+
+    function focusGlobalSearch() {
+      switchTab('search');
+      requestAnimationFrame(() => {
+        const input = document.getElementById('searchQuery');
+        input?.focus();
+        input?.select();
+      });
+    }
+
+    function renderShortcutHelp() {
+      const target = document.getElementById('shortcutHelpGrid');
+      if (!target) return;
+      const shortcuts = state.shortcuts || cloneDefaultShortcuts();
+      if (!shortcuts.enabled) {
+        target.innerHTML = `<div><span class="shortcut-keyset"></span><span>${escapeHtml(t('shortcutDisabled'))}</span></div>`;
+        return;
+      }
+      const commandRows = SHORTCUT_COMMAND_INPUTS.map(item => ({
+        binding: shortcuts.bindings[item.id],
+        label: t(item.labelKey)
+      }));
+      const tabBindings = SHORTCUT_TAB_INPUTS
+        .map(item => shortcuts.tabBindings[item.tab])
+        .filter(Boolean)
+        .join(',');
+      const rows = [
+        ...commandRows,
+        { binding: tabBindings, label: t('shortcutTabs') }
+      ];
+      target.innerHTML = rows.map(row => `
+        <div>
+          ${renderShortcutKeys(row.binding)}
+          <span>${escapeHtml(row.label)}</span>
+        </div>
+      `).join('');
+    }
+
+    function showShortcutHelp() {
+      renderShortcutHelp();
+      const el = document.getElementById('shortcutHelp');
+      if (el) el.style.display = 'flex';
+    }
+
+    function closeShortcutHelp(event) {
+      if (event && event.target !== event.currentTarget) return;
+      const el = document.getElementById('shortcutHelp');
+      if (el) el.style.display = 'none';
+    }
+
+    function closeTopLayer() {
+      const shortcut = document.getElementById('shortcutHelp');
+      if (shortcut && shortcut.style.display !== 'none') {
+        shortcut.style.display = 'none';
+        return true;
+      }
+      const toolModal = document.getElementById('toolModal');
+      if (toolModal && toolModal.style.display !== 'none') {
+        toolModal.style.display = 'none';
+        return true;
+      }
+      const sidebar = document.getElementById('sidebar');
+      if (sidebar?.classList.contains('active')) {
+        sidebar.classList.remove('active');
+        return true;
+      }
+      return false;
+    }
+
+    function handleGlobalShortcuts(event) {
+      const shortcuts = state.shortcuts || cloneDefaultShortcuts();
+      if (!shortcuts.enabled) return;
+      const typing = isTypingTarget(event.target);
+      const closeBinding = shortcuts.bindings.closeLayer;
+      if (shortcutMatches(event, closeBinding)) {
+        if (closeTopLayer()) event.preventDefault();
+        return;
+      }
+
+      const commandBindings = [
+        { binding: shortcuts.bindings.focusSearch, action: focusGlobalSearch },
+        { binding: shortcuts.bindings.openSearch, action: focusGlobalSearch },
+        { binding: shortcuts.bindings.showHelp, action: showShortcutHelp }
+      ];
+      for (const item of commandBindings) {
+        if (shortcutMatches(event, item.binding)) {
+          if (typing && !(event.ctrlKey || event.metaKey || event.altKey)) return;
+          event.preventDefault();
+          item.action();
+          return;
+        }
+      }
+
+      if (typing) return;
+      for (const item of SHORTCUT_TAB_INPUTS) {
+        if (shortcutMatches(event, shortcuts.tabBindings[item.tab])) {
+          event.preventDefault();
+          switchTab(item.tab);
+          return;
+        }
+      }
+    }
+
+    document.addEventListener('keydown', handleGlobalShortcuts);
+
     // Initialization
+    applyTheme(localStorage.getItem('hub_theme') || 'dark');
     const lastTab = localStorage.getItem('hub_active_tab') || 'dashboard';
     switchTab(lastTab);
     

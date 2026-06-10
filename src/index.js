@@ -4169,6 +4169,68 @@ function appCommand(argv) {
         }, config.sync.lockStaleMs);
         return sendJson(res, { ok: true, task, status: getStatusObject() });
       }
+      if (req.method === "POST" && url.pathname === "/api/task/review") {
+        const body = await readRequestJson(req);
+        if (!body.id || typeof body.id !== "string") {
+          return sendJson(res, { error: "id is required" }, 400);
+        }
+        const decision = String(body.decision || "").toLowerCase();
+        if (!["approved", "rejected"].includes(decision)) {
+          return sendJson(res, { error: "decision must be approved or rejected" }, 400);
+        }
+        const config = loadConfig();
+        let task;
+        let workflows = [];
+        withHubLock(config.memoryDir, "task-review", () => {
+          const by = body.by || "dashboard";
+          const note = String(body.note || "").trim();
+          const now = new Date().toISOString();
+          task = updateTask(config.memoryDir, body.id, (current) => ({
+            ...current,
+            status: decision === "approved" ? "done" : "blocked",
+            assignee: current.assignee || by,
+            updatedAt: now,
+            completedAt: decision === "approved" ? now : "",
+            reviewStatus: decision,
+            reviewedAt: now,
+            reviewedBy: by,
+            reviewNote: note,
+            notes: [
+              ...(current.notes || []),
+              createTaskNote(by, `Review ${decision}: ${note || "No note provided."}`)
+            ]
+          }));
+
+          const allWorkflows = readWorkflows(config.memoryDir);
+          let changed = false;
+          workflows = allWorkflows.map((workflow) => {
+            const linkedTasks = Array.isArray(workflow.linkedTasks) ? workflow.linkedTasks : [];
+            if (!linkedTasks.includes(task.id)) {
+              return workflow;
+            }
+            changed = true;
+            const text = `Task ${task.id} review ${decision}: ${note || task.title}`;
+            return {
+              ...workflow,
+              status: workflow.status === "done" || workflow.status === "cancelled" ? workflow.status : "review",
+              updatedAt: now,
+              reviews: [
+                ...(workflow.reviews || []),
+                { ts: now, by, role: "reviewer", text }
+              ],
+              notes: [
+                ...(workflow.notes || []),
+                createTaskNote(by, text)
+              ]
+            };
+          });
+          if (changed) {
+            writeWorkflows(config.memoryDir, workflows);
+          }
+          workflows = workflows.filter((workflow) => (workflow.linkedTasks || []).includes(task.id));
+        }, config.sync.lockStaleMs);
+        return sendJson(res, { ok: true, task, workflows, status: getStatusObject() });
+      }
       if (req.method === "POST" && url.pathname === "/api/dispatch/run") {
         const body = await readRequestJson(req);
         const config = loadConfig();
@@ -5501,6 +5563,10 @@ function normalizeTask(task) {
     progressStatus: task.progressStatus || "",
     progressAt: task.progressAt || "",
     progressBy: task.progressBy || "",
+    reviewStatus: task.reviewStatus || "",
+    reviewedAt: task.reviewedAt || "",
+    reviewedBy: task.reviewedBy || "",
+    reviewNote: task.reviewNote || "",
     responseRadioId: task.responseRadioId || "",
     statusRadioId: task.statusRadioId || "",
     dispatchReportPath: task.dispatchReportPath || "",

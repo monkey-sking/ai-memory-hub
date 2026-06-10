@@ -591,6 +591,23 @@
       font-style: italic;
       color: var(--text-muted);
     }
+    .task-review {
+      border: 1px solid rgba(255,255,255,0.06);
+      background: rgba(255,255,255,0.025);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 12px;
+      color: var(--text-muted);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .task-review strong { color: var(--text-main); }
+    .task-review-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
     .task-notes {
       border-top: 1px dashed var(--border-color);
       padding-top: 8px;
@@ -1643,6 +1660,12 @@
         unblockTask: "Unblock",
         completeTask: "Complete",
         reopenTask: "Reopen",
+        approveTask: "Approve",
+        rejectTask: "Reject",
+        reviewDecisionLabel: "Review",
+        reviewedByLabel: "Reviewed by",
+        promptReviewBy: "Enter reviewer name:",
+        promptReviewNote: "Optional review note:",
         successText: "Success",
         failedText: "Failed",
         runnableText: "Runnable",
@@ -1780,6 +1803,12 @@
         unblockTask: "解挂",
         completeTask: "已完成",
         reopenTask: "重新打开",
+        approveTask: "批准",
+        rejectTask: "驳回",
+        reviewDecisionLabel: "评审",
+        reviewedByLabel: "评审人",
+        promptReviewBy: "请输入评审人名称:",
+        promptReviewNote: "可选评审备注:",
         successText: "执行成功",
         failedText: "执行失败",
         runnableText: "可执行",
@@ -2280,8 +2309,11 @@
               <span>Project: ${escapeHtml(task.project || t('defaultProj'))}</span>
             </div>
             ${renderTaskTelemetry(task)}
+            ${renderTaskReviewHTML(task)}
             <div class="stream-actions">
               <button class="primary small" onclick="updateTaskStatus('${task.id}', 'done')">${t('completeTask')}</button>
+              <button class="primary small" onclick="reviewTask('${task.id}', 'approved')">${t('approveTask')}</button>
+              <button class="small danger" onclick="reviewTask('${task.id}', 'rejected')">${t('rejectTask')}</button>
             </div>
           </div>
         `;
@@ -2566,6 +2598,11 @@
 
       const assigneeDisplayName = (toolDisplayNames[state.lang] && toolDisplayNames[state.lang][tItem.assignee]) || tItem.assignee || t('unassigned');
 
+      if (tItem.status !== 'cancelled') {
+        actionButtons += `<button class="primary small" onclick="reviewTask('${tItem.id}', 'approved')">${t('approveTask')}</button>`;
+        actionButtons += `<button class="small danger" onclick="reviewTask('${tItem.id}', 'rejected')">${t('rejectTask')}</button>`;
+      }
+
       return `
         <div class="task-card">
           <div style="display:flex;justify-content:between;align-items:start;gap:8px;">
@@ -2584,6 +2621,7 @@
             <span>Proj: ${escapeHtml(tItem.project || t('defaultProj'))}</span>
           </div>
           ${renderTaskTelemetry(tItem)}
+          ${renderTaskReviewHTML(tItem)}
           ${notesHtml ? `<div class="task-notes"><h5>Notes:</h5>${notesHtml}</div>` : ''}
           
           <div style="display:flex;gap:6px;align-items:center;margin-top:8px;">
@@ -2594,6 +2632,20 @@
           <div class="stream-actions" style="margin-top:8px;">
             ${actionButtons}
           </div>
+        </div>
+      `;
+    }
+
+    function renderTaskReviewHTML(task) {
+      if (!task.reviewStatus) return '';
+      const reviewerName = (toolDisplayNames[state.lang] && toolDisplayNames[state.lang][task.reviewedBy]) || task.reviewedBy || '-';
+      const reviewedAt = task.reviewedAt ? formatDateTime(task.reviewedAt) : '-';
+      const statusClass = task.reviewStatus === 'approved' ? 'status-done' : 'status-blocked';
+      return `
+        <div class="task-review">
+          <div><strong>${t('reviewDecisionLabel')}:</strong> <span class="badge ${statusClass}">${escapeHtml(task.reviewStatus)}</span></div>
+          <div>${t('reviewedByLabel')}: ${escapeHtml(reviewerName)} · ${escapeHtml(reviewedAt)}</div>
+          ${task.reviewNote ? `<div>${escapeHtml(task.reviewNote)}</div>` : ''}
         </div>
       `;
     }
@@ -2760,6 +2812,17 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: taskId, status: statusValue })
+      });
+      await refreshData();
+    }
+
+    async function reviewTask(taskId, decision) {
+      const byName = prompt(t('promptReviewBy'), "user") || "user";
+      const note = prompt(t('promptReviewNote')) || "";
+      await api('/api/task/review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: taskId, decision, by: byName, note })
       });
       await refreshData();
     }

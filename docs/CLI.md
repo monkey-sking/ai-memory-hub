@@ -13,6 +13,7 @@ Complete reference for all `ai-memory-hub` command-line commands.
 - [RPC Communication](#rpc-communication)
 - [Notifications](#notifications)
 - [Context Packs](#context-packs)
+- [Project Task Specs](#project-task-specs)
 - [Runner Doctor](#runner-doctor)
 - [Dispatch Relay](#dispatch-relay)
 - [Dispatch Queue](#dispatch-queue)
@@ -565,6 +566,89 @@ ai-memory-hub context show <pack-id>
 
 ---
 
+## Project Task Specs
+
+Project task specs declare repeatable local project commands, similar in spirit
+to `.it-runner` task files. By default the CLI looks for `.tasks.json`,
+`task-specs.json`, then `.ai-memory/task-specs.json` in the current project
+root. Use `.tasks.json` for committed project defaults; use the ignored
+`.ai-memory/task-specs.json` path for personal overrides.
+
+### Spec shape
+
+```json
+{
+  "version": "1.0",
+  "tasks": [
+    {
+      "id": "test",
+      "title": "Run test suite",
+      "command": "npm",
+      "windowsCommand": "npm.cmd",
+      "args": ["test"],
+      "cwd": ".",
+      "timeoutMs": 120000,
+      "env": {},
+      "ports": [],
+      "resources": ["src/index.js", "tests/"],
+      "logs": {
+        "stdout": "logs/test.stdout.log",
+        "stderr": "logs/test.stderr.log"
+      },
+      "verify": [
+        {
+          "command": "node",
+          "args": ["--check", "src/index.js"]
+        }
+      ]
+    }
+  ]
+}
+```
+
+`tasks` may also be an object keyed by task id. Commands run without a shell by
+default. On Windows, `.cmd`/`.bat` shims are automatically launched through the
+native shell when needed. `cwd` and log paths must stay inside the project root
+unless `--allow-outside-cwd` is passed to `run`.
+
+### `task-spec list`
+
+List declared project commands.
+
+```bash
+ai-memory-hub task-spec list
+ai-memory-hub task-spec list --file path/to/tasks.json
+```
+
+### `task-spec show`
+
+Show one normalized task spec.
+
+```bash
+ai-memory-hub task-spec show test
+```
+
+### `task-spec validate`
+
+Validate the task spec file without running commands.
+
+```bash
+ai-memory-hub task-spec validate
+```
+
+### `task-spec run`
+
+Run a declared command and its optional `verify` commands. Output is structured
+JSON containing command metadata, exit status, duration, trimmed stdout/stderr,
+and configured log paths.
+
+```bash
+ai-memory-hub task-spec run test
+ai-memory-hub task-spec run test --no-verify
+```
+
+---
+
 ## Runner Doctor
 
 ### `doctor`
@@ -595,7 +679,7 @@ Doctor reports:
 - output mode and session-resume capability
 - stderr warnings separated from actionable errors
 
-On Windows, runner profiles prefer `.cmd` or `.exe` shims over `.ps1`. Dispatch prompt payloads are sent over stdin, so long prompts and JSON are not embedded in PowerShell or cmd command text.
+On Windows, runner profiles prefer `.cmd` or `.exe` shims over `.ps1`. Dispatch prompt payloads are sent over stdin so long prompts and JSON are not embedded in PowerShell or cmd command text. Claude Code 2.x uses `claude -p -` so the print command reads the prompt from stdin explicitly; when installed through npm, the runner derives and prefers the underlying `claude.exe` next to `claude.cmd`.
 
 ---
 

@@ -64,6 +64,39 @@ async function createFakeCodexRunner(memoryDir) {
   return binDir;
 }
 
+async function createFakeClaudeRunner(memoryDir) {
+  const binDir = path.join(memoryDir, "fake-claude-bin");
+  await fs.mkdir(binDir, { recursive: true });
+  const runnerScript = path.join(binDir, "fake-claude.mjs");
+  await fs.writeFile(runnerScript, [
+    'import fs from "node:fs";',
+    'const input = fs.readFileSync(0, "utf8");',
+    "const args = process.argv.slice(2);",
+    'if (args.includes("--version")) { console.log("fake-claude 1.0.0"); process.exit(0); }',
+    'if (args.includes("--help")) { console.log("fake claude help"); process.exit(0); }',
+    "const prompt = args.includes('-') ? input : (args.at(-1) || '');",
+    "console.log(JSON.stringify({ session_id: 'fake-session', result: JSON.stringify({ args, stdin: input, prompt }) }));"
+  ].join("\n"), "utf8");
+
+  if (process.platform === "win32") {
+    await fs.writeFile(
+      path.join(binDir, "claude.cmd"),
+      `@echo off\r\n"${process.execPath}" "${runnerScript}" %*\r\n`,
+      "utf8"
+    );
+  } else {
+    const runnerPath = path.join(binDir, "claude");
+    await fs.writeFile(
+      runnerPath,
+      `#!/bin/sh\nexec "${process.execPath}" "${runnerScript}" "$@"\n`,
+      "utf8"
+    );
+    await fs.chmod(runnerPath, 0o755);
+  }
+
+  return binDir;
+}
+
 function prependPathEnv(dir) {
   const current = process.env.Path || process.env.PATH || "";
   const value = `${dir}${path.delimiter}${current}`;
@@ -617,6 +650,52 @@ test("dispatch launches resolved runner shim with prompt on stdin", async () => 
     assert.equal(statusPayload.summary.latestRunExitCode, 0);
     assert.equal(statusPayload.runHistory.length, 1);
     assert.equal(statusPayload.runHistory[0].stdoutLogPath, runs[0].stdoutLogPath);
+  });
+});
+
+test("dispatch passes Claude prompts on stdin with explicit dash argument", async () => {
+  await withHub(async (memoryDir) => {
+    const binDir = await createFakeClaudeRunner(memoryDir);
+    const now = new Date().toISOString();
+    await appendJsonl(path.join(memoryDir, "tasks", "tasks.jsonl"), {
+      id: "task-claude-argv",
+      createdAt: now,
+      updatedAt: now,
+      completedAt: "",
+      createdBy: "test",
+      assignee: "claude",
+      status: "claimed",
+      priority: "normal",
+      project: "test-project",
+      title: "Verify Claude stdin dash dispatch path",
+      description: "",
+      handoff: "Claude Code 2.x needs claude -p - to read stdin.",
+      notes: []
+    });
+
+    const result = runCli(
+      memoryDir,
+      ["dispatch", "--run", "--to", "claude", "--project", "test-project", "--limit", "1"],
+      prependPathEnv(binDir)
+    );
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.results.length, 1);
+    assert.equal(payload.results[0].exitCode, 0, JSON.stringify(payload.results[0], null, 2));
+    assert.equal(payload.results[0].runnerMode, "stdin");
+    assert.match(payload.results[0].runnerCommand, /^claude(\.cmd)?$/);
+    assert.equal(payload.results[0].sessionId, "fake-session");
+
+    const stdout = JSON.parse(payload.results[0].stdout);
+    assert.match(stdout.stdin, /__AI_MEMORY_THREAD__: claude:test-project:task-claude-argv/);
+    assert.match(stdout.stdin, /Verify Claude stdin dash dispatch path/);
+    assert.equal(stdout.args[0], "-p");
+    assert.equal(stdout.args[1], "-");
+    assert.equal(stdout.prompt, stdout.stdin);
+
+    const tasks = await readJsonl(path.join(memoryDir, "tasks", "tasks.jsonl"));
+    assert.equal(tasks[0].status, "done");
+    assert.equal(tasks[0].responseRadioId, payload.results[0].responseRadioId);
   });
 });
 

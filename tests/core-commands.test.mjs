@@ -42,6 +42,13 @@ async function writeRecipe(memoryDir, name, recipe) {
   await fs.writeFile(path.join(recipesDir, `${name}.json`), JSON.stringify(recipe, null, 2), "utf8");
 }
 
+async function writeTaskSpec(memoryDir, name, spec) {
+  const file = path.join(memoryDir, name);
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(file, JSON.stringify(spec, null, 2), "utf8");
+  return file;
+}
+
 async function appendJsonl(file, value) {
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.appendFile(file, `${JSON.stringify(value)}\n`, "utf8");
@@ -222,6 +229,78 @@ test("recipe create validates and creates workflow tasks", async () => {
       "[implement-and-review] Implement the change",
       "[implement-and-review] Review the change"
     ]);
+  });
+});
+
+test("task-spec validates, lists, shows, and runs project commands", async () => {
+  await withHub(async (memoryDir) => {
+    const stdoutLog = path.relative(repoRoot, path.join(memoryDir, "task-spec.stdout.log"));
+    const stderrLog = path.relative(repoRoot, path.join(memoryDir, "task-spec.stderr.log"));
+    const specFile = await writeTaskSpec(memoryDir, "task-specs.json", {
+      version: "1.0",
+      tasks: {
+        hello: {
+          title: "Hello task spec",
+          command: process.execPath,
+          args: ["-e", "console.log('task spec ok')"],
+          cwd: ".",
+          timeoutMs: 30000,
+          resources: ["src/index.js"],
+          logs: {
+            stdout: stdoutLog,
+            stderr: stderrLog
+          },
+          verify: [
+            {
+              command: process.execPath,
+              args: ["-e", "process.exit(0)"],
+              timeoutMs: 30000
+            }
+          ]
+        }
+      }
+    });
+
+    const validation = parseJson(runCli(memoryDir, ["task-spec", "validate", "--file", specFile]));
+    assert.equal(validation.valid, true);
+    assert.equal(validation.tasks, 1);
+
+    const list = parseJson(runCli(memoryDir, ["task-spec", "list", "--file", specFile]));
+    assert.equal(list.tasks.length, 1);
+    assert.equal(list.tasks[0].id, "hello");
+    assert.equal(list.tasks[0].hasVerify, true);
+    assert.deepEqual(list.tasks[0].resources, ["src/index.js"]);
+
+    const shown = parseJson(runCli(memoryDir, ["task-spec", "show", "hello", "--file", specFile]));
+    assert.equal(shown.id, "hello");
+    assert.equal(shown.title, "Hello task spec");
+    assert.equal(shown.command, process.execPath);
+
+    const run = parseJson(runCli(memoryDir, ["task-spec", "run", "hello", "--file", specFile]));
+    assert.equal(run.taskId, "hello");
+    assert.equal(run.status, "passed");
+    assert.equal(run.command.status, "passed");
+    assert.equal(run.command.exitCode, 0);
+    assert.equal(run.verification.status, "passed");
+    assert.equal(run.verification.commands.length, 1);
+    assert.match(run.command.stdout, /task spec ok/);
+    assert.equal(run.command.logs.stdout.replace(/\//g, path.sep), stdoutLog);
+    assert.equal(await fs.readFile(path.join(repoRoot, stdoutLog), "utf8"), "task spec ok\n");
+    assert.equal(await fs.readFile(path.join(repoRoot, stderrLog), "utf8"), "");
+  });
+});
+
+test("task-spec validate rejects missing commands", async () => {
+  await withHub(async (memoryDir) => {
+    const specFile = await writeTaskSpec(memoryDir, "bad-task-specs.json", {
+      tasks: [{ id: "broken", args: ["test"] }]
+    });
+
+    const validation = runCli(memoryDir, ["task-spec", "validate", "--file", specFile]);
+    assert.equal(validation.status, 1);
+    const payload = JSON.parse(validation.stdout);
+    assert.equal(payload.valid, false);
+    assert.match(payload.error, /requires command/);
   });
 });
 

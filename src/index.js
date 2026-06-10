@@ -17,6 +17,12 @@ const DEFAULT_MEMORY_DIR = path.join(os.homedir(), ".ai-memory");
 const DEFAULT_CONFIG_PATH = path.join(DEFAULT_MEMORY_DIR, "config.json");
 const DEFAULT_DISPATCH_ACK_TIMEOUT_MS = 5 * 60 * 1000;
 const DEFAULT_DISPATCH_RUN_TIMEOUT_MS = 10 * 60 * 1000;
+const DEFAULT_TASK_SPEC_TIMEOUT_MS = 10 * 60 * 1000;
+const DEFAULT_TASK_SPEC_FILES = [
+  ".tasks.json",
+  "task-specs.json",
+  path.join(".ai-memory", "task-specs.json")
+];
 const RESEARCH_REPORTS_DIR = "research-reports";
 const DISPATCH_RUNS_DIR = "dispatch-runs";
 const DAEMON_PID_FILE = "daemon.pid";
@@ -37,10 +43,11 @@ const RUNNER_PROFILES = {
   claude: {
     tool: "claude",
     commandCandidates: ["claude.cmd", "claude"],
-    args: ["-p", "--output-format", "json", "--permission-mode", "bypassPermissions", "--bare", "--model", "sonnet", "--effort", "low"],
+    windowsExeFromCmd: path.join("node_modules", "@anthropic-ai", "claude-code", "bin", "claude.exe"),
+    args: ["-p", "-", "--output-format", "json", "--permission-mode", "bypassPermissions", "--bare", "--model", "sonnet", "--effort", "low"],
     promptMode: "stdin",
     outputMode: "claude-json",
-    preview: "claude -p --output-format json --permission-mode bypassPermissions --bare <stdin>",
+    preview: "claude -p - --output-format json --permission-mode bypassPermissions --bare <stdin>",
     versionArgs: ["--version"],
     probeArgs: ["--help"],
     resumeArgs: (sessionId) => ["--resume", sessionId],
@@ -175,6 +182,9 @@ async function main() {
       return queueCommand(rest);
     case "recipe":
       return recipeCommand(rest);
+    case "task-spec":
+    case "taskspec":
+      return taskSpecCommand(rest);
     case "metrics":
       return metricsCommand(rest);
     case "update":
@@ -352,7 +362,10 @@ function getRunnerDoctorWarnings(runner) {
       warnings.push("Unsafe for automation: only a PowerShell .ps1 shim was found.");
     }
     if (runner.usesShell) {
-      warnings.push("Uses cmd.exe only to execute a .cmd/.bat shim; prompt payload remains on stdin.");
+      const promptHint = runner.promptMode === "stdin"
+        ? "prompt payload remains on stdin"
+        : `prompt mode remains ${runner.promptMode || "argv"}`;
+      warnings.push(`Uses cmd.exe only to execute a .cmd/.bat shim; ${promptHint}.`);
     }
   }
   if (runner.promptMode && runner.promptMode !== "stdin") {
@@ -1285,6 +1298,85 @@ function recipeValidateCommand(argv) {
     console.log(JSON.stringify({ valid: true, message: "Recipe is valid" }, null, 2));
   } else {
     console.log(JSON.stringify({ valid: false, error: validation.error }, null, 2));
+    process.exit(1);
+  }
+}
+
+function taskSpecCommand(argv) {
+  const action = argv[0] || "list";
+  switch (action) {
+    case "list":
+      return taskSpecListCommand(argv.slice(1));
+    case "show":
+      return taskSpecShowCommand(argv.slice(1));
+    case "validate":
+      return taskSpecValidateCommand(argv.slice(1));
+    case "run":
+      return taskSpecRunCommand(argv.slice(1));
+    default:
+      throw new Error(`Unknown task-spec action: ${action}\nTry: ai-memory-hub task-spec list|show|validate|run`);
+  }
+}
+
+function taskSpecListCommand(argv) {
+  const context = loadTaskSpecContext(argv);
+  const validation = validateTaskSpecDocument(context.document);
+  if (!validation.valid) {
+    throw new Error(`Invalid task spec: ${validation.error}`);
+  }
+  console.log(JSON.stringify({
+    file: context.displayFile,
+    version: context.document.version || "",
+    tasks: validation.tasks.map((task) => summarizeTaskSpec(task))
+  }, null, 2));
+}
+
+function taskSpecShowCommand(argv) {
+  const taskId = getOption(argv, "--id") || positionalArgs(argv)[0] || "";
+  if (!taskId) {
+    throw new Error("Usage: ai-memory-hub task-spec show <task-id> [--file <path>] [--root <path>]");
+  }
+  const { task, context } = resolveTaskSpecFromArgs(argv, taskId);
+  console.log(JSON.stringify({
+    file: context.displayFile,
+    ...task
+  }, null, 2));
+}
+
+function taskSpecValidateCommand(argv) {
+  const context = loadTaskSpecContext(argv);
+  const validation = validateTaskSpecDocument(context.document);
+  if (!validation.valid) {
+    console.log(JSON.stringify({
+      valid: false,
+      file: context.displayFile,
+      error: validation.error
+    }, null, 2));
+    process.exit(1);
+  }
+  console.log(JSON.stringify({
+    valid: true,
+    file: context.displayFile,
+    tasks: validation.tasks.length
+  }, null, 2));
+}
+
+function taskSpecRunCommand(argv) {
+  const taskId = getOption(argv, "--id") || positionalArgs(argv)[0] || "";
+  if (!taskId) {
+    throw new Error("Usage: ai-memory-hub task-spec run <task-id> [--file <path>] [--root <path>] [--no-verify] [--allow-outside-cwd]");
+  }
+  const { task, context } = resolveTaskSpecFromArgs(argv, taskId);
+  const result = runTaskSpec(task, {
+    projectRoot: context.projectRoot,
+    runVerify: !hasFlag(argv, "--no-verify"),
+    allowOutsideCwd: hasFlag(argv, "--allow-outside-cwd")
+  });
+  console.log(JSON.stringify({
+    file: context.displayFile,
+    ...result
+  }, null, 2));
+  if (result.status !== "passed") {
     process.exit(1);
   }
 }
@@ -2895,6 +2987,15 @@ function resolveRunnerCommand(profile) {
       }
     }
   }
+  if (process.platform === "win32" && profile.windowsExeFromCmd) {
+    const found = allPaths.find((item) => classifyCommandPath(item) === "cmd-shim");
+    if (found) {
+      const exe = path.join(path.dirname(found), profile.windowsExeFromCmd);
+      if (fs.existsSync(exe) && !allPaths.includes(exe)) {
+        allPaths.push(exe);
+      }
+    }
+  }
   const pathValue = choosePreferredCommandPath(allPaths);
   return {
     name: pathValue ? path.basename(pathValue) : "",
@@ -4254,6 +4355,7 @@ Commands:
   context    Generate task-specific memory bundles for focused context.
   queue      Manage dispatch queue with priority and retry controls.
   recipe     Manage workflow recipes for reusable collaboration templates.
+  task-spec  List, validate, and run project-declared task commands.
   metrics    Show operational metrics for tasks, workflows, relay, and queue.
   update     Check for updates or update to the latest version.
   connect    Check tool connections or send a request/review/handoff to another tool.
@@ -4297,6 +4399,9 @@ Examples:
   ${APP_NAME} dispatch status --recent --state failed --to claude
   ${APP_NAME} dispatch progress --thread-key codex:ai-memory-hub:<ref> --percent 40 --status "working" --by codex
   ${APP_NAME} dispatch retry --project ai-memory-hub --to qclaw --run --limit 1
+  ${APP_NAME} task-spec list
+  ${APP_NAME} task-spec validate
+  ${APP_NAME} task-spec run test
   ${APP_NAME} pull
   ${APP_NAME} backup --reason manual
   ${APP_NAME} watch --interval-ms 30000
@@ -5933,6 +6038,336 @@ function createWorkflowFromRecipe(memoryDir, recipeName, toolMapping, variables)
   writeTasks(memoryDir, allTasks);
 
   return { workflow, tasks, recipe };
+}
+
+// Project Task Spec Functions
+function loadTaskSpecContext(argv) {
+  const projectRoot = path.resolve(getOption(argv, "--root") || process.cwd());
+  const file = resolveTaskSpecFile(argv, projectRoot);
+  const document = readJson(file);
+  return {
+    projectRoot,
+    file,
+    displayFile: path.relative(projectRoot, file).replace(/\\/g, "/") || path.basename(file),
+    document
+  };
+}
+
+function resolveTaskSpecFile(argv, projectRoot) {
+  const fileArg = getOption(argv, "--file");
+  if (fileArg) {
+    const resolved = path.resolve(projectRoot, fileArg);
+    if (!fs.existsSync(resolved)) {
+      throw new Error(`Task spec file not found: ${resolved}`);
+    }
+    return resolved;
+  }
+
+  for (const candidate of DEFAULT_TASK_SPEC_FILES) {
+    const file = path.join(projectRoot, candidate);
+    if (fs.existsSync(file)) {
+      return file;
+    }
+  }
+
+  throw new Error(`Task spec file not found. Tried: ${DEFAULT_TASK_SPEC_FILES.join(", ")}`);
+}
+
+function resolveTaskSpecFromArgs(argv, taskId) {
+  const context = loadTaskSpecContext(argv);
+  const validation = validateTaskSpecDocument(context.document);
+  if (!validation.valid) {
+    throw new Error(`Invalid task spec: ${validation.error}`);
+  }
+  const task = validation.tasks.find((item) => item.id === taskId || item.name === taskId);
+  if (!task) {
+    throw new Error(`Task spec not found: ${taskId}`);
+  }
+  return { task, context };
+}
+
+function validateTaskSpecDocument(document) {
+  if (!document || typeof document !== "object" || Array.isArray(document)) {
+    return { valid: false, error: "Task spec file must be a JSON object" };
+  }
+  const tasks = normalizeTaskSpecs(document);
+  if (tasks.length === 0) {
+    return { valid: false, error: "Task spec must define at least one task" };
+  }
+
+  const seen = new Set();
+  for (const task of tasks) {
+    if (!task.id) {
+      return { valid: false, error: "Each task spec needs an id or object key" };
+    }
+    if (!/^[A-Za-z0-9_.:-]+$/.test(task.id)) {
+      return { valid: false, error: `Task spec id contains unsupported characters: ${task.id}` };
+    }
+    if (seen.has(task.id)) {
+      return { valid: false, error: `Duplicate task spec id: ${task.id}` };
+    }
+    seen.add(task.id);
+    const command = selectPlatformCommand(task);
+    if (!command) {
+      return { valid: false, error: `Task spec ${task.id} requires command` };
+    }
+    if (!Array.isArray(task.args)) {
+      return { valid: false, error: `Task spec ${task.id} args must be an array` };
+    }
+    if (!Number.isInteger(task.timeoutMs) || task.timeoutMs <= 0) {
+      return { valid: false, error: `Task spec ${task.id} timeoutMs must be a positive integer` };
+    }
+    for (const verify of task.verify) {
+      if (!selectPlatformCommand(verify)) {
+        return { valid: false, error: `Task spec ${task.id} verify command requires command` };
+      }
+      if (!Array.isArray(verify.args)) {
+        return { valid: false, error: `Task spec ${task.id} verify args must be an array` };
+      }
+    }
+  }
+
+  return { valid: true, tasks };
+}
+
+function normalizeTaskSpecs(document) {
+  const rawTasks = document.tasks || document.commands || {};
+  if (Array.isArray(rawTasks)) {
+    return rawTasks.map((task) => normalizeTaskSpec(task));
+  }
+  if (rawTasks && typeof rawTasks === "object") {
+    return Object.entries(rawTasks).map(([id, task]) => normalizeTaskSpec({ id, ...(task || {}) }));
+  }
+  return [];
+}
+
+function normalizeTaskSpec(task) {
+  const normalized = normalizeTaskSpecCommand(task || {});
+  return {
+    ...normalized,
+    id: String(task.id || task.name || "").trim(),
+    name: String(task.name || task.id || "").trim(),
+    title: String(task.title || task.name || task.id || "").trim(),
+    description: String(task.description || ""),
+    ports: normalizeTaskSpecList(task.ports),
+    resources: normalizeTaskSpecList(task.resources),
+    logs: normalizeTaskSpecLogs(task.logs),
+    verify: normalizeTaskSpecVerify(task.verify)
+  };
+}
+
+function normalizeTaskSpecCommand(commandSpec) {
+  return {
+    command: String(commandSpec.command || "").trim(),
+    windowsCommand: String(commandSpec.windowsCommand || "").trim(),
+    args: normalizeStringArray(commandSpec.args),
+    cwd: String(commandSpec.cwd || "."),
+    env: normalizeTaskSpecEnv(commandSpec.env),
+    timeoutMs: Number(commandSpec.timeoutMs || DEFAULT_TASK_SPEC_TIMEOUT_MS),
+    shell: Boolean(commandSpec.shell),
+    logs: normalizeTaskSpecLogs(commandSpec.logs)
+  };
+}
+
+function normalizeTaskSpecVerify(verify) {
+  if (!verify) {
+    return [];
+  }
+  const entries = Array.isArray(verify) ? verify : [verify];
+  return entries
+    .filter((entry) => entry && typeof entry === "object")
+    .map((entry) => normalizeTaskSpecCommand(entry));
+}
+
+function normalizeTaskSpecEnv(env) {
+  if (!env || typeof env !== "object" || Array.isArray(env)) {
+    return {};
+  }
+  return Object.fromEntries(Object.entries(env).map(([key, value]) => [key, String(value)]));
+}
+
+function normalizeStringArray(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.map((item) => String(item));
+}
+
+function normalizeTaskSpecList(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.map((item) => item && typeof item === "object" ? item : String(item));
+}
+
+function normalizeTaskSpecLogs(logs) {
+  if (!logs || typeof logs !== "object" || Array.isArray(logs)) {
+    return {};
+  }
+  return {
+    stdout: logs.stdout ? String(logs.stdout) : "",
+    stderr: logs.stderr ? String(logs.stderr) : ""
+  };
+}
+
+function summarizeTaskSpec(task) {
+  return {
+    id: task.id,
+    title: task.title,
+    command: selectPlatformCommand(task),
+    args: task.args,
+    cwd: task.cwd,
+    hasVerify: task.verify.length > 0,
+    ports: task.ports,
+    resources: task.resources,
+    logs: task.logs
+  };
+}
+
+function selectPlatformCommand(commandSpec) {
+  if (process.platform === "win32" && commandSpec.windowsCommand) {
+    return commandSpec.windowsCommand;
+  }
+  return commandSpec.command || commandSpec.windowsCommand || "";
+}
+
+function runTaskSpec(task, { projectRoot, runVerify = true, allowOutsideCwd = false } = {}) {
+  const startedAt = new Date().toISOString();
+  const main = runTaskSpecProcess(task, {
+    projectRoot,
+    phase: "command",
+    inherit: task,
+    allowOutsideCwd
+  });
+
+  const verification = {
+    status: "skipped",
+    commands: []
+  };
+
+  if (main.status === "passed" && runVerify && task.verify.length > 0) {
+    verification.status = "passed";
+    for (const verify of task.verify) {
+      const result = runTaskSpecProcess(verify, {
+        projectRoot,
+        phase: "verify",
+        inherit: task,
+        allowOutsideCwd
+      });
+      verification.commands.push(result);
+      if (result.status !== "passed") {
+        verification.status = result.status;
+        break;
+      }
+    }
+  }
+
+  const status = main.status === "passed" && ["passed", "skipped"].includes(verification.status)
+    ? "passed"
+    : main.status === "timed_out" || verification.status === "timed_out"
+      ? "timed_out"
+      : "failed";
+
+  return {
+    taskId: task.id,
+    title: task.title,
+    status,
+    startedAt,
+    finishedAt: new Date().toISOString(),
+    command: main,
+    verification
+  };
+}
+
+function runTaskSpecProcess(commandSpec, { projectRoot, phase, inherit = {}, allowOutsideCwd = false } = {}) {
+  const cwd = resolveTaskSpecCwd(projectRoot, commandSpec.cwd || inherit.cwd || ".", allowOutsideCwd);
+  const commandName = selectPlatformCommand(commandSpec);
+  const commandPaths = resolveCommandPaths(commandName);
+  const resolvedCommand = choosePreferredCommandPath(commandPaths) || commandName;
+  const args = commandSpec.args || [];
+  const timeoutMs = commandSpec.timeoutMs || inherit.timeoutMs || DEFAULT_TASK_SPEC_TIMEOUT_MS;
+  const startedAtMs = Date.now();
+  const startedAt = new Date(startedAtMs).toISOString();
+  const useCmdLauncher = process.platform === "win32" && shouldUseShellForCommand(resolvedCommand);
+  const usesShell = Boolean(commandSpec.shell) || useCmdLauncher;
+  const spawnCommand = useCmdLauncher ? buildWindowsCmdLine(resolvedCommand, args) : resolvedCommand;
+  const spawnArgs = useCmdLauncher ? [] : args;
+  const completed = spawnSync(spawnCommand, spawnArgs, {
+    cwd,
+    env: {
+      ...process.env,
+      ...(inherit.env || {}),
+      ...(commandSpec.env || {})
+    },
+    encoding: "utf8",
+    timeout: timeoutMs,
+    windowsHide: true,
+    shell: usesShell
+  });
+  const finishedAtMs = Date.now();
+  const status = getTaskSpecProcessStatus(completed);
+  const logs = writeTaskSpecProcessLogs(projectRoot, commandSpec.logs || {}, completed);
+  return {
+    phase,
+    command: commandName,
+    resolvedCommand,
+    args,
+    commandLine: [commandName, ...args].map((part) => String(part)).join(" "),
+    cwd: path.relative(projectRoot, cwd).replace(/\\/g, "/") || ".",
+    startedAt,
+    finishedAt: new Date(finishedAtMs).toISOString(),
+    durationMs: Math.max(0, finishedAtMs - startedAtMs),
+    timeoutMs,
+    exitCode: completed.status ?? null,
+    status,
+    error: completed.error?.message || "",
+    stdout: trimOutput(completed.stdout, 2000),
+    stderr: trimOutput(completed.stderr, 2000),
+    logs
+  };
+}
+
+function getTaskSpecProcessStatus(completed) {
+  if (completed?.error?.code === "ETIMEDOUT") {
+    return "timed_out";
+  }
+  return completed?.status === 0 ? "passed" : "failed";
+}
+
+function writeTaskSpecProcessLogs(projectRoot, logs, completed) {
+  const written = {};
+  for (const [stream, text] of [
+    ["stdout", completed.stdout],
+    ["stderr", completed.stderr]
+  ]) {
+    const relativeLogPath = logs?.[stream] || "";
+    if (!relativeLogPath) {
+      continue;
+    }
+    const file = resolveInside(projectRoot, relativeLogPath);
+    ensureDir(path.dirname(file));
+    fs.writeFileSync(file, String(text || ""), "utf8");
+    written[stream] = path.relative(projectRoot, file).replace(/\\/g, "/");
+  }
+  return written;
+}
+
+function resolveTaskSpecCwd(projectRoot, cwd, allowOutsideCwd) {
+  const resolved = path.resolve(projectRoot, cwd || ".");
+  if (!allowOutsideCwd) {
+    resolveInside(projectRoot, path.relative(projectRoot, resolved) || ".");
+  }
+  return resolved;
+}
+
+function resolveInside(root, target) {
+  const base = path.resolve(root);
+  const resolved = path.resolve(base, target);
+  const relative = path.relative(base, resolved);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    throw new Error(`Path escapes project root: ${target}`);
+  }
+  return resolved;
 }
 
 // Metrics Functions

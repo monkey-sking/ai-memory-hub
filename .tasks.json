@@ -1,0 +1,39 @@
+{
+  "version": "1.0",
+  "tasks": [
+    {
+      "id": "syntax",
+      "title": "Check CLI syntax",
+      "command": "node",
+      "args": ["--check", "src/index.js"],
+      "cwd": ".",
+      "timeoutMs": 30000,
+      "resources": ["src/index.js"],
+      "logs": {
+        "stdout": "logs/syntax.stdout.log",
+        "stderr": "logs/syntax.stderr.log"
+      }
+    },
+    {
+      "id": "test",
+      "title": "Run test suite",
+      "command": "npm",
+      "windowsCommand": "npm.cmd",
+      "args": ["test"],
+      "cwd": ".",
+      "timeoutMs": 120000,
+      "resources": ["src/", "tests/"],
+      "logs": {
+        "stdout": "logs/test.stdout.log",
+        "stderr": "logs/test.stderr.log"
+      },
+      "verify": [
+        {
+          "command": "node",
+          "args": ["--check", "src/index.js"],
+          "timeoutMs": 30000
+        }
+      ]
+    }
+  ]
+}

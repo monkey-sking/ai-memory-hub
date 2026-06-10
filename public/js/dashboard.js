@@ -313,6 +313,22 @@
         endpointErrorTitle: "Endpoint load errors",
         endpointErrorSummary: "{n} endpoint(s) failed to load.",
         endpointLoadWarning: "Showing cached or empty sections until the next successful refresh.",
+        loadingDashboard: "Loading dashboard data...",
+        refreshingDashboard: "Refreshing dashboard data...",
+        dashboardReady: "Updated just now",
+        dashboardPartial: "Partial data loaded",
+        dashboardFailed: "Refresh failed",
+        retryLoad: "Retry",
+        unknownError: "Unknown error",
+        requestFailed: "Request failed",
+        networkRequestFailed: "Network error while loading {endpoint}: {message}",
+        httpRequestFailed: "{endpoint} returned HTTP {status}: {message}",
+        invalidJsonError: "{endpoint} returned invalid JSON.",
+        emptyErrorDetail: "No details provided.",
+        actionInProgress: "Working...",
+        syncing: "Syncing...",
+        rebuilding: "Rebuilding...",
+        running: "Running...",
         
         noActiveTasks: "No active tasks found.",
         noRecentMessages: "No recent messages.",
@@ -634,6 +650,22 @@
         endpointErrorTitle: "端点加载错误",
         endpointErrorSummary: "{n} 个端点加载失败。",
         endpointLoadWarning: "在下次成功刷新前，相关区域会显示缓存或空数据。",
+        loadingDashboard: "正在加载看板数据...",
+        refreshingDashboard: "正在刷新看板数据...",
+        dashboardReady: "刚刚已更新",
+        dashboardPartial: "已加载部分数据",
+        dashboardFailed: "刷新失败",
+        retryLoad: "重试",
+        unknownError: "未知错误",
+        requestFailed: "请求失败",
+        networkRequestFailed: "加载 {endpoint} 时网络异常：{message}",
+        httpRequestFailed: "{endpoint} 返回 HTTP {status}：{message}",
+        invalidJsonError: "{endpoint} 返回了无效 JSON。",
+        emptyErrorDetail: "没有提供错误详情。",
+        actionInProgress: "处理中...",
+        syncing: "同步中...",
+        rebuilding: "重建中...",
+        running: "运行中...",
         
         noActiveTasks: "暂无活跃任务。",
         noRecentMessages: "暂无最近消息。",
@@ -915,6 +947,13 @@
       filterTaskProject: '',
       filterTaskPriority: '',
       endpointErrors: [],
+      loading: {
+        initial: true,
+        refreshing: false,
+        messageKey: 'loadingDashboard',
+        lastSuccessAt: '',
+        lastError: ''
+      },
       notifications: localStorage.getItem('hub_notifications') !== 'false',
       shortcuts: cloneDefaultShortcuts(),
       lang: localStorage.getItem('hub_lang') || 'zh'
@@ -1456,11 +1495,81 @@
       });
     }
 
+    function truncateErrorDetail(value, maxLength = 700) {
+      const text = String(value || '').trim();
+      if (!text) return '';
+      return text.length > maxLength ? `${text.slice(0, maxLength - 1)}...` : text;
+    }
+
+    function createDisplayError(message, metadata = {}) {
+      const error = new Error(message || t('unknownError'));
+      Object.assign(error, metadata);
+      return error;
+    }
+
+    function formatApiError(path, response, payload, rawText) {
+      const payloadMessage = payload && typeof payload === 'object'
+        ? (payload.error || payload.message || payload.detail)
+        : '';
+      const rawMessage = !payloadMessage && rawText ? truncateErrorDetail(rawText, 220) : '';
+      const serverMessage = payloadMessage || rawMessage || response.statusText || t('emptyErrorDetail');
+      const detailSource = payload && typeof payload === 'object'
+        ? (payload.details || payload.stack || rawText)
+        : rawText;
+      return createDisplayError(t('httpRequestFailed', {
+        endpoint: path,
+        status: response.status,
+        message: serverMessage
+      }), {
+        endpoint: path,
+        status: response.status,
+        detail: truncateErrorDetail(detailSource)
+      });
+    }
+
+    function getErrorMessage(error) {
+      if (!error) return t('unknownError');
+      return error.message || String(error);
+    }
+
+    function getErrorDetail(error) {
+      const detail = error && (error.detail || error.cause?.message);
+      return truncateErrorDetail(detail);
+    }
+
     async function api(path, options = {}) {
-      const res = await fetch(path, options);
+      let res;
+      try {
+        res = await fetch(path, options);
+      } catch (error) {
+        throw createDisplayError(t('networkRequestFailed', {
+          endpoint: path,
+          message: getErrorMessage(error)
+        }), {
+          endpoint: path,
+          detail: getErrorMessage(error),
+          cause: error
+        });
+      }
+
       const text = await res.text();
-      const json = text ? JSON.parse(text) : {};
-      if (!res.ok) throw new Error(json.error || res.statusText);
+      let json = {};
+      if (text) {
+        try {
+          json = JSON.parse(text);
+        } catch (error) {
+          if (res.ok) {
+            throw createDisplayError(t('invalidJsonError', { endpoint: path }), {
+              endpoint: path,
+              detail: truncateErrorDetail(text),
+              cause: error
+            });
+          }
+          json = null;
+        }
+      }
+
+      if (!res.ok) throw formatApiError(path, res, json, text);
       return json;
     }
 
@@ -1470,7 +1579,7 @@
       if (!stack) return;
       const toast = document.createElement('div');
       toast.className = `toast toast-${type}`;
-      toast.textContent = message;
+      toast.textContent = String(message || t('unknownError'));
       stack.appendChild(toast);
       setTimeout(() => {
         toast.classList.add('leaving');
@@ -1481,12 +1590,13 @@
     function setButtonLoading(button, loading, label) {
       if (!button) return;
       if (loading) {
-        button.dataset.originalText = button.textContent;
+        if (!button.dataset.originalText) button.dataset.originalText = button.textContent;
         button.disabled = true;
-        button.innerHTML = `<span class="spinner"></span> ${escapeHtml(label || t('scanning'))}`;
+        button.innerHTML = `<span class="spinner"></span> ${escapeHtml(label || t('actionInProgress'))}`;
       } else {
         button.disabled = false;
         button.textContent = button.dataset.originalText || button.textContent;
+        delete button.dataset.originalText;
       }
     }
 
@@ -1662,21 +1772,110 @@
       renderAll();
     }
 
+    function renderLoadingState() {
+      const isLoading = Boolean(state.loading.initial || state.loading.refreshing);
+      const message = t(state.loading.messageKey || (state.loading.initial ? 'loadingDashboard' : 'refreshingDashboard'));
+      const banner = document.getElementById('dashboardLoading');
+      const bannerText = document.getElementById('dashboardLoadingText');
+      if (banner) banner.hidden = !isLoading;
+      if (bannerText) bannerText.textContent = message;
+
+      const refreshStatus = document.getElementById('refreshStatus');
+      if (refreshStatus) {
+        refreshStatus.className = 'refresh-status';
+        if (isLoading) {
+          refreshStatus.classList.add('loading');
+          refreshStatus.textContent = message;
+        } else if (state.loading.lastError) {
+          refreshStatus.classList.add('error');
+          refreshStatus.textContent = t('dashboardFailed');
+        } else if (state.endpointErrors.length > 0) {
+          refreshStatus.classList.add('error');
+          refreshStatus.textContent = t('dashboardPartial');
+        } else if (state.loading.lastSuccessAt) {
+          refreshStatus.classList.add('ok');
+          refreshStatus.textContent = t('dashboardReady');
+        } else {
+          refreshStatus.textContent = '';
+        }
+      }
+
+      document.body.classList.toggle('is-refreshing', isLoading);
+      document.querySelector('main')?.setAttribute('aria-busy', isLoading ? 'true' : 'false');
+      const statusLine = document.getElementById('statusLine');
+      if (statusLine) {
+        const tone = state.loading.lastError || state.endpointErrors.length > 0 ? 'error' : 'ok';
+        statusLine.className = `status ${tone}`;
+        const label = isLoading ? message : (state.loading.lastError ? t('dashboardFailed') : t('dashboardReady'));
+        const textNode = statusLine.querySelector('span:last-child');
+        if (textNode) textNode.textContent = label;
+      }
+    }
+
+    function setDashboardLoading(loading, messageKey) {
+      state.loading.refreshing = Boolean(loading);
+      state.loading.messageKey = messageKey || (state.loading.initial ? 'loadingDashboard' : 'refreshingDashboard');
+      if (loading) state.loading.lastError = '';
+      renderLoadingState();
+    }
+
+    function markDashboardLoaded() {
+      state.loading.initial = false;
+      state.loading.refreshing = false;
+      state.loading.lastSuccessAt = new Date().toISOString();
+      state.loading.lastError = '';
+      renderLoadingState();
+    }
+
+    function markDashboardFailed(error) {
+      state.loading.initial = false;
+      state.loading.refreshing = false;
+      state.loading.lastError = getErrorMessage(error);
+      renderLoadingState();
+    }
+
+    function renderLoadingPlaceholders() {
+      if (!state.loading.initial) return;
+      const skeleton = `<div class="skeleton-list"><div></div><div></div><div></div></div>`;
+      const smallLoading = `<div class="muted"><span class="spinner"></span> ${escapeHtml(t('loadingDashboard'))}</div>`;
+      const set = (id, html) => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = html;
+      };
+      set('dashboardTasks', skeleton);
+      set('dashboardRadio', skeleton);
+      set('workflowStageStrip', smallLoading);
+      set('workflowList', '');
+      set('detectedTools', smallLoading);
+      set('col-open', skeleton);
+      set('col-active', skeleton);
+      set('col-completed', skeleton);
+      set('dispatchRelay', skeleton);
+      set('dispatchLogs', skeleton);
+      set('toolsGrid', skeleton);
+      set('backupsList', skeleton);
+      set('searchTagCloud', smallLoading);
+    }
+
     // Fetch API Data
     async function refreshData() {
       const btn = document.getElementById('btnRefresh');
-      if (btn) btn.disabled = true;
+      const firstLoad = state.loading.initial;
+      setDashboardLoading(true, firstLoad ? 'loadingDashboard' : 'refreshingDashboard');
+      if (firstLoad) renderLoadingPlaceholders();
+      setButtonLoading(btn, true, firstLoad ? t('loadingDashboard') : t('refreshingDashboard'));
       try {
         const endpointErrors = [];
         const recordEndpointError = (endpoint, reason) => {
-          const message = reason && reason.message ? reason.message : String(reason || 'Unknown error');
-          endpointErrors.push({ endpoint, message });
+          const message = getErrorMessage(reason);
+          endpointErrors.push({ endpoint, message, detail: getErrorDetail(reason) });
           console.error(`Failed to load ${endpoint}`, reason);
         };
 
         try {
           const snapshot = await api('/api/dashboard');
           applyDashboardSnapshot(snapshot);
+          markDashboardLoaded();
           return;
         } catch (dashboardErr) {
           recordEndpointError('/api/dashboard', dashboardErr);
@@ -1756,12 +1955,16 @@
 
         state.endpointErrors = endpointErrors;
         renderAll();
+        markDashboardLoaded();
       } catch (err) {
         console.error(err);
-        state.endpointErrors = [{ endpoint: 'refreshData', message: err.message || String(err) }];
+        state.endpointErrors = [{ endpoint: 'refreshData', message: getErrorMessage(err), detail: getErrorDetail(err) }];
         renderEndpointErrors();
+        showToast(getErrorMessage(err), 'error');
+        markDashboardFailed(err);
       } finally {
-        if (btn) btn.disabled = false;
+        setButtonLoading(btn, false);
+        renderLoadingState();
       }
     }
 
@@ -1769,6 +1972,7 @@
     function renderAll() {
       const tools = Array.isArray(state.status.tools) ? state.status.tools : [];
       renderEndpointErrors();
+      renderLoadingState();
 
       // Inject Analytics Tab if not present
       injectAnalyticsTab();
@@ -1861,10 +2065,14 @@
         <div class="endpoint-error-item">
           <code>${escapeHtml(err.endpoint)}</code>
           <span>${escapeHtml(err.message)}</span>
+          ${err.detail ? `<span class="error-message-detail">${escapeHtml(err.detail)}</span>` : ''}
         </div>
       `).join('');
       el.innerHTML = `
-        <div class="endpoint-errors-title">${escapeHtml(t('endpointErrorTitle'))} · ${escapeHtml(t('endpointErrorSummary', { n: errors.length }))}</div>
+        <div class="endpoint-errors-title-row">
+          <div class="endpoint-errors-title">${escapeHtml(t('endpointErrorTitle'))} · ${escapeHtml(t('endpointErrorSummary', { n: errors.length }))}</div>
+          <button class="btn small" type="button" onclick="refreshData()">${escapeHtml(t('retryLoad'))}</button>
+        </div>
         <div class="endpoint-errors-help">${escapeHtml(t('endpointLoadWarning'))}</div>
         <div class="endpoint-errors-list">${items}</div>
       `;
@@ -2758,7 +2966,7 @@
       } catch (error) {
         ['memoryGrowthChart', 'taskCompletionChart', 'radioActivityChart'].forEach(id => {
           const el = document.getElementById(id);
-          if (el?.parentElement) el.parentElement.innerHTML = `<div class="muted">${escapeHtml(error.message || String(error))}</div>`;
+          if (el?.parentElement) el.parentElement.innerHTML = `<div class="muted">${escapeHtml(getErrorMessage(error))}</div>`;
         });
         return;
       }
@@ -2850,38 +3058,33 @@
     // Top action handlers
     async function runSync() {
       const btn = document.getElementById('btnSync');
-      btn.innerHTML = '<span class="spinner"></span> Syncing...';
-      btn.disabled = true;
+      setButtonLoading(btn, true, t('syncing'));
       try {
         await api('/api/sync', { method: 'POST' });
         await refreshData();
       } catch (err) {
-        alert(err.message);
+        showToast(getErrorMessage(err), 'error');
       } finally {
-        btn.innerHTML = t('syncInbox');
-        btn.disabled = false;
+        setButtonLoading(btn, false);
       }
     }
 
     async function runPull() {
       const btn = document.getElementById('btnPull');
-      btn.innerHTML = '<span class="spinner"></span> Rebuilding...';
-      btn.disabled = true;
+      setButtonLoading(btn, true, t('rebuilding'));
       try {
         await api('/api/pull', { method: 'POST' });
         await refreshData();
       } catch (err) {
-        alert(err.message);
+        showToast(getErrorMessage(err), 'error');
       } finally {
-        btn.innerHTML = t('rebuild');
-        btn.disabled = false;
+        setButtonLoading(btn, false);
       }
     }
 
     async function triggerDispatcher() {
       const btn = document.getElementById('btnTriggerDispatch');
-      btn.innerHTML = '<span class="spinner"></span> Running...';
-      btn.disabled = true;
+      setButtonLoading(btn, true, t('running'));
       try {
         const forceRun = confirm(t('confirmForceDispatch'));
         const res = await api('/api/dispatch/run', {
@@ -2889,13 +3092,12 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ force: forceRun })
         });
-        alert(t('alertDispatched', { n: (res.results ? res.results.length : 0) }));
+        showToast(t('alertDispatched', { n: (res.results ? res.results.length : 0) }), 'success');
         await refreshData();
       } catch (err) {
-        alert(err.message);
+        showToast(getErrorMessage(err), 'error');
       } finally {
-        btn.innerHTML = t('triggerDispatch');
-        btn.disabled = false;
+        setButtonLoading(btn, false);
       }
     }
 
@@ -2953,7 +3155,7 @@
         const preview = localPreview || globalPreview;
         document.getElementById('modalToolSnippet').textContent = preview ? preview.snippet : 'No integration rule template found for this tool.';
       } catch (err) {
-        document.getElementById('modalToolSnippet').textContent = 'Error loading preview: ' + err.message;
+        document.getElementById('modalToolSnippet').textContent = 'Error loading preview: ' + getErrorMessage(err);
       }
     }
 
@@ -2979,7 +3181,7 @@
         closeToolModal();
         await refreshData();
       } catch (err) {
-        showToast(err.message, 'error');
+        showToast(getErrorMessage(err), 'error');
       } finally {
         btn.textContent = originalText;
         btn.disabled = false;
@@ -3018,9 +3220,9 @@
     }
 
     function createWorkflow() {
-      alert(state.lang === 'zh'
+      showToast(state.lang === 'zh'
         ? '当前面板仅展示工作流。创建工作流请先使用 ai-memory-hub workflow create。'
-        : 'This panel is read-only. Create workflows with ai-memory-hub workflow create.');
+        : 'This panel is read-only. Create workflows with ai-memory-hub workflow create.', 'info');
     }
 
     function renderBackupsPanel() {
@@ -3093,8 +3295,8 @@
         const selected = state.selectedBackupName || list[0]?.name || '';
         if (selected) await loadBackupDetail(selected, { silent: true });
       } catch (error) {
-        if (target) target.innerHTML = `<div class="endpoint-error-item">${escapeHtml(error.message || String(error))}</div>`;
-        showToast(error.message || String(error), 'error');
+        if (target) target.innerHTML = `<div class="endpoint-error-item">${escapeHtml(getErrorMessage(error))}</div>`;
+        showToast(getErrorMessage(error), 'error');
       }
     }
 
@@ -3111,7 +3313,7 @@
         renderBackupsPanel();
         await refreshData();
       } catch (error) {
-        showToast(error.message || String(error), 'error');
+        showToast(getErrorMessage(error), 'error');
       }
     }
 
@@ -3143,8 +3345,8 @@
         showToast(t('backupPreviewReady'), 'success');
         renderBackupsPanel();
       } catch (error) {
-        if (preview) preview.textContent = error.message || String(error);
-        showToast(error.message || String(error), 'error');
+        if (preview) preview.textContent = getErrorMessage(error);
+        showToast(getErrorMessage(error), 'error');
       }
     }
 
@@ -3160,7 +3362,7 @@
         showToast(t('backupPolicySaved'), 'success');
         await loadBackups();
       } catch (error) {
-        showToast(error.message || String(error), 'error');
+        showToast(getErrorMessage(error), 'error');
       }
     }
 
@@ -3178,8 +3380,8 @@
         state.backupRestorePlan = detail.restore || null;
         renderBackupsPanel();
       } catch (error) {
-        if (filesTarget) filesTarget.innerHTML = `<div class="endpoint-error-item">${escapeHtml(error.message || String(error))}</div>`;
-        showToast(error.message || String(error), 'error');
+        if (filesTarget) filesTarget.innerHTML = `<div class="endpoint-error-item">${escapeHtml(getErrorMessage(error))}</div>`;
+        showToast(getErrorMessage(error), 'error');
       }
     }
 
@@ -3259,7 +3461,7 @@
         }
         showToast(t('restorePreviewReady'), 'success');
       } catch (error) {
-        showToast(error.message || String(error), 'error');
+        showToast(getErrorMessage(error), 'error');
       }
     }
 
@@ -3284,7 +3486,7 @@
         await refreshData();
         await loadBackupDetail(selected, { silent: true });
       } catch (error) {
-        showToast(error.message || String(error), 'error');
+        showToast(getErrorMessage(error), 'error');
       }
     }
 
@@ -3335,8 +3537,8 @@
       try {
         payload = applySettingsDraft() || buildSettingsPayload();
       } catch (error) {
-        if (status) status.textContent = error.message || String(error);
-        showToast(error.message || String(error), 'error');
+        if (status) status.textContent = getErrorMessage(error);
+        showToast(getErrorMessage(error), 'error');
         return;
       }
       try {
@@ -3351,8 +3553,8 @@
         if (status) status.textContent = t('settingsSaved');
         showToast(t('settingsSaved'), 'success');
       } catch (error) {
-        if (status) status.textContent = error.message || String(error);
-        showToast(error.message || String(error), 'error');
+        if (status) status.textContent = getErrorMessage(error);
+        showToast(getErrorMessage(error), 'error');
       }
       renderAll();
     }
@@ -3400,7 +3602,7 @@
         renderToolsPanel();
         showToast(t('refreshTools'), 'success');
       } catch (error) {
-        showToast(error.message || String(error), 'error');
+        showToast(getErrorMessage(error), 'error');
       }
     }
 
@@ -3427,7 +3629,7 @@
       } catch (error) {
         const tagCloud = document.getElementById('searchTagCloud');
         if (tagCloud) {
-          tagCloud.innerHTML = `<span class="endpoint-error-item">${escapeHtml(error.message || String(error))}</span>`;
+          tagCloud.innerHTML = `<span class="endpoint-error-item">${escapeHtml(getErrorMessage(error))}</span>`;
         }
       }
     }
@@ -3492,8 +3694,8 @@
           `;
         }).join('') || `<div class="muted">${t('noSearchResults')}</div>`;
       } catch (error) {
-        target.innerHTML = `<div class="endpoint-error-item">${escapeHtml(error.message || String(error))}</div>`;
-        showToast(error.message || String(error), 'error');
+        target.innerHTML = `<div class="endpoint-error-item">${escapeHtml(getErrorMessage(error))}</div>`;
+        showToast(getErrorMessage(error), 'error');
       }
     }
 
@@ -3557,8 +3759,8 @@
         state.health = report;
         renderHealthReport();
       } catch (error) {
-        target.innerHTML = `<div class="endpoint-error-item">${escapeHtml(error.message || String(error))}</div>`;
-        showToast(error.message || String(error), 'error');
+        target.innerHTML = `<div class="endpoint-error-item">${escapeHtml(getErrorMessage(error))}</div>`;
+        showToast(getErrorMessage(error), 'error');
       }
     }
 
@@ -3601,8 +3803,8 @@
         }
         await runHealthCheck();
       } catch (error) {
-        if (target) target.innerHTML = `<div class="endpoint-error-item">${escapeHtml(error.message || String(error))}</div>`;
-        showToast(error.message || String(error), 'error');
+        if (target) target.innerHTML = `<div class="endpoint-error-item">${escapeHtml(getErrorMessage(error))}</div>`;
+        showToast(getErrorMessage(error), 'error');
       }
     }
 

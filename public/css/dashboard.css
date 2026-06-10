@@ -644,6 +644,19 @@
     .tasks-column .task-list-virtual {
       flex: 1 1 auto;
     }
+    .loading-banner {
+      border: 1px solid rgba(56,139,253,0.35);
+      background: rgba(56,139,253,0.08);
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 16px;
+      color: #c9d1d9;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+    }
+    .loading-banner[hidden] { display: none; }
 
     .endpoint-errors {
       border: 1px solid rgba(248,81,73,0.35);
@@ -657,6 +670,13 @@
       gap: 6px;
     }
     .endpoint-errors[hidden] { display: none; }
+    .endpoint-errors-title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
     .endpoint-errors-title {
       color: #ff7b72;
       font-size: 12px;
@@ -682,9 +702,17 @@
       max-width: 100%;
       font-size: 12px;
     }
+    .endpoint-error-item span {
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
     .endpoint-error-item code {
       color: #ff7b72;
       white-space: nowrap;
+    }
+    .error-message-detail {
+      color: var(--text-muted);
+      font-size: 11px;
     }
 
     /* Tasks Board Layout */
@@ -948,6 +976,16 @@
       font-size: 13px;
       color: var(--text-muted);
     }
+    .refresh-status {
+      min-width: 132px;
+      color: var(--text-muted);
+      font-size: 12px;
+      line-height: 1.3;
+      overflow-wrap: anywhere;
+    }
+    .refresh-status.loading { color: #79c0ff; }
+    .refresh-status.error { color: #ffb4ad; }
+    .refresh-status.ok { color: var(--status-done); }
 
     /* Settings panel */
     .settings-summary .summary-card strong {

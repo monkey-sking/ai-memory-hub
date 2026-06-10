@@ -91,6 +91,7 @@
             <span class="slider"></span>
           </label>
         </div>
+        <span id="refreshStatus" class="refresh-status" role="status" aria-live="polite"></span>
         <button onclick="toggleLanguage()" class="btn" id="btnLang">🌐 EN</button>
         <button onclick="refreshData()" class="btn" id="btnRefresh" data-i18n="refresh">Refresh</button>
         <button onclick="runPull()" class="btn" id="btnPull" data-i18n="rebuild">Rebuild Snapshot</button>
@@ -99,6 +100,10 @@
     </header>
 
     <main>
+      <div id="dashboardLoading" class="loading-banner" role="status" aria-live="polite" hidden>
+        <span class="spinner"></span>
+        <span id="dashboardLoadingText" data-i18n="loadingDashboard">Loading dashboard data...</span>
+      </div>
       <div id="endpointErrors" class="endpoint-errors" hidden></div>
 
       <!-- Dashboard Overview Tab -->

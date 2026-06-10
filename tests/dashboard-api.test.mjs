@@ -265,6 +265,8 @@ test("dashboard serves externalized virtual-scroll assets", async () => {
       assert.match(html, /id="settingNotifications"/);
       assert.match(html, /id="settingShortcutsEnabled"/);
       assert.match(html, /id="shortcutFocusSearch"/);
+      assert.match(html, /id="refreshStatus"/);
+      assert.match(html, /id="dashboardLoading"/);
       assert.match(html, /id="toastStack"/);
       assert.match(html, /id="shortcutHelp"/);
       assert.match(html, /id="shortcutHelpGrid"/);
@@ -279,6 +281,9 @@ test("dashboard serves externalized virtual-scroll assets", async () => {
       assert.match(dashboardCss, /\.backup-row/);
       assert.match(dashboardCss, /\.toast-stack/);
       assert.match(dashboardCss, /\.shortcut-grid/);
+      assert.match(dashboardCss, /\.loading-banner/);
+      assert.match(dashboardCss, /\.refresh-status/);
+      assert.match(dashboardCss, /\.endpoint-errors-title-row/);
       assert.match(dashboardCss, /max-width:\s*640px/);
 
       const jsRes = await fetch(`http://127.0.0.1:${port}/js/dashboard.js`);
@@ -292,6 +297,9 @@ test("dashboard serves externalized virtual-scroll assets", async () => {
       assert.match(dashboardScript, /function runHealthAction/);
       assert.match(dashboardScript, /function renderBackupsPanel/);
       assert.match(dashboardScript, /function showToast/);
+      assert.match(dashboardScript, /function formatApiError/);
+      assert.match(dashboardScript, /function renderLoadingState/);
+      assert.match(dashboardScript, /function renderLoadingPlaceholders/);
       assert.match(dashboardScript, /function handleGlobalShortcuts/);
       assert.match(dashboardScript, /function normalizeShortcutBinding/);
       assert.match(dashboardScript, /function renderShortcutHelp/);
@@ -330,6 +338,9 @@ test("dashboard serves externalized virtual-scroll assets", async () => {
   assert.match(dashboardJs, /function runHealthAction/);
   assert.match(dashboardJs, /function renderBackupsPanel/);
   assert.match(dashboardJs, /function showToast/);
+  assert.match(dashboardJs, /function formatApiError/);
+  assert.match(dashboardJs, /function renderLoadingState/);
+  assert.match(dashboardJs, /function renderLoadingPlaceholders/);
   assert.match(dashboardJs, /function handleGlobalShortcuts/);
   assert.match(dashboardJs, /function normalizeShortcutBinding/);
   assert.match(dashboardJs, /function renderShortcutHelp/);

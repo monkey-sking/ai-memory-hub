@@ -1,0 +1,46 @@
+未翻译的内容清单：
+
+Workflows Tab:
+- 🔄 Workflow Management (line 391)
+- Loading workflows... (line 394)
+
+Settings Tab:
+- ⚙️ System Settings (line 445)
+- Snapshot Limit (line 449)
+- Max records in MEMORY.md (current: 200) (line 451)
+- Auto Refresh Interval (seconds) (line 455)
+- Theme (line 460)
+- Dark Mode (line 462)
+- Light Mode (Coming Soon) (line 463)
+- Language (line 468)
+- Save Settings (line 475)
+
+Tools Tab:
+- Connected Tools (line 483)
+- Runnable (line 487)
+- CLI Tools (line 491)
+- Apps (line 495)
+- 🔧 Tool Management (line 501)
+- Refresh (line 502)
+- Loading tools... (line 505)
+
+Search Tab:
+- 🔍 Global Search (line 514)
+- placeholder: Search across memories... (line 517)
+- All (line 521)
+- Memories (line 522)
+- Tasks (line 523)
+- Radio Messages (line 524)
+- Search button (line 526)
+- Enter a query to search... (line 529)
+
+Health Tab:
+- 💊 System Health Report (line 538)
+- Run Health Check (line 539)
+- Click "Run Health Check" to generate report... (line 542)
+
+Raw JSON section:
+- Shared Snapshot (MEMORY.md) (line 552)
+- Pending Inbox (line 556)
+- Active Tasks (line 560)
+- Agent Radio Messages (line 564)

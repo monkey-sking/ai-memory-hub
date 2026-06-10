@@ -189,6 +189,8 @@ async function main() {
       return taskSpecCommand(rest);
     case "metrics":
       return metricsCommand(rest);
+    case "health":
+      return healthCommand(rest);
     case "update":
       return updateCommand(rest);
     case "connect":
@@ -1391,6 +1393,17 @@ function metricsCommand(argv) {
 
   const metrics = calculateMetrics(config.memoryDir);
   console.log(JSON.stringify(metrics, null, 2));
+}
+
+function healthCommand(argv) {
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const ledger = readLedger(config.memoryDir);
+  const index = buildMemoryIndex(ledger, config);
+  const issueLimit = getOption(argv, "--limit")
+    ? parsePositiveIntegerOption(getOption(argv, "--limit"), "--limit")
+    : 5;
+  console.log(renderMemoryHealthReport(config, index, { issueLimit }));
 }
 
 function updateCommand(argv) {
@@ -4447,6 +4460,7 @@ Commands:
   recipe     Manage workflow recipes for reusable collaboration templates.
   task-spec  List, validate, and run project-declared task commands.
   metrics    Show operational metrics for tasks, workflows, relay, and queue.
+  health     Generate a Markdown health report for the local memory hub.
   update     Check for updates or update to the latest version.
   connect    Check tool connections or send a request/review/handoff to another tool.
   doctor     Diagnose AI tool runner paths, shims, probes, and prompt mode.
@@ -4493,6 +4507,7 @@ Examples:
   ${APP_NAME} task-spec list
   ${APP_NAME} task-spec validate
   ${APP_NAME} task-spec run test
+  ${APP_NAME} health
   ${APP_NAME} pull
   ${APP_NAME} backup --reason manual
   ${APP_NAME} watch --interval-ms 30000
@@ -7032,6 +7047,284 @@ function renderIndexMarkdown(index) {
     lines.push("");
   }
   return lines.join("\n");
+}
+
+function renderMemoryHealthReport(config, index, options = {}) {
+  const analysis = analyzeMemoryHealth(config, index, options);
+  const lines = [
+    "# AI Memory Hub Health Report",
+    "",
+    `Generated at ${analysis.generatedAt}.`,
+    "",
+    "## Summary",
+    "",
+    `- Health score: ${analysis.score}/100 (${analysis.status})`,
+    `- Memory records: ${analysis.totalRecords}`,
+    `- Duplicate records: ${analysis.duplicateRecords} (${formatPercent(analysis.duplicateRate)})`,
+    `- Corrupted records: ${analysis.corruptedRecords.length}`,
+    `- Storage used: ${formatBytes(analysis.storage.totalBytes)}`,
+    "",
+    "## Distribution",
+    "",
+    `- Layers: core ${index.stats.core}, working ${index.stats.working}, archive ${index.stats.archive}`,
+    `- Kinds: ${formatTopCounts(index.kinds, 8)}`,
+    `- Projects: ${formatTopCounts(index.projects, 8)}`,
+    `- Tags: ${formatTopCounts(index.tags, 8)}`,
+    `- Topics: ${formatTopCounts(index.topics, 8)}`,
+    "",
+    "## Growth Trend",
+    ""
+  ];
+
+  if (analysis.growthTrend.length === 0) {
+    lines.push("- No dated records found.");
+  } else {
+    for (const item of analysis.growthTrend) {
+      lines.push(`- ${item.date}: ${item.count}`);
+    }
+  }
+
+  lines.push("");
+  lines.push("## Storage");
+  lines.push("");
+  for (const item of analysis.storage.items) {
+    lines.push(`- ${item.label}: ${formatBytes(item.bytes)}`);
+  }
+
+  lines.push("");
+  lines.push("## Issues");
+  lines.push("");
+  if (analysis.issues.length === 0) {
+    lines.push("- No optimization issues detected.");
+  } else {
+    for (const issue of analysis.issues) {
+      lines.push(`- **${issue.level}** ${issue.title}: ${issue.detail}`);
+    }
+  }
+
+  if (analysis.duplicateGroups.length > 0) {
+    lines.push("");
+    lines.push("## Duplicate Examples");
+    lines.push("");
+    for (const group of analysis.duplicateGroups.slice(0, analysis.issueLimit)) {
+      lines.push(`- ${group.count}x ${group.example}`);
+    }
+  }
+
+  if (analysis.corruptedRecords.length > 0) {
+    lines.push("");
+    lines.push("## Corrupted Record Examples");
+    lines.push("");
+    for (const record of analysis.corruptedRecords.slice(0, analysis.issueLimit)) {
+      lines.push(`- ${formatMemoryRecordPointer(record)} ${truncateText(record.text, 120)}`);
+    }
+  }
+
+  lines.push("");
+  return lines.join("\n");
+}
+
+function analyzeMemoryHealth(config, index, options = {}) {
+  const records = index.records || [];
+  const totalRecords = records.length;
+  const issueLimit = Number(options.issueLimit || 5);
+  const duplicateGroups = findDuplicateMemoryGroups(records);
+  const duplicateRecords = duplicateGroups.reduce((sum, group) => sum + group.count - 1, 0);
+  const duplicateRate = totalRecords > 0 ? duplicateRecords / totalRecords : 0;
+  const corruptedRecords = records.filter(isCorruptedMemoryRecord);
+  const storage = getMemoryStorageSummary(config.memoryDir);
+  const growthTrend = getMemoryGrowthTrend(records, 14);
+  const pendingInbox = countJsonlLines(path.join(config.memoryDir, "inbox", "events.jsonl"));
+  const issues = [];
+
+  if (corruptedRecords.length > 0) {
+    issues.push({
+      level: "high",
+      title: "Corrupted records detected",
+      detail: `${corruptedRecords.length} record(s) contain null bytes, replacement characters, or raw unparsed JSONL text.`
+    });
+  }
+  if (duplicateRecords > 0) {
+    issues.push({
+      level: duplicateRate >= 0.1 ? "high" : "medium",
+      title: "Duplicate memory content",
+      detail: `${duplicateRecords} duplicate record(s) across ${duplicateGroups.length} repeated text group(s).`
+    });
+  }
+  if (pendingInbox > 0) {
+    issues.push({
+      level: pendingInbox >= 50 ? "medium" : "low",
+      title: "Pending inbox events",
+      detail: `${pendingInbox} event(s) remain in inbox/events.jsonl; run sync when ready.`
+    });
+  }
+  if (storage.backupsBytes > storage.ledgerBytes && storage.backupsBytes > 0) {
+    issues.push({
+      level: "low",
+      title: "Backup storage exceeds ledger size",
+      detail: `backups/ uses ${formatBytes(storage.backupsBytes)} versus ledger ${formatBytes(storage.ledgerBytes)}.`
+    });
+  }
+
+  const score = Math.max(0, 100
+    - Math.min(40, Math.round(duplicateRate * 200))
+    - Math.min(35, corruptedRecords.length * 8)
+    - Math.min(10, pendingInbox));
+
+  return {
+    generatedAt: new Date().toISOString(),
+    score,
+    status: score >= 90 ? "good" : score >= 70 ? "needs attention" : "critical",
+    totalRecords,
+    duplicateGroups,
+    duplicateRecords,
+    duplicateRate,
+    corruptedRecords,
+    storage,
+    growthTrend,
+    issues,
+    issueLimit
+  };
+}
+
+function findDuplicateMemoryGroups(records) {
+  const groups = new Map();
+  for (const record of records) {
+    const key = normalizeDuplicateMemoryText(record.text);
+    if (!key || key.length < 16) {
+      continue;
+    }
+    if (!groups.has(key)) {
+      groups.set(key, []);
+    }
+    groups.get(key).push(record);
+  }
+  return [...groups.values()]
+    .filter((items) => items.length > 1)
+    .map((items) => ({
+      count: items.length,
+      example: truncateText(items[0].text, 120),
+      records: items
+    }))
+    .sort((a, b) => b.count - a.count || a.example.localeCompare(b.example));
+}
+
+function normalizeDuplicateMemoryText(text) {
+  return normalizeSearchText(text)
+    .replace(/[^\p{L}\p{N}\u4e00-\u9fff]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isCorruptedMemoryRecord(record) {
+  const text = String(record.text || "");
+  return record.source === "raw" ||
+    record.kind === "raw" ||
+    /\u0000|\ufffd/.test(text);
+}
+
+function getMemoryGrowthTrend(records, limit = 14) {
+  const counts = new Map();
+  for (const record of records) {
+    const date = String(record.ts || record.indexedAt || "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      continue;
+    }
+    counts.set(date, (counts.get(date) || 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .slice(-limit)
+    .map(([date, count]) => ({ date, count }));
+}
+
+function getMemoryStorageSummary(memoryDir) {
+  const items = [
+    ["MEMORY.md", path.join(memoryDir, "MEMORY.md")],
+    ["INDEX.md", path.join(memoryDir, "INDEX.md")],
+    ["memories/ledger.jsonl", path.join(memoryDir, "memories", "ledger.jsonl")],
+    ["memories/index.json", path.join(memoryDir, "memories", "index.json")],
+    ["inbox/events.jsonl", path.join(memoryDir, "inbox", "events.jsonl")],
+    ["radio/messages.jsonl", path.join(memoryDir, "radio", "messages.jsonl")],
+    ["tasks/tasks.jsonl", path.join(memoryDir, "tasks", "tasks.jsonl")],
+    ["workflows/workflows.jsonl", path.join(memoryDir, "workflows", "workflows.jsonl")],
+    ["backups/", path.join(memoryDir, "backups")]
+  ].map(([label, target]) => ({
+    label,
+    bytes: getPathSize(target)
+  }));
+  const ledgerBytes = items.find((item) => item.label === "memories/ledger.jsonl")?.bytes || 0;
+  const backupsBytes = items.find((item) => item.label === "backups/")?.bytes || 0;
+  return {
+    totalBytes: getPathSize(memoryDir),
+    ledgerBytes,
+    backupsBytes,
+    items
+  };
+}
+
+function getPathSize(target) {
+  if (!fs.existsSync(target)) {
+    return 0;
+  }
+  const stat = fs.lstatSync(target);
+  if (stat.isSymbolicLink()) {
+    return 0;
+  }
+  if (stat.isFile()) {
+    return stat.size;
+  }
+  if (!stat.isDirectory()) {
+    return 0;
+  }
+  let total = 0;
+  for (const entry of fs.readdirSync(target, { withFileTypes: true })) {
+    total += getPathSize(path.join(target, entry.name));
+  }
+  return total;
+}
+
+function countJsonlLines(file) {
+  if (!fs.existsSync(file)) {
+    return 0;
+  }
+  return fs.readFileSync(file, "utf8")
+    .split(/\r?\n/)
+    .filter((line) => line.trim()).length;
+}
+
+function formatTopCounts(items = [], limit = 8) {
+  const selected = items.slice(0, limit);
+  return selected.length ? selected.map((item) => `${item.key}(${item.count})`).join(", ") : "none";
+}
+
+function formatMemoryRecordPointer(record) {
+  const source = record.source || "unknown";
+  const id = record.localEventId || record.id || "";
+  return id ? `${source}/${record.kind || "note"} ${id}:` : `${source}/${record.kind || "note"}:`;
+}
+
+function formatPercent(value) {
+  return `${(Number(value || 0) * 100).toFixed(1)}%`;
+}
+
+function formatBytes(bytes) {
+  const units = ["B", "KB", "MB", "GB"];
+  let value = Number(bytes || 0);
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit++;
+  }
+  return unit === 0 ? `${value} ${units[unit]}` : `${value.toFixed(1)} ${units[unit]}`;
+}
+
+function truncateText(text, limit) {
+  const clean = String(text || "").replace(/\s+/g, " ").trim();
+  if (clean.length <= limit) {
+    return clean;
+  }
+  return `${clean.slice(0, Math.max(0, limit - 3))}...`;
 }
 
 function renderMemoryLine(memory) {

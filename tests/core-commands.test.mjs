@@ -454,3 +454,68 @@ test("memory search filters by thread-aware references", async () => {
     assert.equal(wrongThread.stdout.trim(), "");
   });
 });
+
+test("health command reports memory quality and storage diagnostics", async () => {
+  await withHub(async (memoryDir) => {
+    const repeatedText = "Repeated workflow rule: run tests before marking ai-memory-hub tasks done.";
+    await appendJsonl(path.join(memoryDir, "inbox", "events.jsonl"), {
+      id: "event-duplicate-a",
+      ts: "2026-06-08T10:00:00.000Z",
+      source: "codex",
+      text: repeatedText,
+      metadata: {
+        kind: "workflow",
+        project: "ai-memory-hub",
+        tags: ["health", "quality"]
+      }
+    });
+    await appendJsonl(path.join(memoryDir, "inbox", "events.jsonl"), {
+      id: "event-duplicate-b",
+      ts: "2026-06-09T10:00:00.000Z",
+      source: "gemini",
+      text: repeatedText,
+      metadata: {
+        kind: "workflow",
+        project: "ai-memory-hub",
+        tags: ["health", "quality"]
+      }
+    });
+    await appendJsonl(path.join(memoryDir, "inbox", "events.jsonl"), {
+      id: "event-corrupted",
+      ts: "2026-06-10T10:00:00.000Z",
+      source: "raw",
+      text: "Broken radio record \u0000 \ufffd",
+      metadata: {
+        kind: "raw",
+        project: "ai-memory-hub",
+        tags: ["radio"]
+      }
+    });
+
+    const sync = runCli(memoryDir, ["sync"]);
+    assert.equal(sync.status, 0, sync.stderr || sync.stdout);
+
+    const health = runCli(memoryDir, ["health", "--limit", "2"]);
+    assert.equal(health.status, 0, health.stderr || health.stdout);
+    assert.match(health.stdout, /# AI Memory Hub Health Report/);
+    assert.match(health.stdout, /## Summary/);
+    assert.match(health.stdout, /Duplicate records: 1 \(33\.3%\)/);
+    assert.match(health.stdout, /Corrupted records: 1/);
+    assert.match(health.stdout, /## Distribution/);
+    assert.match(health.stdout, /Kinds: workflow\(2\), raw\(1\)/);
+    assert.match(health.stdout, /Projects: ai-memory-hub\(3\)/);
+    assert.match(health.stdout, /## Growth Trend/);
+    assert.match(health.stdout, /2026-06-08: 1/);
+    assert.match(health.stdout, /2026-06-09: 1/);
+    assert.match(health.stdout, /2026-06-10: 1/);
+    assert.match(health.stdout, /## Storage/);
+    assert.match(health.stdout, /memories\/ledger\.jsonl:/);
+    assert.match(health.stdout, /## Issues/);
+    assert.match(health.stdout, /Corrupted records detected/);
+    assert.match(health.stdout, /Duplicate memory content/);
+    assert.match(health.stdout, /## Duplicate Examples/);
+    assert.match(health.stdout, /Repeated workflow rule/);
+    assert.match(health.stdout, /## Corrupted Record Examples/);
+    assert.match(health.stdout, /event-corrupted/);
+  });
+});

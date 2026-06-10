@@ -18,6 +18,8 @@ const DEFAULT_CONFIG_PATH = path.join(DEFAULT_MEMORY_DIR, "config.json");
 const DEFAULT_DISPATCH_ACK_TIMEOUT_MS = 5 * 60 * 1000;
 const DEFAULT_DISPATCH_RUN_TIMEOUT_MS = 10 * 60 * 1000;
 const DEFAULT_TASK_SPEC_TIMEOUT_MS = 10 * 60 * 1000;
+const STALE_OPERATIONAL_RADIO_AFTER_DAYS = 7;
+const OPERATIONAL_RADIO_DECAY_RATE_PER_DAY = 8;
 const DEFAULT_TASK_SPEC_FILES = [
   ".tasks.json",
   "task-specs.json",
@@ -4047,6 +4049,8 @@ function appCommand(argv) {
   const port = Number(getOption(argv, "--port") || 38787);
   const config = loadConfig();
   ensureHub(config.memoryDir);
+  const realtime = createDashboardRealtime(config.memoryDir);
+  const broadcastDashboardUpdate = (reason) => realtime.broadcastSnapshot(reason);
 
   const server = http.createServer(async (req, res) => {
     try {
@@ -4054,53 +4058,52 @@ function appCommand(argv) {
       if (req.method === "GET" && url.pathname.startsWith("/assets/")) {
         return sendStaticAsset(res, url.pathname);
       }
+      if (req.method === "GET" && (url.pathname.startsWith("/css/") || url.pathname.startsWith("/js/"))) {
+        return sendStaticFile(res, url.pathname);
+      }
       if (req.method === "GET" && url.pathname === "/") {
         return sendHtml(res, renderDashboard());
+      }
+      if (req.method === "GET" && url.pathname === "/api/dashboard") {
+        return sendJson(res, getDashboardSnapshot(config.memoryDir));
       }
       if (req.method === "GET" && url.pathname === "/api/status") {
         return sendJson(res, getStatusObject());
       }
       if (req.method === "GET" && url.pathname === "/api/memory") {
-        const config = loadConfig();
-        return sendJson(res, {
-          memory: readTextIfExists(path.join(config.memoryDir, "MEMORY.md")),
-          profile: readTextIfExists(path.join(config.memoryDir, "profile.md")),
-          pending: readEvents(path.join(config.memoryDir, "inbox", "events.jsonl"))
-        });
+        return sendJson(res, getDashboardMemory(config.memoryDir));
       }
       if (req.method === "GET" && url.pathname === "/api/radio") {
-        const config = loadConfig();
-        return sendJson(res, {
-          messages: readRadioMessages(config.memoryDir).slice(-50)
-        });
+        return sendJson(res, getDashboardRadio(config.memoryDir));
       }
       if (req.method === "GET" && url.pathname === "/api/tasks") {
-        const config = loadConfig();
         const status = url.searchParams.get("status") || "all";
-        return sendJson(res, {
-          tasks: readTasks(config.memoryDir)
-            .filter((task) => status === "all" ? true : status === "active" ? !["done", "cancelled"].includes(task.status) : task.status === status)
-            .sort((a, b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")))
-            .slice(0, 200)
-        });
+        return sendJson(res, getDashboardTasks(config.memoryDir, status));
       }
       if (req.method === "GET" && url.pathname === "/api/workflows") {
-        const config = loadConfig();
-        return sendJson(res, {
-          workflows: readWorkflows(config.memoryDir)
-            .sort((a, b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")))
-            .slice(0, 100)
-        });
+        return sendJson(res, getDashboardWorkflows(config.memoryDir));
       }
       if (req.method === "GET" && url.pathname === "/api/dispatch") {
-        const config = loadConfig();
-        const relay = Object.values(readLatestRelayStatusByThread(config.memoryDir))
-          .sort((a, b) => String(b.ts || "").localeCompare(String(a.ts || "")))
-          .slice(0, 100);
-        return sendJson(res, {
-          logs: readDispatchLog(config.memoryDir).slice(-100).reverse(),
-          relay
+        return sendJson(res, getDashboardDispatch(config.memoryDir));
+      }
+      if (req.method === "GET" && url.pathname === "/api/detect") {
+        return sendJson(res, { tools: detectTools(config.memoryDir) });
+      }
+      if (req.method === "GET" && url.pathname === "/api/health") {
+        const result = spawnSync("node", [__filename, "health"], {
+          cwd: process.cwd(),
+          env: { ...process.env, [MEMORY_DIR_ENV]: config.memoryDir },
+          encoding: "utf8",
+          timeout: 30000
         });
+        return sendJson(res, {
+          stdout: result.stdout,
+          stderr: result.stderr,
+          exitCode: result.status
+        });
+      }
+      if (req.method === "GET" && url.pathname === "/api/detect") {
+        return sendJson(res, { tools: detectTools(config.memoryDir) });
       }
       if (req.method === "POST" && url.pathname === "/api/record") {
         const body = await readRequestJson(req);
@@ -4114,6 +4117,7 @@ function appCommand(argv) {
           "--kind",
           body.kind || "note"
         ]);
+        broadcastDashboardUpdate("record");
         return sendJson(res, { ok: true, status: getStatusObject() });
       }
       if (req.method === "POST" && url.pathname === "/api/radio/send") {
@@ -4131,6 +4135,7 @@ function appCommand(argv) {
           project: body.project || path.basename(process.cwd())
         });
         appendJsonl(path.join(config.memoryDir, "radio", "messages.jsonl"), message);
+        broadcastDashboardUpdate("radio:send");
         return sendJson(res, { ok: true, message, status: getStatusObject() });
       }
       if (req.method === "POST" && url.pathname === "/api/task/add") {
@@ -4153,6 +4158,7 @@ function appCommand(argv) {
           tasks.push(task);
           writeTasks(config.memoryDir, tasks);
         }, config.sync.lockStaleMs);
+        broadcastDashboardUpdate("task:add");
         return sendJson(res, { ok: true, task, status: getStatusObject() });
       }
       if (req.method === "POST" && url.pathname === "/api/task/claim") {
@@ -4175,6 +4181,7 @@ function appCommand(argv) {
             ]
           }));
         }, config.sync.lockStaleMs);
+        broadcastDashboardUpdate("task:claim");
         return sendJson(res, { ok: true, task, status: getStatusObject() });
       }
       if (req.method === "POST" && url.pathname === "/api/task/status") {
@@ -4207,6 +4214,7 @@ function appCommand(argv) {
             };
           });
         }, config.sync.lockStaleMs);
+        broadcastDashboardUpdate("task:status");
         return sendJson(res, { ok: true, task, status: getStatusObject() });
       }
       if (req.method === "POST" && url.pathname === "/api/task/review") {
@@ -4269,6 +4277,7 @@ function appCommand(argv) {
           }
           workflows = workflows.filter((workflow) => (workflow.linkedTasks || []).includes(task.id));
         }, config.sync.lockStaleMs);
+        broadcastDashboardUpdate("task:review");
         return sendJson(res, { ok: true, task, workflows, status: getStatusObject() });
       }
       if (req.method === "POST" && url.pathname === "/api/dispatch/run") {
@@ -4281,6 +4290,7 @@ function appCommand(argv) {
           project: body.project || "",
           limit: Number(body.limit || 10)
         });
+        broadcastDashboardUpdate("dispatch:run");
         return sendJson(res, { ok: true, results, status: getStatusObject() });
       }
       if (req.method === "POST" && url.pathname === "/api/dispatch/marvis") {
@@ -4320,6 +4330,7 @@ function appCommand(argv) {
           writeTasks(config.memoryDir, tasks);
         }, config.sync.lockStaleMs);
 
+        broadcastDashboardUpdate("dispatch:marvis");
         return sendJson(res, {
           ok: true,
           message,
@@ -4333,14 +4344,17 @@ function appCommand(argv) {
           return sendJson(res, { error: "id is required" }, 400);
         }
         radioPromoteCommand(["--id", body.id]);
+        broadcastDashboardUpdate("radio:promote");
         return sendJson(res, { ok: true, status: getStatusObject() });
       }
       if (req.method === "POST" && url.pathname === "/api/sync") {
         syncCommand([]);
+        broadcastDashboardUpdate("sync");
         return sendJson(res, { ok: true, status: getStatusObject() });
       }
       if (req.method === "POST" && url.pathname === "/api/pull") {
         pullCommand([]);
+        broadcastDashboardUpdate("pull");
         return sendJson(res, { ok: true, status: getStatusObject() });
       }
       if (req.method === "GET" && url.pathname === "/api/install/preview") {
@@ -4391,6 +4405,7 @@ function appCommand(argv) {
         
         ensureDir(path.dirname(target.file));
         appendIfMissing(target.file, snippet, "Shared AI Memory");
+        broadcastDashboardUpdate("install:apply");
         return sendJson(res, { success: true, file: target.file });
       }
       return sendJson(res, { error: "not found" }, 404);
@@ -4399,9 +4414,311 @@ function appCommand(argv) {
     }
   });
 
+  server.on("upgrade", (req, socket) => {
+    realtime.handleUpgrade(req, socket, host, port);
+  });
+
+  const stopDashboardWatcher = watchDashboardState(config.memoryDir, broadcastDashboardUpdate);
+  server.on("close", () => {
+    stopDashboardWatcher();
+    realtime.close();
+  });
+
   server.listen(port, host, () => {
     console.log(`AI Memory Hub app: http://${host}:${port}`);
   });
+}
+
+function getDashboardSnapshot(memoryDir) {
+  return {
+    type: "snapshot",
+    ts: new Date().toISOString(),
+    status: getStatusObject(),
+    memory: getDashboardMemory(memoryDir),
+    radio: getDashboardRadio(memoryDir),
+    tasks: getDashboardTasks(memoryDir),
+    workflows: getDashboardWorkflows(memoryDir),
+    dispatch: getDashboardDispatch(memoryDir)
+  };
+}
+
+function getDashboardMemory(memoryDir) {
+  return {
+    memory: readTextIfExists(path.join(memoryDir, "MEMORY.md")),
+    profile: readTextIfExists(path.join(memoryDir, "profile.md")),
+    pending: readEvents(path.join(memoryDir, "inbox", "events.jsonl"))
+  };
+}
+
+function getDashboardRadio(memoryDir) {
+  return {
+    messages: readRadioMessages(memoryDir).slice(-50)
+  };
+}
+
+function getDashboardTasks(memoryDir, status = "all") {
+  return {
+    tasks: readTasks(memoryDir)
+      .filter((task) => status === "all" ? true : status === "active" ? !["done", "cancelled"].includes(task.status) : task.status === status)
+      .sort((a, b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")))
+      .slice(0, 200)
+  };
+}
+
+function getDashboardWorkflows(memoryDir) {
+  return {
+    workflows: readWorkflows(memoryDir)
+      .sort((a, b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")))
+      .slice(0, 100)
+  };
+}
+
+function getDashboardDispatch(memoryDir) {
+  const relay = Object.values(readLatestRelayStatusByThread(memoryDir))
+    .sort((a, b) => String(b.ts || "").localeCompare(String(a.ts || "")))
+    .slice(0, 100);
+  return {
+    logs: readDispatchLog(memoryDir).slice(-100).reverse(),
+    relay
+  };
+}
+
+function createDashboardRealtime(memoryDir) {
+  const clients = new Set();
+  let sequence = 0;
+  const heartbeat = setInterval(() => {
+    for (const client of clients) {
+      sendWebSocketFrame(client.socket, 0x9, Buffer.from(new Date().toISOString(), "utf8"));
+    }
+  }, 30000);
+  heartbeat.unref?.();
+
+  function handleUpgrade(req, socket, host, port) {
+    let url;
+    try {
+      url = new URL(req.url || "/", `http://${host}:${port}`);
+    } catch {
+      socket.write("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n");
+      socket.destroy();
+      return;
+    }
+
+    if (url.pathname !== "/ws") {
+      socket.write("HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n");
+      socket.destroy();
+      return;
+    }
+
+    const key = req.headers["sec-websocket-key"];
+    const upgrade = String(req.headers.upgrade || "").toLowerCase();
+    if (upgrade !== "websocket" || !key || Array.isArray(key)) {
+      socket.write("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n");
+      socket.destroy();
+      return;
+    }
+
+    const accept = crypto.createHash("sha1")
+      .update(`${key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`)
+      .digest("base64");
+    socket.write([
+      "HTTP/1.1 101 Switching Protocols",
+      "Upgrade: websocket",
+      "Connection: Upgrade",
+      `Sec-WebSocket-Accept: ${accept}`,
+      "",
+      ""
+    ].join("\r\n"));
+
+    const client = { socket };
+    clients.add(client);
+    socket.setNoDelay(true);
+    socket.setKeepAlive(true);
+    socket.on("data", (chunk) => handleIncomingWebSocketData(client, chunk));
+    socket.on("close", () => clients.delete(client));
+    socket.on("error", () => clients.delete(client));
+
+    sendWebSocketJson(client, {
+      type: "hello",
+      sequence: ++sequence,
+      heartbeatMs: 30000,
+      snapshot: getDashboardSnapshot(memoryDir)
+    });
+  }
+
+  function broadcastSnapshot(reason = "change") {
+    if (clients.size === 0) {
+      return;
+    }
+    const message = {
+      type: "snapshot",
+      sequence: ++sequence,
+      reason,
+      snapshot: getDashboardSnapshot(memoryDir)
+    };
+    for (const client of [...clients]) {
+      sendWebSocketJson(client, message);
+    }
+  }
+
+  function close() {
+    clearInterval(heartbeat);
+    for (const client of [...clients]) {
+      try {
+        sendWebSocketFrame(client.socket, 0x8);
+        client.socket.end();
+      } catch {
+        client.socket.destroy();
+      }
+    }
+    clients.clear();
+  }
+
+  return { handleUpgrade, broadcastSnapshot, close };
+}
+
+function handleIncomingWebSocketData(client, chunk) {
+  let offset = 0;
+  while (offset + 2 <= chunk.length) {
+    const first = chunk[offset++];
+    const second = chunk[offset++];
+    const opcode = first & 0x0f;
+    const masked = (second & 0x80) !== 0;
+    let length = second & 0x7f;
+
+    if (length === 126) {
+      if (offset + 2 > chunk.length) return;
+      length = chunk.readUInt16BE(offset);
+      offset += 2;
+    } else if (length === 127) {
+      if (offset + 8 > chunk.length) return;
+      const bigLength = chunk.readBigUInt64BE(offset);
+      offset += 8;
+      if (bigLength > BigInt(Number.MAX_SAFE_INTEGER)) return;
+      length = Number(bigLength);
+    }
+
+    let mask = null;
+    if (masked) {
+      if (offset + 4 > chunk.length) return;
+      mask = chunk.subarray(offset, offset + 4);
+      offset += 4;
+    }
+
+    if (offset + length > chunk.length) return;
+    const payload = Buffer.from(chunk.subarray(offset, offset + length));
+    offset += length;
+    if (mask) {
+      for (let index = 0; index < payload.length; index++) {
+        payload[index] ^= mask[index % 4];
+      }
+    }
+
+    if (opcode === 0x8) {
+      sendWebSocketFrame(client.socket, 0x8, payload);
+      client.socket.end();
+      return;
+    }
+    if (opcode === 0x9) {
+      sendWebSocketFrame(client.socket, 0xA, payload);
+    }
+  }
+}
+
+function sendWebSocketJson(client, value) {
+  try {
+    sendWebSocketFrame(client.socket, 0x1, Buffer.from(JSON.stringify(value), "utf8"));
+  } catch {
+    client.socket.destroy();
+  }
+}
+
+function sendWebSocketFrame(socket, opcode, payload = Buffer.alloc(0)) {
+  if (!socket.writable) {
+    return;
+  }
+  const body = Buffer.isBuffer(payload) ? payload : Buffer.from(String(payload), "utf8");
+  let header;
+  if (body.length < 126) {
+    header = Buffer.alloc(2);
+    header[1] = body.length;
+  } else if (body.length <= 0xffff) {
+    header = Buffer.alloc(4);
+    header[1] = 126;
+    header.writeUInt16BE(body.length, 2);
+  } else {
+    header = Buffer.alloc(10);
+    header[1] = 127;
+    header.writeBigUInt64BE(BigInt(body.length), 2);
+  }
+  header[0] = 0x80 | (opcode & 0x0f);
+  socket.write(Buffer.concat([header, body]));
+}
+
+function watchDashboardState(memoryDir, onChange) {
+  const watchedFiles = new Set([
+    "MEMORY.md",
+    "profile.md",
+    "config.json",
+    "events.jsonl",
+    "messages.jsonl",
+    "tasks.jsonl",
+    "workflows.jsonl",
+    "dispatch-log.jsonl",
+    "dispatch-runs.jsonl",
+    "relay-status.jsonl"
+  ]);
+  const dirs = [
+    memoryDir,
+    path.join(memoryDir, "inbox"),
+    path.join(memoryDir, "radio"),
+    path.join(memoryDir, "tasks"),
+    path.join(memoryDir, "workflows"),
+    path.join(memoryDir, "state")
+  ];
+  const watchers = [];
+  let timer = null;
+  let pendingReason = "";
+
+  const schedule = (reason) => {
+    pendingReason = reason || pendingReason || "file-change";
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      const reasonToSend = pendingReason || "file-change";
+      pendingReason = "";
+      onChange(reasonToSend);
+    }, 150);
+    timer.unref?.();
+  };
+
+  for (const dir of dirs) {
+    if (!fs.existsSync(dir)) {
+      continue;
+    }
+    try {
+      const watcher = fs.watch(dir, { persistent: false }, (_event, filename) => {
+        const name = filename ? String(filename) : "";
+        if (!name || watchedFiles.has(path.basename(name))) {
+          schedule(name ? `file:${name}` : `file:${path.basename(dir)}`);
+        }
+      });
+      watcher.on("error", () => {});
+      watcher.unref?.();
+      watchers.push(watcher);
+    } catch {
+      // The dashboard can still use explicit API broadcasts if fs.watch is unavailable.
+    }
+  }
+
+  return () => {
+    clearTimeout(timer);
+    for (const watcher of watchers) {
+      try {
+        watcher.close();
+      } catch {
+        // Ignore shutdown races.
+      }
+    }
+  };
 }
 
 function installCommand(argv) {
@@ -5264,7 +5581,32 @@ function getInstallTargets(memoryDir) {
 }
 
 function renderDashboard() {
-  return readTemplate("dashboard.html");
+  return readTemplate("dashboard-v2.html");
+}
+
+function sendStaticFile(res, pathname) {
+  const publicDir = path.join(__dirname, "..", "public");
+  const filePath = path.join(publicDir, pathname);
+
+  if (!fs.existsSync(filePath)) {
+    res.writeHead(404, { "Content-Type": "text/plain" });
+    res.end("Not Found");
+    return;
+  }
+
+  const ext = path.extname(filePath);
+  const contentTypeMap = {
+    ".css": "text/css; charset=utf-8",
+    ".js": "application/javascript; charset=utf-8",
+    ".json": "application/json; charset=utf-8"
+  };
+
+  const content = fs.readFileSync(filePath, "utf8");
+  res.writeHead(200, {
+    "Content-Type": contentTypeMap[ext] || "text/plain",
+    "Cache-Control": "public, max-age=3600"
+  });
+  res.end(content);
 }
 
 function sendHtml(res, html) {

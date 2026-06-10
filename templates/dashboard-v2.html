@@ -1,0 +1,1497 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Memory Hub Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://fastly.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+</head>
+  <link rel="stylesheet" href="/css/dashboard.css">
+<body>
+  <aside id="sidebar">
+    <div class="app-logo">
+      <div class="icon">
+        <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" style="width: 85%; height: 85%;">
+          <defs>
+            <filter id="coreGlow" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="2.5" result="blur"/>
+              <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+            </filter>
+            <linearGradient id="coreGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" style="stop-color:#00f2fe;stop-opacity:1" />
+              <stop offset="100%" style="stop-color:#4facfe;stop-opacity:1" />
+            </linearGradient>
+          </defs>
+          <!-- 背景连接线 -->
+          <g stroke="url(#coreGrad)" stroke-width="1.5" opacity="0.4">
+            <path d="M50 15 L80 32.5 L80 67.5 L50 85 L20 67.5 L20 32.5 Z" fill="none" />
+            <path d="M50 15 L50 85 M20 32.5 L80 67.5 M20 67.5 L80 32.5" fill="none" />
+            <circle cx="50" cy="50" r="18" fill="none" stroke-dasharray="2 4" />
+          </g>
+          <!-- 核心量子节点 -->
+          <g fill="#fff" filter="url(#coreGlow)">
+            <circle cx="50" cy="15" r="4" />
+            <circle cx="80" cy="32.5" r="4" />
+            <circle cx="80" cy="67.5" r="4" />
+            <circle cx="50" cy="85" r="4" />
+            <circle cx="20" cy="67.5" r="4" />
+            <circle cx="20" cy="32.5" r="4" />
+            <circle cx="50" cy="50" r="7" />
+          </g>
+          <!-- 动态环绕 -->
+          <circle cx="50" cy="50" r="40" fill="none" stroke="#00f2fe" stroke-width="1" stroke-dasharray="10 20" opacity="0.3">
+            <animateTransform attributeName="transform" type="rotate" from="0 50 50" to="360 50 50" dur="10s" repeatCount="indefinite" />
+          </circle>
+        </svg>
+      </div>
+      <h1>AI Memory Hub</h1>
+    </div>
+    <nav>
+      <div class="nav-item active" onclick="switchTab('dashboard')" data-i18n="overview">📊 Overview</div>
+      <div class="nav-item" onclick="switchTab('memory')">🧠 <span data-i18n="memoryHub">Memory Hub</span> <span class="badge" id="sidebarPending">0</span></div>
+      <div class="nav-item" onclick="switchTab('radio')">📻 <span data-i18n="agentRadio">Agent Radio</span> <span class="badge" id="sidebarRadio">0</span></div>
+      <div class="nav-item" onclick="switchTab('tasks')">📋 <span data-i18n="tasksBoard">Tasks Board</span> <span class="badge" id="sidebarTasks">0</span></div>
+      <div class="nav-item" onclick="switchTab('dispatch')" data-i18n="dispatchLogs">⚡ Dispatch Logs</div>
+      <div class="nav-item" onclick="switchTab('workflows')">🔄 <span data-i18n="workflowsPanel">Workflows</span> <span class="badge" id="sidebarWorkflows">0</span></div>
+      <div class="nav-item" onclick="switchTab('analytics')" data-i18n="analyticsPanel">📈 Analytics</div>
+      <div class="nav-item" onclick="switchTab('settings')">⚙️ <span data-i18n="settingsPanel">Settings</span></div>
+      <div class="nav-item" onclick="switchTab('health')">💊 <span data-i18n="healthPanel">Health</span></div>
+      <div class="nav-item" onclick="switchTab('search')">🔍 <span data-i18n="searchPanel">Search</span></div>
+      <div class="nav-item" onclick="switchTab('tools')">🔧 <span data-i18n="toolsPanel">Tools</span></div>
+    </nav>
+
+    <div class="tools-matrix">
+      <h3 data-i18n="detectedTools">Detected Tools</h3>
+      <div class="tools-list" id="detectedTools">
+        <div class="muted" style="font-size:11px;padding:4px;" data-i18n="scanning">Scanning...</div>
+      </div>
+    </div>
+  </aside>
+
+  <div class="container">
+    <header>
+      <div class="header-left">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <button id="sidebarToggle" class="btn small" style="display:none;" onclick="toggleSidebar()">☰</button>
+          <h2 style="margin:0;font-size:18px;font-weight:600;" data-i18n="operations">Hub Operations</h2>
+        </div>
+        <div class="workspace-info">
+          <span data-i18n="storage">Storage:</span><code id="memoryDir">loading...</code>
+        </div>
+      </div>
+      <div class="header-actions">
+        <div class="refresh-widget">
+          <span data-i18n="autoRefresh">Auto-refresh:</span>
+          <label class="switch">
+            <input type="checkbox" id="autoRefreshCheckbox" checked onchange="toggleAutoRefresh(this.checked)">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <button onclick="toggleLanguage()" class="btn" id="btnLang">🌐 EN</button>
+        <button onclick="refreshData()" class="btn" id="btnRefresh" data-i18n="refresh">Refresh</button>
+        <button onclick="runPull()" class="btn" id="btnPull" data-i18n="rebuild">Rebuild Snapshot</button>
+        <button onclick="runSync()" class="primary" id="btnSync" data-i18n="syncInbox">Sync Inbox</button>
+      </div>
+    </header>
+
+    <main>
+      <div id="endpointErrors" class="endpoint-errors" hidden></div>
+
+      <!-- Dashboard Overview Tab -->
+      <div id="tab-dashboard" class="tab-panel active">
+        <div class="summary-grid">
+          <div class="summary-card">
+            <span data-i18n="activeTasks">Active Tasks</span>
+            <strong id="cardActiveTasks">0</strong>
+          </div>
+          <div class="summary-card">
+            <span data-i18n="pendingEvents">Pending Events</span>
+            <strong id="cardPending">0</strong>
+          </div>
+          <div class="summary-card">
+            <span data-i18n="radioMessages">Radio Messages</span>
+            <strong id="cardRadio">0</strong>
+          </div>
+          <div class="summary-card">
+            <span data-i18n="durableLedger">Durable Ledger</span>
+            <strong id="cardLedger">0</strong>
+          </div>
+          <div class="summary-card">
+            <span data-i18n="backups">Backups</span>
+            <strong id="cardBackups">0</strong>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-bottom:24px;">
+          <div class="panel-header">
+            <h3 class="panel-title" data-i18n="workflowStages">Workflow Stages</h3>
+            <button class="btn small" onclick="switchTab('dispatch')" data-i18n="relayStatus">Relay Status</button>
+          </div>
+          <div class="workflow-stage-strip" id="workflowStageStrip">
+            <div class="muted" data-i18n="noWorkflows">No workflows recorded.</div>
+          </div>
+          <div class="workflow-list" id="workflowList"></div>
+        </div>
+
+        <div class="dashboard-grid">
+          <div class="panel">
+            <div class="panel-header">
+              <h3 class="panel-title" data-i18n="activeTasksKanban">⭐ Active Tasks Kanban</h3>
+              <button class="btn small" onclick="switchTab('tasks')" data-i18n="fullBoard">Full Board</button>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:12px;" id="dashboardTasks">
+              <div class="muted" data-i18n="noActiveTasks">No active tasks found.</div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <h3 class="panel-title" data-i18n="liveRadioFeed">📻 Live Radio Feed</h3>
+              <button class="btn small" onclick="switchTab('radio')" data-i18n="agentRadio">Agent Radio</button>
+            </div>
+            <div class="stream" id="dashboardRadio">
+              <div class="muted" data-i18n="noRecentMessages">No recent messages.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Memory Hub Tab -->
+      <div id="tab-memory" class="tab-panel">
+        <div class="memory-split">
+          <div class="stack">
+            <div class="panel">
+              <div class="panel-header">
+                <h3 class="panel-title" data-i18n="recordMemory">Record Memory</h3>
+              </div>
+              <div class="form-group">
+                <label data-i18n="textLabel">Text</label>
+                <textarea id="memText" data-i18n-placeholder="placeholderMemText" placeholder="Record user preference, workflow rule, or important project fact."></textarea>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label data-i18n="kindLabel">Kind</label>
+                  <select id="memKind">
+                    <option value="preference" data-i18n="prefOpt">Preference</option>
+                    <option value="workflow" data-i18n="workOpt">Workflow</option>
+                    <option value="project" data-i18n="projOpt">Project</option>
+                    <option value="correction" data-i18n="corrOpt">Correction</option>
+                    <option value="note" selected data-i18n="noteOpt">Note</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label data-i18n="sourceLabel">Source</label>
+                  <input type="text" id="memSource" value="dashboard">
+                </div>
+              </div>
+              <button class="primary" onclick="submitMemory()" data-i18n="recordDurable">Record Durable Event</button>
+            </div>
+
+            <div class="panel">
+              <div class="panel-header">
+                <h3 class="panel-title" data-i18n="inboxPendingSync">Inbox Events (Pending Sync)</h3>
+              </div>
+              <div style="max-height:300px;overflow-y:auto;">
+                <table style="width:100%;font-size:12px;">
+                  <thead>
+                    <tr><th data-i18n="sourceLabel">Source</th><th data-i18n="textLabel">Event</th></tr>
+                  </thead>
+                  <tbody id="inboxTable">
+                    <tr><td colspan="2" class="muted" data-i18n="noPendingTable">No pending events.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <div style="display:flex;gap:12px;">
+                <button class="btn small primary" onclick="switchMemorySubTab('md')">MEMORY.md</button>
+                <button class="btn small" onclick="switchMemorySubTab('profile')">profile.md</button>
+              </div>
+              <button class="btn small" onclick="runPull()" data-i18n="pullIndex">Pull & Index</button>
+            </div>
+            <div id="memorySubTab-md" class="markdown-container">
+              <pre id="memoryRaw" class="muted">Loading MEMORY.md...</pre>
+            </div>
+            <div id="memorySubTab-profile" class="markdown-container" style="display:none;">
+              <pre id="profileRaw" class="muted">Loading profile.md...</pre>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Agent Radio Tab -->
+      <div id="tab-radio" class="tab-panel">
+        <div class="memory-split">
+          <div class="panel">
+            <div class="panel-header">
+              <h3 class="panel-title" data-i18n="broadcastMessage">Broadcast Message</h3>
+            </div>
+            <div class="form-group">
+              <label data-i18n="messageContent">Message Content</label>
+              <textarea id="radText" data-i18n-placeholder="placeholderRadText" placeholder="Broadcast a handoff note, review request, or risk flag."></textarea>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label data-i18n="fromLabel">From</label>
+                <input type="text" id="radFrom" value="dashboard">
+              </div>
+              <div class="form-group">
+                <label data-i18n="toLabel">To</label>
+                <input type="text" id="radTo" value="all">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label data-i18n="typeLabel">Type</label>
+                <select id="radType">
+                  <option value="note" selected data-i18n="noteOpt">Note</option>
+                  <option value="review" data-i18n="revOpt">Review</option>
+                  <option value="handoff" data-i18n="handOpt">Handoff</option>
+                  <option value="risk" data-i18n="riskOpt">Risk</option>
+                  <option value="done" data-i18n="doneOpt">Done</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label data-i18n="projectLabel">Project</label>
+                <select id="radProject" onchange="toggleCustomProjectInput('rad')">
+                  <option value="" data-i18n="selectProject">Select Project</option>
+                  <option value="__custom__" data-i18n="customProject">Custom Project</option>
+                </select>
+                <input type="text" id="radProjectCustom" data-i18n-placeholder="projectLabel" placeholder="Project name" style="display:none;margin-top:8px;">
+              </div>
+            </div>
+            <button class="primary" onclick="submitRadio()" data-i18n="broadcast">Broadcast Message</button>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <h3 class="panel-title" data-i18n="radioStream">Radio Stream</h3>
+            </div>
+            <div class="filter-strip">
+              <input type="text" id="filterRadioQuery" data-i18n-placeholder="searchText" placeholder="Search text..." oninput="applyRadioFilters()">
+              <select id="filterRadioFromOpt" onchange="applyRadioFilters()">
+                <option value="" data-i18n="senderAll">Sender: All</option>
+              </select>
+              <select id="filterRadioToOpt" onchange="applyRadioFilters()">
+                <option value="" data-i18n="recipientAll">Recipient: All</option>
+              </select>
+              <select id="filterRadioTypeOpt" onchange="applyRadioFilters()">
+                <option value="" data-i18n="typeAll">Type: All</option>
+                <option value="note" data-i18n="noteOpt">Note</option>
+                <option value="review" data-i18n="revOpt">Review</option>
+                <option value="handoff" data-i18n="handOpt">Handoff</option>
+                <option value="risk" data-i18n="riskOpt">Risk</option>
+                <option value="done" data-i18n="doneOpt">Done</option>
+              </select>
+            </div>
+            <div class="stream" id="radioFeed">
+              <div class="muted" data-i18n="noRadioMessages">No radio messages.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tasks Board Tab -->
+      <div id="tab-tasks" class="tab-panel">
+        <div class="panel">
+          <div class="panel-header">
+            <h3 class="panel-title" data-i18n="addTask">Add Shared Task</h3>
+          </div>
+          <div class="form-row">
+            <div class="form-group" style="grid-column: span 2;">
+              <label data-i18n="taskTitleLabel">Task Title</label>
+              <input type="text" id="tskTitle" data-i18n-placeholder="placeholderTskTitle" placeholder="Task summary or requirement">
+            </div>
+            <div class="form-group">
+              <label data-i18n="projectLabel">Project</label>
+              <select id="tskProject" onchange="toggleCustomProjectInput('tsk')">
+                <option value="default">default</option>
+                <option value="__custom__" data-i18n="customProject">Custom Project</option>
+              </select>
+              <input type="text" id="tskProjectCustom" data-i18n-placeholder="projectLabel" placeholder="Project name" style="display:none;margin-top:8px;">
+            </div>
+            <div class="form-group">
+              <label data-i18n="priorityLabel">Priority</label>
+              <select id="tskPriority">
+                <option value="normal" selected data-i18n="normOpt">Normal</option>
+                <option value="low" data-i18n="lowOpt">Low</option>
+                <option value="high" data-i18n="highOpt">High</option>
+                <option value="urgent" data-i18n="urgOpt">Urgent</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group" style="grid-column: span 3;">
+              <label data-i18n="descriptionLabel">Description / Details</label>
+              <textarea id="tskDesc" data-i18n-placeholder="placeholderTskDesc" placeholder="Goal: ... Scope: ... Acceptance: ..."></textarea>
+            </div>
+            <div class="form-group">
+              <label data-i18n="handoffStatusLabel">Handoff Status (Optional)</label>
+              <textarea id="tskHandoff" data-i18n-placeholder="placeholderTskHandoff" placeholder="Current state, next step, owner, risks..."></textarea>
+            </div>
+          </div>
+          <button class="primary" onclick="submitTask()" data-i18n="addTaskButton">Add task to ledger</button>
+        </div>
+
+        <div class="filter-strip">
+          <span data-i18n="filterProject">Filter Project:</span>
+          <select id="filterTaskProject" onchange="renderTasksList()">
+            <option value="" data-i18n="allProjects">All Projects</option>
+          </select>
+          <span data-i18n="filterPriority">Filter Priority:</span>
+          <select id="filterTaskPriority" onchange="renderTasksList()">
+            <option value="" data-i18n="allPriorities">All Priorities</option>
+            <option value="low" data-i18n="lowOpt">Low</option>
+            <option value="normal" data-i18n="normOpt">Normal</option>
+            <option value="high" data-i18n="highOpt">High</option>
+            <option value="urgent" data-i18n="urgOpt">Urgent</option>
+          </select>
+        </div>
+
+        <div class="tasks-grid">
+          <!-- Column 1: Open -->
+          <div class="tasks-column">
+            <div class="column-header">
+              <span>OPEN</span>
+              <span class="badge status-open" id="countOpen">0</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:12px;" id="col-open"></div>
+          </div>
+
+          <!-- Column 2: Claimed & In Progress & Blocked -->
+          <div class="tasks-column">
+            <div class="column-header">
+              <span>ACTIVE</span>
+              <span class="badge status-in_progress" id="countActive">0</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:12px;" id="col-active"></div>
+          </div>
+
+          <!-- Column 3: Done & Cancelled -->
+          <div class="tasks-column">
+            <div class="column-header">
+              <span>COMPLETED</span>
+              <span class="badge status-done" id="countCompleted">0</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:12px;" id="col-completed"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Workflows Tab -->
+      <div id="tab-workflows" class="tab-panel">
+        <div class="panel">
+          <div class="panel-header">
+            <h3 class="panel-title">🔄 Workflow Management</h3>
+            <button class="primary" onclick="createWorkflow()">+ New Workflow</button>
+          </div>
+          <div class="workflow-list" id="workflowsList">
+            <div class="muted">Loading workflows...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Dispatch Logs Tab -->
+      <div id="tab-dispatch" class="tab-panel">
+        <div class="panel">
+          <div class="panel-header">
+            <h3 class="panel-title" data-i18n="automatedDispatcher">Automated Dispatcher (Cron / Watcher Dispatch Logs)</h3>
+            <button class="primary" onclick="triggerDispatcher()" id="btnTriggerDispatch" data-i18n="triggerDispatch">Trigger Dispatch Now</button>
+          </div>
+          <h4 style="margin:0 0 10px 0;" data-i18n="relayStatus">Relay Status</h4>
+          <div class="dispatch-log-list" id="dispatchRelay">
+            <div class="muted" data-i18n="noDispatcherEvents">No dispatcher events recorded yet.</div>
+          </div>
+          <h4 style="margin:18px 0 10px 0;" data-i18n="executionLogs">Execution Logs</h4>
+          <div class="dispatch-log-list" id="dispatchLogs">
+            <div class="muted" data-i18n="noDispatch">No dispatch logs found.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Analytics Tab -->
+      <div id="tab-analytics" class="tab-panel">
+        <div class="dashboard-grid">
+          <div class="panel">
+            <div class="panel-header">
+              <h3 class="panel-title" data-i18n="memoryGrowthTrend">🧠 Memory Growth Trend</h3>
+            </div>
+            <div id="chartMemoryGrowth" style="height: 300px; width: 100%;"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-header">
+              <h3 class="panel-title" data-i18n="taskCompletionRate">📋 Task Completion Rate</h3>
+            </div>
+            <div id="chartTaskCompletion" style="height: 300px; width: 100%;"></div>
+          </div>
+        </div>
+        <div class="panel" style="margin-top: 24px;">
+          <div class="panel-header">
+            <h3 class="panel-title" data-i18n="radioActivity">📻 Radio Activity</h3>
+          </div>
+          <div id="chartRadioActivity" style="height: 340px; width: 100%;"></div>
+        </div>
+      </div>
+
+      <!-- Settings Tab -->
+      <div id="tab-settings" class="tab-panel">
+        <div class="panel">
+          <div class="panel-header">
+            <h3 class="panel-title">⚙️ System Settings</h3>
+          </div>
+
+          <div class="form-group">
+            <label>Snapshot Limit</label>
+            <input type="number" id="settingSnapshotLimit" value="200" min="50" max="500">
+            <small style="color:var(--text-muted)">Max records in MEMORY.md (current: 200)</small>
+          </div>
+
+          <div class="form-group">
+            <label>Auto Refresh Interval (seconds)</label>
+            <input type="number" id="settingRefreshInterval" value="5" min="1" max="60">
+          </div>
+
+          <div class="form-group">
+            <label>Theme</label>
+            <select id="settingTheme">
+              <option value="dark" selected>Dark Mode</option>
+              <option value="light">Light Mode (Coming Soon)</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>Language</label>
+            <select id="settingLanguage">
+              <option value="zh">中文</option>
+              <option value="en">English</option>
+            </select>
+          </div>
+
+          <button class="primary" onclick="saveSettings()">Save Settings</button>
+        </div>
+      </div>
+
+      <!-- Tools Tab -->
+      <div id="tab-tools" class="tab-panel">
+        <div class="summary-grid">
+          <div class="summary-card">
+            <span>Connected Tools</span>
+            <strong id="toolsConnected">0</strong>
+          </div>
+          <div class="summary-card">
+            <span>Runnable</span>
+            <strong id="toolsRunnable">0</strong>
+          </div>
+          <div class="summary-card">
+            <span>CLI Tools</span>
+            <strong id="toolsCLI">0</strong>
+          </div>
+          <div class="summary-card">
+            <span>Apps</span>
+            <strong id="toolsApps">0</strong>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header">
+            <h3 class="panel-title">🔧 Tool Management</h3>
+            <button class="primary" onclick="refreshTools()">Refresh</button>
+          </div>
+          <div id="toolsGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:16px;">
+            <div class="muted">Loading tools...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Search Tab -->
+      <div id="tab-search" class="tab-panel">
+        <div class="panel">
+          <div class="panel-header">
+            <h3 class="panel-title">🔍 Global Search</h3>
+          </div>
+          <div class="form-group">
+            <input type="text" id="searchQuery" placeholder="Search across memories, tasks, and messages..." onkeyup="if(event.key==='Enter')performSearch()">
+          </div>
+          <div class="filter-strip">
+            <select id="searchType">
+              <option value="all">All</option>
+              <option value="memory">Memories</option>
+              <option value="task">Tasks</option>
+              <option value="radio">Radio Messages</option>
+            </select>
+            <button class="primary" onclick="performSearch()">Search</button>
+          </div>
+          <div id="searchResults">
+            <div class="muted">Enter a query to search...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Health Tab -->
+      <div id="tab-health" class="tab-panel">
+        <div class="panel">
+          <div class="panel-header">
+            <h3 class="panel-title">💊 System Health Report</h3>
+            <button class="primary" onclick="runHealthCheck()">Run Health Check</button>
+          </div>
+          <div id="healthReport">
+            <div class="muted">Click "Run Health Check" to generate report...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Compatibility & Raw JSON section for Scraper bots -->
+      <details class="panel" style="margin-top:24px;">
+        <summary style="cursor:pointer; font-weight:600; color:var(--text-muted);" data-i18n="rawCompatibility">🛠️ Raw JSON / Compatibility Data</summary>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:16px;">
+          <div>
+            <h4>Shared Snapshot (MEMORY.md)</h4>
+            <pre id="memory" style="font-family:var(--font-mono); font-size:12px; background:var(--bg-main); padding:12px; border:1px solid var(--border-color); border-radius:6px; max-height:300px; overflow:auto;"></pre>
+          </div>
+          <div>
+            <h4>Pending Inbox</h4>
+            <pre id="pendingJson" style="font-family:var(--font-mono); font-size:12px; background:var(--bg-main); padding:12px; border:1px solid var(--border-color); border-radius:6px; max-height:300px; overflow:auto;"></pre>
+          </div>
+          <div>
+            <h4>Active Tasks</h4>
+            <pre id="tasksJson" style="font-family:var(--font-mono); font-size:12px; background:var(--bg-main); padding:12px; border:1px solid var(--border-color); border-radius:6px; max-height:300px; overflow:auto;"></pre>
+          </div>
+          <div>
+            <h4>Agent Radio Messages</h4>
+            <pre id="radioJson" style="font-family:var(--font-mono); font-size:12px; background:var(--bg-main); padding:12px; border:1px solid var(--border-color); border-radius:6px; max-height:300px; overflow:auto;"></pre>
+          </div>
+        </div>
+      </details>
+      
+      <!-- Hidden backward-compatible DOM tags for scrapers -->
+      <div style="display:none;">
+        <div id="statusLine" class="status ok"><span class="dot"></span><span>Local hub ready</span></div>
+        <span id="pending">0</span>
+        <span id="ledger">0</span>
+        <span id="radioCount">0</span>
+        <span id="taskCount">0</span>
+        <span id="backupCount">0</span>
+        <span id="toolCount">0</span>
+      </div>
+    </main>
+  </div>
+
+  <!-- Modal for Tool Interaction & Rule Installation -->
+  <div id="toolModal" class="modal-overlay" style="display:none;" onclick="closeToolModal(event)">
+    <div class="modal-card" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <div class="modal-title-container">
+          <div id="modalToolIcon" style="display:flex; align-items:center; justify-content:center;"></div>
+          <h3 id="modalToolName" style="margin:0; font-size:18px;">Tool Integration</h3>
+        </div>
+        <button class="modal-close" onclick="closeToolModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-section">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <span><strong>Status:</strong> <span id="modalToolStatus"></span></span>
+          </div>
+          <div id="modalToolPath" class="muted" style="font-size:11px; word-break:break-all; line-height:1.6;"></div>
+        </div>
+        <div class="modal-section">
+          <h4 style="margin:0 0 8px 0; font-size:14px; color:var(--accent-purple);">Integration Rule Preview</h4>
+          <pre id="modalToolSnippet" style="font-family:var(--font-mono); font-size:11.5px; background:rgba(0,0,0,0.2); padding:12px; border:1px solid rgba(255,255,255,0.05); border-radius:6px; max-height:220px; overflow:auto; white-space:pre-wrap; word-break:break-all; margin:0; color:#e1e4e8;"></pre>
+        </div>
+        <div class="modal-actions" style="display:flex; gap:12px; justify-content:end;">
+          <button class="btn secondary" id="btnInstallLocal" onclick="applyToolRules('local')">Install Workspace Rules</button>
+          <button class="btn primary" id="btnInstallGlobal" onclick="applyToolRules('global')">Install Global Rules</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Global tool icon and metadata mappings
+    const toolDisplayNames = {
+      en: {
+        'gemini': 'Gemini',
+        'antigravity-gemini': 'Antigravity Gemini',
+        'claude': 'Claude',
+        'claude-desktop': 'Claude Desktop',
+        'chatgpt': 'ChatGPT',
+        'cursor': 'Cursor',
+        'vscode': 'VS Code',
+        'codex': 'Codex',
+        'codex-app': 'Codex App',
+        'windsurf': 'Windsurf',
+        'aider': 'Aider',
+        'marvis': 'Marvis',
+        'qclaw': 'QClaw',
+        'openclaw': 'OpenClaw',
+        'cherry-studio': 'Cherry Studio',
+        'ollama': 'Ollama',
+        'cc-switch': 'CC-Switch',
+        'antigravity': 'Antigravity',
+        'antigravity-cockpit': 'Antigravity Cockpit'
+      },
+      zh: {
+        'gemini': 'Gemini',
+        'antigravity-gemini': 'Antigravity Gemini',
+        'claude': 'Claude',
+        'claude-desktop': 'Claude Desktop',
+        'chatgpt': 'ChatGPT',
+        'cursor': 'Cursor',
+        'vscode': 'VS Code',
+        'codex': 'Codex',
+        'codex-app': 'Codex App',
+        'windsurf': 'Windsurf',
+        'aider': 'Aider',
+        'marvis': 'Marvis',
+        'qclaw': 'QClaw',
+        'openclaw': 'OpenClaw',
+        'cherry-studio': 'Cherry Studio',
+        'ollama': 'Ollama',
+        'cc-switch': 'CC-Switch',
+        'antigravity': 'Antigravity',
+        'antigravity-cockpit': 'Antigravity Cockpit'
+      }
+    };
+
+    const iconAssetVersion = '20260606-app-icons-v2';
+
+    const toolIconFiles = {
+      'gemini': '/assets/tool-icons/gemini.png',
+      'antigravity-gemini': '/assets/tool-icons/gemini.png',
+      'claude': '/assets/tool-icons/claude.png',
+      'claude-desktop': '/assets/tool-icons/claude-desktop.png',
+      'chatgpt': '/assets/tool-icons/chatgpt.png',
+      'cursor': '/assets/tool-icons/cursor.png',
+      'vscode': '/assets/tool-icons/vscode.png',
+      'codex': '/assets/tool-icons/codex.png',
+      'codex-app': '/assets/tool-icons/codex-app.png',
+      'windsurf': '/assets/tool-icons/windsurf.png',
+      'aider': '/assets/tool-icons/aider.png',
+      'marvis': '/assets/tool-icons/marvis-app.png',
+      'qclaw': '/assets/tool-icons/qclaw-app.png',
+      'openclaw': '/assets/tool-icons/qclaw-app.png',
+      'cherry-studio': '/assets/tool-icons/cherry-studio.png',
+      'ollama': '/assets/tool-icons/ollama.png',
+      'cc-switch': '/assets/tool-icons/ccswitch-app.png',
+      'antigravity': '/assets/tool-icons/antigravity.png',
+      'antigravity-cockpit': '/assets/tool-icons/antigravity-cockpit.png'
+    };
+
+    const toolKindBadges = {
+      en: {
+        'cli-config': 'CLI',
+        'app-state': 'APP',
+        'editor-state': 'Editor',
+        'extension-state': 'Extension',
+        'skill-config': 'Skill',
+        'local-model-runtime': 'Runtime'
+      },
+      zh: {
+        'cli-config': '命令行',
+        'app-state': '应用',
+        'editor-state': '编辑器',
+        'extension-state': '扩展',
+        'skill-config': '技能',
+        'local-model-runtime': '运行环境'
+      }
+    };
+
+    const toolKindClasses = {
+      'cli-config': 'kind-cli',
+      'app-state': 'kind-app',
+      'editor-state': 'kind-editor',
+      'extension-state': 'kind-extension',
+      'skill-config': 'kind-skill',
+      'local-model-runtime': 'kind-runtime'
+    };
+
+    function getFallbackChar(name) {
+      return (name || '?').charAt(0).toUpperCase();
+    }
+
+    function getFallbackGradient(name) {
+      let hash = 0;
+      for (let i = 0; i < name.length; i++) {
+        hash = name.charCodeAt(i) + ((hash << 5) - hash);
+      }
+      const gradients = [
+        'linear-gradient(135deg, #388bfd, #bc8cff)',
+        'linear-gradient(135deg, #10a37f, #0e7f62)',
+        'linear-gradient(135deg, #ea7a50, #d9531e)',
+        'linear-gradient(135deg, #00f2fe, #4facfe)',
+        'linear-gradient(135deg, #ff4b4b, #a80000)',
+        'linear-gradient(135deg, #ff2a6d, #9b003c)',
+        'linear-gradient(135deg, #f39c12, #d35400)',
+        'linear-gradient(135deg, #bc8cff, #ff79c6)'
+      ];
+      return gradients[Math.abs(hash) % gradients.length];
+    }
+
+    function getToolIconSvg() {
+      return null;
+    }
+
+    const toolKinds = {
+      'gemini': 'cli-config',
+      'antigravity-gemini': 'extension-state',
+      'claude': 'cli-config',
+      'claude-desktop': 'app-state',
+      'chatgpt': 'app-state',
+      'cursor': 'editor-state',
+      'vscode': 'editor-state',
+      'codex': 'cli-config',
+      'codex-app': 'app-state',
+      'windsurf': 'editor-state',
+      'aider': 'cli-config',
+      'marvis': 'app-state',
+      'qclaw': 'app-state',
+      'openclaw': 'app-state',
+      'cherry-studio': 'app-state',
+      'ollama': 'local-model-runtime',
+      'cc-switch': 'app-state',
+      'antigravity': 'cli-config',
+      'antigravity-cockpit': 'app-state'
+    };
+
+    function renderToolIcon(name, size = 18, kind = '') {
+      const cleanName = (name || '').toLowerCase().trim();
+      const iconPath = toolIconFiles[cleanName] || null;
+      const iconSrc = iconPath ? `${iconPath}?v=${iconAssetVersion}` : null;
+      const svg = getToolIconSvg(cleanName);
+      
+      const fallbackContent = svg
+        ? svg
+        : `<div class="tool-icon-fallback" style="background:${getFallbackGradient(cleanName)}; width:100%; height:100%; font-size:${size * 0.55}px;">${getFallbackChar(cleanName)}</div>`;
+
+      // Resolve kind if not passed
+      const resolvedKind = kind || toolKinds[cleanName] || '';
+
+      // Corner badge overlay for CLI vs App variants (render only if size >= 16 to avoid clutter at very small sizes)
+      let cornerBadge = '';
+      if (size >= 16 && resolvedKind) {
+        const badgeSize = size >= 24 ? 14 : 11;
+        const badgeOffset = size >= 24 ? -4 : -3;
+        const bgBorderColor = size >= 24 ? '#0f1423' : '#141b2f';
+        
+        if (resolvedKind === 'cli-config') {
+          // Terminal/CLI Badge: Dark blue circle with terminal prompt vector
+          cornerBadge = `
+            <div class="tool-icon-corner-badge" style="width:${badgeSize}px; height:${badgeSize}px; bottom:${badgeOffset}px; right:${badgeOffset}px; background:#1f6feb; border:1.8px solid ${bgBorderColor}; display:flex; align-items:center; justify-content:center;" title="CLI">
+              <svg viewBox="0 0 10 10" fill="none" style="width:75%; height:75%;"><path d="M2.5 3.5l1.5 1.5-1.5 1.5M4.5 6.5h3" stroke="#fff" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+          `;
+        } else if (['app-state', 'local-model-runtime'].includes(resolvedKind)) {
+          // App Badge: Dark purple circle with desktop screen vector
+          cornerBadge = `
+            <div class="tool-icon-corner-badge" style="width:${badgeSize}px; height:${badgeSize}px; bottom:${badgeOffset}px; right:${badgeOffset}px; background:#8957e5; border:1.8px solid ${bgBorderColor}; display:flex; align-items:center; justify-content:center;" title="App">
+              <svg viewBox="0 0 10 10" fill="none" style="width:70%; height:70%;"><rect x="2" y="2" width="6" height="4.5" rx="0.8" stroke="#fff" stroke-width="0.9"/><path d="M3.5 6.5h3M5 6.3V8" stroke="#fff" stroke-width="0.9" stroke-linecap="round"/></svg>
+            </div>
+          `;
+        } else if (resolvedKind === 'editor-state') {
+          // Editor Badge: Yellow circle with brackets
+          cornerBadge = `
+            <div class="tool-icon-corner-badge" style="width:${badgeSize}px; height:${badgeSize}px; bottom:${badgeOffset}px; right:${badgeOffset}px; background:#d29922; border:1.8px solid ${bgBorderColor}; display:flex; align-items:center; justify-content:center;" title="Editor">
+              <svg viewBox="0 0 10 10" fill="none" style="width:75%; height:75%;"><path d="M3 2.5l-2 2.5 2 2.5M7 2.5l2 2.5-2 2.5" stroke="#fff" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+          `;
+        } else if (resolvedKind === 'extension-state') {
+          // Extension Badge: Green circle with puzzle/plus vector
+          cornerBadge = `
+            <div class="tool-icon-corner-badge" style="width:${badgeSize}px; height:${badgeSize}px; bottom:${badgeOffset}px; right:${badgeOffset}px; background:#2ea44f; border:1.8px solid ${bgBorderColor}; display:flex; align-items:center; justify-content:center;" title="Extension">
+              <svg viewBox="0 0 10 10" fill="none" style="width:70%; height:70%;"><path d="M5 2v6M2 5h6" stroke="#fff" stroke-width="1.4" stroke-linecap="round"/></svg>
+            </div>
+          `;
+        }
+      }
+
+      if (iconSrc) {
+        return `
+          <div class="tool-icon-wrapper" style="width:${size}px; height:${size}px;">
+            <img src="${iconSrc}"
+                 alt="${escapeHtml(name)}"
+                 style="width:100%; height:100%; object-fit:contain; border-radius:4px; display:block;"
+                 onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex';" />
+            <div class="tool-icon-fallback-container" style="display:none; width:100%; height:100%; align-items:center; justify-content:center;">
+              ${fallbackContent}
+            </div>
+            ${cornerBadge}
+          </div>
+        `;
+      } else {
+        return `
+          <div class="tool-icon-wrapper" style="width:${size}px; height:${size}px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.05);">
+            ${fallbackContent}
+            ${cornerBadge}
+          </div>
+        `;
+      }
+    }
+
+    const i18n = {
+      en: {
+        overview: "📊 Overview",
+        memoryHub: "Memory Hub",
+        agentRadio: "Collaboration Broadcast",
+        tasksBoard: "Tasks Board",
+        dispatchLogs: "⚡ Dispatch Logs",
+        analyticsPanel: "📈 Analytics",
+        memoryGrowthTrend: "🧠 Memory Growth Trend",
+        taskCompletionRate: "📋 Task Completion Rate",
+        radioActivity: "📻 Radio Activity",
+        detectedTools: "Detected Tools",
+        scanning: "Scanning...",
+        operations: "Hub Operations",
+        storage: "Storage:",
+        autoRefresh: "Auto-refresh:",
+        refresh: "Refresh",
+        rebuild: "Rebuild Snapshot",
+        syncInbox: "Sync Inbox",
+        activeTasks: "Active Tasks",
+        workflowStages: "Workflow Stages",
+        pendingEvents: "Pending Events",
+        radioMessages: "Broadcast Messages",
+        durableLedger: "Durable Ledger",
+        backups: "Backups",
+        activeTasksKanban: "⭐ Active Tasks Kanban",
+        fullBoard: "Full Board",
+        liveRadioFeed: "📻 Live Broadcast Feed",
+        recordMemory: "Record Memory",
+        textLabel: "Text",
+        kindLabel: "Kind",
+        sourceLabel: "Source",
+        recordDurable: "Record Durable Event",
+        inboxPendingSync: "Inbox Events (Pending Sync)",
+        noPendingTable: "No pending events.",
+        pullIndex: "Pull & Index",
+        broadcastMessage: "Send Collaboration Broadcast",
+        messageContent: "Message Content",
+        fromLabel: "From",
+        toLabel: "To",
+        typeLabel: "Type",
+        projectLabel: "Project",
+        broadcast: "Send Broadcast Message",
+        radioStream: "Broadcast Messages Stream",
+        searchText: "Search text...",
+        addTask: "Add Shared Task",
+        taskTitleLabel: "Task Title",
+        priorityLabel: "Priority",
+        descriptionLabel: "Description / Details",
+        handoffStatusLabel: "Handoff Status (Optional)",
+        addTaskButton: "Add task to ledger",
+        filterProject: "Filter Project:",
+        filterPriority: "Filter Priority:",
+        allProjects: "All Projects",
+        selectProject: "Select Project",
+        customProject: "Custom Project",
+        deliveryWritten: "Written to Hub",
+        deliveryDispatched: "Dispatched",
+        deliveryFailed: "Dispatch Failed",
+        deliveryReplied: "Thread Replied",
+        deliveryPendingRead: "Pending Tool Read",
+        dispatchToTool: "Dispatch to {tool}",
+        dispatchToAll: "Broadcast to all tools",
+        replySummary: "{tool} replied in thread",
+        showStatusReply: "Show status reply",
+        threadLabel: "Thread",
+        allPriorities: "All Priorities",
+        automatedDispatcher: "Automated Dispatcher (Cron / Watcher logs)",
+        triggerDispatch: "Trigger Dispatch Now",
+        relayStatus: "Relay Status",
+        executionLogs: "Execution Logs",
+        progressLabel: "Progress",
+        progressBy: "By",
+        noDispatch: "No dispatch logs found.",
+        rawCompatibility: "🛠️ Raw JSON / Compatibility Data Panels",
+        noWorkflows: "No workflows recorded.",
+        planningStage: "Planning",
+        executionStage: "Execution",
+        verificationStage: "Verification",
+        reviewStage: "Review",
+        deliveryStage: "Delivery",
+        blockedStage: "Blocked",
+        workflowStageDetail: "{n} workflow(s)",
+        taskStageDetail: "{n} task(s)",
+        relayStageDetail: "{n} relay(s)",
+        durationLabel: "Duration",
+        dispatchStateLabel: "Dispatch",
+        latestNoteLabel: "Latest note",
+        endpointErrorTitle: "Endpoint load errors",
+        endpointErrorSummary: "{n} endpoint(s) failed to load.",
+        endpointLoadWarning: "Showing cached or empty sections until the next successful refresh.",
+        
+        noActiveTasks: "No active tasks found.",
+        noRecentMessages: "No recent messages.",
+        noPendingEvents: "No pending events in inbox.",
+        noRadioMessages: "No broadcast messages.",
+        noOpenTasks: "No open tasks.",
+        noActiveClaimedTasks: "No active claimed tasks.",
+        noCompletedTasks: "No completed tasks.",
+        noDispatcherEvents: "No dispatcher events recorded yet.",
+        unassigned: "Unassigned",
+        defaultProj: "Default",
+        claimTask: "Claim Task",
+        startWork: "Start Work",
+        blockTask: "Block",
+        unblockTask: "Unblock",
+        completeTask: "Complete",
+        reopenTask: "Reopen",
+        approveTask: "Approve",
+        rejectTask: "Reject",
+        reviewDecisionLabel: "Review",
+        reviewedByLabel: "Reviewed by",
+        promptReviewBy: "Enter reviewer name:",
+        promptReviewNote: "Optional review note:",
+        successText: "Success",
+        failedText: "Failed",
+        runnableText: "Runnable",
+        notRunnableText: "No Runner",
+        addNotePlaceholder: "Add note...",
+        promptClaim: "Enter your name to claim this task:",
+        promptBlock: "Enter reason for blocking this task:",
+        promptNote: "Enter your name for note:",
+        promoteToMemory: "Promote to memory",
+        alertPromoted: "Message promoted to inbox. Run Sync Inbox to consolidate.",
+        confirmForceDispatch: "Force run dispatcher (ignores exit status cache)?",
+        alertDispatched: "Executed {n} dispatch jobs.",
+        
+        prefOpt: "Preference",
+        workOpt: "Workflow",
+        projOpt: "Project",
+        corrOpt: "Correction",
+        noteOpt: "Note",
+        revOpt: "Review",
+        handOpt: "Handoff",
+        riskOpt: "Risk",
+        doneOpt: "Done",
+        lowOpt: "Low",
+        normOpt: "Normal",
+        highOpt: "High",
+        urgOpt: "Urgent",
+        
+        senderAll: "Sender: All",
+        recipientAll: "Recipient: All",
+        typeAll: "Type: All",
+        
+        placeholderMemText: "Record a user preference, workflow rule, or important project fact.",
+        placeholderRadText: "Broadcast a handoff note, review request, or risk flag.",
+        placeholderTskTitle: "Task summary or requirement",
+        placeholderTskDesc: "Goal: ... Scope: ... Acceptance: ...",
+        placeholderTskHandoff: "Current state, next step, owner, risks..."
+      },
+      zh: {
+        overview: "📊 概览看板",
+        memoryHub: "记忆中枢",
+        agentRadio: "协作广播",
+        tasksBoard: "任务看板",
+        dispatchLogs: "⚡ 调度日志",
+        analyticsPanel: "📈 数据分析",
+        memoryGrowthTrend: "🧠 记忆增长趋势",
+        taskCompletionRate: "📋 任务完成率",
+        radioActivity: "📻 广播活跃度",
+        detectedTools: "已检测工具",
+        scanning: "扫描中...",
+        operations: "操作面板",
+        storage: "存储路径:",
+        autoRefresh: "自动刷新:",
+        refresh: "刷新数据",
+        rebuild: "重建快照",
+        syncInbox: "同步收件箱",
+        activeTasks: "活跃任务数",
+        workflowStages: "工作流阶段",
+        pendingEvents: "待同步事件",
+        radioMessages: "广播消息数",
+        durableLedger: "长期记忆账本",
+        backups: "备份文件数",
+        activeTasksKanban: "⭐ 活跃任务看板",
+        fullBoard: "完整看板",
+        liveRadioFeed: "📻 实时协作广播",
+        recordMemory: "记录长期记忆",
+        textLabel: "正文内容",
+        kindLabel: "类型",
+        sourceLabel: "来源",
+        recordDurable: "追加长期记忆",
+        inboxPendingSync: "待同步收件箱事件",
+        noPendingTable: "暂无待同步事件。",
+        pullIndex: "拉取并索引",
+        broadcastMessage: "发送协作广播",
+        messageContent: "消息正文",
+        fromLabel: "发送方",
+        toLabel: "接收方",
+        typeLabel: "消息类型",
+        projectLabel: "所属项目",
+        broadcast: "发送协作广播",
+        radioStream: "广播消息流",
+        searchText: "搜索内容...",
+        addTask: "新建共享任务",
+        taskTitleLabel: "任务标题",
+        priorityLabel: "优先级",
+        descriptionLabel: "描述与详情",
+        handoffStatusLabel: "交接说明 (选填)",
+        addTaskButton: "添加新任务",
+        filterProject: "筛选项目:",
+        filterPriority: "筛选优先级:",
+        allProjects: "所有项目",
+        selectProject: "选择项目",
+        customProject: "自定义项目",
+        deliveryWritten: "已写入 Hub",
+        deliveryDispatched: "已调度",
+        deliveryFailed: "调度失败",
+        deliveryReplied: "线程已有回执",
+        deliveryPendingRead: "待目标工具读取",
+        dispatchToTool: "派发给 {tool}",
+        dispatchToAll: "广播给所有工具",
+        replySummary: "{tool} 已在线程中回复",
+        showStatusReply: "展开状态回执",
+        threadLabel: "线程",
+        allPriorities: "所有优先级",
+        automatedDispatcher: "自动调度执行日志",
+        triggerDispatch: "立即触发调度",
+        relayStatus: "Relay 状态",
+        executionLogs: "执行日志",
+        progressLabel: "进度",
+        progressBy: "上报",
+        noDispatch: "暂无调度执行日志。",
+        rawCompatibility: "🛠️ 原始数据与兼容性调试",
+        noWorkflows: "暂无工作流记录。",
+        planningStage: "规划",
+        executionStage: "执行",
+        verificationStage: "验证",
+        reviewStage: "评审",
+        deliveryStage: "交付",
+        blockedStage: "阻塞",
+        workflowStageDetail: "{n} 个工作流",
+        taskStageDetail: "{n} 个任务",
+        relayStageDetail: "{n} 个 relay",
+        durationLabel: "持续时间",
+        dispatchStateLabel: "调度",
+        latestNoteLabel: "最新备注",
+        endpointErrorTitle: "端点加载错误",
+        endpointErrorSummary: "{n} 个端点加载失败。",
+        endpointLoadWarning: "在下次成功刷新前，相关区域会显示缓存或空数据。",
+        
+        noActiveTasks: "暂无活跃任务。",
+        noRecentMessages: "暂无最近消息。",
+        noPendingEvents: "收件箱中暂无待同步事件。",
+        noRadioMessages: "暂无广播消息。",
+        noOpenTasks: "暂无待认领任务。",
+        noActiveClaimedTasks: "暂无执行中的认领任务。",
+        noCompletedTasks: "暂无已完成任务。",
+        noDispatcherEvents: "暂无自动调度执行记录。",
+        unassigned: "未分配",
+        defaultProj: "默认项目",
+        claimTask: "认领任务",
+        startWork: "开始执行",
+        blockTask: "挂起",
+        unblockTask: "解挂",
+        completeTask: "已完成",
+        reopenTask: "重新打开",
+        approveTask: "批准",
+        rejectTask: "驳回",
+        reviewDecisionLabel: "评审",
+        reviewedByLabel: "评审人",
+        promptReviewBy: "请输入评审人名称:",
+        promptReviewNote: "可选评审备注:",
+        successText: "执行成功",
+        failedText: "执行失败",
+        runnableText: "可执行",
+        notRunnableText: "不可调度",
+        addNotePlaceholder: "追加进展备注...",
+        promptClaim: "请输入您的名字以认领任务:",
+        promptBlock: "请输入挂起任务的原因:",
+        promptNote: "请输入发表备注者的名字:",
+        promoteToMemory: "提升为长期记忆",
+        alertPromoted: "消息已推广至收件箱。请运行“同步收件箱”以整理记忆。",
+        confirmForceDispatch: "是否强制运行调度器（将忽略退出状态缓存）？",
+        alertDispatched: "已成功执行 {n} 个调度任务。",
+        
+        prefOpt: "偏好",
+        workOpt: "工作流",
+        projOpt: "项目事实",
+        corrOpt: "纠错",
+        noteOpt: "备注",
+        revOpt: "评审",
+        handOpt: "交接",
+        riskOpt: "风险提示",
+        doneOpt: "完成",
+        lowOpt: "低",
+        normOpt: "中",
+        highOpt: "高",
+        urgOpt: "紧急",
+        
+        senderAll: "发送方: 全部",
+        recipientAll: "接收方: 全部",
+        typeAll: "类型: 全部",
+        
+        placeholderMemText: "记录用户偏好、工作流规则或重要的项目事实。",
+        placeholderRadText: "广播交接便签、评审请求或风险标识。",
+        placeholderTskTitle: "任务简要总结或需求",
+        placeholderTskDesc: "目标：... 范围：... 验收：...",
+        placeholderTskHandoff: "当前状态、下一步、负责人、风险..."
+      }
+    };
+
+    const state = {
+      activeTab: 'dashboard',
+      memorySubTab: 'md',
+      status: {},
+      memory: {},
+      radio: [],
+      tasks: [],
+      workflows: [],
+      dispatch: [],
+      relay: [],
+      autoRefresh: true,
+      refreshInterval: 5000,
+      searchRadio: '',
+      filterRadioType: '',
+      filterRadioFrom: '',
+      filterRadioTo: '',
+      filterRadioProject: '',
+      filterTaskProject: '',
+      filterTaskPriority: '',
+      endpointErrors: [],
+      lang: localStorage.getItem('hub_lang') || 'zh'
+    };
+
+    let timer = null;
+
+    // Translation utilities
+    function t(key, vars = {}) {
+      let val = (i18n[state.lang] && i18n[state.lang][key]) || i18n['en'][key] || key;
+      Object.keys(vars).forEach(k => {
+        val = val.replace('{' + k + '}', vars[k]);
+      });
+      return val;
+    }
+
+    function toggleLanguage() {
+      state.lang = state.lang === 'zh' ? 'en' : 'zh';
+      localStorage.setItem('hub_lang', state.lang);
+      translatePage();
+      renderAll();
+    }
+
+    function translatePage() {
+      document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        el.innerHTML = t(key);
+      });
+      document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+        const key = el.getAttribute('data-i18n-placeholder');
+        el.placeholder = t(key);
+      });
+      document.getElementById('btnLang').textContent = state.lang === 'zh' ? '🌐 English' : '🌐 中文';
+    }
+
+    // Helper: Escaping HTML safely
+    function escapeHtml(val) {
+      if (val === undefined || val === null) return '';
+      return String(val).replace(/[&<>"']/g, ch => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+      }[ch]));
+    }
+
+    // Lightweight markdown parser for memory.md
+    function formatMarkdown(text) {
+      if (!text) return '<div class="muted">No data available.</div>';
+      return escapeHtml(text)
+        .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+        .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+        .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+        .replace(/^\- (.*$)/gim, '<li>$1</li>')
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+    }
+
+    async function api(path, options = {}) {
+      const res = await fetch(path, options);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || res.statusText);
+      return json;
+    }
+
+    function switchTab(tabId) {
+      state.activeTab = tabId;
+      document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(el => el.classList.remove('active'));
+
+      const tabs = ['dashboard', 'memory', 'radio', 'tasks', 'dispatch', 'workflows', 'analytics', 'settings'];
+      const index = tabs.indexOf(tabId);
+      if (index !== -1) {
+        document.querySelectorAll('.nav-item')[index].classList.add('active');
+      }
+      document.getElementById('tab-' + tabId).classList.add('active');
+      localStorage.setItem('hub_active_tab', tabId);
+      
+      if (tabId === 'analytics') {
+        renderAnalytics();
+      }
+      
+      document.getElementById('sidebar').classList.remove('active');
+    }
+
+    function switchMemorySubTab(sub) {
+      state.memorySubTab = sub;
+      document.getElementById('memorySubTab-md').style.display = sub === 'md' ? 'block' : 'none';
+      document.getElementById('memorySubTab-profile').style.display = sub === 'profile' ? 'block' : 'none';
+    }
+
+    function toggleSidebar() {
+      document.getElementById('sidebar').classList.toggle('active');
+    }
+
+    // Auto Refresh handlers
+    function toggleAutoRefresh(checked) {
+      state.autoRefresh = checked;
+      if (checked) {
+        startInterval();
+      } else {
+        clearInterval(timer);
+      }
+    }
+
+    function startInterval() {
+      clearInterval(timer);
+      timer = setInterval(refreshData, state.refreshInterval);
+    }
+
+    // Fetch API Data
+    async function refreshData() {
+      const btn = document.getElementById('btnRefresh');
+      if (btn) btn.disabled = true;
+      try {
+        const endpointErrors = [];
+        const recordEndpointError = (endpoint, reason) => {
+          const message = reason && reason.message ? reason.message : String(reason || 'Unknown error');
+          endpointErrors.push({ endpoint, message });
+          console.error(`Failed to load ${endpoint}`, reason);
+        };
+        const [statusRes, memoryRes, radioRes, tasksRes, workflowsRes, dispatchRes] = await Promise.allSettled([
+          api('/api/status'),
+          api('/api/memory'),
+          api('/api/radio'),
+          api('/api/tasks'),
+          api('/api/workflows'),
+          api('/api/dispatch')
+        ]);
+
+        if (statusRes.status === 'fulfilled') {
+          state.status = statusRes.value || {};
+        } else {
+          recordEndpointError('/api/status', statusRes.reason);
+        }
+        if (memoryRes.status === 'fulfilled') {
+          state.memory = memoryRes.value || {};
+        } else {
+          recordEndpointError('/api/memory', memoryRes.reason);
+        }
+        if (radioRes.status === 'fulfilled') {
+          state.radio = (radioRes.value && radioRes.value.messages) || [];
+        } else {
+          recordEndpointError('/api/radio', radioRes.reason);
+          state.radio = [];
+        }
+        if (tasksRes.status === 'fulfilled') {
+          state.tasks = (tasksRes.value && tasksRes.value.tasks) || [];
+        } else {
+          recordEndpointError('/api/tasks', tasksRes.reason);
+          state.tasks = [];
+        }
+        if (workflowsRes.status === 'fulfilled') {
+          state.workflows = (workflowsRes.value && workflowsRes.value.workflows) || [];
+        } else {
+          recordEndpointError('/api/workflows', workflowsRes.reason);
+          state.workflows = [];
+        }
+        if (dispatchRes.status === 'fulfilled') {
+          state.dispatch = (dispatchRes.value && dispatchRes.value.logs) || [];
+          state.relay = (dispatchRes.value && dispatchRes.value.relay) || [];
+        } else {
+          recordEndpointError('/api/dispatch', dispatchRes.reason);
+          state.dispatch = [];
+          state.relay = [];
+        }
+
+        state.endpointErrors = endpointErrors;
+        renderAll();
+      } catch (err) {
+        console.error(err);
+        state.endpointErrors = [{ endpoint: 'refreshData', message: err.message || String(err) }];
+        renderEndpointErrors();
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    // Render operations
+    function renderAll() {
+      const tools = Array.isArray(state.status.tools) ? state.status.tools : [];
+      renderEndpointErrors();
+
+      // Top bar info
+      document.getElementById('memoryDir').textContent = state.status.memoryDir || 'unavailable';
+
+      // Sidebar badges
+      document.getElementById('sidebarPending').textContent = state.status.pendingEvents || 0;
+      document.getElementById('sidebarRadio').textContent = state.radio.length;
+      
+      const activeTasksCount = state.tasks.filter(t => ['claimed', 'in_progress', 'blocked'].includes(t.status)).length;
+      document.getElementById('sidebarTasks').textContent = activeTasksCount;
+
+      // Overview Metrics cards
+      document.getElementById('cardActiveTasks').textContent = activeTasksCount;
+      document.getElementById('cardPending').textContent = state.status.pendingEvents || 0;
+      document.getElementById('cardRadio').textContent = state.radio.length;
+      document.getElementById('cardLedger').textContent = state.status.ledgerEvents || 0;
+      document.getElementById('cardBackups').textContent = state.status.backups || 0;
+
+      // Compatibility variables population
+      document.getElementById('pending').textContent = state.status.pendingEvents || 0;
+      document.getElementById('ledger').textContent = state.status.ledgerEvents || 0;
+      document.getElementById('radioCount').textContent = state.radio.length;
+      document.getElementById('taskCount').textContent = activeTasksCount;
+      document.getElementById('backupCount').textContent = state.status.backups || 0;
+      document.getElementById('toolCount').textContent = state.status.toolSummary?.connected ?? tools.filter(t => t.connected).length;
+      
+      document.getElementById('memory').textContent = state.memory.memory || '';
+      document.getElementById('pendingJson').textContent = JSON.stringify(state.memory.pending || [], null, 2);
+      document.getElementById('radioJson').textContent = JSON.stringify(state.radio || [], null, 2);
+      document.getElementById('tasksJson').textContent = JSON.stringify(state.tasks || [], null, 2);
+
+      // Detected Tools Matrix
+      const toolsHtml = tools.map(t => {
+        const displayName = (toolDisplayNames[state.lang] && toolDisplayNames[state.lang][t.name]) || t.name;
+        const kindBadge = (toolKindBadges[state.lang] && toolKindBadges[state.lang][t.kind]) || t.kind;
+        const kindClass = toolKindClasses[t.kind] || 'kind-cli';
+
+        return `
+          <div class="tool-row" onclick="showToolInstallModal('${t.name}')" title="${escapeHtml(t.connectionStatus || (t.installed ? 'installed' : 'missing'))}: ${escapeHtml(t.action || t.dir || '')}">
+            <div class="tool-info">
+              ${renderToolIcon(t.name, 24, t.kind)}
+              <div class="tool-meta">
+                <div class="tool-name">${escapeHtml(displayName)}</div>
+              </div>
+            </div>
+            <div class="tool-right">
+              <span class="tool-kind-badge ${kindClass}">${escapeHtml(kindBadge)}</span>
+              <div class="tool-status ${t.connected ? 'installed' : ''}"></div>
+            </div>
+          </div>
+        `;
+      }).join('');
+      document.getElementById('detectedTools').innerHTML = toolsHtml || `<div class="muted">${t('scanning')}</div>`;
+
+      // Dropdown filters logic
+      populateFilterOptions();
+
+      // Render tab components
+      renderDashboardOverview();
+      renderWorkflowStages();
+      renderMemoryHub();
+      renderRadioFeed();
+      renderTasksList();
+      renderDispatchLogs();
+      
+      if (state.activeTab === 'analytics') {
+        renderAnalytics();
+      }
+    }
+
+    let charts = {};
+
+    function renderAnalytics() {
+      if (state.activeTab !== 'analytics') return;
+      
+      // Memory Growth Trend
+      if (!charts.memory) {
+        charts.memory = echarts.init(document.getElementById('chartMemoryGrowth'), 'dark');
+      }
+      const ledgerCount = parseInt(state.status.ledgerEvents || 0);
+      const pendingCount = parseInt(state.status.pendingEvents || 0);
+      
+      charts.memory.setOption({
+        backgroundColor: 'transparent',
+        tooltip: { trigger: 'axis' },
+        xAxis: { type: 'category', data: ['Durable', 'Pending', 'Total'] },
+        yAxis: { type: 'value' },
+        series: [{
+          data: [ledgerCount, pendingCount, ledgerCount + pendingCount],
+          type: 'bar',
+          itemStyle: { color: '#4facfe' }
+        }]
+      });
+
+      // Task Completion Rate
+      if (!charts.tasks) {
+        charts.tasks = echarts.init(document.getElementById('chartTaskCompletion'), 'dark');
+      }
+      const taskStats = state.tasks.reduce((acc, t) => {
+        acc[t.status] = (acc[t.status] || 0) + 1;
+        return acc;
+      }, {});
+      
+      charts.tasks.setOption({
+        backgroundColor: 'transparent',
+        tooltip: { trigger: 'item' },
+        series: [{
+          type: 'pie',
+          radius: ['40%', '70%'],
+          data: Object.entries(taskStats).map(([name, value]) => ({ name: t(name === 'in_progress' ? 'startWork' : name + 'Task'), value })),
+          emphasis: {
+            itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0, 0, 0, 0.5)' }
+          }
+        }]
+      });
+
+      // Radio Activity
+      if (!charts.radio) {
+        charts.radio = echarts.init(document.getElementById('chartRadioActivity'), 'dark');
+      }
+      const radioStats = state.radio.reduce((acc, m) => {
+        const type = m.type || 'note';
+        acc[type] = (acc[type] || 0) + 1;
+        return acc;
+      }, {});
+      
+      charts.radio.setOption({
+        backgroundColor: 'transparent',
+        tooltip: { trigger: 'axis' },
+        xAxis: { 
+          type: 'category', 
+          data: Object.keys(radioStats).map(k => t(k + 'Opt')),
+          axisLabel: { interval: 0 }
+        },
+        yAxis: { type: 'value' },
+        series: [{
+          data: Object.values(radioStats),
+          type: 'bar',
+          itemStyle: { color: '#00f2fe' }
+        }]
+      });
+    }
+
+    window.addEventListener('resize', () => {
+      Object.values(charts).forEach(c => c.resize());
+    });
+
+    function renderEndpointErrors() {
+      const el = document.getElementById('endpointErrors');
+      if (!el) return;
+      const errors = Array.isArray(state.endpointErrors) ? state.endpointErrors : [];
+      if (errors.length === 0) {
+        el.hidden = true;
+        el.innerHTML = '';
+        return;
+      }
+      el.hidden = false;
+      const items = errors.map(err => `
+        <div class="endpoint-error-item">
+  <script src="/js/dashboard.js"></script>

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
 import fs from "node:fs/promises";
@@ -87,6 +88,193 @@ async function stopServer(child) {
     new Promise((resolve) => setTimeout(resolve, 3000))
   ]);
 }
+
+function createSocketReader(socket) {
+  let buffer = Buffer.alloc(0);
+  const pending = [];
+  let closed = false;
+  let socketError = null;
+
+  const flush = () => {
+    for (let index = 0; index < pending.length;) {
+      const entry = pending[index];
+      if (socketError) {
+        clearTimeout(entry.timer);
+        pending.splice(index, 1);
+        entry.reject(socketError);
+        continue;
+      }
+      const value = entry.extract();
+      if (value) {
+        clearTimeout(entry.timer);
+        pending.splice(index, 1);
+        entry.resolve(value);
+        continue;
+      }
+      if (closed) {
+        clearTimeout(entry.timer);
+        pending.splice(index, 1);
+        entry.reject(new Error("socket closed before data arrived"));
+        continue;
+      }
+      index += 1;
+    }
+  };
+
+  socket.on("data", (chunk) => {
+    buffer = Buffer.concat([buffer, chunk]);
+    flush();
+  });
+  socket.on("error", (error) => {
+    socketError = error;
+    flush();
+  });
+  socket.on("close", () => {
+    closed = true;
+    flush();
+  });
+
+  const readWith = (extract, label, timeoutMs = 3000) => {
+    const existing = extract();
+    if (existing) {
+      return Promise.resolve(existing);
+    }
+    return new Promise((resolve, reject) => {
+      const entry = {
+        extract,
+        resolve,
+        reject,
+        timer: setTimeout(() => {
+          const index = pending.indexOf(entry);
+          if (index !== -1) pending.splice(index, 1);
+          reject(new Error(`timed out waiting for ${label}`));
+        }, timeoutMs)
+      };
+      pending.push(entry);
+      flush();
+    });
+  };
+
+  const readUntil = (delimiter, timeoutMs) => readWith(() => {
+    const index = buffer.indexOf(delimiter);
+    if (index === -1) return null;
+    const output = buffer.subarray(0, index + delimiter.length);
+    buffer = buffer.subarray(index + delimiter.length);
+    return output;
+  }, "delimiter", timeoutMs);
+
+  const readFrame = (timeoutMs) => readWith(() => {
+    if (buffer.length < 2) return null;
+    const first = buffer[0];
+    const second = buffer[1];
+    let offset = 2;
+    let length = second & 0x7f;
+    if (length === 126) {
+      if (buffer.length < offset + 2) return null;
+      length = buffer.readUInt16BE(offset);
+      offset += 2;
+    } else if (length === 127) {
+      if (buffer.length < offset + 8) return null;
+      const bigLength = buffer.readBigUInt64BE(offset);
+      offset += 8;
+      if (bigLength > BigInt(Number.MAX_SAFE_INTEGER)) {
+        throw new Error("websocket frame too large for test reader");
+      }
+      length = Number(bigLength);
+    }
+    if (buffer.length < offset + length) return null;
+    const frame = {
+      opcode: first & 0x0f,
+      payload: Buffer.from(buffer.subarray(offset, offset + length))
+    };
+    buffer = buffer.subarray(offset + length);
+    return frame;
+  }, "websocket frame", timeoutMs);
+
+  return {
+    readUntil,
+    async readJson(timeoutMs) {
+      for (;;) {
+        const frame = await readFrame(timeoutMs);
+        if (frame.opcode === 0x1) {
+          return JSON.parse(frame.payload.toString("utf8"));
+        }
+        if (frame.opcode === 0x8) {
+          throw new Error("websocket closed");
+        }
+      }
+    }
+  };
+}
+
+async function openWebSocket(port) {
+  const socket = net.connect({ host: "127.0.0.1", port });
+  await once(socket, "connect");
+  const reader = createSocketReader(socket);
+  const key = crypto.randomBytes(16).toString("base64");
+  socket.write([
+    "GET /ws HTTP/1.1",
+    `Host: 127.0.0.1:${port}`,
+    "Upgrade: websocket",
+    "Connection: Upgrade",
+    `Sec-WebSocket-Key: ${key}`,
+    "Sec-WebSocket-Version: 13",
+    "",
+    ""
+  ].join("\r\n"));
+
+  const response = await reader.readUntil(Buffer.from("\r\n\r\n"), 3000);
+  assert.match(response.toString("utf8"), /^HTTP\/1\.1 101 Switching Protocols/);
+  return { socket, reader };
+}
+
+async function readUntilSnapshot(reader, predicate) {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const message = await reader.readJson(5000);
+    if ((message.type === "hello" || message.type === "snapshot") && predicate(message.snapshot, message)) {
+      return message;
+    }
+  }
+  throw new Error("matching websocket snapshot did not arrive");
+}
+
+test("dashboard serves externalized virtual-scroll assets", async () => {
+  await withHub(async (memoryDir) => {
+    const port = await getFreePort();
+    const child = spawn(process.execPath, [cliPath, "app", "--port", String(port)], {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        AI_MEMORY_DIR: memoryDir
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true
+    });
+    const stderr = [];
+    child.stderr.on("data", (chunk) => stderr.push(String(chunk)));
+    try {
+      await waitForServer(port, child);
+      const res = await fetch(`http://127.0.0.1:${port}/`);
+      assert.equal(res.status, 200);
+      const html = await res.text();
+      assert.match(html, /<link rel="stylesheet" href="\/css\/dashboard\.css">/);
+      assert.match(html, /<script src="\/js\/dashboard\.js"><\/script>\s*<\/body>/);
+      assert.doesNotMatch(html, /<script>\s*\/\/\s*Global tool icon/);
+    } finally {
+      await stopServer(child);
+    }
+    assert.deepEqual(stderr, []);
+  });
+
+  const dashboardJs = await fs.readFile(path.join(repoRoot, "public", "js", "dashboard.js"), "utf8");
+  assert.match(dashboardJs, /function renderVirtualList/);
+  assert.match(dashboardJs, /renderMarkdownVirtual\('memorySubTab-md'/);
+  assert.match(dashboardJs, /renderVirtualList\('radioFeed'/);
+  assert.match(dashboardJs, /renderVirtualList\('col-open'/);
+  assert.match(dashboardJs, /renderVirtualList\('col-active'/);
+  assert.match(dashboardJs, /renderVirtualList\('col-completed'/);
+  assert.match(dashboardJs, /loading="lazy"/);
+});
 
 test("dashboard task review API records approval on task and linked workflow", async () => {
   await withHub(async (memoryDir) => {
@@ -178,6 +366,56 @@ test("dashboard task review API records approval on task and linked workflow", a
       assert.equal(workflow.status, "review");
       assert.match(workflow.reviews.at(-1).text, /review approved/);
     } finally {
+      await stopServer(child);
+    }
+    assert.deepEqual(stderr, []);
+  });
+});
+
+test("dashboard websocket sends initial and pushed snapshots", async () => {
+  await withHub(async (memoryDir) => {
+    const port = await getFreePort();
+    const child = spawn(process.execPath, [cliPath, "app", "--port", String(port)], {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        AI_MEMORY_DIR: memoryDir
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true
+    });
+    const stderr = [];
+    child.stderr.on("data", (chunk) => stderr.push(String(chunk)));
+    let ws = null;
+    try {
+      await waitForServer(port, child);
+      ws = await openWebSocket(port);
+      const hello = await ws.reader.readJson(3000);
+      assert.equal(hello.type, "hello");
+      assert.equal(hello.snapshot.type, "snapshot");
+      assert.ok(Array.isArray(hello.snapshot.tasks.tasks));
+
+      const res = await fetch(`http://127.0.0.1:${port}/api/task/add`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: "Realtime pushed task",
+          description: "Created through API to verify WebSocket broadcast.",
+          from: "test",
+          project: "test-project"
+        })
+      });
+      if (res.status !== 200) {
+        assert.fail(await res.text());
+      }
+
+      const pushed = await readUntilSnapshot(ws.reader, (snapshot) =>
+        snapshot.tasks.tasks.some((task) => task.title === "Realtime pushed task")
+      );
+      assert.equal(pushed.type, "snapshot");
+      assert.ok(["task:add", "file:tasks.jsonl"].includes(pushed.reason));
+    } finally {
+      ws?.socket.end();
       await stopServer(child);
     }
     assert.deepEqual(stderr, []);

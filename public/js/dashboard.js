@@ -1,1403 +1,3 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>AI Memory Hub Dashboard</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <style>
-    :root {
-      color-scheme: dark;
-      --bg-main: #090d16;
-      --bg-sidebar: #0f1423;
-      --bg-panel: #141b2f;
-      --bg-panel-hover: #1c253f;
-      --bg-input: #090d16;
-      --text-main: #f0f3f6;
-      --text-muted: #8b9bb4;
-      --border-color: #212c46;
-      --border-focus: #58a6ff;
-      --accent-blue: #388bfd;
-      --accent-purple: #bc8cff;
-      --accent-green: #3fb950;
-      --status-open: #8b9bb4;
-      --status-claimed: #e3b341;
-      --status-progress: #388bfd;
-      --status-blocked: #f85149;
-      --status-done: #56d364;
-      --status-cancelled: #484f58;
-      --shadow: 0 8px 24px rgba(0,0,0,0.5);
-      --font-sans: 'Outfit', system-ui, -apple-system, sans-serif;
-      --font-mono: 'JetBrains Mono', monospace;
-    }
-
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      background: var(--bg-main);
-      color: var(--text-main);
-      font-family: var(--font-sans);
-      line-height: 1.5;
-      display: flex;
-      min-height: 100vh;
-      overflow-x: hidden;
-    }
-
-    /* Scrollbar */
-    ::-webkit-scrollbar { width: 8px; height: 8px; }
-    ::-webkit-scrollbar-track { background: var(--bg-main); }
-    ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
-    ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
-
-    /* Layout structure */
-    aside {
-      width: 300px;
-      background: var(--bg-sidebar);
-      border-right: 1px solid var(--border-color);
-      display: flex;
-      flex-direction: column;
-      position: fixed;
-      top: 0;
-      bottom: 0;
-      left: 0;
-      z-index: 100;
-      padding: 24px;
-      transition: transform 0.3s ease;
-    }
-
-    .app-logo {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 32px;
-    }
-    .app-logo .icon {
-      width: 36px;
-      height: 36px;
-      border-radius: 10px;
-      background: linear-gradient(135deg, var(--accent-purple), var(--accent-blue));
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: 700;
-      font-size: 20px;
-      color: #fff;
-      box-shadow: 0 0 12px rgba(188,140,255,0.4);
-    }
-    .app-logo h1 {
-      font-size: 20px;
-      margin: 0;
-      font-weight: 600;
-      letter-spacing: 0.5px;
-      background: linear-gradient(to right, #fff, #c9d1d9);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
-
-    nav {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      flex: 1;
-    }
-    .nav-item {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 12px 16px;
-      border-radius: 8px;
-      color: var(--text-muted);
-      text-decoration: none;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.2s;
-      border: 1px solid transparent;
-    }
-    .nav-item:hover {
-      color: var(--text-main);
-      background: var(--bg-panel-hover);
-    }
-    .nav-item.active {
-      color: #fff;
-      background: var(--bg-panel);
-      border-color: var(--border-color);
-    }
-    .nav-item .badge {
-      margin-left: auto;
-      background: var(--border-color);
-      color: var(--text-muted);
-      font-size: 11px;
-      padding: 2px 6px;
-      border-radius: 10px;
-      font-weight: 600;
-    }
-    .nav-item.active .badge {
-      background: var(--accent-blue);
-      color: #fff;
-    }
-
-    .tools-matrix {
-      border-top: 1px solid var(--border-color);
-      padding-top: 20px;
-      margin-top: auto;
-    }
-    .tools-matrix h3 {
-      font-size: 12px;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      color: var(--text-muted);
-      margin: 0 0 12px 4px;
-    }
-    .tools-list {
-      max-height: 200px;
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    .tool-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 8px 10px;
-      border-radius: 8px;
-      background: rgba(255,255,255,0.02);
-      border: 1px solid transparent;
-      font-size: 12.5px;
-      transition: all 0.2s ease;
-      cursor: pointer;
-    }
-    .tool-row:hover {
-      background: var(--bg-panel-hover);
-      border-color: var(--border-color);
-      transform: translateY(-1px);
-    }
-    .tool-info {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-    .tool-meta {
-      display: flex;
-      flex-direction: column;
-    }
-    .tool-name { font-weight: 500; }
-    .tool-right {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .tool-status {
-      display: inline-block;
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: var(--status-cancelled);
-      transition: all 0.2s ease;
-    }
-    .tool-status.installed { background: var(--status-done); box-shadow: 0 0 8px var(--status-done); }
-
-    /* Tool Icon Wrapper & Fallback styling */
-    .tool-icon-wrapper {
-      position: relative;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 6px;
-      overflow: visible;
-      flex-shrink: 0;
-      background: rgba(255,255,255,0.03);
-      border: 1px solid rgba(255,255,255,0.05);
-    }
-    /* Corner badge overlay on tool icons */
-    .tool-icon-corner-badge {
-      position: absolute;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      box-shadow: 0 1.5px 3px rgba(0,0,0,0.6);
-      z-index: 2;
-    }
-
-    .tool-icon-fallback {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 100%;
-      height: 100%;
-      font-weight: 700;
-      color: #fff;
-      border-radius: 4px;
-    }
-    .tool-icon-svg {
-      width: 65%;
-      height: 65%;
-    }
-
-    /* Tool Kind badges */
-    .tool-kind-badge {
-      font-size: 9px;
-      font-weight: 700;
-      padding: 2px 5px;
-      border-radius: 4px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-    .kind-cli { background: rgba(56,139,253,0.15); color: #58a6ff; border: 1px solid rgba(56,139,253,0.2); }
-    .kind-app { background: rgba(188,140,255,0.15); color: #bc8cff; border: 1px solid rgba(188,140,255,0.2); }
-    .kind-editor { background: rgba(227,179,65,0.15); color: #e3b341; border: 1px solid rgba(227,179,65,0.2); }
-    .kind-extension { background: rgba(86,211,100,0.15); color: #56d364; border: 1px solid rgba(86,211,100,0.2); }
-    .kind-skill { background: rgba(139,155,180,0.15); color: var(--text-muted); border: 1px solid rgba(139,155,180,0.2); }
-    .kind-runtime { background: rgba(248,81,73,0.15); color: #ff7b72; border: 1px solid rgba(248,81,73,0.2); }
-
-    /* Main Content Area */
-    .container {
-      margin-left: 300px;
-      flex: 1;
-      min-width: 0;
-      display: flex;
-      flex-direction: column;
-    }
-
-    header {
-      background: var(--bg-sidebar);
-      border-bottom: 1px solid var(--border-color);
-      padding: 18px 32px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      position: sticky;
-      top: 0;
-      z-index: 90;
-    }
-    .header-left { display: flex; flex-direction: column; gap: 4px; }
-    .workspace-info {
-      font-size: 12px;
-      color: var(--text-muted);
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-    .workspace-info code {
-      font-family: var(--font-mono);
-      background: var(--bg-main);
-      padding: 2px 6px;
-      border-radius: 4px;
-      border: 1px solid var(--border-color);
-    }
-    .header-actions { display: flex; align-items: center; gap: 12px; }
-
-    /* Layout grid container */
-    main {
-      padding: 32px;
-      flex: 1;
-    }
-
-    .tab-panel {
-      display: none;
-      animation: fadeIn 0.25s ease-out;
-    }
-    .tab-panel.active { display: block; }
-
-    /* Metrics Summary Widget */
-    .summary-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 16px;
-      margin-bottom: 24px;
-    }
-    .summary-card {
-      background: var(--bg-panel);
-      border: 1px solid var(--border-color);
-      border-radius: 12px;
-      padding: 20px;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      box-shadow: var(--shadow);
-    }
-    .summary-card span { font-size: 13px; color: var(--text-muted); font-weight: 500; }
-    .summary-card strong { font-size: 28px; font-weight: 700; color: #fff; }
-
-    /* General Panel styles */
-    .panel {
-      background: var(--bg-panel);
-      border: 1px solid var(--border-color);
-      border-radius: 12px;
-      padding: 24px;
-      box-shadow: var(--shadow);
-      margin-bottom: 24px;
-    }
-    .panel-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 20px;
-      border-bottom: 1px solid var(--border-color);
-      padding-bottom: 12px;
-    }
-    .panel-title { font-size: 16px; font-weight: 600; margin: 0; color: #fff; }
-
-    /* Forms */
-    .form-group { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
-    .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
-    label { font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
-    input, select, textarea {
-      background: var(--bg-input);
-      border: 1px solid var(--border-color);
-      border-radius: 8px;
-      color: var(--text-main);
-      padding: 10px 14px;
-      font-family: inherit;
-      font-size: 14px;
-      width: 100%;
-      transition: border-color 0.2s;
-    }
-    input:focus, select:focus, textarea:focus {
-      outline: none;
-      border-color: var(--border-focus);
-    }
-    textarea { resize: vertical; min-height: 80px; }
-
-    /* Buttons */
-    button, .btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      font-family: var(--font-sans);
-      font-size: 14px;
-      font-weight: 600;
-      padding: 10px 16px;
-      border-radius: 8px;
-      border: 1px solid var(--border-color);
-      background: var(--bg-panel-hover);
-      color: var(--text-main);
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-    button:hover, .btn:hover { background: var(--border-color); color: #fff; }
-    button.primary, .btn.primary {
-      background: var(--accent-blue);
-      border-color: var(--accent-blue);
-      color: #fff;
-    }
-    button.primary:hover, .btn.primary:hover { background: #006be6; border-color: #006be6; }
-    button.danger, .btn.danger {
-      background: rgba(248,81,73,0.15);
-      border-color: var(--status-blocked);
-      color: #ff7b72;
-    }
-    button.danger:hover, .btn.danger:hover { background: var(--status-blocked); color: #fff; }
-    button.small, .btn.small { padding: 6px 10px; font-size: 12px; border-radius: 6px; }
-    button:disabled { opacity: 0.5; cursor: not-allowed; }
-
-    /* Badge styles */
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      padding: 3px 8px;
-      border-radius: 6px;
-      font-size: 11px;
-      font-weight: 600;
-      text-transform: uppercase;
-    }
-    .badge.priority-urgent { background: rgba(248,81,73,0.15); color: #ff7b72; }
-    .badge.priority-high { background: rgba(227,179,65,0.15); color: #e3b341; }
-    .badge.priority-normal { background: rgba(56,139,253,0.15); color: #58a6ff; }
-    .badge.priority-low { background: rgba(139,155,180,0.15); color: var(--text-muted); }
-
-    .badge.status-open { background: rgba(139,155,180,0.15); color: var(--text-muted); }
-    .badge.status-none { background: rgba(139,155,180,0.15); color: var(--text-muted); }
-    .badge.status-planned { background: rgba(139,155,180,0.15); color: var(--text-muted); }
-    .badge.status-pending { background: rgba(139,155,180,0.15); color: var(--text-muted); }
-    .badge.status-claimed { background: rgba(227,179,65,0.15); color: #e3b341; }
-    .badge.status-in_progress { background: rgba(56,139,253,0.15); color: #58a6ff; }
-    .badge.status-review { background: rgba(163,113,247,0.15); color: #d2a8ff; }
-    .badge.status-dispatched { background: rgba(56,139,253,0.15); color: #58a6ff; }
-    .badge.status-acked { background: rgba(56,139,253,0.15); color: #58a6ff; }
-    .badge.status-progress { background: rgba(56,139,253,0.15); color: #58a6ff; }
-    .badge.status-retrying { background: rgba(227,179,65,0.15); color: #e3b341; }
-    .badge.status-blocked { background: rgba(248,81,73,0.15); color: #ff7b72; }
-    .badge.status-failed { background: rgba(248,81,73,0.15); color: #ff7b72; }
-    .badge.status-abandoned { background: rgba(248,81,73,0.15); color: #ff7b72; }
-    .badge.status-done { background: rgba(86,211,100,0.15); color: #56d364; }
-    .badge.status-completed { background: rgba(86,211,100,0.15); color: #56d364; }
-    .badge.status-cancelled { background: rgba(72,79,88,0.15); color: #8b949e; }
-
-    /* Dashboard Layout */
-    .dashboard-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 24px;
-    }
-
-    /* Message stream */
-    .stream {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      max-height: 500px;
-      overflow-y: auto;
-      padding-right: 8px;
-    }
-    .stream-card {
-      background: var(--bg-panel-hover);
-      border: 1px solid var(--border-color);
-      border-radius: 8px;
-      padding: 14px 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      position: relative;
-    }
-    .stream-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      font-size: 12px;
-    }
-    .stream-meta { display: flex; align-items: center; gap: 8px; }
-    .stream-sender { font-weight: 600; color: #fff; }
-    .stream-project {
-      background: rgba(255,255,255,0.05);
-      border: 1px solid var(--border-color);
-      padding: 1px 6px;
-      border-radius: 4px;
-      color: var(--text-muted);
-      font-family: var(--font-mono);
-    }
-    .stream-body { font-size: 13.5px; white-space: pre-wrap; word-break: break-all; }
-    .stream-status-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      align-items: center;
-    }
-    .stream-status-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      font-size: 11px;
-      padding: 2px 8px;
-      border-radius: 999px;
-      border: 1px solid var(--border-color);
-      background: rgba(255,255,255,0.04);
-      color: var(--text-muted);
-    }
-    .stream-status-badge.delivery-written {
-      border-color: rgba(79, 193, 255, 0.35);
-      color: #9ddcff;
-    }
-    .stream-status-badge.delivery-dispatched {
-      border-color: rgba(46, 204, 113, 0.35);
-      color: #7ee2a8;
-    }
-    .stream-status-badge.delivery-failed {
-      border-color: rgba(255, 123, 114, 0.35);
-      color: #ff9b96;
-    }
-    .stream-status-badge.delivery-replied {
-      border-color: rgba(188, 140, 255, 0.35);
-      color: #d1b2ff;
-    }
-    .stream-status-detail {
-      font-size: 11px;
-      color: var(--text-muted);
-    }
-    .stream-thread {
-      font-size: 11px;
-      color: var(--text-muted);
-      font-family: var(--font-mono);
-    }
-    .stream-collapsible {
-      border-top: 1px dashed rgba(255,255,255,0.08);
-      padding-top: 8px;
-      margin-top: 2px;
-    }
-    .stream-collapsible summary {
-      cursor: pointer;
-      color: var(--text-muted);
-      font-size: 12px;
-      user-select: none;
-    }
-    .stream-collapsible summary:hover {
-      color: var(--text-main);
-    }
-    .stream-actions {
-      display: flex;
-      justify-content: flex-end;
-      gap: 8px;
-      border-top: 1px solid rgba(255,255,255,0.04);
-      padding-top: 8px;
-    }
-
-    .endpoint-errors {
-      border: 1px solid rgba(248,81,73,0.35);
-      background: rgba(248,81,73,0.08);
-      border-radius: 8px;
-      padding: 10px 12px;
-      margin-bottom: 16px;
-      color: #ffb4ad;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-    .endpoint-errors[hidden] { display: none; }
-    .endpoint-errors-title {
-      color: #ff7b72;
-      font-size: 12px;
-      font-weight: 600;
-    }
-    .endpoint-errors-help {
-      color: var(--text-muted);
-      font-size: 12px;
-    }
-    .endpoint-errors-list {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-    }
-    .endpoint-error-item {
-      border: 1px solid rgba(248,81,73,0.2);
-      background: rgba(0,0,0,0.18);
-      border-radius: 6px;
-      padding: 5px 7px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      max-width: 100%;
-      font-size: 12px;
-    }
-    .endpoint-error-item code {
-      color: #ff7b72;
-      white-space: nowrap;
-    }
-
-    /* Tasks Board Layout */
-    .tasks-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 16px;
-      align-items: start;
-    }
-    .tasks-column {
-      background: var(--bg-sidebar);
-      border: 1px solid var(--border-color);
-      border-radius: 12px;
-      padding: 16px;
-      min-height: 400px;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-    .column-header {
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--text-muted);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 8px;
-      padding-bottom: 8px;
-      border-bottom: 1px solid var(--border-color);
-    }
-    .task-card {
-      background: var(--bg-panel);
-      border: 1px solid var(--border-color);
-      border-radius: 8px;
-      padding: 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      transition: transform 0.2s, border-color 0.2s;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-    }
-    .task-card:hover {
-      transform: translateY(-2px);
-      border-color: var(--border-focus);
-    }
-    .task-title { font-weight: 600; color: #fff; margin: 0; font-size: 14.5px; }
-    .task-meta { display: flex; align-items: center; justify-content: space-between; font-size: 11px; }
-    .task-assignee { display: flex; align-items: center; gap: 4px; font-weight: 500; }
-    .task-desc { font-size: 12.5px; color: var(--text-muted); word-break: break-all; }
-    .task-handoff {
-      background: rgba(255,255,255,0.02);
-      border-left: 2px solid var(--accent-purple);
-      padding: 6px 10px;
-      font-size: 12px;
-      font-style: italic;
-      color: var(--text-muted);
-    }
-    .task-review {
-      border: 1px solid rgba(255,255,255,0.06);
-      background: rgba(255,255,255,0.025);
-      border-radius: 8px;
-      padding: 8px 10px;
-      font-size: 12px;
-      color: var(--text-muted);
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-    .task-review strong { color: var(--text-main); }
-    .task-review-actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-    }
-    .task-notes {
-      border-top: 1px dashed var(--border-color);
-      padding-top: 8px;
-      margin-top: 4px;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-    .task-note-item {
-      font-size: 11px;
-      color: var(--text-muted);
-      line-height: 1.3;
-    }
-    .task-note-item strong { color: #fff; }
-
-    .workflow-stage-strip {
-      display: grid;
-      grid-template-columns: repeat(6, minmax(0, 1fr));
-      gap: 10px;
-    }
-    .workflow-stage {
-      border: 1px solid var(--border-color);
-      background: rgba(255,255,255,0.03);
-      border-radius: 8px;
-      padding: 12px;
-      min-height: 92px;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-    }
-    .workflow-stage strong {
-      color: #fff;
-      font-size: 13px;
-      font-weight: 600;
-    }
-    .workflow-stage .stage-count {
-      font-family: var(--font-mono);
-      font-size: 28px;
-      color: var(--accent-blue);
-      line-height: 1;
-    }
-    .workflow-stage .stage-detail {
-      color: var(--text-muted);
-      font-size: 11px;
-      line-height: 1.35;
-    }
-    .workflow-list {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      margin-top: 12px;
-    }
-    .workflow-row {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: 12px;
-      align-items: center;
-      border-top: 1px solid var(--border-color);
-      padding-top: 10px;
-    }
-    .workflow-title {
-      font-weight: 600;
-      color: #fff;
-      word-break: break-word;
-    }
-    .workflow-meta {
-      color: var(--text-muted);
-      font-size: 11px;
-      margin-top: 4px;
-    }
-
-    /* Memory Hub Layout */
-    .memory-split {
-      display: grid;
-      grid-template-columns: 350px 1fr;
-      gap: 24px;
-    }
-    .markdown-container {
-      background: var(--bg-panel-hover);
-      border: 1px solid var(--border-color);
-      border-radius: 8px;
-      padding: 24px;
-      font-family: var(--font-sans);
-      font-size: 14px;
-      max-height: 700px;
-      overflow-y: auto;
-    }
-    .markdown-container h1 { font-size: 20px; font-weight: 700; margin-top: 0; color: #fff; border-bottom: 1px solid var(--border-color); padding-bottom: 8px; }
-    .markdown-container h2 { font-size: 16px; font-weight: 600; margin-top: 24px; color: var(--accent-blue); }
-    .markdown-container h3 { font-size: 14px; font-weight: 600; margin-top: 16px; }
-    .markdown-container ul { padding-left: 20px; }
-    .markdown-container li { margin-bottom: 8px; line-height: 1.6; }
-    .markdown-container code { font-family: var(--font-mono); background: rgba(255,255,255,0.06); padding: 2px 4px; border-radius: 4px; font-size: 12px; }
-    .markdown-container a { color: var(--accent-blue); text-decoration: none; }
-    .markdown-container a:hover { text-decoration: underline; }
-
-    /* Dispatch Log styles */
-    .dispatch-log-list { display: flex; flex-direction: column; gap: 12px; }
-    .dispatch-log-card {
-      background: var(--bg-panel);
-      border: 1px solid var(--border-color);
-      border-radius: 8px;
-      padding: 16px;
-    }
-    .dispatch-log-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      cursor: pointer;
-    }
-    .dispatch-log-meta { display: flex; align-items: center; gap: 16px; font-size: 13px; }
-    .dispatch-log-tool { font-weight: 600; color: #fff; }
-    .dispatch-log-project { font-family: var(--font-mono); color: var(--text-muted); }
-    .dispatch-log-details {
-      margin-top: 16px;
-      border-top: 1px solid var(--border-color);
-      padding-top: 12px;
-      display: none;
-    }
-    .dispatch-log-details.active { display: block; }
-    .dispatch-output-box {
-      font-family: var(--font-mono);
-      font-size: 12px;
-      background: var(--bg-main);
-      padding: 12px;
-      border-radius: 6px;
-      border: 1px solid var(--border-color);
-      overflow-x: auto;
-      max-height: 250px;
-      margin-top: 8px;
-      white-space: pre-wrap;
-    }
-
-    /* Filter strip */
-    .filter-strip {
-      display: flex;
-      gap: 12px;
-      margin-bottom: 16px;
-      align-items: center;
-      flex-wrap: wrap;
-    }
-    .filter-strip select, .filter-strip input {
-      width: auto;
-      min-width: 150px;
-      padding: 6px 12px;
-      font-size: 13px;
-      border-radius: 6px;
-    }
-
-    /* Auto refresh widget */
-    .refresh-widget {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 13px;
-      color: var(--text-muted);
-    }
-    .switch {
-      position: relative;
-      display: inline-block;
-      width: 34px;
-      height: 20px;
-    }
-    .switch input { opacity: 0; width: 0; height: 0; }
-    .slider {
-      position: absolute;
-      cursor: pointer;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background-color: var(--border-color);
-      transition: .4s;
-      border-radius: 20px;
-    }
-    .slider:before {
-      position: absolute;
-      content: "";
-      height: 14px; width: 14px;
-      left: 3px; bottom: 3px;
-      background-color: white;
-      transition: .4s;
-      border-radius: 50%;
-    }
-    input:checked + .slider { background-color: var(--accent-blue); }
-    input:checked + .slider:before { transform: translateX(14px); }
-
-    /* Loading Spinner */
-    .spinner {
-      display: inline-block;
-      width: 16px;
-      height: 16px;
-      border: 2px solid rgba(255,255,255,0.1);
-      border-radius: 50%;
-      border-top-color: #fff;
-      animation: spin 1s ease-in-out infinite;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-
-    /* Responsive */
-    @media (max-width: 992px) {
-      aside {
-        transform: translateX(-100%);
-      }
-      aside.active {
-        transform: translateX(0);
-      }
-      .container { margin-left: 0; }
-      .dashboard-grid { grid-template-columns: 1fr; }
-      .tasks-grid { grid-template-columns: 1fr; }
-      .memory-split { grid-template-columns: 1fr; }
-      .workflow-stage-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    }
-
-    /* Modal styles */
-    .modal-overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      background: rgba(0, 0, 0, 0.6);
-      backdrop-filter: blur(8px);
-      z-index: 1000;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      animation: fadeIn 0.25s ease-out;
-    }
-    .modal-card {
-      background: rgba(18, 25, 47, 0.95);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 12px;
-      width: 550px;
-      max-width: 90%;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-      overflow: hidden;
-      animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-    }
-    .modal-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 16px 20px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-      background: rgba(255, 255, 255, 0.02);
-    }
-    .modal-title-container {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-    .modal-close {
-      background: none;
-      border: none;
-      color: var(--text-muted);
-      font-size: 24px;
-      cursor: pointer;
-      line-height: 1;
-      padding: 0;
-      transition: color 0.2s;
-    }
-    .modal-close:hover {
-      color: #fff;
-    }
-    .modal-body {
-      padding: 20px;
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-    }
-    .modal-section {
-      background: rgba(255, 255, 255, 0.02);
-      border: 1px solid rgba(255, 255, 255, 0.05);
-      border-radius: 8px;
-      padding: 12px 16px;
-    }
-    @keyframes slideUp {
-      from { transform: translateY(20px); opacity: 0; }
-      to { transform: translateY(0); opacity: 1; }
-    }
-  </style>
-</head>
-<body>
-  <aside id="sidebar">
-    <div class="app-logo">
-      <div class="icon">
-        <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" style="width: 85%; height: 85%;">
-          <defs>
-            <filter id="coreGlow" x="-50%" y="-50%" width="200%" height="200%">
-              <feGaussianBlur stdDeviation="2.5" result="blur"/>
-              <feComposite in="SourceGraphic" in2="blur" operator="over"/>
-            </filter>
-            <linearGradient id="coreGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" style="stop-color:#00f2fe;stop-opacity:1" />
-              <stop offset="100%" style="stop-color:#4facfe;stop-opacity:1" />
-            </linearGradient>
-          </defs>
-          <!-- 背景连接线 -->
-          <g stroke="url(#coreGrad)" stroke-width="1.5" opacity="0.4">
-            <path d="M50 15 L80 32.5 L80 67.5 L50 85 L20 67.5 L20 32.5 Z" fill="none" />
-            <path d="M50 15 L50 85 M20 32.5 L80 67.5 M20 67.5 L80 32.5" fill="none" />
-            <circle cx="50" cy="50" r="18" fill="none" stroke-dasharray="2 4" />
-          </g>
-          <!-- 核心量子节点 -->
-          <g fill="#fff" filter="url(#coreGlow)">
-            <circle cx="50" cy="15" r="4" />
-            <circle cx="80" cy="32.5" r="4" />
-            <circle cx="80" cy="67.5" r="4" />
-            <circle cx="50" cy="85" r="4" />
-            <circle cx="20" cy="67.5" r="4" />
-            <circle cx="20" cy="32.5" r="4" />
-            <circle cx="50" cy="50" r="7" />
-          </g>
-          <!-- 动态环绕 -->
-          <circle cx="50" cy="50" r="40" fill="none" stroke="#00f2fe" stroke-width="1" stroke-dasharray="10 20" opacity="0.3">
-            <animateTransform attributeName="transform" type="rotate" from="0 50 50" to="360 50 50" dur="10s" repeatCount="indefinite" />
-          </circle>
-        </svg>
-      </div>
-      <h1>AI Memory Hub</h1>
-    </div>
-    <nav>
-      <div class="nav-item active" onclick="switchTab('dashboard')" data-i18n="overview">📊 Overview</div>
-      <div class="nav-item" onclick="switchTab('memory')">🧠 <span data-i18n="memoryHub">Memory Hub</span> <span class="badge" id="sidebarPending">0</span></div>
-      <div class="nav-item" onclick="switchTab('radio')">📻 <span data-i18n="agentRadio">Agent Radio</span> <span class="badge" id="sidebarRadio">0</span></div>
-      <div class="nav-item" onclick="switchTab('tasks')">📋 <span data-i18n="tasksBoard">Tasks Board</span> <span class="badge" id="sidebarTasks">0</span></div>
-      <div class="nav-item" onclick="switchTab('dispatch')" data-i18n="dispatchLogs">⚡ Dispatch Logs</div>
-      <div class="nav-item" onclick="switchTab('workflows')" data-i18n="workflowsPanel">🔄 Workflows</div>
-    </nav>
-
-    <div class="tools-matrix">
-      <h3 data-i18n="detectedTools">Detected Tools</h3>
-      <div class="tools-list" id="detectedTools">
-        <div class="muted" style="font-size:11px;padding:4px;" data-i18n="scanning">Scanning...</div>
-      </div>
-    </div>
-  </aside>
-
-  <div class="container">
-    <header>
-      <div class="header-left">
-        <div style="display:flex;align-items:center;gap:12px;">
-          <button id="sidebarToggle" class="btn small" style="display:none;" onclick="toggleSidebar()">☰</button>
-          <h2 style="margin:0;font-size:18px;font-weight:600;" data-i18n="operations">Hub Operations</h2>
-        </div>
-        <div class="workspace-info">
-          <span data-i18n="storage">Storage:</span><code id="memoryDir">loading...</code>
-        </div>
-      </div>
-      <div class="header-actions">
-        <div class="refresh-widget">
-          <span data-i18n="autoRefresh">Auto-refresh:</span>
-          <label class="switch">
-            <input type="checkbox" id="autoRefreshCheckbox" checked onchange="toggleAutoRefresh(this.checked)">
-            <span class="slider"></span>
-          </label>
-        </div>
-        <button onclick="toggleLanguage()" class="btn" id="btnLang">🌐 EN</button>
-        <button onclick="refreshData()" class="btn" id="btnRefresh" data-i18n="refresh">Refresh</button>
-        <button onclick="runPull()" class="btn" id="btnPull" data-i18n="rebuild">Rebuild Snapshot</button>
-        <button onclick="runSync()" class="primary" id="btnSync" data-i18n="syncInbox">Sync Inbox</button>
-      </div>
-    </header>
-
-    <main>
-      <div id="endpointErrors" class="endpoint-errors" hidden></div>
-
-      <!-- Dashboard Overview Tab -->
-      <div id="tab-dashboard" class="tab-panel active">
-        <div class="summary-grid">
-          <div class="summary-card">
-            <span data-i18n="activeTasks">Active Tasks</span>
-            <strong id="cardActiveTasks">0</strong>
-          </div>
-          <div class="summary-card">
-            <span data-i18n="pendingEvents">Pending Events</span>
-            <strong id="cardPending">0</strong>
-          </div>
-          <div class="summary-card">
-            <span data-i18n="radioMessages">Radio Messages</span>
-            <strong id="cardRadio">0</strong>
-          </div>
-          <div class="summary-card">
-            <span data-i18n="durableLedger">Durable Ledger</span>
-            <strong id="cardLedger">0</strong>
-          </div>
-          <div class="summary-card">
-            <span data-i18n="backups">Backups</span>
-            <strong id="cardBackups">0</strong>
-          </div>
-        </div>
-
-        <div class="panel" style="margin-bottom:24px;">
-          <div class="panel-header">
-            <h3 class="panel-title" data-i18n="workflowStages">Workflow Stages</h3>
-            <button class="btn small" onclick="switchTab('dispatch')" data-i18n="relayStatus">Relay Status</button>
-          </div>
-          <div class="workflow-stage-strip" id="workflowStageStrip">
-            <div class="muted" data-i18n="noWorkflows">No workflows recorded.</div>
-          </div>
-          <div class="workflow-list" id="workflowList"></div>
-        </div>
-
-        <div class="dashboard-grid">
-          <div class="panel">
-            <div class="panel-header">
-              <h3 class="panel-title" data-i18n="activeTasksKanban">⭐ Active Tasks Kanban</h3>
-              <button class="btn small" onclick="switchTab('tasks')" data-i18n="fullBoard">Full Board</button>
-            </div>
-            <div style="display:flex;flex-direction:column;gap:12px;" id="dashboardTasks">
-              <div class="muted" data-i18n="noActiveTasks">No active tasks found.</div>
-            </div>
-          </div>
-
-          <div class="panel">
-            <div class="panel-header">
-              <h3 class="panel-title" data-i18n="liveRadioFeed">📻 Live Radio Feed</h3>
-              <button class="btn small" onclick="switchTab('radio')" data-i18n="agentRadio">Agent Radio</button>
-            </div>
-            <div class="stream" id="dashboardRadio">
-              <div class="muted" data-i18n="noRecentMessages">No recent messages.</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Memory Hub Tab -->
-      <div id="tab-memory" class="tab-panel">
-        <div class="memory-split">
-          <div class="stack">
-            <div class="panel">
-              <div class="panel-header">
-                <h3 class="panel-title" data-i18n="recordMemory">Record Memory</h3>
-              </div>
-              <div class="form-group">
-                <label data-i18n="textLabel">Text</label>
-                <textarea id="memText" data-i18n-placeholder="placeholderMemText" placeholder="Record user preference, workflow rule, or important project fact."></textarea>
-              </div>
-              <div class="form-row">
-                <div class="form-group">
-                  <label data-i18n="kindLabel">Kind</label>
-                  <select id="memKind">
-                    <option value="preference" data-i18n="prefOpt">Preference</option>
-                    <option value="workflow" data-i18n="workOpt">Workflow</option>
-                    <option value="project" data-i18n="projOpt">Project</option>
-                    <option value="correction" data-i18n="corrOpt">Correction</option>
-                    <option value="note" selected data-i18n="noteOpt">Note</option>
-                  </select>
-                </div>
-                <div class="form-group">
-                  <label data-i18n="sourceLabel">Source</label>
-                  <input type="text" id="memSource" value="dashboard">
-                </div>
-              </div>
-              <button class="primary" onclick="submitMemory()" data-i18n="recordDurable">Record Durable Event</button>
-            </div>
-
-            <div class="panel">
-              <div class="panel-header">
-                <h3 class="panel-title" data-i18n="inboxPendingSync">Inbox Events (Pending Sync)</h3>
-              </div>
-              <div style="max-height:300px;overflow-y:auto;">
-                <table style="width:100%;font-size:12px;">
-                  <thead>
-                    <tr><th data-i18n="sourceLabel">Source</th><th data-i18n="textLabel">Event</th></tr>
-                  </thead>
-                  <tbody id="inboxTable">
-                    <tr><td colspan="2" class="muted" data-i18n="noPendingTable">No pending events.</td></tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
-          <div class="panel">
-            <div class="panel-header">
-              <div style="display:flex;gap:12px;">
-                <button class="btn small primary" onclick="switchMemorySubTab('md')">MEMORY.md</button>
-                <button class="btn small" onclick="switchMemorySubTab('profile')">profile.md</button>
-              </div>
-              <button class="btn small" onclick="runPull()" data-i18n="pullIndex">Pull & Index</button>
-            </div>
-            <div id="memorySubTab-md" class="markdown-container">
-              <pre id="memoryRaw" class="muted">Loading MEMORY.md...</pre>
-            </div>
-            <div id="memorySubTab-profile" class="markdown-container" style="display:none;">
-              <pre id="profileRaw" class="muted">Loading profile.md...</pre>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Agent Radio Tab -->
-      <div id="tab-radio" class="tab-panel">
-        <div class="memory-split">
-          <div class="panel">
-            <div class="panel-header">
-              <h3 class="panel-title" data-i18n="broadcastMessage">Broadcast Message</h3>
-            </div>
-            <div class="form-group">
-              <label data-i18n="messageContent">Message Content</label>
-              <textarea id="radText" data-i18n-placeholder="placeholderRadText" placeholder="Broadcast a handoff note, review request, or risk flag."></textarea>
-            </div>
-            <div class="form-row">
-              <div class="form-group">
-                <label data-i18n="fromLabel">From</label>
-                <input type="text" id="radFrom" value="dashboard">
-              </div>
-              <div class="form-group">
-                <label data-i18n="toLabel">To</label>
-                <input type="text" id="radTo" value="all">
-              </div>
-            </div>
-            <div class="form-row">
-              <div class="form-group">
-                <label data-i18n="typeLabel">Type</label>
-                <select id="radType">
-                  <option value="note" selected data-i18n="noteOpt">Note</option>
-                  <option value="review" data-i18n="revOpt">Review</option>
-                  <option value="handoff" data-i18n="handOpt">Handoff</option>
-                  <option value="risk" data-i18n="riskOpt">Risk</option>
-                  <option value="done" data-i18n="doneOpt">Done</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label data-i18n="projectLabel">Project</label>
-                <select id="radProject" onchange="toggleCustomProjectInput('rad')">
-                  <option value="" data-i18n="selectProject">Select Project</option>
-                  <option value="__custom__" data-i18n="customProject">Custom Project</option>
-                </select>
-                <input type="text" id="radProjectCustom" data-i18n-placeholder="projectLabel" placeholder="Project name" style="display:none;margin-top:8px;">
-              </div>
-            </div>
-            <button class="primary" onclick="submitRadio()" data-i18n="broadcast">Broadcast Message</button>
-          </div>
-
-          <div class="panel">
-            <div class="panel-header">
-              <h3 class="panel-title" data-i18n="radioStream">Radio Stream</h3>
-            </div>
-            <div class="filter-strip">
-              <input type="text" id="filterRadioQuery" data-i18n-placeholder="searchText" placeholder="Search text..." oninput="applyRadioFilters()">
-              <select id="filterRadioFromOpt" onchange="applyRadioFilters()">
-                <option value="" data-i18n="senderAll">Sender: All</option>
-              </select>
-              <select id="filterRadioToOpt" onchange="applyRadioFilters()">
-                <option value="" data-i18n="recipientAll">Recipient: All</option>
-              </select>
-              <select id="filterRadioTypeOpt" onchange="applyRadioFilters()">
-                <option value="" data-i18n="typeAll">Type: All</option>
-                <option value="note" data-i18n="noteOpt">Note</option>
-                <option value="review" data-i18n="revOpt">Review</option>
-                <option value="handoff" data-i18n="handOpt">Handoff</option>
-                <option value="risk" data-i18n="riskOpt">Risk</option>
-                <option value="done" data-i18n="doneOpt">Done</option>
-              </select>
-            </div>
-            <div class="stream" id="radioFeed">
-              <div class="muted" data-i18n="noRadioMessages">No radio messages.</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Tasks Board Tab -->
-      <div id="tab-tasks" class="tab-panel">
-        <div class="panel">
-          <div class="panel-header">
-            <h3 class="panel-title" data-i18n="addTask">Add Shared Task</h3>
-          </div>
-          <div class="form-row">
-            <div class="form-group" style="grid-column: span 2;">
-              <label data-i18n="taskTitleLabel">Task Title</label>
-              <input type="text" id="tskTitle" data-i18n-placeholder="placeholderTskTitle" placeholder="Task summary or requirement">
-            </div>
-            <div class="form-group">
-              <label data-i18n="projectLabel">Project</label>
-              <select id="tskProject" onchange="toggleCustomProjectInput('tsk')">
-                <option value="default">default</option>
-                <option value="__custom__" data-i18n="customProject">Custom Project</option>
-              </select>
-              <input type="text" id="tskProjectCustom" data-i18n-placeholder="projectLabel" placeholder="Project name" style="display:none;margin-top:8px;">
-            </div>
-            <div class="form-group">
-              <label data-i18n="priorityLabel">Priority</label>
-              <select id="tskPriority">
-                <option value="normal" selected data-i18n="normOpt">Normal</option>
-                <option value="low" data-i18n="lowOpt">Low</option>
-                <option value="high" data-i18n="highOpt">High</option>
-                <option value="urgent" data-i18n="urgOpt">Urgent</option>
-              </select>
-            </div>
-          </div>
-          <div class="form-row">
-            <div class="form-group" style="grid-column: span 3;">
-              <label data-i18n="descriptionLabel">Description / Details</label>
-              <textarea id="tskDesc" data-i18n-placeholder="placeholderTskDesc" placeholder="Goal: ... Scope: ... Acceptance: ..."></textarea>
-            </div>
-            <div class="form-group">
-              <label data-i18n="handoffStatusLabel">Handoff Status (Optional)</label>
-              <textarea id="tskHandoff" data-i18n-placeholder="placeholderTskHandoff" placeholder="Current state, next step, owner, risks..."></textarea>
-            </div>
-          </div>
-          <button class="primary" onclick="submitTask()" data-i18n="addTaskButton">Add task to ledger</button>
-        </div>
-
-        <div class="filter-strip">
-          <span data-i18n="filterProject">Filter Project:</span>
-          <select id="filterTaskProject" onchange="renderTasksList()">
-            <option value="" data-i18n="allProjects">All Projects</option>
-          </select>
-          <span data-i18n="filterPriority">Filter Priority:</span>
-          <select id="filterTaskPriority" onchange="renderTasksList()">
-            <option value="" data-i18n="allPriorities">All Priorities</option>
-            <option value="low" data-i18n="lowOpt">Low</option>
-            <option value="normal" data-i18n="normOpt">Normal</option>
-            <option value="high" data-i18n="highOpt">High</option>
-            <option value="urgent" data-i18n="urgOpt">Urgent</option>
-          </select>
-        </div>
-
-        <div class="tasks-grid">
-          <!-- Column 1: Open -->
-          <div class="tasks-column">
-            <div class="column-header">
-              <span>OPEN</span>
-              <span class="badge status-open" id="countOpen">0</span>
-            </div>
-            <div style="display:flex;flex-direction:column;gap:12px;" id="col-open"></div>
-          </div>
-
-          <!-- Column 2: Claimed & In Progress & Blocked -->
-          <div class="tasks-column">
-            <div class="column-header">
-              <span>ACTIVE</span>
-              <span class="badge status-in_progress" id="countActive">0</span>
-            </div>
-            <div style="display:flex;flex-direction:column;gap:12px;" id="col-active"></div>
-          </div>
-
-          <!-- Column 3: Done & Cancelled -->
-          <div class="tasks-column">
-            <div class="column-header">
-              <span>COMPLETED</span>
-              <span class="badge status-done" id="countCompleted">0</span>
-            </div>
-            <div style="display:flex;flex-direction:column;gap:12px;" id="col-completed"></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Dispatch Logs Tab -->
-      <div id="tab-dispatch" class="tab-panel">
-        <div class="panel">
-          <div class="panel-header">
-            <h3 class="panel-title" data-i18n="automatedDispatcher">Automated Dispatcher (Cron / Watcher Dispatch Logs)</h3>
-            <button class="primary" onclick="triggerDispatcher()" id="btnTriggerDispatch" data-i18n="triggerDispatch">Trigger Dispatch Now</button>
-          </div>
-          <h4 style="margin:0 0 10px 0;" data-i18n="relayStatus">Relay Status</h4>
-          <div class="dispatch-log-list" id="dispatchRelay">
-            <div class="muted" data-i18n="noDispatcherEvents">No dispatcher events recorded yet.</div>
-          </div>
-          <h4 style="margin:18px 0 10px 0;" data-i18n="executionLogs">Execution Logs</h4>
-          <div class="dispatch-log-list" id="dispatchLogs">
-            <div class="muted" data-i18n="noDispatch">No dispatch logs found.</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Workflows Panel Tab -->
-      <div id="tab-workflows" class="tab-panel">
-        <div class="panel">
-          <div class="panel-header">
-            <h3 class="panel-title" data-i18n="workflowsPanel">🔄 Workflows Management</h3>
-            <button class="btn primary" onclick="showWorkflowForm()" data-i18n="createWorkflow">+ Create Workflow</button>
-          </div>
-          <div class="workflow-list" id="workflowList">
-            <div class="muted" data-i18n="noWorkflows">No workflows found.</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Compatibility & Raw JSON section for Scraper bots -->
-      <details class="panel" style="margin-top:24px;">
-        <summary style="cursor:pointer; font-weight:600; color:var(--text-muted);" data-i18n="rawCompatibility">🛠️ Raw JSON / Compatibility Data</summary>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:16px;">
-          <div>
-            <h4>Shared Snapshot (MEMORY.md)</h4>
-            <pre id="memory" style="font-family:var(--font-mono); font-size:12px; background:var(--bg-main); padding:12px; border:1px solid var(--border-color); border-radius:6px; max-height:300px; overflow:auto;"></pre>
-          </div>
-          <div>
-            <h4>Pending Inbox</h4>
-            <pre id="pendingJson" style="font-family:var(--font-mono); font-size:12px; background:var(--bg-main); padding:12px; border:1px solid var(--border-color); border-radius:6px; max-height:300px; overflow:auto;"></pre>
-          </div>
-          <div>
-            <h4>Active Tasks</h4>
-            <pre id="tasksJson" style="font-family:var(--font-mono); font-size:12px; background:var(--bg-main); padding:12px; border:1px solid var(--border-color); border-radius:6px; max-height:300px; overflow:auto;"></pre>
-          </div>
-          <div>
-            <h4>Agent Radio Messages</h4>
-            <pre id="radioJson" style="font-family:var(--font-mono); font-size:12px; background:var(--bg-main); padding:12px; border:1px solid var(--border-color); border-radius:6px; max-height:300px; overflow:auto;"></pre>
-          </div>
-        </div>
-      </details>
-      
-      <!-- Hidden backward-compatible DOM tags for scrapers -->
-      <div style="display:none;">
-        <div id="statusLine" class="status ok"><span class="dot"></span><span>Local hub ready</span></div>
-        <span id="pending">0</span>
-        <span id="ledger">0</span>
-        <span id="radioCount">0</span>
-        <span id="taskCount">0</span>
-        <span id="backupCount">0</span>
-        <span id="toolCount">0</span>
-      </div>
-    </main>
-  </div>
-
-  <!-- Modal for Tool Interaction & Rule Installation -->
-  <div id="toolModal" class="modal-overlay" style="display:none;" onclick="closeToolModal(event)">
-    <div class="modal-card" onclick="event.stopPropagation()">
-      <div class="modal-header">
-        <div class="modal-title-container">
-          <div id="modalToolIcon" style="display:flex; align-items:center; justify-content:center;"></div>
-          <h3 id="modalToolName" style="margin:0; font-size:18px;">Tool Integration</h3>
-        </div>
-        <button class="modal-close" onclick="closeToolModal()">&times;</button>
-      </div>
-      <div class="modal-body">
-        <div class="modal-section">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-            <span><strong>Status:</strong> <span id="modalToolStatus"></span></span>
-          </div>
-          <div id="modalToolPath" class="muted" style="font-size:11px; word-break:break-all; line-height:1.6;"></div>
-        </div>
-        <div class="modal-section">
-          <h4 style="margin:0 0 8px 0; font-size:14px; color:var(--accent-purple);">Integration Rule Preview</h4>
-          <pre id="modalToolSnippet" style="font-family:var(--font-mono); font-size:11.5px; background:rgba(0,0,0,0.2); padding:12px; border:1px solid rgba(255,255,255,0.05); border-radius:6px; max-height:220px; overflow:auto; white-space:pre-wrap; word-break:break-all; margin:0; color:#e1e4e8;"></pre>
-        </div>
-        <div class="modal-actions" style="display:flex; gap:12px; justify-content:end;">
-          <button class="btn secondary" id="btnInstallLocal" onclick="applyToolRules('local')">Install Workspace Rules</button>
-          <button class="btn primary" id="btnInstallGlobal" onclick="applyToolRules('global')">Install Global Rules</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <script>
-    // Global tool icon and metadata mappings
     const toolDisplayNames = {
       en: {
         'gemini': 'Gemini',
@@ -1599,6 +199,8 @@
           <div class="tool-icon-wrapper" style="width:${size}px; height:${size}px;">
             <img src="${iconSrc}"
                  alt="${escapeHtml(name)}"
+                 loading="lazy"
+                 decoding="async"
                  style="width:100%; height:100%; object-fit:contain; border-radius:4px; display:block;"
                  onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex';" />
             <div class="tool-icon-fallback-container" style="display:none; width:100%; height:100%; align-items:center; justify-content:center;">
@@ -1762,7 +364,11 @@
         placeholderRadText: "Broadcast a handoff note, review request, or risk flag.",
         placeholderTskTitle: "Task summary or requirement",
         placeholderTskDesc: "Goal: ... Scope: ... Acceptance: ...",
-        placeholderTskHandoff: "Current state, next step, owner, risks..."
+        placeholderTskHandoff: "Current state, next step, owner, risks...",
+        analytics: "📈 Analytics",
+        memoryGrowth: "Memory Growth",
+        taskCompletion: "Task Completion",
+        radioActivity: "Radio Activity"
       },
       zh: {
         overview: "📊 概览看板",
@@ -1908,7 +514,11 @@
         placeholderRadText: "广播交接便签、评审请求或风险标识。",
         placeholderTskTitle: "任务简要总结或需求",
         placeholderTskDesc: "目标：... 范围：... 验收：...",
-        placeholderTskHandoff: "当前状态、下一步、负责人、风险..."
+        placeholderTskHandoff: "当前状态、下一步、负责人、风险...",
+        analytics: "📈 数据分析",
+        memoryGrowth: "记忆增长趋势",
+        taskCompletion: "任务完成率",
+        radioActivity: "Radio活跃度"
       }
     };
 
@@ -1924,6 +534,12 @@
       relay: [],
       autoRefresh: true,
       refreshInterval: 5000,
+      fallbackRefreshInterval: 30000,
+      realtime: {
+        connected: false,
+        reconnectAttempt: 0,
+        status: 'idle'
+      },
       searchRadio: '',
       filterRadioType: '',
       filterRadioFrom: '',
@@ -1936,7 +552,8 @@
     };
 
     let timer = null;
-
+    let socket = null;
+    let reconnectTimer = null;
     // Translation utilities
     function t(key, vars = {}) {
       let val = (i18n[state.lang] && i18n[state.lang][key]) || i18n['en'][key] || key;
@@ -1989,6 +606,213 @@
         .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
     }
 
+    const virtualLists = new Map();
+
+    function getVirtualState(key) {
+      if (!virtualLists.has(key)) {
+        virtualLists.set(key, {
+          el: null,
+          items: [],
+          renderItem: null,
+          options: {},
+          heights: new Map(),
+          raf: null,
+          measureRaf: null
+        });
+      }
+      return virtualLists.get(key);
+    }
+
+    function getVirtualItemKey(item, index, options) {
+      if (typeof options.itemKey === 'function') {
+        return String(options.itemKey(item, index));
+      }
+      return String(item && (item.id || item.key || item.ts || item.createdAt) || index);
+    }
+
+    function getVirtualItemHeight(stateObj, item, index) {
+      const options = stateObj.options || {};
+      const key = getVirtualItemKey(item, index, options);
+      return stateObj.heights.get(key) || options.estimateHeight || 120;
+    }
+
+    function getVirtualOffsets(stateObj) {
+      const items = stateObj.items || [];
+      const gap = stateObj.options.gap ?? 12;
+      const offsets = new Array(items.length + 1);
+      let cursor = 0;
+      offsets[0] = 0;
+      items.forEach((item, index) => {
+        cursor += getVirtualItemHeight(stateObj, item, index);
+        if (index < items.length - 1) cursor += gap;
+        offsets[index + 1] = cursor;
+      });
+      return { offsets, totalHeight: cursor };
+    }
+
+    function findVirtualIndex(offsets, target) {
+      let low = 0;
+      let high = Math.max(0, offsets.length - 2);
+      while (low <= high) {
+        const mid = Math.floor((low + high) / 2);
+        if (offsets[mid] <= target && target < offsets[mid + 1]) {
+          return mid;
+        }
+        if (offsets[mid] < target) {
+          low = mid + 1;
+        } else {
+          high = mid - 1;
+        }
+      }
+      return Math.max(0, Math.min(low, offsets.length - 2));
+    }
+
+    function scheduleVirtualRender(stateObj) {
+      cancelAnimationFrame(stateObj.raf);
+      stateObj.raf = requestAnimationFrame(() => renderVirtualWindow(stateObj));
+    }
+
+    function measureVirtualRows(stateObj) {
+      const el = stateObj.el;
+      if (!el) return;
+      let changed = false;
+      el.querySelectorAll('.virtual-row').forEach(row => {
+        const index = Number(row.dataset.vindex);
+        const item = stateObj.items[index];
+        if (!item) return;
+        const key = getVirtualItemKey(item, index, stateObj.options);
+        const height = Math.ceil(row.getBoundingClientRect().height);
+        if (height > 0 && Math.abs((stateObj.heights.get(key) || 0) - height) > 2) {
+          stateObj.heights.set(key, height);
+          changed = true;
+        }
+      });
+      if (changed) {
+        scheduleVirtualRender(stateObj);
+      }
+    }
+
+    function renderVirtualWindow(stateObj) {
+      const el = stateObj.el;
+      const items = stateObj.items || [];
+      const options = stateObj.options || {};
+      if (!el || items.length === 0) return;
+
+      const { offsets, totalHeight } = getVirtualOffsets(stateObj);
+      const viewportHeight = el.clientHeight || options.viewportHeight || 500;
+      const maxScrollTop = Math.max(0, totalHeight - viewportHeight);
+      if (el.scrollTop > maxScrollTop) {
+        el.scrollTop = maxScrollTop;
+      }
+
+      const scrollTop = el.scrollTop;
+      const overscan = options.overscan ?? 6;
+      const gap = options.gap ?? 12;
+      const start = Math.max(0, findVirtualIndex(offsets, scrollTop) - overscan);
+      const end = Math.min(items.length, findVirtualIndex(offsets, scrollTop + viewportHeight) + overscan + 1);
+      const topHeight = offsets[start] || 0;
+      const bottomHeight = Math.max(0, totalHeight - (offsets[end] || totalHeight));
+      const rows = [];
+
+      for (let index = start; index < end; index += 1) {
+        const item = items[index];
+        const rowClass = options.rowClass ? ` ${options.rowClass}` : '';
+        const marginBottom = index < items.length - 1 ? gap : 0;
+        rows.push(`
+          <div class="virtual-row${rowClass}" data-vindex="${index}" style="margin-bottom:${marginBottom}px;">
+            ${stateObj.renderItem(item, index)}
+          </div>
+        `);
+      }
+
+      el.innerHTML = `
+        <div class="virtual-spacer" style="height:${topHeight}px;"></div>
+        <div class="virtual-window">${rows.join('')}</div>
+        <div class="virtual-spacer" style="height:${bottomHeight}px;"></div>
+      `;
+
+      cancelAnimationFrame(stateObj.measureRaf);
+      stateObj.measureRaf = requestAnimationFrame(() => measureVirtualRows(stateObj));
+    }
+
+    function renderVirtualList(target, items, renderItem, options = {}) {
+      const el = typeof target === 'string' ? document.getElementById(target) : target;
+      if (!el) return;
+      const listItems = Array.isArray(items) ? items : [];
+      const key = options.key || el.id;
+      const stateObj = getVirtualState(key);
+
+      el.classList.add('virtual-list');
+      if (options.className) {
+        options.className.split(/\s+/).filter(Boolean).forEach(cls => el.classList.add(cls));
+      }
+      el.dataset.virtualCount = String(listItems.length);
+
+      if (stateObj.el !== el) {
+        stateObj.el = el;
+        el.addEventListener('scroll', () => scheduleVirtualRender(stateObj), { passive: true });
+      }
+
+      stateObj.items = listItems;
+      stateObj.renderItem = renderItem;
+      stateObj.options = options;
+
+      if (listItems.length === 0) {
+        el.innerHTML = options.emptyHtml || '<div class="muted">No data available.</div>';
+        return;
+      }
+
+      renderVirtualWindow(stateObj);
+    }
+
+    function formatInlineMarkdown(text) {
+      return escapeHtml(text)
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+    }
+
+    function getMarkdownBlocks(text) {
+      return String(text || '')
+        .split(/\r?\n/)
+        .map((line, index) => ({ id: index, line }));
+    }
+
+    function renderMarkdownBlockHTML(block) {
+      const line = block.line || '';
+      if (!line.trim()) {
+        return '<div class="markdown-line markdown-line-empty">&nbsp;</div>';
+      }
+      const heading = line.match(/^(#{1,3})\s+(.*)$/);
+      if (heading) {
+        const level = heading[1].length;
+        return `<h${level}>${formatInlineMarkdown(heading[2])}</h${level}>`;
+      }
+      const listItem = line.match(/^\s*[-*]\s+(.*)$/);
+      if (listItem) {
+        return `
+          <div class="markdown-list-item">
+            <span class="markdown-list-marker">•</span>
+            <span>${formatInlineMarkdown(listItem[1])}</span>
+          </div>
+        `;
+      }
+      return `<div class="markdown-line">${formatInlineMarkdown(line)}</div>`;
+    }
+
+    function renderMarkdownVirtual(containerId, text) {
+      const blocks = getMarkdownBlocks(text).filter(block => block.line.trim() || block.id === 0);
+      renderVirtualList(containerId, blocks, renderMarkdownBlockHTML, {
+        key: containerId,
+        className: 'markdown-virtual-list',
+        itemKey: block => `${block.id}:${block.line.length}`,
+        estimateHeight: 32,
+        overscan: 28,
+        gap: 2,
+        viewportHeight: 700,
+        emptyHtml: '<div class="muted">No data available.</div>'
+      });
+    }
+
     async function api(path, options = {}) {
       const res = await fetch(path, options);
       const json = await res.json();
@@ -2001,7 +825,7 @@
       document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
       document.querySelectorAll('.tab-panel').forEach(el => el.classList.remove('active'));
 
-      const tabs = ['dashboard', 'memory', 'radio', 'tasks', 'dispatch', 'workflows'];
+      const tabs = ['dashboard', 'memory', 'radio', 'tasks', 'dispatch', 'analytics'];
       const index = tabs.indexOf(tabId);
       if (index !== -1) {
         document.querySelectorAll('.nav-item')[index].classList.add('active');
@@ -2010,31 +834,139 @@
       localStorage.setItem('hub_active_tab', tabId);
       
       document.getElementById('sidebar').classList.remove('active');
+      requestAnimationFrame(() => {
+        if (tabId === 'memory') renderMemoryHub();
+        if (tabId === 'radio') renderRadioFeed();
+        if (tabId === 'tasks') renderTasksList();
+        if (tabId === 'analytics') renderAnalytics();
+      });
     }
 
     function switchMemorySubTab(sub) {
       state.memorySubTab = sub;
       document.getElementById('memorySubTab-md').style.display = sub === 'md' ? 'block' : 'none';
       document.getElementById('memorySubTab-profile').style.display = sub === 'profile' ? 'block' : 'none';
+      requestAnimationFrame(renderMemoryHub);
     }
 
     function toggleSidebar() {
       document.getElementById('sidebar').classList.toggle('active');
     }
 
-    // Auto Refresh handlers
+    // Realtime refresh handlers
     function toggleAutoRefresh(checked) {
       state.autoRefresh = checked;
       if (checked) {
         startInterval();
       } else {
-        clearInterval(timer);
+        stopRealtime();
       }
     }
 
     function startInterval() {
+      startRealtime();
+    }
+
+    function startFallbackInterval() {
       clearInterval(timer);
-      timer = setInterval(refreshData, state.refreshInterval);
+      timer = setInterval(refreshData, state.fallbackRefreshInterval);
+    }
+
+    function stopFallbackInterval() {
+      clearInterval(timer);
+      timer = null;
+    }
+
+    function getWebSocketUrl() {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      return `${protocol}//${window.location.host}/ws`;
+    }
+
+    function isRealtimeConnected() {
+      return socket && socket.readyState === WebSocket.OPEN;
+    }
+
+    function startRealtime() {
+      clearTimeout(reconnectTimer);
+      if (!window.WebSocket) {
+        state.realtime.status = 'fallback';
+        startFallbackInterval();
+        return;
+      }
+      if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+        return;
+      }
+
+      state.realtime.status = 'connecting';
+      socket = new WebSocket(getWebSocketUrl());
+      socket.addEventListener('open', () => {
+        state.realtime.connected = true;
+        state.realtime.reconnectAttempt = 0;
+        state.realtime.status = 'connected';
+        stopFallbackInterval();
+      });
+      socket.addEventListener('message', handleRealtimeMessage);
+      socket.addEventListener('close', () => {
+        state.realtime.connected = false;
+        socket = null;
+        if (state.autoRefresh) {
+          scheduleRealtimeReconnect();
+        }
+      });
+      socket.addEventListener('error', () => {
+        state.realtime.status = 'error';
+        if (socket) {
+          socket.close();
+        }
+      });
+    }
+
+    function scheduleRealtimeReconnect() {
+      state.realtime.status = 'reconnecting';
+      const attempt = Math.min(state.realtime.reconnectAttempt + 1, 8);
+      state.realtime.reconnectAttempt = attempt;
+      const delay = Math.min(30000, 1000 * Math.pow(2, attempt - 1));
+      clearTimeout(reconnectTimer);
+      reconnectTimer = setTimeout(startRealtime, delay);
+      startFallbackInterval();
+    }
+
+    function stopRealtime() {
+      clearTimeout(reconnectTimer);
+      stopFallbackInterval();
+      const currentSocket = socket;
+      socket = null;
+      state.realtime.connected = false;
+      state.realtime.status = 'idle';
+      if (currentSocket) {
+        currentSocket.close();
+      }
+    }
+
+    function handleRealtimeMessage(event) {
+      let message;
+      try {
+        message = JSON.parse(event.data);
+      } catch (err) {
+        console.error('Invalid realtime message', err);
+        return;
+      }
+      const snapshot = message.snapshot || message.data;
+      if ((message.type === 'hello' || message.type === 'snapshot') && snapshot) {
+        applyDashboardSnapshot(snapshot);
+      }
+    }
+
+    function applyDashboardSnapshot(snapshot) {
+      state.status = snapshot.status || {};
+      state.memory = snapshot.memory || {};
+      state.radio = (snapshot.radio && snapshot.radio.messages) || [];
+      state.tasks = (snapshot.tasks && snapshot.tasks.tasks) || [];
+      state.workflows = (snapshot.workflows && snapshot.workflows.workflows) || [];
+      state.dispatch = (snapshot.dispatch && snapshot.dispatch.logs) || [];
+      state.relay = (snapshot.dispatch && snapshot.dispatch.relay) || [];
+      state.endpointErrors = [];
+      renderAll();
     }
 
     // Fetch API Data
@@ -2048,6 +980,15 @@
           endpointErrors.push({ endpoint, message });
           console.error(`Failed to load ${endpoint}`, reason);
         };
+
+        try {
+          const snapshot = await api('/api/dashboard');
+          applyDashboardSnapshot(snapshot);
+          return;
+        } catch (dashboardErr) {
+          recordEndpointError('/api/dashboard', dashboardErr);
+        }
+
         const [statusRes, memoryRes, radioRes, tasksRes, workflowsRes, dispatchRes] = await Promise.allSettled([
           api('/api/status'),
           api('/api/memory'),
@@ -2109,6 +1050,9 @@
     function renderAll() {
       const tools = Array.isArray(state.status.tools) ? state.status.tools : [];
       renderEndpointErrors();
+
+      // Inject Analytics Tab if not present
+      injectAnalyticsTab();
 
       // Top bar info
       document.getElementById('memoryDir').textContent = state.status.memoryDir || 'unavailable';
@@ -2173,7 +1117,7 @@
       renderRadioFeed();
       renderTasksList();
       renderDispatchLogs();
-      renderWorkflows();
+      renderAnalytics();
     }
 
     function renderEndpointErrors() {
@@ -2389,7 +1333,7 @@
     function renderDashboardOverview() {
       // Render Active Tasks
       const activeTasks = state.tasks.filter(task => ['claimed', 'in_progress', 'blocked'].includes(task.status));
-      const activeTskHtml = activeTasks.length > 0 ? activeTasks.map(task => {
+      const renderDashboardTaskCardHTML = task => {
         const assigneeDisplayName = (toolDisplayNames[state.lang] && toolDisplayNames[state.lang][task.assignee]) || task.assignee || t('unassigned');
         return `
           <div class="task-card">
@@ -2416,8 +1360,17 @@
             </div>
           </div>
         `;
-      }).join('') : `<div class="muted">${t('noActiveTasks')}</div>`;
-      document.getElementById('dashboardTasks').innerHTML = activeTskHtml;
+      };
+      renderVirtualList('dashboardTasks', activeTasks, renderDashboardTaskCardHTML, {
+        key: 'dashboardTasks',
+        className: 'task-list-virtual dashboard-task-virtual',
+        itemKey: task => task.id,
+        estimateHeight: 230,
+        overscan: 4,
+        gap: 12,
+        viewportHeight: 500,
+        emptyHtml: `<div class="muted">${t('noActiveTasks')}</div>`
+      });
 
       // Render Recent Radio Stream (last 5)
       const recentRadio = state.radio.slice(-5).reverse();
@@ -2580,8 +1533,8 @@
 
     // Memory Hub Rendering
     function renderMemoryHub() {
-      document.getElementById('memoryRaw').innerHTML = formatMarkdown(state.memory.memory);
-      document.getElementById('profileRaw').innerHTML = formatMarkdown(state.memory.profile);
+      renderMarkdownVirtual('memorySubTab-md', state.memory.memory);
+      renderMarkdownVirtual('memorySubTab-profile', state.memory.profile);
 
       const inboxRows = (state.memory.pending || []).map(event => {
         const srcName = (toolDisplayNames[state.lang] && toolDisplayNames[state.lang][event.source]) || event.source;
@@ -2624,8 +1577,16 @@
         filtered = filtered.filter(m => m.type === state.filterRadioType);
       }
 
-      const feedHtml = filtered.reverse().map(renderRadioCardHTML).join('');
-      document.getElementById('radioFeed').innerHTML = feedHtml || `<div class="muted">${t('noRadioMessages')}</div>`;
+      renderVirtualList('radioFeed', filtered.reverse(), renderRadioCardHTML, {
+        key: 'radioFeed',
+        className: 'stream-virtual',
+        itemKey: msg => msg.id || `${msg.ts || msg.createdAt}:${msg.from}:${msg.to}`,
+        estimateHeight: 175,
+        overscan: 6,
+        gap: 12,
+        viewportHeight: 500,
+        emptyHtml: `<div class="muted">${t('noRadioMessages')}</div>`
+      });
     }
 
     // Tasks Board Rendering
@@ -2660,9 +1621,36 @@
       document.getElementById('countActive').textContent = colActive.length;
       document.getElementById('countCompleted').textContent = colCompleted.length;
 
-      document.getElementById('col-open').innerHTML = colOpen.map(renderTaskCardHTML).join('') || `<div class="muted" style="text-align:center;padding:20px;">${t('noOpenTasks')}</div>`;
-      document.getElementById('col-active').innerHTML = colActive.map(renderTaskCardHTML).join('') || `<div class="muted" style="text-align:center;padding:20px;">${t('noActiveClaimedTasks')}</div>`;
-      document.getElementById('col-completed').innerHTML = colCompleted.map(renderTaskCardHTML).join('') || `<div class="muted" style="text-align:center;padding:20px;">${t('noCompletedTasks')}</div>`;
+      renderVirtualList('col-open', colOpen, renderTaskCardHTML, {
+        key: 'tasks-open',
+        className: 'task-list-virtual',
+        itemKey: task => task.id,
+        estimateHeight: 270,
+        overscan: 5,
+        gap: 12,
+        viewportHeight: 620,
+        emptyHtml: `<div class="muted" style="text-align:center;padding:20px;">${t('noOpenTasks')}</div>`
+      });
+      renderVirtualList('col-active', colActive, renderTaskCardHTML, {
+        key: 'tasks-active',
+        className: 'task-list-virtual',
+        itemKey: task => task.id,
+        estimateHeight: 270,
+        overscan: 5,
+        gap: 12,
+        viewportHeight: 620,
+        emptyHtml: `<div class="muted" style="text-align:center;padding:20px;">${t('noActiveClaimedTasks')}</div>`
+      });
+      renderVirtualList('col-completed', colCompleted, renderTaskCardHTML, {
+        key: 'tasks-completed',
+        className: 'task-list-virtual',
+        itemKey: task => task.id,
+        estimateHeight: 270,
+        overscan: 5,
+        gap: 12,
+        viewportHeight: 620,
+        emptyHtml: `<div class="muted" style="text-align:center;padding:20px;">${t('noCompletedTasks')}</div>`
+      });
     }
 
     function renderTaskCardHTML(tItem) {
@@ -2833,109 +1821,6 @@
       document.getElementById('acc-' + id).classList.toggle('active');
     }
 
-    // Workflows Panel Rendering
-    function renderWorkflows() {
-      const workflows = Array.isArray(state.workflows) ? state.workflows : [];
-      const container = document.getElementById('workflowList');
-      
-      if (workflows.length === 0) {
-        container.innerHTML = `<div class="muted" data-i18n="noWorkflows">No workflows found.</div>`;
-        return;
-      }
-      
-      const html = workflows.map(w => {
-        const statusClass = {
-          'planned': 'status-open',
-          'active': 'status-progress',
-          'done': 'status-done',
-          'cancelled': 'status-cancelled'
-        }[w.status] || 'status-open';
-        
-        const statusText = {
-          'planned': 'Planned',
-          'active': 'Active',
-          'done': 'Done',
-          'cancelled': 'Cancelled'
-        }[w.status] || w.status;
-        
-        const createdDate = new Date(w.createdAt).toLocaleDateString();
-        const roles = ['planner', 'executor', 'reviewer', 'observer'].filter(r => w[r] && w[r].length > 0).map(r => `<span class="tool-badge ${getRoleClass(r)}">${r}: ${w[r].join(', ')}</span>`).join(' ');
-        
-        return `
-          <div class="workflow-card">
-            <div class="workflow-header" onclick="toggleWorkflowAccordion('${w.id}')">
-              <div class="workflow-title">
-                <span class="badge ${statusClass}">${statusText}</span>
-                <strong>${escapeHtml(w.title || 'Untitled Workflow')}</strong>
-              </div>
-              <div class="workflow-meta">
-                <span class="muted">${createdDate}</span>
-                <span class="muted">${escapeHtml(w.project || 'no-project')}</span>
-              </div>
-            </div>
-            <div class="workflow-details" id="workflow-${w.id}">
-              <div class="workflow-roles">${roles}</div>
-              ${w.plan ? `<div class="workflow-section"><strong>Plan:</strong> <pre>${escapeHtml(w.plan)}</pre></div>` : ''}
-              ${w.acceptance ? `<div class="workflow-section"><strong>Acceptance:</strong> <pre>${escapeHtml(w.acceptance)}</pre></div>` : ''}
-              ${w.results && w.results.length > 0 ? `
-                <div class="workflow-section">
-                  <strong>Results:</strong>
-                  ${w.results.map(r => `<div class="workflow-result"><span class="muted">${new Date(r.ts).toLocaleString()}</span> <strong>${escapeHtml(r.by)}</strong> (${escapeHtml(r.role)}): ${escapeHtml(r.text)}</div>`).join('')}
-                </div>
-              ` : ''}
-              ${w.reviews && w.reviews.length > 0 ? `
-                <div class="workflow-section">
-                  <strong>Reviews:</strong>
-                  ${w.reviews.map(r => `<div class="workflow-result"><span class="muted">${new Date(r.ts).toLocaleString()}</span> <strong>${escapeHtml(r.by)}</strong> (${escapeHtml(r.role)}): ${escapeHtml(r.text)}</div>`).join('')}
-                </div>
-              ` : ''}
-              <div class="workflow-actions">
-                <button class="btn small" onclick="editWorkflow('${w.id}')">Edit</button>
-                <button class="btn small secondary" onclick="deleteWorkflow('${w.id}')">Delete</button>
-              </div>
-            </div>
-          </div>
-        `;
-      }).join('');
-      
-      container.innerHTML = html;
-    }
-    
-    function getRoleClass(role) {
-      const classes = {
-        'planner': 'badge-planner',
-        'executor': 'badge-executor',
-        'reviewer': 'badge-reviewer',
-        'observer': 'badge-observer'
-      };
-      return classes[role] || '';
-    }
-    
-    function toggleWorkflowAccordion(id) {
-      document.getElementById('workflow-' + id).classList.toggle('active');
-    }
-    
-    function showWorkflowForm(workflowId = null) {
-      // TODO: Implement workflow creation/editing form
-      alert('Workflow form - TODO: Implement');
-    }
-    
-    function editWorkflow(id) {
-      showWorkflowForm(id);
-    }
-    
-    async function deleteWorkflow(id) {
-      if (!confirm('Are you sure you want to delete this workflow?')) return;
-      
-      try {
-        await api('/api/workflows/' + id, { method: 'DELETE' });
-        await refreshData();
-      } catch (err) {
-        console.error('Failed to delete workflow:', err);
-        alert('Failed to delete workflow: ' + (err.message || err));
-      }
-    }
-
     // API Submit Actions
     async function submitMemory() {
       const text = document.getElementById('memText').value.trim();
@@ -3066,6 +1951,157 @@
       });
       alert(t('alertPromoted'));
       await refreshData();
+    }
+
+    // --- Analytics Logic ---
+    let charts = {};
+
+    function loadChartJs() {
+      if (window.Chart) return Promise.resolve();
+      return new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/chart.js';
+        script.onload = resolve;
+        script.onerror = reject;
+        document.head.appendChild(script);
+      });
+    }
+
+    function injectAnalyticsTab() {
+      if (document.getElementById('tab-analytics')) return;
+
+      const navBar = document.querySelector('.sidebar-nav');
+      if (navBar) {
+        const navItem = document.createElement('div');
+        navItem.className = 'nav-item';
+        navItem.onclick = () => switchTab('analytics');
+        navItem.innerHTML = `<span data-i18n="analytics">${t('analytics')}</span>`;
+        // Insert before Dispatch Logs if possible
+        const dispatchNavItem = Array.from(navBar.querySelectorAll('.nav-item')).find(el => {
+           const span = el.querySelector('span');
+           return span && (span.getAttribute('data-i18n') === 'dispatchLogs');
+        });
+        if (dispatchNavItem) {
+          navBar.insertBefore(navItem, dispatchNavItem);
+        } else {
+          navBar.appendChild(navItem);
+        }
+      }
+
+      const mainContent = document.querySelector('.main-content');
+      if (mainContent) {
+        const panel = document.createElement('div');
+        panel.id = 'tab-analytics';
+        panel.className = 'tab-panel';
+        panel.innerHTML = `
+          <div class="panel-header" style="margin-bottom: 20px;">
+            <h2 data-i18n="analytics">${t('analytics')}</h2>
+          </div>
+          <div class="analytics-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px;">
+            <div class="chart-card" style="background: var(--bg-surface); padding: 20px; border-radius: 12px; border: 1px solid var(--border-color);">
+              <h3 style="margin-bottom: 15px;" data-i18n="memoryGrowth">${t('memoryGrowth')}</h3>
+              <div style="height: 300px;"><canvas id="memoryGrowthChart"></canvas></div>
+            </div>
+            <div class="chart-card" style="background: var(--bg-surface); padding: 20px; border-radius: 12px; border: 1px solid var(--border-color);">
+              <h3 style="margin-bottom: 15px;" data-i18n="taskCompletion">${t('taskCompletion')}</h3>
+              <div style="height: 300px;"><canvas id="taskCompletionChart"></canvas></div>
+            </div>
+            <div class="chart-card" style="background: var(--bg-surface); padding: 20px; border-radius: 12px; border: 1px solid var(--border-color);">
+               <h3 style="margin-bottom: 15px;" data-i18n="radioActivity">${t('radioActivity')}</h3>
+               <div style="height: 300px;"><canvas id="radioActivityChart"></canvas></div>
+            </div>
+          </div>
+        `;
+        mainContent.appendChild(panel);
+      }
+    }
+
+    async function renderAnalytics() {
+      if (state.activeTab !== 'analytics') return;
+      await loadChartJs();
+
+      // Memory Growth Chart (Distribution)
+      const memCtx = document.getElementById('memoryGrowthChart').getContext('2d');
+      if (charts.memory) charts.memory.destroy();
+      
+      const ledgerCount = state.status.ledgerEvents || 0;
+      const pendingCount = state.status.pendingEvents || 0;
+      const backupCount = state.status.backups || 0;
+
+      charts.memory = new Chart(memCtx, {
+        type: 'bar',
+        data: {
+          labels: [t('durableLedger'), t('pendingEvents'), t('backups')],
+          datasets: [{
+            label: 'Counts',
+            data: [ledgerCount, pendingCount, backupCount],
+            backgroundColor: ['#388bfd', '#bc8cff', '#2ea44f'],
+            borderRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' } } }
+        }
+      });
+
+      // Task Completion Chart
+      const taskCtx = document.getElementById('taskCompletionChart').getContext('2d');
+      if (charts.tasks) charts.tasks.destroy();
+
+      const openTasks = state.tasks.filter(t => t.status === 'open').length;
+      const activeTasks = state.tasks.filter(t => ['claimed', 'in_progress', 'blocked'].includes(t.status)).length;
+      const doneTasks = state.tasks.filter(t => t.status === 'done').length;
+
+      charts.tasks = new Chart(taskCtx, {
+        type: 'doughnut',
+        data: {
+          labels: [t('noOpenTasks'), t('activeTasks'), t('completeTask')],
+          datasets: [{
+            data: [openTasks, activeTasks, doneTasks],
+            backgroundColor: ['#f39c12', '#388bfd', '#2ea44f'],
+            borderWidth: 0
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { position: 'bottom', labels: { color: '#8b949e' } } }
+        }
+      });
+
+      // Radio Activity Chart
+      const radioCtx = document.getElementById('radioActivityChart').getContext('2d');
+      if (charts.radio) charts.radio.destroy();
+
+      const activityMap = {};
+      state.radio.forEach(msg => {
+        activityMap[msg.from] = (activityMap[msg.from] || 0) + 1;
+      });
+      const labels = Object.keys(activityMap);
+      const data = Object.values(activityMap);
+
+      charts.radio = new Chart(radioCtx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: t('radioMessages'),
+            data: data,
+            backgroundColor: '#ff79c6',
+            borderRadius: 6
+          }]
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: { x: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' } } }
+        }
+      });
     }
 
     // Top action handlers
@@ -3229,6 +2265,3 @@
     refreshData().then(() => {
       if (state.autoRefresh) startInterval();
     });
-  </script>
-</body>
-</html>

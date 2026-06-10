@@ -592,7 +592,7 @@
         searchPrompt: "输入搜索关键词...",
         healthReport: "💊 系统健康报告",
         runHealthCheck: "运行健康检查",
-        healthPrompt: "点击"运行健康检查"生成报告...",
+        healthPrompt: "点击“运行健康检查”生成报告...",
         analytics: "📈 数据分析",
         memoryGrowth: "记忆增长趋势",
         taskCompletion: "任务完成率",

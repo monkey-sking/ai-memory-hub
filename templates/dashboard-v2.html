@@ -388,10 +388,10 @@
       <div id="tab-workflows" class="tab-panel">
         <div class="panel">
           <div class="panel-header">
-            <h3 class="panel-title">🔄 Workflow Management</h3>
+            <h3 class="panel-title" data-i18n="workflowManagement">🔄 Workflow Management</h3>
           </div>
           <div class="workflow-list" id="workflowsList">
-            <div class="muted">Loading workflows...</div>
+            <div class="muted" data-i18n="loadingWorkflows">Loading workflows...</div>
           </div>
         </div>
       </div>
@@ -442,37 +442,37 @@
       <div id="tab-settings" class="tab-panel">
         <div class="panel">
           <div class="panel-header">
-            <h3 class="panel-title">⚙️ System Settings</h3>
+            <h3 class="panel-title" data-i18n="systemSettings">⚙️ System Settings</h3>
           </div>
 
           <div class="form-group">
-            <label>Snapshot Limit</label>
+            <label data-i18n="snapshotLimit">Snapshot Limit</label>
             <input type="number" id="settingSnapshotLimit" value="200" min="50" max="500">
-            <small style="color:var(--text-muted)">Max records in MEMORY.md (current: 200)</small>
+            <small style="color:var(--text-muted)" data-i18n="snapshotLimitDesc">Max records in MEMORY.md (current: 200)</small>
           </div>
 
           <div class="form-group">
-            <label>Auto Refresh Interval (seconds)</label>
+            <label data-i18n="refreshInterval">Auto Refresh Interval (seconds)</label>
             <input type="number" id="settingRefreshInterval" value="5" min="1" max="60">
           </div>
 
           <div class="form-group">
-            <label>Theme</label>
+            <label data-i18n="themeLabel">Theme</label>
             <select id="settingTheme">
-              <option value="dark" selected>Dark Mode</option>
-              <option value="light">Light Mode (Coming Soon)</option>
+              <option value="dark" selected data-i18n="darkMode">Dark Mode</option>
+              <option value="light" data-i18n="lightMode">Light Mode (Coming Soon)</option>
             </select>
           </div>
 
           <div class="form-group">
-            <label>Language</label>
+            <label data-i18n="languageLabel">Language</label>
             <select id="settingLanguage">
               <option value="zh">中文</option>
               <option value="en">English</option>
             </select>
           </div>
 
-          <button class="primary" onclick="saveSettings()">Save Settings</button>
+          <button class="primary" onclick="saveSettings()" data-i18n="saveSettings">Save Settings</button>
         </div>
       </div>
 
@@ -480,29 +480,29 @@
       <div id="tab-tools" class="tab-panel">
         <div class="summary-grid">
           <div class="summary-card">
-            <span>Connected Tools</span>
+            <span data-i18n="connectedTools">Connected Tools</span>
             <strong id="toolsConnected">0</strong>
           </div>
           <div class="summary-card">
-            <span>Runnable</span>
+            <span data-i18n="runnableTools">Runnable</span>
             <strong id="toolsRunnable">0</strong>
           </div>
           <div class="summary-card">
-            <span>CLI Tools</span>
+            <span data-i18n="cliTools">CLI Tools</span>
             <strong id="toolsCLI">0</strong>
           </div>
           <div class="summary-card">
-            <span>Apps</span>
+            <span data-i18n="appTools">Apps</span>
             <strong id="toolsApps">0</strong>
           </div>
         </div>
         <div class="panel">
           <div class="panel-header">
-            <h3 class="panel-title">🔧 Tool Management</h3>
-            <button class="primary" onclick="refreshTools()">Refresh</button>
+            <h3 class="panel-title" data-i18n="toolManagement">🔧 Tool Management</h3>
+            <button class="primary" onclick="refreshTools()" data-i18n="refreshTools">Refresh</button>
           </div>
           <div id="toolsGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:16px;">
-            <div class="muted">Loading tools...</div>
+            <div class="muted" data-i18n="loadingTools">Loading tools...</div>
           </div>
         </div>
       </div>
@@ -511,22 +511,22 @@
       <div id="tab-search" class="tab-panel">
         <div class="panel">
           <div class="panel-header">
-            <h3 class="panel-title">🔍 Global Search</h3>
+            <h3 class="panel-title" data-i18n="globalSearch">🔍 Global Search</h3>
           </div>
           <div class="form-group">
-            <input type="text" id="searchQuery" placeholder="Search across memories, tasks, and messages..." onkeyup="if(event.key==='Enter')performSearch()">
+            <input type="text" id="searchQuery" data-i18n-placeholder="searchPlaceholder" placeholder="Search across memories, tasks, and messages..." onkeyup="if(event.key==='Enter')performSearch()">
           </div>
           <div class="filter-strip">
             <select id="searchType">
-              <option value="all">All</option>
-              <option value="memory">Memories</option>
-              <option value="task">Tasks</option>
-              <option value="radio">Radio Messages</option>
+              <option value="all" data-i18n="searchAll">All</option>
+              <option value="memory" data-i18n="searchMemories">Memories</option>
+              <option value="task" data-i18n="searchTasks">Tasks</option>
+              <option value="radio" data-i18n="searchRadio">Radio Messages</option>
             </select>
-            <button class="primary" onclick="performSearch()">Search</button>
+            <button class="primary" onclick="performSearch()" data-i18n="searchButton">Search</button>
           </div>
           <div id="searchResults">
-            <div class="muted">Enter a query to search...</div>
+            <div class="muted" data-i18n="searchPrompt">Enter a query to search...</div>
           </div>
         </div>
       </div>
@@ -535,11 +535,11 @@
       <div id="tab-health" class="tab-panel">
         <div class="panel">
           <div class="panel-header">
-            <h3 class="panel-title">💊 System Health Report</h3>
-            <button class="primary" onclick="runHealthCheck()">Run Health Check</button>
+            <h3 class="panel-title" data-i18n="healthReport">💊 System Health Report</h3>
+            <button class="primary" onclick="runHealthCheck()" data-i18n="runHealthCheck">Run Health Check</button>
           </div>
           <div id="healthReport">
-            <div class="muted">Click "Run Health Check" to generate report...</div>
+            <div class="muted" data-i18n="healthPrompt">Click "Run Health Check" to generate report...</div>
           </div>
         </div>
       </div>

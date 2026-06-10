@@ -216,10 +216,10 @@
               <button class="btn small" onclick="runPull()" data-i18n="pullIndex">Pull & Index</button>
             </div>
             <div id="memorySubTab-md" class="markdown-container">
-              <pre id="memoryRaw" class="muted">Loading MEMORY.md...</pre>
+              <pre id="memoryRaw" class="muted" data-i18n="loadingMemory">Loading MEMORY.md...</pre>
             </div>
             <div id="memorySubTab-profile" class="markdown-container" style="display:none;">
-              <pre id="profileRaw" class="muted">Loading profile.md...</pre>
+              <pre id="profileRaw" class="muted" data-i18n="loadingProfile">Loading profile.md...</pre>
             </div>
           </div>
         </div>
@@ -549,19 +549,19 @@
         <summary style="cursor:pointer; font-weight:600; color:var(--text-muted);" data-i18n="rawCompatibility">🛠️ Raw JSON / Compatibility Data</summary>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:16px;">
           <div>
-            <h4>Shared Snapshot (MEMORY.md)</h4>
+            <h4 data-i18n="sharedSnapshot">Shared Snapshot (MEMORY.md)</h4>
             <pre id="memory" style="font-family:var(--font-mono); font-size:12px; background:var(--bg-main); padding:12px; border:1px solid var(--border-color); border-radius:6px; max-height:300px; overflow:auto;"></pre>
           </div>
           <div>
-            <h4>Pending Inbox</h4>
+            <h4 data-i18n="pendingInbox">Pending Inbox</h4>
             <pre id="pendingJson" style="font-family:var(--font-mono); font-size:12px; background:var(--bg-main); padding:12px; border:1px solid var(--border-color); border-radius:6px; max-height:300px; overflow:auto;"></pre>
           </div>
           <div>
-            <h4>Active Tasks</h4>
+            <h4 data-i18n="activeTasksJson">Active Tasks</h4>
             <pre id="tasksJson" style="font-family:var(--font-mono); font-size:12px; background:var(--bg-main); padding:12px; border:1px solid var(--border-color); border-radius:6px; max-height:300px; overflow:auto;"></pre>
           </div>
           <div>
-            <h4>Agent Radio Messages</h4>
+            <h4 data-i18n="radioMessagesJson">Agent Radio Messages</h4>
             <pre id="radioJson" style="font-family:var(--font-mono); font-size:12px; background:var(--bg-main); padding:12px; border:1px solid var(--border-color); border-radius:6px; max-height:300px; overflow:auto;"></pre>
           </div>
         </div>

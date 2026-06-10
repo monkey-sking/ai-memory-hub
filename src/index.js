@@ -6866,7 +6866,9 @@ function rebuildMemoryOutputs(config, ledger) {
 
 function buildMemoryIndex(memories, config) {
   const sorted = [...memories].sort((a, b) => String(a.ts || "").localeCompare(String(b.ts || "")));
-  const records = sorted.map((memory, index) => enrichMemory(memory, index, sorted.length));
+  const enrichedRecords = sorted.map((memory, index) => enrichMemory(memory, index, sorted.length));
+  const supersededBy = buildMemorySupersededBy(enrichedRecords);
+  const records = enrichedRecords.map((record) => applyMemorySupersedeState(record, supersededBy));
   const stats = {
     records: records.length,
     core: records.filter((item) => item.layer === "core").length,
@@ -6944,14 +6946,112 @@ function enrichMemory(memory, ordinal, total) {
   };
 }
 
+function buildMemorySupersededBy(records) {
+  const lookup = new Map();
+  for (const record of records) {
+    for (const key of getMemoryIdentityKeys(record)) {
+      if (!lookup.has(key)) {
+        lookup.set(key, record);
+      }
+    }
+  }
+
+  const supersededBy = new Map();
+  for (const superseder of records) {
+    const refs = getMemorySupersedesRefs(superseder);
+    for (const ref of refs) {
+      const target = lookup.get(ref);
+      if (!target || target === superseder) {
+        continue;
+      }
+      const targetKey = getMemoryPrimaryKey(target);
+      if (!targetKey) {
+        continue;
+      }
+      const supersederRef = getMemoryPrimaryKey(superseder);
+      const existing = supersededBy.get(targetKey) || [];
+      if (supersederRef && !existing.includes(supersederRef)) {
+        existing.push(supersederRef);
+      }
+      supersededBy.set(targetKey, existing);
+    }
+  }
+  return supersededBy;
+}
+
+function applyMemorySupersedeState(record, supersededBy) {
+  const supersededByRefs = supersededBy.get(getMemoryPrimaryKey(record)) || [];
+  if (supersededByRefs.length === 0) {
+    return record;
+  }
+  const importance = Math.max(1, Number(record.importance || 0) - 50);
+  return {
+    ...record,
+    superseded: true,
+    supersededBy: supersededByRefs,
+    importance,
+    layer: "archive",
+    metadata: {
+      ...record.metadata,
+      superseded: true,
+      supersededBy: supersededByRefs,
+      lifecycle: {
+        ...(record.metadata?.lifecycle || {}),
+        superseded: true,
+        supersededBy: supersededByRefs
+      }
+    }
+  };
+}
+
+function getMemorySupersedesRefs(record) {
+  return normalizeSupersedeRefs(record.metadata?.supersedes || record.supersedes || record.metadata?.lifecycle?.supersedes);
+}
+
+function getMemoryPrimaryKey(record) {
+  return getMemoryIdentityKeys(record)[0] || "";
+}
+
+function getMemoryIdentityKeys(record) {
+  return [
+    record.localEventId,
+    record.id,
+    record.metadata?.localEventId,
+    record.metadata?.id,
+    record.metadata?.stableId,
+    record.metadata?.key,
+    ...flattenMemoryRefs(record.refs || record.metadata?.refs)
+  ]
+    .map(normalizeSupersedeToken)
+    .filter(Boolean);
+}
+
+function normalizeSupersedeRefs(value) {
+  if (Array.isArray(value)) {
+    return [...new Set(value.flatMap(normalizeSupersedeRefs))];
+  }
+  if (isPlainObject(value)) {
+    return normalizeSupersedeRefs(Object.values(value));
+  }
+  return String(value || "")
+    .split(",")
+    .map(normalizeSupersedeToken)
+    .filter(Boolean);
+}
+
+function normalizeSupersedeToken(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
 function renderMemorySnapshot(index, config, options = {}) {
   const coreLimit = Number(config.sync?.coreLimit || 40);
   const recentLimit = Number(config.sync?.recentLimit || 20);
   const totalLimit = Number(options.limit || 0);
-  const allCore = index.records
+  const visibleRecords = index.records.filter((item) => !item.superseded);
+  const allCore = visibleRecords
     .filter((item) => item.layer === "core")
     .sort(sortByImportance);
-  const allRecent = [...index.records]
+  const allRecent = [...visibleRecords]
     .filter((item) => item.layer !== "core")
     .sort((a, b) => String(b.ts || "").localeCompare(String(a.ts || "")));
   let core = allCore.slice(0, coreLimit);
@@ -6977,7 +7077,7 @@ function renderMemorySnapshot(index, config, options = {}) {
     lines.push(`Filtered view: ${options.filterSummary}.`);
     lines.push("");
   }
-  if (index.records.length === 0) {
+  if (visibleRecords.length === 0) {
     lines.push("No memories found.");
     lines.push("");
     return lines.join("\n");

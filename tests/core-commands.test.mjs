@@ -455,6 +455,51 @@ test("memory search filters by thread-aware references", async () => {
   });
 });
 
+test("memory supersedes downranks replaced records and hides them from snapshot", async () => {
+  await withHub(async (memoryDir) => {
+    const oldText = "Old workflow rule must not remain in the shared AI memory snapshot.";
+    const newText = "Current workflow rule replaces the old shared AI memory snapshot guidance.";
+    await appendJsonl(path.join(memoryDir, "inbox", "events.jsonl"), {
+      id: "event-old-rule",
+      ts: "2026-06-08T10:00:00.000Z",
+      source: "codex",
+      text: oldText,
+      metadata: {
+        kind: "workflow",
+        project: "ai-memory-hub"
+      }
+    });
+    await appendJsonl(path.join(memoryDir, "inbox", "events.jsonl"), {
+      id: "event-new-rule",
+      ts: "2026-06-09T10:00:00.000Z",
+      source: "codex",
+      text: newText,
+      metadata: {
+        kind: "workflow",
+        project: "ai-memory-hub",
+        supersedes: ["event-old-rule"]
+      }
+    });
+
+    const sync = runCli(memoryDir, ["sync"]);
+    assert.equal(sync.status, 0, sync.stderr || sync.stdout);
+
+    const index = JSON.parse(await fs.readFile(path.join(memoryDir, "memories", "index.json"), "utf8"));
+    const oldRecord = index.records.find((record) => record.localEventId === "event-old-rule");
+    const newRecord = index.records.find((record) => record.localEventId === "event-new-rule");
+    assert.equal(oldRecord.superseded, true);
+    assert.deepEqual(oldRecord.supersededBy, ["event-new-rule"]);
+    assert.equal(oldRecord.metadata.lifecycle.superseded, true);
+    assert.equal(oldRecord.layer, "archive");
+    assert.ok(oldRecord.importance < newRecord.importance);
+    assert.equal(newRecord.superseded, undefined);
+
+    const snapshot = await fs.readFile(path.join(memoryDir, "MEMORY.md"), "utf8");
+    assert.doesNotMatch(snapshot, new RegExp(oldText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.match(snapshot, new RegExp(newText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  });
+});
+
 test("health command reports memory quality and storage diagnostics", async () => {
   await withHub(async (memoryDir) => {
     const repeatedText = "Repeated workflow rule: run tests before marking ai-memory-hub tasks done.";

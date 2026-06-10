@@ -1,0 +1,68 @@
+{
+  "name": "frontend-feature",
+  "title": "Frontend Feature Delivery",
+  "description": "Disciplined frontend workflow with explicit requirement, codebase, design, implementation, quality-fix, and review gates.",
+  "version": "1.0.0",
+  "variables": {
+    "feature": "frontend-feature",
+    "priority": "normal"
+  },
+  "roles": {
+    "planner": {
+      "description": "Clarifies user workflow, UX constraints, local conventions, and acceptance criteria."
+    },
+    "executor": {
+      "description": "Implements the scoped UI change and performs required local checks."
+    },
+    "reviewer": {
+      "description": "Reviews behavior, visual fit, regression risk, and missing verification."
+    }
+  },
+  "steps": [
+    {
+      "id": "requirements",
+      "role": "planner",
+      "task": "Analyze the requested frontend feature. Output JSON with scope, target users, workflows, acceptance criteria, assumptions, and risks. Stop if the product intent or main workflow is unclear."
+    },
+    {
+      "id": "codebase-analysis",
+      "role": "planner",
+      "task": "Inspect the existing UI architecture, state flow, styling system, routing, tests, and local design conventions. Output JSON with files to touch, reusable components, constraints, and verification plan.",
+      "dependsOn": [
+        "requirements"
+      ]
+    },
+    {
+      "id": "design-plan",
+      "role": "planner",
+      "task": "Create a concise implementation plan covering layout, responsive behavior, empty/loading/error states, accessibility, and expected test coverage.",
+      "dependsOn": [
+        "codebase-analysis"
+      ]
+    },
+    {
+      "id": "implementation",
+      "role": "executor",
+      "task": "Implement the approved frontend change within the scoped files. Keep unrelated refactors out of scope and record any assumptions as task notes.",
+      "dependsOn": [
+        "design-plan"
+      ]
+    },
+    {
+      "id": "quality-fix",
+      "role": "executor",
+      "task": "Run focused syntax, unit, and UI verification. Fix regressions found by checks. Output JSON with commands, results, screenshots or browser checks when applicable, and residual risk.",
+      "dependsOn": [
+        "implementation"
+      ]
+    },
+    {
+      "id": "review",
+      "role": "reviewer",
+      "task": "Review the diff and verification results. Reply PASS or blockers only, including file-level issues and missing tests.",
+      "dependsOn": [
+        "quality-fix"
+      ]
+    }
+  ]
+}

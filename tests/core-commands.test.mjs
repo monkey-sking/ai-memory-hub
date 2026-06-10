@@ -232,6 +232,51 @@ test("recipe create validates and creates workflow tasks", async () => {
   });
 });
 
+test("built-in development recipes are discoverable, valid, and runnable", async () => {
+  await withHub(async (memoryDir) => {
+    const recipes = parseJson(runCli(memoryDir, ["recipe", "list"]));
+    const frontend = recipes.find((recipe) => recipe.name === "frontend-feature");
+    const backend = recipes.find((recipe) => recipe.name === "backend-service");
+    const fullstack = recipes.find((recipe) => recipe.name === "fullstack-feature");
+    assert.equal(frontend.source, "builtin");
+    assert.equal(backend.source, "builtin");
+    assert.equal(fullstack.source, "builtin");
+    assert.deepEqual(fullstack.roles, ["planner", "executor", "reviewer", "observer"]);
+
+    const validation = parseJson(runCli(memoryDir, ["recipe", "validate", "fullstack-feature"]));
+    assert.deepEqual(validation, { valid: true, message: "Recipe is valid" });
+
+    const result = parseJson(runCli(memoryDir, [
+      "recipe",
+      "create",
+      "--recipe",
+      "fullstack-feature",
+      "--tools",
+      "planner:claude,executor:codex,reviewer:gemini,observer:marvis",
+      "--project",
+      "ai-memory-hub",
+      "--var",
+      "priority=high"
+    ]));
+
+    assert.equal(result.workflow.title, "Fullstack Feature Delivery - ai-memory-hub");
+    assert.equal(result.workflow.priority, "high");
+    assert.deepEqual(result.workflow.observer, ["marvis"]);
+    assert.equal(result.recipe.name, "fullstack-feature");
+    assert.equal(result.recipe.steps, 7);
+    assert.equal(result.tasks.length, 7);
+    assert.deepEqual(result.tasks.map((task) => task.assignee), [
+      "claude",
+      "claude",
+      "claude",
+      "marvis",
+      "codex",
+      "codex",
+      "gemini"
+    ]);
+  });
+});
+
 test("task-spec validates, lists, shows, and runs project commands", async () => {
   await withHub(async (memoryDir) => {
     const stdoutLog = path.relative(repoRoot, path.join(memoryDir, "task-spec.stdout.log"));

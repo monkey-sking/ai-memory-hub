@@ -859,6 +859,8 @@ ai-memory-hub recipe list
 ```
 
 Shows all JSON recipe templates in `~/.ai-memory/recipes/`.
+The list also includes built-in templates from the repository `recipes/`
+directory. User templates with the same recipe `name` override built-ins.
 
 ### `recipe show`
 
@@ -914,20 +916,23 @@ ai-memory-hub recipe create \
 
 **Built-in Recipes:**
 
-#### `docs-cleanup`
-- **Roles:** analyzer, writer, reviewer
-- **Steps:** 3 (analyze → write → review)
-- **Use:** Systematic documentation improvement
-
-#### `implement-and-review`
+#### `frontend-feature`
 - **Roles:** planner, executor, reviewer
-- **Steps:** 3 (planning → implementation → review)
-- **Use:** Standard feature implementation workflow
+- **Steps:** 6 (requirements -> codebase analysis -> design -> implementation -> quality fix -> review)
+- **Use:** UI work with explicit responsive, accessibility, and browser-verification gates
 
-#### `multi-tool-review`
-- **Roles:** reviewer1, reviewer2, reviewer3, synthesizer
-- **Steps:** 4 (3 parallel reviews → synthesis)
-- **Use:** Comprehensive multi-perspective code review
+#### `backend-service`
+- **Roles:** planner, executor, reviewer
+- **Steps:** 6 (requirements -> codebase analysis -> task decomposition -> implementation -> quality fix -> review)
+- **Use:** API, CLI, persistence, and automation changes with contract checks
+
+#### `fullstack-feature`
+- **Roles:** planner, executor, reviewer, observer
+- **Steps:** 7 (requirements -> system analysis -> design doc -> task decomposition -> implementation -> quality fix -> review)
+- **Use:** End-to-end changes spanning UI, API, state, docs, and cross-agent handoffs
+
+See [Development Recipe Packs](development-recipe-packs.md) for the design
+rules, stop points, and structured result expectations behind these templates.
 
 ---
 

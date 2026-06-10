@@ -6005,35 +6005,55 @@ function getFailedEntries(memoryDir) {
 
 // Workflow Recipe Functions
 function readRecipe(memoryDir, recipeName) {
-  const file = path.join(memoryDir, "recipes", `${recipeName}.json`);
-  if (!fs.existsSync(file)) {
-    return null;
+  for (const location of recipeReadLocations(memoryDir)) {
+    const file = path.join(location.dir, `${recipeName}.json`);
+    if (fs.existsSync(file)) {
+      return readJson(file);
+    }
   }
-  return readJson(file);
+  return null;
 }
 
 function listRecipes(memoryDir) {
-  const recipesDir = path.join(memoryDir, "recipes");
-  if (!fs.existsSync(recipesDir)) {
-    return [];
-  }
-
-  const files = fs.readdirSync(recipesDir).filter((f) => f.endsWith(".json"));
-  return files.map((file) => {
-    try {
-      const recipe = readJson(path.join(recipesDir, file));
-      return {
-        name: recipe.name,
-        title: recipe.title,
-        description: recipe.description,
-        version: recipe.version,
-        roles: Object.keys(recipe.roles || {}),
-        steps: (recipe.steps || []).length
-      };
-    } catch {
-      return null;
+  const recipes = new Map();
+  for (const location of recipeListLocations(memoryDir)) {
+    if (!fs.existsSync(location.dir)) {
+      continue;
     }
-  }).filter(Boolean);
+    const files = fs.readdirSync(location.dir).filter((f) => f.endsWith(".json"));
+    for (const file of files) {
+      try {
+        const recipe = readJson(path.join(location.dir, file));
+        const name = recipe.name || path.basename(file, ".json");
+        recipes.set(name, {
+          name,
+          title: recipe.title,
+          description: recipe.description,
+          version: recipe.version,
+          source: location.source,
+          roles: Object.keys(recipe.roles || {}),
+          steps: (recipe.steps || []).length
+        });
+      } catch {
+        // Skip malformed recipes; recipe validate reports details for explicit names.
+      }
+    }
+  }
+  return Array.from(recipes.values()).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function recipeReadLocations(memoryDir) {
+  return [
+    { source: "user", dir: path.join(memoryDir, "recipes") },
+    { source: "builtin", dir: path.join(projectRoot(), "recipes") }
+  ];
+}
+
+function recipeListLocations(memoryDir) {
+  return [
+    { source: "builtin", dir: path.join(projectRoot(), "recipes") },
+    { source: "user", dir: path.join(memoryDir, "recipes") }
+  ];
 }
 
 function validateRecipe(recipe) {
@@ -6085,6 +6105,7 @@ function createWorkflowFromRecipe(memoryDir, recipeName, toolMapping, variables)
 
   // Merge variables
   const vars = { ...recipe.variables, ...variables };
+  const roleNames = Object.keys(recipe.roles);
 
   // Create workflow
   const workflow = createWorkflow({
@@ -6092,10 +6113,10 @@ function createWorkflowFromRecipe(memoryDir, recipeName, toolMapping, variables)
     createdBy: "recipe",
     project: vars.project || "",
     priority: vars.priority || "normal",
-    planner: toolMapping[Object.keys(recipe.roles)[0]] || "",
-    executor: toolMapping[Object.keys(recipe.roles)[1]] || "",
-    reviewer: toolMapping[Object.keys(recipe.roles)[2]] || "",
-    observer: "",
+    planner: toolMapping.planner || toolMapping[roleNames[0]] || "",
+    executor: toolMapping.executor || toolMapping[roleNames[1]] || "",
+    reviewer: toolMapping.reviewer || toolMapping[roleNames[2]] || "",
+    observer: toolMapping.observer || toolMapping[roleNames[3]] || "",
     plan: `Recipe: ${recipeName}\nSteps: ${recipe.steps.length}`,
     acceptance: recipe.description || ""
   });

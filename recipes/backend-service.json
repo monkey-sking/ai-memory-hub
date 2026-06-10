@@ -1,0 +1,68 @@
+{
+  "name": "backend-service",
+  "title": "Backend Service Change",
+  "description": "Backend workflow for API, data, and automation changes with explicit contracts, tests, and review gates.",
+  "version": "1.0.0",
+  "variables": {
+    "feature": "backend-service",
+    "priority": "normal"
+  },
+  "roles": {
+    "planner": {
+      "description": "Defines behavior, contracts, data ownership, and rollout risk."
+    },
+    "executor": {
+      "description": "Implements the backend change and focused tests."
+    },
+    "reviewer": {
+      "description": "Reviews contracts, failure modes, test coverage, and operational risk."
+    }
+  },
+  "steps": [
+    {
+      "id": "requirements",
+      "role": "planner",
+      "task": "Analyze the backend request. Output JSON with behavior, API or CLI contract, persistence model, authorization boundaries, acceptance criteria, and stop conditions."
+    },
+    {
+      "id": "codebase-analysis",
+      "role": "planner",
+      "task": "Inspect current modules, command paths, data files, locking rules, and tests. Output JSON with integration points, invariants, and test plan.",
+      "dependsOn": [
+        "requirements"
+      ]
+    },
+    {
+      "id": "task-decomposition",
+      "role": "planner",
+      "task": "Break the work into implementation tasks with expected files, migration needs, verification commands, and rollback notes.",
+      "dependsOn": [
+        "codebase-analysis"
+      ]
+    },
+    {
+      "id": "implementation",
+      "role": "executor",
+      "task": "Implement the backend change with narrow scope. Preserve existing data contracts and add or update focused tests.",
+      "dependsOn": [
+        "task-decomposition"
+      ]
+    },
+    {
+      "id": "quality-fix",
+      "role": "executor",
+      "task": "Run syntax, unit, integration, and data-contract checks. Fix failing checks and output structured results with commands, pass/fail status, and known gaps.",
+      "dependsOn": [
+        "implementation"
+      ]
+    },
+    {
+      "id": "review",
+      "role": "reviewer",
+      "task": "Review implementation, error handling, data safety, and test coverage. Reply PASS or blockers only.",
+      "dependsOn": [
+        "quality-fix"
+      ]
+    }
+  ]
+}

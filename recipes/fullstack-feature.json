@@ -1,0 +1,79 @@
+{
+  "name": "fullstack-feature",
+  "title": "Fullstack Feature Delivery",
+  "description": "End-to-end workflow for changes spanning UI, API, data, tests, and cross-agent review.",
+  "version": "1.0.0",
+  "variables": {
+    "feature": "fullstack-feature",
+    "priority": "normal"
+  },
+  "roles": {
+    "planner": {
+      "description": "Owns requirements, architecture, sequencing, and explicit stop points."
+    },
+    "executor": {
+      "description": "Implements frontend, backend, tests, and docs within the approved scope."
+    },
+    "reviewer": {
+      "description": "Validates behavior, regressions, contracts, and release readiness."
+    },
+    "observer": {
+      "description": "Tracks cross-agent status, handoffs, and unresolved risk."
+    }
+  },
+  "steps": [
+    {
+      "id": "requirements",
+      "role": "planner",
+      "task": "Clarify the end-to-end feature. Output JSON with user workflow, API/data contract, non-goals, acceptance criteria, risks, and stop conditions."
+    },
+    {
+      "id": "system-analysis",
+      "role": "planner",
+      "task": "Inspect frontend, backend, data, tests, docs, and deployment assumptions. Output JSON with impacted modules, ownership boundaries, and verification matrix.",
+      "dependsOn": [
+        "requirements"
+      ]
+    },
+    {
+      "id": "design-doc",
+      "role": "planner",
+      "task": "Produce a concise design note covering UI states, API contract, persistence, error handling, observability, and migration or compatibility concerns.",
+      "dependsOn": [
+        "system-analysis"
+      ]
+    },
+    {
+      "id": "task-decomposition",
+      "role": "observer",
+      "task": "Create or update shared tasks for implementation, review, and verification. Record dependencies, owners, and expected artifacts.",
+      "dependsOn": [
+        "design-doc"
+      ]
+    },
+    {
+      "id": "implementation",
+      "role": "executor",
+      "task": "Implement the fullstack change in small commits or handoff-ready increments. Keep unrelated refactors out of scope.",
+      "dependsOn": [
+        "task-decomposition"
+      ]
+    },
+    {
+      "id": "quality-fix",
+      "role": "executor",
+      "task": "Run focused frontend, backend, integration, and browser/API checks. Fix failures and output structured results with residual risks.",
+      "dependsOn": [
+        "implementation"
+      ]
+    },
+    {
+      "id": "review",
+      "role": "reviewer",
+      "task": "Review diff, contracts, UI behavior, tests, docs, and handoff notes. Reply PASS or blockers only.",
+      "dependsOn": [
+        "quality-fix"
+      ]
+    }
+  ]
+}

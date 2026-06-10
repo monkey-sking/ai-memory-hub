@@ -601,20 +601,20 @@
         searchRadio: "广播消息",
         searchButton: "搜索",
         searchPrompt: "输入搜索关键词...",
-        healthReport: “💊 系统健康报告”,
-        runHealthCheck: “运行健康检查”,
-        healthPrompt: “点击”运行健康检查”生成报告...”,
-        loadingMemory: “加载 MEMORY.md 中...”,
-        loadingProfile: “加载 profile.md 中...”,
-        memoryTab: “MEMORY.md”,
-        profileTab: “profile.md”,
-        sharedSnapshot: “共享快照 (MEMORY.md)”,
-        pendingInbox: “待处理收件箱”,
-        activeTasksJson: “活跃任务”,
-        radioMessagesJson: “广播消息”,
-        columnOpen: “待认领”,
-        columnActive: “执行中”,
-        columnCompleted: “已完成”,
+        healthReport: "💊 系统健康报告",
+        runHealthCheck: "运行健康检查",
+        healthPrompt: "点击“运行健康检查”生成报告...",
+        loadingMemory: "加载 MEMORY.md 中...",
+        loadingProfile: "加载 profile.md 中...",
+        memoryTab: "MEMORY.md",
+        profileTab: "profile.md",
+        sharedSnapshot: "共享快照 (MEMORY.md)",
+        pendingInbox: "待处理收件箱",
+        activeTasksJson: "活跃任务",
+        radioMessagesJson: "广播消息",
+        columnOpen: "待认领",
+        columnActive: "执行中",
+        columnCompleted: "已完成",
         analytics: "📈 数据分析",
         memoryGrowth: "记忆增长趋势",
         taskCompletion: "任务完成率",
@@ -2074,8 +2074,16 @@
 
     function loadChartJs() {
       if (window.Chart) return Promise.resolve();
+      const existing = document.getElementById('chartjs-loader');
+      if (existing) {
+        return new Promise((resolve, reject) => {
+          existing.addEventListener('load', resolve, { once: true });
+          existing.addEventListener('error', reject, { once: true });
+        });
+      }
       return new Promise((resolve, reject) => {
         const script = document.createElement('script');
+        script.id = 'chartjs-loader';
         script.src = 'https://cdn.jsdelivr.net/npm/chart.js';
         script.onload = resolve;
         script.onerror = reject;
@@ -2114,15 +2122,15 @@
             <h2 data-i18n="analytics">${t('analytics')}</h2>
           </div>
           <div class="analytics-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px;">
-            <div class="chart-card" style="background: var(--bg-surface); padding: 20px; border-radius: 12px; border: 1px solid var(--border-color);">
+            <div class="chart-card" style="background: var(--bg-surface); padding: 20px; border-radius: 8px; border: 1px solid var(--border-color);">
               <h3 style="margin-bottom: 15px;" data-i18n="memoryGrowth">${t('memoryGrowth')}</h3>
               <div style="height: 300px;"><canvas id="memoryGrowthChart"></canvas></div>
             </div>
-            <div class="chart-card" style="background: var(--bg-surface); padding: 20px; border-radius: 12px; border: 1px solid var(--border-color);">
+            <div class="chart-card" style="background: var(--bg-surface); padding: 20px; border-radius: 8px; border: 1px solid var(--border-color);">
               <h3 style="margin-bottom: 15px;" data-i18n="taskCompletion">${t('taskCompletion')}</h3>
               <div style="height: 300px;"><canvas id="taskCompletionChart"></canvas></div>
             </div>
-            <div class="chart-card" style="background: var(--bg-surface); padding: 20px; border-radius: 12px; border: 1px solid var(--border-color);">
+            <div class="chart-card" style="background: var(--bg-surface); padding: 20px; border-radius: 8px; border: 1px solid var(--border-color);">
                <h3 style="margin-bottom: 15px;" data-i18n="radioActivity">${t('radioActivity')}</h3>
                <div style="height: 300px;"><canvas id="radioActivityChart"></canvas></div>
             </div>
@@ -2134,6 +2142,15 @@
 
     async function renderAnalytics() {
       if (state.activeTab !== 'analytics') return;
+      try {
+        await loadChartJs();
+      } catch (error) {
+        ['memoryGrowthChart', 'taskCompletionChart', 'radioActivityChart'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el?.parentElement) el.parentElement.innerHTML = `<div class="muted">${escapeHtml(error.message || String(error))}</div>`;
+        });
+        return;
+      }
       const ledgerCount = state.status.ledgerEvents || 0;
       const pendingCount = state.status.pendingEvents || 0;
       const backupCount = state.status.backups || 0;
@@ -2145,68 +2162,77 @@
         const key = msg.from || 'unknown';
         activityMap[key] = (activityMap[key] || 0) + 1;
       });
-      if (!window.echarts) {
-        ['chartMemoryGrowth', 'chartTaskCompletion', 'chartRadioActivity'].forEach(id => {
-          const el = document.getElementById(id);
-          if (el) el.innerHTML = `<div class="muted">${escapeHtml(t('scanning'))}</div>`;
-        });
-        return;
-      }
-
-      const getChart = (key, id) => {
+      const upsertChart = (key, id, config) => {
         const el = document.getElementById(id);
         if (!el) return null;
-        if (!charts[key] || charts[key].getDom?.() !== el) {
-          charts[key]?.dispose?.();
-          charts[key] = echarts.init(el, 'dark');
+        if (charts[key]) {
+          charts[key].data = config.data;
+          charts[key].options = config.options;
+          charts[key].update();
+          return charts[key];
         }
+        charts[key] = new Chart(el, config);
         return charts[key];
       };
-
-      getChart('memory', 'chartMemoryGrowth')?.setOption({
-        backgroundColor: 'transparent',
-        tooltip: { trigger: 'axis' },
-        xAxis: { type: 'category', data: [t('durableLedger'), t('pendingEvents'), t('backups')] },
-        yAxis: { type: 'value' },
-        series: [{
-          type: 'bar',
-          data: [ledgerCount, pendingCount, backupCount],
-          itemStyle: { color: '#4facfe' }
-        }]
-      });
-
-      getChart('tasks', 'chartTaskCompletion')?.setOption({
-        backgroundColor: 'transparent',
-        tooltip: { trigger: 'item' },
-        legend: { bottom: 0, textStyle: { color: '#8b9bb4' } },
-        series: [{
-          type: 'pie',
-          radius: ['40%', '70%'],
-          data: [
-            { name: 'Open', value: openTasks },
-            { name: 'Active', value: activeTasks },
-            { name: 'Done', value: doneTasks }
-          ],
-          emphasis: {
-            itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0, 0, 0, 0.5)' }
-          }
-        }]
-      });
-
-      getChart('radio', 'chartRadioActivity')?.setOption({
-        backgroundColor: 'transparent',
-        tooltip: { trigger: 'axis' },
-        xAxis: { type: 'value' },
-        yAxis: {
-          type: 'category',
-          data: Object.keys(activityMap),
-          axisLabel: { color: '#8b9bb4' }
+      const baseOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { labels: { color: '#8b9bb4' } }
         },
-        series: [{
-          type: 'bar',
-          data: Object.values(activityMap),
-          itemStyle: { color: '#00f2fe' }
-        }]
+        scales: {
+          x: { ticks: { color: '#8b9bb4' }, grid: { color: 'rgba(139, 155, 180, 0.16)' } },
+          y: { ticks: { color: '#8b9bb4' }, grid: { color: 'rgba(139, 155, 180, 0.16)' }, beginAtZero: true }
+        }
+      };
+
+      upsertChart('memory', 'memoryGrowthChart', {
+        type: 'bar',
+        data: {
+          labels: [t('durableLedger'), t('pendingEvents'), t('backups')],
+          datasets: [{
+            label: t('memoryGrowth'),
+            data: [ledgerCount, pendingCount, backupCount],
+            backgroundColor: '#4facfe'
+          }]
+        },
+        options: baseOptions
+      });
+
+      upsertChart('tasks', 'taskCompletionChart', {
+        type: 'doughnut',
+        data: {
+          labels: ['Open', 'Active', 'Done'],
+          datasets: [{
+            data: [openTasks, activeTasks, doneTasks],
+            backgroundColor: ['#f59e0b', '#4facfe', '#22c55e'],
+            borderColor: 'rgba(8, 13, 26, 0.9)',
+            borderWidth: 2
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'bottom', labels: { color: '#8b9bb4' } }
+          }
+        }
+      });
+
+      upsertChart('radio', 'radioActivityChart', {
+        type: 'bar',
+        data: {
+          labels: Object.keys(activityMap),
+          datasets: [{
+            label: t('radioActivity'),
+            data: Object.values(activityMap),
+            backgroundColor: '#00f2fe'
+          }]
+        },
+        options: {
+          ...baseOptions,
+          indexAxis: 'y'
+        }
       });
     }
 

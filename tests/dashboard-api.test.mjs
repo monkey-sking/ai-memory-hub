@@ -269,7 +269,11 @@ test("dashboard serves externalized virtual-scroll assets", async () => {
       const jsRes = await fetch(`http://127.0.0.1:${port}/js/dashboard.js`);
       assert.equal(jsRes.status, 200);
       assert.match(jsRes.headers.get("content-type") || "", /application\/javascript/);
-      assert.match(await jsRes.text(), /function renderVirtualList/);
+      const dashboardScript = await jsRes.text();
+      assert.match(dashboardScript, /function renderVirtualList/);
+      assert.match(dashboardScript, /new Chart\(el/);
+      assert.match(dashboardScript, /memoryGrowthChart/);
+      assert.doesNotMatch(dashboardScript, /echarts\.init/);
 
       const traversalRes = await fetch(`http://127.0.0.1:${port}/js/%2e%2e/%2e%2e/package.json`);
       assert.notEqual(traversalRes.status, 200);
@@ -288,6 +292,12 @@ test("dashboard serves externalized virtual-scroll assets", async () => {
   assert.match(dashboardJs, /renderVirtualList\('col-active'/);
   assert.match(dashboardJs, /renderVirtualList\('col-completed'/);
   assert.match(dashboardJs, /loading="lazy"/);
+  assert.match(dashboardJs, /function loadChartJs/);
+  assert.match(dashboardJs, /new Chart\(el/);
+  assert.match(dashboardJs, /memoryGrowthChart/);
+  assert.match(dashboardJs, /taskCompletionChart/);
+  assert.match(dashboardJs, /radioActivityChart/);
+  assert.doesNotMatch(dashboardJs, /echarts\.init/);
 });
 
 test("dashboard task review API records approval on task and linked workflow", async () => {

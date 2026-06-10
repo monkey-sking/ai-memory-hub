@@ -20,6 +20,7 @@ const DEFAULT_DISPATCH_RUN_TIMEOUT_MS = 10 * 60 * 1000;
 const DEFAULT_TASK_SPEC_TIMEOUT_MS = 10 * 60 * 1000;
 const STALE_OPERATIONAL_RADIO_AFTER_DAYS = 7;
 const OPERATIONAL_RADIO_DECAY_RATE_PER_DAY = 8;
+const CORRUPTION_MARKER_PATTERN = /[\u0000\ufffd]/;
 const TOOL_DETECTION_CACHE_TTL_MS = 30 * 1000;
 const DEFAULT_TASK_SPEC_FILES = [
   ".tasks.json",
@@ -669,6 +670,9 @@ function radioPromoteCommand(argv) {
   if (message.promoted) {
     console.log(`Radio message already promoted: ${message.id}`);
     return;
+  }
+  if (isCorruptedRadioMessage(message)) {
+    throw new Error(`Refusing to promote corrupted radio message: ${message.id}`);
   }
   appendJsonl(path.join(config.memoryDir, "inbox", "events.jsonl"), {
     id: createId(`radio:${message.id}`),
@@ -7117,7 +7121,7 @@ function formatMemoryRefs(refs = {}) {
   }
   const parts = [];
   for (const key of ["thread", "threadKey", "taskId", "workflowId", "radioId"]) {
-    const values = normalizeRefValues(refs[key]).slice(0, 3);
+    const values = normalizeRefValues(refs[key]).map(sanitizeInlineText).filter(Boolean).slice(0, 3);
     if (values.length > 0) {
       parts.push(`${key}=${values.join(",")}`);
     }
@@ -7729,7 +7733,7 @@ function isCorruptedMemoryRecord(record) {
   const text = String(record.text || "");
   return record.source === "raw" ||
     record.kind === "raw" ||
-    /\u0000|\ufffd/.test(text);
+    containsCorruptionMarker(text);
 }
 
 function getMemoryGrowthTrend(records, limit = 14) {
@@ -7808,9 +7812,10 @@ function formatTopCounts(items = [], limit = 8) {
 }
 
 function formatMemoryRecordPointer(record) {
-  const source = record.source || "unknown";
-  const id = record.localEventId || record.id || "";
-  return id ? `${source}/${record.kind || "note"} ${id}:` : `${source}/${record.kind || "note"}:`;
+  const source = sanitizeInlineText(record.source || "unknown") || "unknown";
+  const kind = sanitizeInlineText(record.kind || "note") || "note";
+  const id = sanitizeInlineText(record.localEventId || record.id || "");
+  return id ? `${source}/${kind} ${id}:` : `${source}/${kind}:`;
 }
 
 function formatPercent(value) {
@@ -7829,7 +7834,7 @@ function formatBytes(bytes) {
 }
 
 function truncateText(text, limit) {
-  const clean = String(text || "").replace(/\s+/g, " ").trim();
+  const clean = sanitizeInlineText(text);
   if (clean.length <= limit) {
     return clean;
   }
@@ -7837,12 +7842,29 @@ function truncateText(text, limit) {
 }
 
 function renderMemoryLine(memory) {
-  const kind = memory.kind || memory.metadata?.kind ? `/${memory.kind || memory.metadata.kind}` : "";
-  const topics = memory.topics?.length ? ` topics=${memory.topics.slice(0, 5).join(",")}` : "";
-  const project = memory.project ? ` project=${memory.project}` : "";
-  const tags = memory.tags?.length ? ` tags=${memory.tags.slice(0, 5).join(",")}` : "";
+  const source = sanitizeInlineText(memory.source || "unknown");
+  const memoryKind = sanitizeInlineText(memory.kind || memory.metadata?.kind || "");
+  const kind = memoryKind ? `/${memoryKind}` : "";
+  const topics = memory.topics?.length ? ` topics=${memory.topics.slice(0, 5).map(sanitizeInlineText).join(",")}` : "";
+  const project = memory.project ? ` project=${sanitizeInlineText(memory.project)}` : "";
+  const tags = memory.tags?.length ? ` tags=${memory.tags.slice(0, 5).map(sanitizeInlineText).join(",")}` : "";
   const refs = formatMemoryRefs(memory.refs);
-  return `- [${memory.source}${kind} score=${memory.importance}${project}${tags}${topics}${refs ? ` refs=${refs}` : ""}] ${memory.text}`;
+  return `- [${source}${kind} score=${memory.importance}${project}${tags}${topics}${refs ? ` refs=${refs}` : ""}] ${sanitizeInlineText(memory.text)}`;
+}
+
+function containsCorruptionMarker(value) {
+  return CORRUPTION_MARKER_PATTERN.test(String(value || ""));
+}
+
+function sanitizeDisplayText(value) {
+  return String(value || "")
+    .replace(/\u0000/g, "\\0")
+    .replace(/\ufffd/g, "?")
+    .replace(/[\u0001-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, " ");
+}
+
+function sanitizeInlineText(value) {
+  return sanitizeDisplayText(value).replace(/\s+/g, " ").trim();
 }
 
 function expandSynonyms(terms) {
@@ -8365,18 +8387,32 @@ function createRadioMessage({ from, to, type, text, thread, replyTo, project }) 
   };
 }
 
+function isCorruptedRadioMessage(message) {
+  return String(message.from || "").toLowerCase() === "raw" ||
+    String(message.type || "").toLowerCase() === "raw" ||
+    containsCorruptionMarker(message.text) ||
+    containsCorruptionMarker(message.thread) ||
+    containsCorruptionMarker(message.replyTo);
+}
+
 function readRadioMessages(memoryDir) {
   const file = path.join(memoryDir, "radio", "messages.jsonl");
-  return readEvents(file).map((message) => ({
-    id: message.id || createId(JSON.stringify(message)),
-    ts: message.ts || "",
-    from: message.from || message.source || "unknown",
-    to: message.to || "all",
-    type: message.type || message.metadata?.kind || "note",
-    text: message.text || "",
-    thread: message.thread || "",
-    replyTo: message.replyTo || message.reply_to || "",
-    project: message.project || "",
+  return readEvents(file).map(normalizeRadioMessage);
+}
+
+function normalizeRadioMessage(message) {
+  const recovered = recoverEmbeddedJsonMessage(message.text);
+  const content = recovered || message;
+  return {
+    id: message.id || content.id || createId(JSON.stringify(message)),
+    ts: message.ts || content.ts || "",
+    from: content.from || content.source || message.from || message.source || "unknown",
+    to: content.to || message.to || "all",
+    type: content.type || message.type || message.metadata?.kind || "note",
+    text: content.text || message.text || "",
+    thread: content.thread || message.thread || "",
+    replyTo: content.replyTo || content.reply_to || message.replyTo || message.reply_to || "",
+    project: content.project || message.project || "",
     deliveryState: message.deliveryState || "pending",
     deliveryUpdatedAt: message.deliveryUpdatedAt || "",
     dispatchId: message.dispatchId || "",
@@ -8392,7 +8428,27 @@ function readRadioMessages(memoryDir) {
     progressBy: message.progressBy || "",
     promoted: Boolean(message.promoted),
     promotedAt: message.promotedAt || ""
-  }));
+  };
+}
+
+function recoverEmbeddedJsonMessage(value) {
+  const text = String(value || "");
+  if (!text || !containsCorruptionMarker(text)) {
+    return null;
+  }
+  const candidate = text
+    .replace(/\u0000/g, "")
+    .replace(/[\u0001-\u001f\u007f]/g, "")
+    .trim();
+  if (!candidate.startsWith("{") || !candidate.endsWith("}")) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(candidate);
+    return isPlainObject(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
 }
 
 function updateRadioMessage(memoryDir, id, patch) {

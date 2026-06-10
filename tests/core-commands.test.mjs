@@ -663,3 +663,96 @@ test("health command reports memory quality and storage diagnostics", async () =
     assert.match(health.stdout, /event-corrupted/);
   });
 });
+
+test("memory outputs sanitize corrupted control characters", async () => {
+  await withHub(async (memoryDir) => {
+    await appendJsonl(path.join(memoryDir, "inbox", "events.jsonl"), {
+      id: "event-corrupted-radio",
+      ts: "2026-06-10T10:00:00.000Z",
+      source: "raw",
+      text: "Broken radio record \u0000 \ufffd",
+      metadata: {
+        kind: "raw",
+        project: "ai-memory-hub",
+        tags: ["radio"]
+      }
+    });
+
+    const sync = runCli(memoryDir, ["sync"]);
+    assert.equal(sync.status, 0, sync.stderr || sync.stdout);
+
+    const memoryMd = await fs.readFile(path.join(memoryDir, "MEMORY.md"), "utf8");
+    const indexMd = await fs.readFile(path.join(memoryDir, "INDEX.md"), "utf8");
+    assert.doesNotMatch(memoryMd, /\u0000/);
+    assert.doesNotMatch(indexMd, /\u0000/);
+    assert.match(indexMd, /Broken radio record \\0 \?/);
+
+    const health = runCli(memoryDir, ["health", "--limit", "1"]);
+    assert.equal(health.status, 0, health.stderr || health.stdout);
+    assert.doesNotMatch(health.stdout, /\u0000/);
+    assert.match(health.stdout, /Broken radio record \\0 \?/);
+  });
+});
+
+test("radio promote rejects corrupted messages", async () => {
+  await withHub(async (memoryDir) => {
+    await appendJsonl(path.join(memoryDir, "radio", "messages.jsonl"), {
+      id: "radio-corrupted",
+      ts: "2026-06-10T10:00:00.000Z",
+      from: "codex",
+      to: "all",
+      type: "note",
+      text: "Broken radio message \u0000"
+    });
+
+    const promote = runCli(memoryDir, ["radio", "promote", "--id", "radio-corrupted"]);
+    assert.equal(promote.status, 1);
+    assert.match(promote.stderr, /Refusing to promote corrupted radio message: radio-corrupted/);
+
+    let inbox = "";
+    try {
+      inbox = await fs.readFile(path.join(memoryDir, "inbox", "events.jsonl"), "utf8");
+    } catch (error) {
+      if (error.code !== "ENOENT") {
+        throw error;
+      }
+    }
+    assert.equal(inbox.trim(), "");
+  });
+});
+
+test("radio list recovers nul-interleaved raw JSON messages", async () => {
+  await withHub(async (memoryDir) => {
+    const rawMessage = JSON.stringify({
+      source: "marvis",
+      from: "marvis",
+      to: "codex",
+      type: "status",
+      text: "Recovered status for ai-memory-hub review.",
+      thread: "review-thread",
+      project: "ai-memory-hub"
+    });
+    await appendJsonl(path.join(memoryDir, "radio", "messages.jsonl"), {
+      id: "radio-raw-nul",
+      ts: "2026-06-10T10:00:00.000Z",
+      from: "raw",
+      to: "all",
+      type: "raw",
+      text: rawMessage.split("").join("\u0000"),
+      deliveryState: "delivered",
+      promoted: true
+    });
+
+    const messages = parseJson(runCli(memoryDir, ["radio", "list", "--limit", "1"]));
+    assert.equal(messages.length, 1);
+    assert.equal(messages[0].id, "radio-raw-nul");
+    assert.equal(messages[0].from, "marvis");
+    assert.equal(messages[0].to, "codex");
+    assert.equal(messages[0].type, "status");
+    assert.equal(messages[0].text, "Recovered status for ai-memory-hub review.");
+    assert.equal(messages[0].thread, "review-thread");
+    assert.equal(messages[0].project, "ai-memory-hub");
+    assert.equal(messages[0].deliveryState, "delivered");
+    assert.equal(messages[0].promoted, true);
+  });
+});

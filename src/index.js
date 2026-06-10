@@ -20,6 +20,7 @@ const DEFAULT_DISPATCH_RUN_TIMEOUT_MS = 10 * 60 * 1000;
 const DEFAULT_TASK_SPEC_TIMEOUT_MS = 10 * 60 * 1000;
 const STALE_OPERATIONAL_RADIO_AFTER_DAYS = 7;
 const OPERATIONAL_RADIO_DECAY_RATE_PER_DAY = 8;
+const TOOL_DETECTION_CACHE_TTL_MS = 30 * 1000;
 const DEFAULT_TASK_SPEC_FILES = [
   ".tasks.json",
   "task-specs.json",
@@ -29,6 +30,8 @@ const RESEARCH_REPORTS_DIR = "research-reports";
 const DISPATCH_RUNS_DIR = "dispatch-runs";
 const DAEMON_PID_FILE = "daemon.pid";
 const DAEMON_STATUS_FILE = "daemon-status.json";
+
+let toolDetectionCache = null;
 
 const RUNNER_PROFILES = {
   codex: {
@@ -404,7 +407,7 @@ function getStatusObject() {
   const relayLatest = Object.values(readLatestRelayStatusByThread(memoryDir));
   const backups = countBackupDirs(memoryDir);
   const lock = readLockStatus(memoryDir);
-  const tools = detectTools(memoryDir);
+  const tools = getCachedDetectedTools(memoryDir);
   const toolSummary = summarizeToolConnections(tools);
   const daemon = buildDaemonStatus(memoryDir);
 
@@ -2924,8 +2927,7 @@ function shouldRetryJob(job) {
   if (!job?.tool) {
     return false;
   }
-  const runner = getToolRunner(job.tool);
-  return !runner.sharedStateOnly;
+  return !isSharedStateOnlyTool(job.tool);
 }
 
 function getRunnerProfile(tool) {
@@ -2994,6 +2996,11 @@ function getToolRunner(tool) {
     shell: shell ? "cmd.exe" : "none",
     preview: profile.preview || `${profile.tool} <${profile.promptMode || "argv"}>`
   };
+}
+
+function isSharedStateOnlyTool(tool) {
+  const profile = getRunnerProfile(tool);
+  return Boolean(profile?.sharedStateOnly);
 }
 
 function resolveRunnerCommand(profile) {
@@ -3416,8 +3423,7 @@ function isRelayRetryDue(entry) {
 }
 
 function isRelayRetryRunnable(entry) {
-  const runner = getToolRunner(entry?.tool || "");
-  return !runner.sharedStateOnly;
+  return !isSharedStateOnlyTool(entry?.tool || "");
 }
 
 function isRelayRetryCandidate(entry, now = Date.now()) {
@@ -4933,6 +4939,20 @@ function loadConfig() {
     sync,
     tools: { ...base.tools, ...(config.tools || {}) }
   };
+}
+
+function getCachedDetectedTools(memoryDir = resolveMemoryDir()) {
+  const now = Date.now();
+  if (
+    toolDetectionCache &&
+    toolDetectionCache.memoryDir === memoryDir &&
+    now - toolDetectionCache.ts < TOOL_DETECTION_CACHE_TTL_MS
+  ) {
+    return toolDetectionCache.tools;
+  }
+  const tools = detectTools(memoryDir);
+  toolDetectionCache = { memoryDir, ts: now, tools };
+  return tools;
 }
 
 function detectTools(memoryDir = resolveMemoryDir()) {

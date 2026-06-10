@@ -3,6 +3,9 @@
 This policy defines how durable memories move through the local hub without
 turning the hub into a lossy cache or a model-dependent memory service.
 
+For the boundary between durable memory, shared collaboration state, and runtime
+execution state, see [Memory And Execution State Boundary](memory-execution-boundary.md).
+
 ## Goals
 
 - Keep the ledger durable and auditable.
@@ -226,7 +229,6 @@ through ranking, but deletion must be explicit and backed up.
 
 The following are intentionally deferred to separate tasks:
 
-- Project and tag filter UX for search and snapshot views.
 - Thread-aware linking between corrections, stale facts, and source events.
 - Implementation of the operation abstraction described above.
 - Automatic expiration, stale review queues, and destructive cleanup commands.

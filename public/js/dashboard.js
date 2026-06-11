@@ -452,6 +452,44 @@
         promptWorkflowSignalText: "Signal message:",
         noWorkflowsMatch: "No workflows match the current filters.",
         workflowTitleRequired: "Workflow title is required.",
+        projectsPanel: "Projects",
+        projectRegistry: "Project Registry",
+        createProject: "+ New Project",
+        loadingProjects: "Loading projects...",
+        projectTotal: "Total Projects",
+        projectVisible: "Visible",
+        projectArchived: "Archived",
+        projectUnregistered: "Unregistered",
+        visibleProjects: "Visible Projects",
+        projectIdLabel: "Project ID",
+        projectIdPlaceholder: "kebab-case or stable name",
+        projectNameLabel: "Name",
+        projectNamePlaceholder: "Project name",
+        projectDisplayNameLabel: "Display Name",
+        projectDisplayNamePlaceholder: "Shown in selectors",
+        projectTypeLabel: "Type",
+        projectTypePlaceholder: "tool, game, docs...",
+        projectAliasesLabel: "Aliases",
+        projectAliasesPlaceholder: "Comma-separated aliases",
+        projectDescriptionLabel: "Description",
+        projectDescriptionPlaceholder: "Project purpose and scope",
+        projectFeishuLabel: "Feishu",
+        projectRepoLabel: "Repository",
+        projectDocsLabel: "Docs",
+        projectDocsPlaceholder: "Comma-separated links",
+        saveProject: "Save Project",
+        editProject: "Edit",
+        archiveProject: "Archive",
+        confirmArchiveProject: "Archive this project?",
+        projectSaved: "Project saved.",
+        projectUpdated: "Project updated.",
+        projectArchivedToast: "Project archived.",
+        noProjects: "No projects registered.",
+        noProjectsMatch: "No projects match the current filters.",
+        unregisteredProjects: "Unregistered project references",
+        noUnregisteredProjects: "No unregistered project references.",
+        projectIdRequired: "Project ID is required.",
+        projectNameRequired: "Project name is required.",
         systemSettings: "⚙️ System Settings",
         settingsCurrentSnapshot: "Snapshot Limit",
         settingsCurrentRefresh: "Refresh Interval",
@@ -870,6 +908,44 @@
         promptWorkflowSignalText: "信号内容：",
         noWorkflowsMatch: "没有符合当前筛选条件的工作流。",
         workflowTitleRequired: "请填写工作流标题。",
+        projectsPanel: "项目",
+        projectRegistry: "项目注册表",
+        createProject: "+ 新建项目",
+        loadingProjects: "加载项目中...",
+        projectTotal: "项目总数",
+        projectVisible: "可见项目",
+        projectArchived: "已归档",
+        projectUnregistered: "未注册引用",
+        visibleProjects: "可见项目",
+        projectIdLabel: "项目 ID",
+        projectIdPlaceholder: "稳定项目名或 kebab-case",
+        projectNameLabel: "名称",
+        projectNamePlaceholder: "项目名称",
+        projectDisplayNameLabel: "显示名称",
+        projectDisplayNamePlaceholder: "显示在下拉框中的名称",
+        projectTypeLabel: "类型",
+        projectTypePlaceholder: "tool、game、docs...",
+        projectAliasesLabel: "别名",
+        projectAliasesPlaceholder: "用逗号分隔多个别名",
+        projectDescriptionLabel: "描述",
+        projectDescriptionPlaceholder: "项目目标和范围",
+        projectFeishuLabel: "飞书",
+        projectRepoLabel: "代码仓库",
+        projectDocsLabel: "文档",
+        projectDocsPlaceholder: "用逗号分隔多个链接",
+        saveProject: "保存项目",
+        editProject: "编辑",
+        archiveProject: "归档",
+        confirmArchiveProject: "确定归档这个项目吗？",
+        projectSaved: "项目已保存。",
+        projectUpdated: "项目已更新。",
+        projectArchivedToast: "项目已归档。",
+        noProjects: "暂无注册项目。",
+        noProjectsMatch: "没有符合当前筛选条件的项目。",
+        unregisteredProjects: "未注册项目引用",
+        noUnregisteredProjects: "暂无未注册项目引用。",
+        projectIdRequired: "请填写项目 ID。",
+        projectNameRequired: "请填写项目名称。",
         systemSettings: "⚙️ 系统设置",
         settingsCurrentSnapshot: "快照限制",
         settingsCurrentRefresh: "刷新间隔",
@@ -1108,6 +1184,7 @@
       radio: [],
       tasks: [],
       workflows: [],
+      projects: null,
       dispatch: [],
       relay: [],
       metrics: null,
@@ -1838,7 +1915,7 @@
       document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
       document.querySelectorAll('.tab-panel').forEach(el => el.classList.remove('active'));
 
-      const tabs = ['dashboard', 'memory', 'radio', 'tasks', 'dispatch', 'workflows', 'analytics', 'backups', 'settings', 'health', 'search', 'tools'];
+      const tabs = ['dashboard', 'memory', 'radio', 'tasks', 'dispatch', 'workflows', 'projects', 'analytics', 'backups', 'settings', 'health', 'search', 'tools'];
       const index = tabs.indexOf(tabId);
       if (index !== -1) {
         document.querySelectorAll('.nav-item')[index].classList.add('active');
@@ -1859,6 +1936,7 @@
         if (tabId === 'radio') renderRadioFeed();
         if (tabId === 'tasks') renderTasksList();
         if (tabId === 'workflows') renderWorkflowsPanel();
+        if (tabId === 'projects') renderProjectsPanel();
         if (tabId === 'backups') {
           renderBackupsPanel();
           if (!state.backups) loadBackups();
@@ -2002,6 +2080,7 @@
       state.radio = (snapshot.radio && snapshot.radio.messages) || [];
       state.tasks = (snapshot.tasks && snapshot.tasks.tasks) || [];
       state.workflows = (snapshot.workflows && snapshot.workflows.workflows) || [];
+      state.projects = snapshot.projects || state.projects;
       state.dispatch = (snapshot.dispatch && snapshot.dispatch.logs) || [];
       state.relay = (snapshot.dispatch && snapshot.dispatch.relay) || [];
       state.metrics = snapshot.metrics || state.metrics;
@@ -2093,6 +2172,7 @@
       set('col-completed', skeleton);
       set('dispatchRelay', skeleton);
       set('dispatchLogs', skeleton);
+      set('projectsList', skeleton);
       set('toolsGrid', skeleton);
       set('backupsList', skeleton);
       set('searchTagCloud', smallLoading);
@@ -2122,12 +2202,13 @@
           recordEndpointError('/api/dashboard', dashboardErr);
         }
 
-        const [statusRes, memoryRes, radioRes, tasksRes, workflowsRes, dispatchRes, metricsRes, toolsRes, backupsRes, settingsRes] = await Promise.allSettled([
+        const [statusRes, memoryRes, radioRes, tasksRes, workflowsRes, projectsRes, dispatchRes, metricsRes, toolsRes, backupsRes, settingsRes] = await Promise.allSettled([
           api('/api/status'),
           api('/api/memory'),
           api('/api/radio'),
           api('/api/tasks'),
           api('/api/workflows'),
+          api('/api/projects'),
           api('/api/dispatch'),
           api('/api/metrics'),
           api('/api/tools'),
@@ -2162,6 +2243,12 @@
         } else {
           recordEndpointError('/api/workflows', workflowsRes.reason);
           state.workflows = [];
+        }
+        if (projectsRes.status === 'fulfilled') {
+          state.projects = projectsRes.value || null;
+        } else {
+          recordEndpointError('/api/projects', projectsRes.reason);
+          state.projects = null;
         }
         if (dispatchRes.status === 'fulfilled') {
           state.dispatch = (dispatchRes.value && dispatchRes.value.logs) || [];
@@ -2238,6 +2325,8 @@
       document.getElementById('sidebarTasks').textContent = activeTasksCount;
       const workflowBadge = document.getElementById('sidebarWorkflows');
       if (workflowBadge) workflowBadge.textContent = state.workflows.length;
+      const projectBadge = document.getElementById('sidebarProjects');
+      if (projectBadge) projectBadge.textContent = Array.isArray(state.projects?.visibleProjects) ? state.projects.visibleProjects.length : 0;
 
       // Overview Metrics cards
       document.getElementById('cardActiveTasks').textContent = activeTasksCount;
@@ -2296,6 +2385,7 @@
       renderTasksList();
       renderDispatchLogs();
       renderWorkflowsPanel();
+      renderProjectsPanel();
       renderBackupsPanel();
       renderToolsPanel();
       renderSettingsPanel();
@@ -2355,21 +2445,56 @@
         }
       });
 
+      const registryOptions = getVisibleProjectOptions();
+      const allProjectOptions = registryOptions.length ? registryOptions : Array.from(projectSet);
+      const taskProjectOptions = registryOptions.length ? registryOptions : Array.from(tskProjSet);
+      const workflowProjectOptions = registryOptions.length ? registryOptions : Array.from(workflowProjSet);
+
       updateSelectOptions('filterRadioFromOpt', Array.from(fromSet), t('senderAll'));
       updateSelectOptions('filterRadioToOpt', Array.from(toSet), t('recipientAll'));
-      updateSelectOptions('filterRadioProject', Array.from(projectSet), t('allProjects'));
-      updateSelectOptions('filterTaskProject', Array.from(tskProjSet), t('allProjects'));
-      updateSelectOptions('workflowFilterProject', Array.from(workflowProjSet), t('allProjects'));
-      updateProjectInputOptions(Array.from(projectSet));
+      updateSelectOptions('filterRadioProject', allProjectOptions, t('allProjects'));
+      updateSelectOptions('filterTaskProject', taskProjectOptions, t('allProjects'));
+      updateSelectOptions('workflowFilterProject', workflowProjectOptions, t('allProjects'));
+      updateProjectInputOptions(allProjectOptions);
+    }
+
+    function getVisibleProjectOptions() {
+      const projects = Array.isArray(state.projects?.visibleProjects) ? state.projects.visibleProjects : [];
+      return projects
+        .filter(project => project && project.id)
+        .map(project => {
+          const statusSuffix = project.status && project.status !== 'active' ? ` (${project.status})` : '';
+          return {
+            value: project.id,
+            label: `${project.displayName || project.name || project.id}${statusSuffix}`,
+            aliases: [project.name, project.displayName, ...(project.aliases || [])].filter(Boolean)
+          };
+        });
+    }
+
+    function normalizeSelectOption(value) {
+      if (value && typeof value === 'object') {
+        const optionValue = String(value.value ?? value.id ?? '').trim();
+        return {
+          value: optionValue,
+          label: String(value.label ?? value.displayName ?? value.name ?? optionValue).trim() || optionValue
+        };
+      }
+      const text = String(value || '').trim();
+      return { value: text, label: text };
     }
 
     function updateSelectOptions(elementId, values, defaultLabel) {
       const select = document.getElementById(elementId);
       if (!select) return;
       const current = select.value;
-      let html = `<option value="">${defaultLabel}</option>`;
-      values.sort().forEach(v => {
-        html += `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`;
+      const options = values
+        .map(normalizeSelectOption)
+        .filter(option => option.value)
+        .sort((a, b) => a.label.localeCompare(b.label, state.lang === 'zh' ? 'zh-Hans' : 'en'));
+      let html = `<option value="">${escapeHtml(defaultLabel)}</option>`;
+      options.forEach(option => {
+        html += `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`;
       });
       select.innerHTML = html;
       select.value = current;
@@ -2388,13 +2513,17 @@
       const placeholder = elementId === 'radProject'
         ? `<option value="">${t('selectProject')}</option>`
         : '';
-      const normalized = Array.from(new Set(values.filter(Boolean))).sort();
+      const normalized = values
+        .map(normalizeSelectOption)
+        .filter(option => option.value)
+        .sort((a, b) => a.label.localeCompare(b.label, state.lang === 'zh' ? 'zh-Hans' : 'en'));
+      const optionValues = normalized.map(option => option.value);
       const options = normalized
-        .map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`)
+        .map(option => `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`)
         .join('');
       select.innerHTML = `${placeholder}${options}${customOption}`;
 
-      if (current === '__custom__' || normalized.includes(current) || current === '') {
+      if (current === '__custom__' || optionValues.includes(current) || current === '') {
         select.value = current;
       } else if (current) {
         select.value = '__custom__';
@@ -2424,6 +2553,31 @@
         return (input?.value || '').trim() || fallbackValue;
       }
       return select.value || fallbackValue;
+    }
+
+    function normalizeProjectToken(value) {
+      return String(value || '').trim().toLowerCase();
+    }
+
+    function getProjectRegistryValues(value) {
+      const token = normalizeProjectToken(value);
+      if (!token) return [];
+      const projects = Array.isArray(state.projects?.projects) ? state.projects.projects : [];
+      const project = projects.find(item => [
+        item.id,
+        item.name,
+        item.displayName,
+        ...(item.aliases || [])
+      ].some(candidate => normalizeProjectToken(candidate) === token));
+      if (!project) return [value];
+      return [project.id, project.name, project.displayName, ...(project.aliases || [])].filter(Boolean);
+    }
+
+    function projectMatchesFilter(projectValue, filterValue) {
+      if (!filterValue) return true;
+      const valueToken = normalizeProjectToken(projectValue);
+      if (!valueToken) return false;
+      return getProjectRegistryValues(filterValue).some(candidate => normalizeProjectToken(candidate) === valueToken);
     }
 
     function formatDateTime(value) {
@@ -2929,7 +3083,7 @@
       let filtered = [...state.tasks];
 
       if (state.filterTaskProject) {
-        filtered = filtered.filter(t => t.project === state.filterTaskProject);
+        filtered = filtered.filter(t => projectMatchesFilter(t.project, state.filterTaskProject));
       }
       if (state.filterTaskPriority) {
         filtered = filtered.filter(t => t.priority === state.filterTaskPriority);
@@ -3757,7 +3911,7 @@
       const projectFilter = document.getElementById('workflowFilterProject')?.value || '';
       const visibleWorkflows = workflows.filter(workflow => {
         if (statusFilter && workflow.status !== statusFilter) return false;
-        if (projectFilter && workflow.project !== projectFilter) return false;
+        if (projectFilter && !projectMatchesFilter(workflow.project, projectFilter)) return false;
         return !search || getWorkflowSearchText(workflow).includes(search);
       });
 
@@ -3932,6 +4086,267 @@
         });
         await refreshData();
         showToast(t('workflowUpdated'), 'success');
+      } catch (err) {
+        showToast(getErrorMessage(err), 'error');
+      }
+    }
+
+    function findProjectRecord(query) {
+      const token = normalizeProjectToken(query);
+      if (!token) return null;
+      const projects = Array.isArray(state.projects?.projects) ? state.projects.projects : [];
+      return projects.find(project => [
+        project.id,
+        project.name,
+        project.displayName,
+        ...(project.aliases || [])
+      ].some(value => normalizeProjectToken(value) === token)) || null;
+    }
+
+    function getProjectStatusClass(status) {
+      const classes = {
+        active: 'status-done',
+        planning: 'status-open',
+        paused: 'status-claimed',
+        archived: 'status-cancelled'
+      };
+      return classes[status] || 'status-open';
+    }
+
+    function isProjectVisibleClient(project) {
+      return ['active', 'paused', 'planning'].includes(project.status) && !String(project.id || '').toLowerCase().startsWith('test-');
+    }
+
+    function getProjectSearchText(project) {
+      return [
+        project.id,
+        project.name,
+        project.displayName,
+        project.status,
+        project.type,
+        project.description,
+        ...(project.aliases || []),
+        JSON.stringify(project.metadata || {}),
+        JSON.stringify(project.resources || {})
+      ].filter(Boolean).join(' ').toLowerCase();
+    }
+
+    function renderProjectResourcesHTML(project) {
+      const entries = Object.entries(project.resources || {}).filter(([, value]) => {
+        if (Array.isArray(value)) return value.length > 0;
+        return Boolean(value);
+      });
+      if (entries.length === 0) return '';
+      const renderValue = (value) => {
+        if (Array.isArray(value)) {
+          return value.map(renderProjectResourceValueHTML).join(', ');
+        }
+        return renderProjectResourceValueHTML(value);
+      };
+      return `
+        <div class="workflow-meta">
+          ${entries.map(([key, value]) => `${escapeHtml(key)}: ${renderValue(value)}`).join(' | ')}
+        </div>
+      `;
+    }
+
+    function isExternalResourceLink(value) {
+      return /^https?:\/\//i.test(String(value || '').trim());
+    }
+
+    function renderProjectResourceValueHTML(value) {
+      const text = String(value || '').trim();
+      if (!text) return '';
+      if (!isExternalResourceLink(text)) {
+        return escapeHtml(text);
+      }
+      return `<a class="project-resource-link" href="${escapeHtml(text)}" target="_blank" rel="noopener noreferrer">${escapeHtml(text)}</a>`;
+    }
+
+    function renderProjectCardHTML(project) {
+      const id = escapeJsString(project.id || '');
+      const aliases = Array.isArray(project.aliases) && project.aliases.length
+        ? `<div class="workflow-meta">${escapeHtml(t('projectAliasesLabel'))}: ${escapeHtml(project.aliases.join(', '))}</div>`
+        : '';
+      const relationParts = [
+        project.metadata?.basedOn ? `basedOn: ${project.metadata.basedOn}` : '',
+        project.metadata?.relation ? `relation: ${project.metadata.relation}` : ''
+      ].filter(Boolean);
+      const relation = relationParts.length
+        ? `<div class="workflow-meta">${escapeHtml(relationParts.join(' | '))}</div>`
+        : '';
+      return `
+        <div class="workflow-row">
+          <div>
+            <div class="workflow-title">${escapeHtml(project.displayName || project.name || project.id)}</div>
+            <div class="workflow-meta">${escapeHtml(project.id)}${project.type ? ` | ${escapeHtml(project.type)}` : ''}${project.updatedAt ? ` | ${escapeHtml(formatDateTime(project.updatedAt))}` : ''}</div>
+            ${project.description ? `<div class="task-handoff">${escapeHtml(project.description)}</div>` : ''}
+            ${aliases}
+            ${relation}
+            ${renderProjectResourcesHTML(project)}
+            <div class="stream-actions">
+              <button class="btn small" onclick="editProject('${id}')">${escapeHtml(t('editProject'))}</button>
+              ${project.status !== 'archived' ? `<button class="btn small danger" onclick="archiveProject('${id}')">${escapeHtml(t('archiveProject'))}</button>` : ''}
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
+            <span class="badge ${getProjectStatusClass(project.status)}">${escapeHtml(project.status || 'active')}</span>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderProjectsPanel() {
+      const container = document.getElementById('projectsList');
+      if (!container) return;
+      const payload = state.projects || {};
+      const projects = Array.isArray(payload.projects) ? payload.projects : [];
+      const visibleProjects = Array.isArray(payload.visibleProjects) ? payload.visibleProjects : projects.filter(isProjectVisibleClient);
+      const unregistered = Array.isArray(payload.unregisteredProjects) ? payload.unregisteredProjects : [];
+      const setText = (id, value) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = String(value);
+      };
+      setText('projectTotal', projects.length);
+      setText('projectVisible', visibleProjects.length);
+      setText('projectArchived', projects.filter(project => project.status === 'archived').length);
+      setText('projectUnregistered', unregistered.length);
+
+      const statusFilter = document.getElementById('projectFilterStatus')?.value || 'visible';
+      const search = String(document.getElementById('projectSearch')?.value || '').trim().toLowerCase();
+      const filtered = projects
+        .filter(project => {
+          if (statusFilter === 'visible') return isProjectVisibleClient(project);
+          if (statusFilter === 'all') return true;
+          return project.status === statusFilter;
+        })
+        .filter(project => !search || getProjectSearchText(project).includes(search));
+
+      const unregisteredHtml = unregistered.length
+        ? `<div class="task-handoff"><strong>${escapeHtml(t('unregisteredProjects'))}:</strong> ${escapeHtml(unregistered.join(', '))}</div>`
+        : `<div class="muted">${escapeHtml(t('noUnregisteredProjects'))}</div>`;
+      if (projects.length === 0) {
+        container.innerHTML = `${unregisteredHtml}<div class="muted">${escapeHtml(t('noProjects'))}</div>`;
+        return;
+      }
+      const cards = filtered.length
+        ? filtered.map(renderProjectCardHTML).join('')
+        : `<div class="muted">${escapeHtml(t('noProjectsMatch'))}</div>`;
+      container.innerHTML = `${unregisteredHtml}${cards}`;
+    }
+
+    function setProjectFieldValue(id, value) {
+      const el = document.getElementById(id);
+      if (el) el.value = value ?? '';
+    }
+
+    function getProjectFieldValue(id) {
+      return String(document.getElementById(id)?.value || '').trim();
+    }
+
+    function parseProjectInputList(value) {
+      return String(value || '').split(',').map(item => item.trim()).filter(Boolean);
+    }
+
+    function showProjectForm(projectId = '') {
+      const editor = document.getElementById('projectEditor');
+      if (!editor) return;
+      const project = projectId ? findProjectRecord(projectId) : null;
+      if (projectId && !project) {
+        showToast(`Project not found: ${projectId}`, 'error');
+        return;
+      }
+      const idInput = document.getElementById('projectId');
+      if (idInput) idInput.readOnly = Boolean(project);
+      setProjectFieldValue('projectId', project?.id || '');
+      setProjectFieldValue('projectName', project?.name || '');
+      setProjectFieldValue('projectDisplayName', project?.displayName || '');
+      setProjectFieldValue('projectStatus', project?.status || 'active');
+      setProjectFieldValue('projectType', project?.type || '');
+      setProjectFieldValue('projectAliases', Array.isArray(project?.aliases) ? project.aliases.join(', ') : '');
+      setProjectFieldValue('projectDescription', project?.description || '');
+      setProjectFieldValue('projectFeishu', project?.resources?.feishu || '');
+      setProjectFieldValue('projectRepo', project?.resources?.repo || '');
+      setProjectFieldValue('projectDocs', Array.isArray(project?.resources?.docs) ? project.resources.docs.join(', ') : project?.resources?.docs || '');
+      editor.hidden = false;
+      document.getElementById('projectId')?.focus();
+      editor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function cancelProjectEdit() {
+      const editor = document.getElementById('projectEditor');
+      if (editor) editor.hidden = true;
+      const idInput = document.getElementById('projectId');
+      if (idInput) idInput.readOnly = false;
+      ['projectId', 'projectName', 'projectDisplayName', 'projectType', 'projectAliases', 'projectDescription', 'projectFeishu', 'projectRepo', 'projectDocs'].forEach(id => setProjectFieldValue(id, ''));
+      setProjectFieldValue('projectStatus', 'active');
+    }
+
+    async function saveProject() {
+      const id = getProjectFieldValue('projectId');
+      const name = getProjectFieldValue('projectName');
+      if (!id) {
+        showToast(t('projectIdRequired'), 'error');
+        document.getElementById('projectId')?.focus();
+        return;
+      }
+      if (!name) {
+        showToast(t('projectNameRequired'), 'error');
+        document.getElementById('projectName')?.focus();
+        return;
+      }
+      const existing = Boolean(findProjectRecord(id));
+      const resources = {};
+      const feishu = getProjectFieldValue('projectFeishu');
+      const repo = getProjectFieldValue('projectRepo');
+      const docs = parseProjectInputList(getProjectFieldValue('projectDocs'));
+      if (feishu) resources.feishu = feishu;
+      if (repo) resources.repo = repo;
+      if (docs.length) resources.docs = docs;
+      const body = {
+        id,
+        name,
+        displayName: getProjectFieldValue('projectDisplayName') || name,
+        status: getProjectFieldValue('projectStatus') || 'active',
+        type: getProjectFieldValue('projectType'),
+        description: getProjectFieldValue('projectDescription'),
+        aliases: parseProjectInputList(getProjectFieldValue('projectAliases')),
+        resources
+      };
+      const button = document.getElementById('btnSaveProject');
+      setButtonLoading(button, true, t('saveProject'));
+      try {
+        const response = await api(existing ? `/api/projects/${encodeURIComponent(id)}` : '/api/projects', {
+          method: existing ? 'PATCH' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        state.projects = response.projects || state.projects;
+        cancelProjectEdit();
+        await refreshData();
+        showToast(existing ? t('projectUpdated') : t('projectSaved'), 'success');
+      } catch (err) {
+        showToast(getErrorMessage(err), 'error');
+      } finally {
+        setButtonLoading(button, false);
+      }
+    }
+
+    function editProject(id) {
+      showProjectForm(id);
+    }
+
+    async function archiveProject(id) {
+      if (!confirm(t('confirmArchiveProject'))) return;
+      try {
+        const response = await api(`/api/projects/${encodeURIComponent(id)}`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ by: 'dashboard' })
+        });
+        state.projects = response.projects || state.projects;
+        await refreshData();
+        showToast(t('projectArchivedToast'), 'success');
       } catch (err) {
         showToast(getErrorMessage(err), 'error');
       }

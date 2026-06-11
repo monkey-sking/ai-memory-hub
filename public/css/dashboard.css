@@ -928,6 +928,19 @@
       margin-top: 4px;
       overflow-wrap: anywhere;
     }
+    .project-resource-link {
+      color: var(--accent-blue);
+      display: inline-block;
+      max-width: min(100%, 42rem);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      vertical-align: bottom;
+      white-space: nowrap;
+      text-decoration: none;
+    }
+    .project-resource-link:hover {
+      text-decoration: underline;
+    }
 
     .task-execution-panel {
       margin-bottom: 24px;

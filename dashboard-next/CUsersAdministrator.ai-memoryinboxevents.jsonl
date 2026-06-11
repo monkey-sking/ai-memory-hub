@@ -1,0 +1,1 @@
+{"source":"claude","text":"Dashboard React 迁移已启动：创建 feature/dashboard-react-migration 分支，完成 Vite + React + TypeScript 脚手架，基础路由和 Layout 组件已实现，开发服务器运行在 http://localhost:5173。技术栈：React 18 + Vite + TypeScript + react-router-dom。","metadata":{"kind":"project","project":"ai-memory-hub"}}

@@ -163,6 +163,29 @@
             </div>
           </div>
         </div>
+
+        <!-- Compatibility & Raw JSON section for Scraper bots -->
+        <details class="panel compatibility-panel">
+          <summary data-i18n="rawCompatibility">Raw JSON / Compatibility Data</summary>
+          <div class="compatibility-grid">
+            <div>
+              <h4 data-i18n="sharedSnapshot">Shared Snapshot (MEMORY.md)</h4>
+              <pre id="memory" class="compatibility-pre"></pre>
+            </div>
+            <div>
+              <h4 data-i18n="pendingInbox">Pending Inbox</h4>
+              <pre id="pendingJson" class="compatibility-pre"></pre>
+            </div>
+            <div>
+              <h4 data-i18n="activeTasksJson">Active Tasks</h4>
+              <pre id="tasksJson" class="compatibility-pre"></pre>
+            </div>
+            <div>
+              <h4 data-i18n="radioMessagesJson">Agent Radio Messages</h4>
+              <pre id="radioJson" class="compatibility-pre"></pre>
+            </div>
+          </div>
+        </details>
       </div>
 
       <!-- Memory Hub Tab -->
@@ -823,29 +846,6 @@
         </div>
       </div>
 
-      <!-- Compatibility & Raw JSON section for Scraper bots -->
-      <details class="panel" style="margin-top:24px;">
-        <summary style="cursor:pointer; font-weight:600; color:var(--text-muted);" data-i18n="rawCompatibility">🛠️ Raw JSON / Compatibility Data</summary>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:16px;">
-          <div>
-            <h4 data-i18n="sharedSnapshot">Shared Snapshot (MEMORY.md)</h4>
-            <pre id="memory" style="font-family:var(--font-mono); font-size:12px; background:var(--bg-main); padding:12px; border:1px solid var(--border-color); border-radius:6px; max-height:300px; overflow:auto;"></pre>
-          </div>
-          <div>
-            <h4 data-i18n="pendingInbox">Pending Inbox</h4>
-            <pre id="pendingJson" style="font-family:var(--font-mono); font-size:12px; background:var(--bg-main); padding:12px; border:1px solid var(--border-color); border-radius:6px; max-height:300px; overflow:auto;"></pre>
-          </div>
-          <div>
-            <h4 data-i18n="activeTasksJson">Active Tasks</h4>
-            <pre id="tasksJson" style="font-family:var(--font-mono); font-size:12px; background:var(--bg-main); padding:12px; border:1px solid var(--border-color); border-radius:6px; max-height:300px; overflow:auto;"></pre>
-          </div>
-          <div>
-            <h4 data-i18n="radioMessagesJson">Agent Radio Messages</h4>
-            <pre id="radioJson" style="font-family:var(--font-mono); font-size:12px; background:var(--bg-main); padding:12px; border:1px solid var(--border-color); border-radius:6px; max-height:300px; overflow:auto;"></pre>
-          </div>
-        </div>
-      </details>
-
       <div id="toastStack" class="toast-stack" aria-live="polite"></div>
       <div id="shortcutHelp" class="modal-overlay" style="display:none;" onclick="closeShortcutHelp(event)">
         <div class="modal-card">
@@ -876,24 +876,24 @@
       <div class="modal-header">
         <div class="modal-title-container">
           <div id="modalToolIcon" style="display:flex; align-items:center; justify-content:center;"></div>
-          <h3 id="modalToolName" style="margin:0; font-size:18px;">Tool Integration</h3>
+          <h3 id="modalToolName" style="margin:0; font-size:18px;" data-i18n="toolIntegration">Tool Integration</h3>
         </div>
         <button class="modal-close" onclick="closeToolModal()">&times;</button>
       </div>
       <div class="modal-body">
         <div class="modal-section">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-            <span><strong>Status:</strong> <span id="modalToolStatus"></span></span>
+            <span><strong data-i18n="statusLabel">Status</strong>: <span id="modalToolStatus"></span></span>
           </div>
-          <div id="modalToolPath" class="muted" style="font-size:11px; word-break:break-all; line-height:1.6;"></div>
+          <div id="modalToolPath" class="muted modal-tool-path"></div>
         </div>
         <div class="modal-section">
-          <h4 style="margin:0 0 8px 0; font-size:14px; color:var(--accent-purple);">Integration Rule Preview</h4>
-          <pre id="modalToolSnippet" style="font-family:var(--font-mono); font-size:11.5px; background:rgba(0,0,0,0.2); padding:12px; border:1px solid rgba(255,255,255,0.05); border-radius:6px; max-height:220px; overflow:auto; white-space:pre-wrap; word-break:break-all; margin:0; color:#e1e4e8;"></pre>
+          <h4 class="modal-section-title" data-i18n="integrationRulePreview">Integration Rule Preview</h4>
+          <pre id="modalToolSnippet" class="modal-tool-snippet"></pre>
         </div>
         <div class="modal-actions" style="display:flex; gap:12px; justify-content:end;">
-          <button class="btn secondary" id="btnInstallLocal" onclick="applyToolRules('local')">Install Workspace Rules</button>
-          <button class="btn primary" id="btnInstallGlobal" onclick="applyToolRules('global')">Install Global Rules</button>
+          <button class="btn secondary" id="btnInstallLocal" onclick="applyToolRules('local')" data-i18n="installWorkspaceRules">Install Workspace Rules</button>
+          <button class="btn primary" id="btnInstallGlobal" onclick="applyToolRules('global')" data-i18n="installGlobalRules">Install Global Rules</button>
         </div>
       </div>
     </div>

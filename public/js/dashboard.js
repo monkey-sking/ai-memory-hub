@@ -300,7 +300,7 @@
         progressLabel: "Progress",
         progressBy: "By",
         noDispatch: "No dispatch logs found.",
-        rawCompatibility: "🛠️ Raw JSON / Compatibility Data Panels",
+        rawCompatibility: "Raw JSON / Compatibility Data",
         noWorkflows: "No workflows recorded.",
         planningStage: "Planning",
         executionStage: "Execution",
@@ -434,6 +434,7 @@
         dispatchSuccess: "Dispatch Success",
         activeDispatches: "Active Dispatches",
         toolManagement: "🔧 Tool Management",
+        toolIntegration: "Tool Integration",
         refreshTools: "Refresh",
         loadingTools: "Loading tools...",
         liveToolStatus: "Live Tool Status",
@@ -447,6 +448,7 @@
         selectToolConfig: "Select a tool to inspect configuration.",
         noToolsMatch: "No tools match this filter.",
         noRuns: "No dispatch runs yet.",
+        noToolUsage: "No tool usage recorded yet.",
         runsLabel: "Runs",
         successRate: "Success",
         avgRuntime: "Avg runtime",
@@ -461,6 +463,27 @@
         runnerReady: "Runner ready",
         setupRequired: "Setup required",
         sharedStateOnly: "Shared state only",
+        toolConnected: "Connected",
+        toolMissing: "Missing",
+        toolDetected: "Detected",
+        toolNotDetected: "Not detected",
+        toolPreconfigured: "Configured only",
+        toolActionReadyRunnable: "Ready for shared memory and verified dispatch runner.",
+        toolActionReadyShared: "Ready for shared memory; no verified automatic runner yet.",
+        toolActionInstallRules: "Run connect or install shared memory rules for {tool}.",
+        toolActionLaunchTool: "Adapter note exists; install or launch the tool to use it.",
+        toolActionInstallFirst: "Install the tool first, then run connect.",
+        loadingRulePreview: "Loading rule preview...",
+        workspaceCwdTarget: "Workspace CWD Target",
+        globalSystemTarget: "Global System Target",
+        detectedConfigPath: "Detected Config Path",
+        integrationRulePreview: "Integration Rule Preview",
+        installWorkspaceRules: "Install Workspace Rules",
+        installGlobalRules: "Install Global Rules",
+        noIntegrationRule: "No integration rule template found for this tool.",
+        previewLoadError: "Error loading preview: {message}",
+        installingRules: "Installing...",
+        rulesWritten: "Rules written: {file}",
         globalSearch: "🔍 Global Search",
         searchPlaceholder: "Search across memories, tasks, and messages...",
         searchAll: "All",
@@ -639,7 +662,7 @@
         progressLabel: "进度",
         progressBy: "上报",
         noDispatch: "暂无调度执行日志。",
-        rawCompatibility: "🛠️ 原始数据与兼容性调试",
+        rawCompatibility: "原始数据与兼容性调试",
         noWorkflows: "暂无工作流记录。",
         planningStage: "规划",
         executionStage: "执行",
@@ -769,9 +792,60 @@
         runnableTools: "可运行",
         cliTools: "命令行工具",
         appTools: "应用程序",
+        configuredTools: "已配置",
+        dispatchSuccess: "调度成功率",
+        activeDispatches: "活跃调度",
         toolManagement: "🔧 工具管理",
+        toolIntegration: "工具集成",
         refreshTools: "刷新",
         loadingTools: "加载工具中...",
+        liveToolStatus: "实时工具状态",
+        performanceMonitoring: "性能监控",
+        usageStats: "使用统计",
+        toolConfigManagement: "配置管理",
+        toolsStatusAll: "全部工具",
+        toolsStatusConnected: "已连接",
+        toolsStatusNeedsConfig: "需要配置",
+        toolsStatusMissing: "未检测到",
+        selectToolConfig: "选择一个工具查看配置。",
+        noToolsMatch: "没有符合当前筛选的工具。",
+        noRuns: "暂无调度运行记录。",
+        noToolUsage: "暂无工具使用记录。",
+        runsLabel: "运行次数",
+        successRate: "成功率",
+        avgRuntime: "平均耗时",
+        lastRun: "最近运行",
+        latestError: "最近错误",
+        connectionStatus: "连接",
+        instructionFile: "指令文件",
+        runnerCommand: "运行命令",
+        detectionPath: "检测路径",
+        manageConfig: "管理配置",
+        configHotUpdate: "配置变化会立即刷新状态。",
+        runnerReady: "Runner 就绪",
+        setupRequired: "需要配置",
+        sharedStateOnly: "仅共享状态",
+        toolConnected: "已连接",
+        toolMissing: "未检测到",
+        toolDetected: "已检测到",
+        toolNotDetected: "未检测到",
+        toolPreconfigured: "仅预配置",
+        toolActionReadyRunnable: "共享记忆和自动调度器均已就绪。",
+        toolActionReadyShared: "共享记忆已就绪，暂无已验证自动调度器。",
+        toolActionInstallRules: "为 {tool} 运行 connect 或安装共享记忆规则。",
+        toolActionLaunchTool: "适配规则已存在，请安装或启动该工具。",
+        toolActionInstallFirst: "请先安装工具，再运行 connect。",
+        loadingRulePreview: "正在加载规则预览...",
+        workspaceCwdTarget: "工作区目标",
+        globalSystemTarget: "全局目标",
+        detectedConfigPath: "检测到的配置路径",
+        integrationRulePreview: "集成规则预览",
+        installWorkspaceRules: "安装工作区规则",
+        installGlobalRules: "安装全局规则",
+        noIntegrationRule: "未找到该工具的集成规则模板。",
+        previewLoadError: "加载预览失败：{message}",
+        installingRules: "安装中...",
+        rulesWritten: "规则已写入：{file}",
         globalSearch: "🔍 全局搜索",
         searchPlaceholder: "搜索记忆、任务和消息...",
         searchAll: "全部",
@@ -2061,22 +2135,24 @@
       document.getElementById('tasksJson').textContent = JSON.stringify(state.tasks || [], null, 2);
 
       // Detected Tools Matrix
-      const toolsHtml = tools.map(t => {
-        const displayName = (toolDisplayNames[state.lang] && toolDisplayNames[state.lang][t.name]) || t.name;
-        const kindBadge = (toolKindBadges[state.lang] && toolKindBadges[state.lang][t.kind]) || t.kind;
-        const kindClass = toolKindClasses[t.kind] || 'kind-cli';
+      const toolsHtml = tools.map(tool => {
+        const displayName = (toolDisplayNames[state.lang] && toolDisplayNames[state.lang][tool.name]) || tool.name;
+        const kindBadge = (toolKindBadges[state.lang] && toolKindBadges[state.lang][tool.kind]) || tool.kind;
+        const kindClass = toolKindClasses[tool.kind] || 'kind-cli';
+        const connectionLabel = tool.connectionStatus || (tool.installed ? t('toolDetected') : t('toolMissing'));
+        const connectionDetail = [connectionLabel, tool.action || tool.dir].filter(Boolean).join(': ');
 
         return `
-          <div class="tool-row" onclick="showToolInstallModal('${t.name}')" title="${escapeHtml(t.connectionStatus || (t.installed ? 'installed' : 'missing'))}: ${escapeHtml(t.action || t.dir || '')}">
+          <div class="tool-row" onclick="showToolInstallModal('${escapeJsString(tool.name)}')" title="${escapeHtml(connectionDetail)}">
             <div class="tool-info">
-              ${renderToolIcon(t.name, 24, t.kind)}
+              ${renderToolIcon(tool.name, 24, tool.kind)}
               <div class="tool-meta">
                 <div class="tool-name">${escapeHtml(displayName)}</div>
               </div>
             </div>
             <div class="tool-right">
               <span class="tool-kind-badge ${kindClass}">${escapeHtml(kindBadge)}</span>
-              <div class="tool-status ${t.connected ? 'installed' : ''}"></div>
+              <div class="tool-status ${tool.connected ? 'installed' : ''}"></div>
             </div>
           </div>
         `;
@@ -3155,20 +3231,20 @@
 
     async function showToolInstallModal(toolName) {
       currentSelectedTool = toolName;
+      state.selectedTool = toolName;
+      renderToolsPanel();
       const tool = state.status.tools.find(t => t.name === toolName);
       if (!tool) return;
       
-      const displayName = (toolDisplayNames[state.lang] && toolDisplayNames[state.lang][tool.name]) || tool.name;
+      const displayName = getToolDisplayName(tool.name);
+      const statusMeta = getToolStatusMeta(tool);
       
       // Update UI with static tool metadata first
       document.getElementById('modalToolIcon').innerHTML = renderToolIcon(tool.name, 32, tool.kind);
       document.getElementById('modalToolName').textContent = displayName;
       
-      const statusText = tool.installed 
-        ? (state.lang === 'zh' ? '已检测到' : 'Detected') 
-        : (state.lang === 'zh' ? '未检测到' : 'Missing');
-      document.getElementById('modalToolStatus').textContent = statusText;
-      document.getElementById('modalToolStatus').className = tool.installed ? 'status-done' : 'status-blocked';
+      document.getElementById('modalToolStatus').textContent = statusMeta.label;
+      document.getElementById('modalToolStatus').className = statusMeta.className;
 
       // Reset button states and display
       document.getElementById('btnInstallLocal').style.display = 'inline-block';
@@ -3177,7 +3253,7 @@
       document.getElementById('btnInstallGlobal').disabled = false;
 
       // Preview local by default
-      document.getElementById('modalToolSnippet').textContent = 'Loading rule preview...';
+      document.getElementById('modalToolSnippet').textContent = t('loadingRulePreview');
       document.getElementById('modalToolPath').textContent = '';
       document.getElementById('toolModal').style.display = 'flex';
       
@@ -3187,25 +3263,25 @@
         
         let pathHtml = '';
         if (localPreview) {
-          pathHtml += `<strong>Workspace CWD Target:</strong> <code style="color:var(--accent-purple);">${escapeHtml(localPreview.file)}</code><br>`;
+          pathHtml += `<strong>${escapeHtml(t('workspaceCwdTarget'))}:</strong> <code>${escapeHtml(localPreview.file)}</code><br>`;
         } else {
           document.getElementById('btnInstallLocal').style.display = 'none';
         }
         if (globalPreview) {
-          pathHtml += `<strong>Global System Target:</strong> <code style="color:var(--accent-purple);">${escapeHtml(globalPreview.file)}</code>`;
+          pathHtml += `<strong>${escapeHtml(t('globalSystemTarget'))}:</strong> <code>${escapeHtml(globalPreview.file)}</code>`;
         } else {
           document.getElementById('btnInstallGlobal').style.display = 'none';
         }
         
         if (tool.dir) {
-          pathHtml = `<strong>Detected Config Path:</strong> <code>${escapeHtml(tool.dir)}</code><br>` + pathHtml;
+          pathHtml = `<strong>${escapeHtml(t('detectedConfigPath'))}:</strong> <code>${escapeHtml(tool.dir)}</code><br>` + pathHtml;
         }
         document.getElementById('modalToolPath').innerHTML = pathHtml;
         
         const preview = localPreview || globalPreview;
-        document.getElementById('modalToolSnippet').textContent = preview ? preview.snippet : 'No integration rule template found for this tool.';
+        document.getElementById('modalToolSnippet').textContent = preview ? preview.snippet : t('noIntegrationRule');
       } catch (err) {
-        document.getElementById('modalToolSnippet').textContent = 'Error loading preview: ' + getErrorMessage(err);
+        document.getElementById('modalToolSnippet').textContent = t('previewLoadError', { message: getErrorMessage(err) });
       }
     }
 
@@ -3219,7 +3295,7 @@
       const btn = scope === 'local' ? document.getElementById('btnInstallLocal') : document.getElementById('btnInstallGlobal');
       const originalText = btn.textContent;
       btn.disabled = true;
-      btn.innerHTML = '<span class="spinner"></span> Installing...';
+      btn.innerHTML = `<span class="spinner"></span> ${escapeHtml(t('installingRules'))}`;
       
       try {
         const res = await api('/api/install/apply', {
@@ -3227,7 +3303,7 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ tool: currentSelectedTool, scope: scope })
         });
-        showToast((state.lang === 'zh' ? '已写入规则: ' : 'Rules written: ') + res.file, 'success');
+        showToast(t('rulesWritten', { file: res.file }), 'success');
         closeToolModal();
         await refreshData();
       } catch (err) {
@@ -3609,8 +3685,160 @@
       renderAll();
     }
 
+    function getToolDisplayName(toolName) {
+      return (toolDisplayNames[state.lang] && toolDisplayNames[state.lang][toolName]) || toolName || t('toolIntegration');
+    }
+
+    function getToolKindLabel(kind) {
+      return (toolKindBadges[state.lang] && toolKindBadges[state.lang][kind]) || kind || '';
+    }
+
+    function getToolStatusMeta(tool) {
+      const status = String(tool.connectionStatus || '');
+      if (tool.connected) {
+        return { label: t('toolConnected'), className: 'status-done' };
+      }
+      if (status === 'detected-unconfigured' || (tool.installed && !tool.configured)) {
+        return { label: t('toolsStatusNeedsConfig'), className: 'status-claimed' };
+      }
+      if (status === 'preconfigured-missing') {
+        return { label: t('toolPreconfigured'), className: 'status-progress' };
+      }
+      if (tool.installed) {
+        return { label: t('toolDetected'), className: 'status-claimed' };
+      }
+      return { label: t('toolMissing'), className: 'status-open' };
+    }
+
+    function toolMatchesStatusFilter(tool, filter) {
+      if (!filter || filter === 'all') return true;
+      if (filter === 'connected') return Boolean(tool.connected);
+      if (filter === 'needs-config') return Boolean(tool.installed && !tool.configured);
+      if (filter === 'missing') return !tool.installed;
+      return true;
+    }
+
+    function getToolActionText(tool) {
+      const status = String(tool.connectionStatus || '');
+      if (status === 'connected-runnable') return t('toolActionReadyRunnable');
+      if (status === 'connected-shared-state') return t('toolActionReadyShared');
+      if (status === 'detected-unconfigured') return t('toolActionInstallRules', { tool: tool.name || '' });
+      if (status === 'preconfigured-missing') return t('toolActionLaunchTool');
+      if (status === 'missing') return t('toolActionInstallFirst');
+      return tool.action || '';
+    }
+
+    function formatToolPercent(value) {
+      return Number.isFinite(value) ? `${Math.round(value * 100)}%` : '-';
+    }
+
+    function formatDurationMs(value) {
+      const ms = Number(value || 0);
+      if (!Number.isFinite(ms) || ms <= 0) return '-';
+      if (ms < 1000) return `${Math.round(ms)}ms`;
+      if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+      return `${Math.round(ms / 60000)}m`;
+    }
+
+    function renderToolMetric(label, value) {
+      return `
+        <div class="tool-metric">
+          <span>${escapeHtml(label)}</span>
+          <strong title="${escapeHtml(String(value))}">${escapeHtml(String(value))}</strong>
+        </div>
+      `;
+    }
+
+    function getToolDetailText(tool) {
+      const statusMeta = getToolStatusMeta(tool);
+      return [
+        statusMeta.label,
+        tool.runnerCommandKind,
+        getToolActionText(tool),
+        tool.dir
+      ].filter(Boolean).join(' · ') || t('toolNotDetected');
+    }
+
+    function renderToolPerformanceBars(tools) {
+      const target = document.getElementById('toolPerformanceBars');
+      if (!target) return;
+      const ranked = [...tools]
+        .filter(tool => Number(tool.metrics?.totalRuns || 0) > 0)
+        .sort((a, b) => Number(b.metrics?.totalRuns || 0) - Number(a.metrics?.totalRuns || 0))
+        .slice(0, 6);
+      target.innerHTML = ranked.map(tool => {
+        const rate = tool.performance?.successRate;
+        const percent = Number.isFinite(rate) ? Math.round(rate * 100) : 0;
+        return `
+          <div class="tool-bar-row">
+            <span title="${escapeHtml(getToolDisplayName(tool.name))}">${escapeHtml(getToolDisplayName(tool.name))}</span>
+            <div class="tool-bar-track"><div class="tool-bar-fill" style="width:${Math.max(2, percent)}%;"></div></div>
+            <strong>${escapeHtml(formatToolPercent(rate))}</strong>
+          </div>
+        `;
+      }).join('') || `<div class="muted">${escapeHtml(t('noRuns'))}</div>`;
+    }
+
+    function renderToolUsageChart(tools) {
+      const target = document.getElementById('toolUsageChart');
+      if (!target) return;
+      const ranked = [...tools]
+        .filter(tool => Number(tool.usage?.score || 0) > 0)
+        .sort((a, b) => Number(b.usage?.score || 0) - Number(a.usage?.score || 0))
+        .slice(0, 6);
+      target.innerHTML = ranked.map(tool => {
+        const usage = tool.usage || {};
+        const detail = [
+          `${t('activeTasks')}: ${usage.activeTasks || 0}`,
+          `${t('radioMessages')}: ${usage.radioMessages || 0}`,
+          `${t('runsLabel')}: ${usage.totalRuns || 0}`
+        ].join(' · ');
+        return `
+          <div class="tool-usage-row">
+            <div>
+              <strong>${escapeHtml(getToolDisplayName(tool.name))}</strong>
+              <div class="muted">${escapeHtml(detail)}</div>
+            </div>
+            <span class="badge status-open">${escapeHtml(String(usage.score || 0))}</span>
+          </div>
+        `;
+      }).join('') || `<div class="muted">${escapeHtml(t('noToolUsage'))}</div>`;
+    }
+
+    function renderToolConfigPanel(tools, visibleTools) {
+      const target = document.getElementById('toolConfigPanel');
+      if (!target) return;
+      const selected = tools.find(tool => tool.name === state.selectedTool) || visibleTools[0] || null;
+      if (!selected) {
+        target.innerHTML = `<div class="muted">${escapeHtml(t('selectToolConfig'))}</div>`;
+        return;
+      }
+      state.selectedTool = selected.name;
+      const statusMeta = getToolStatusMeta(selected);
+      const rows = [
+        [t('connectionStatus'), statusMeta.label],
+        [t('instructionFile'), selected.config?.instructionFile || selected.instructionFile || '-'],
+        [t('runnerCommand'), selected.config?.runnerCommand || selected.runnerCommand || '-'],
+        [t('detectionPath'), selected.dir || '-']
+      ];
+      target.innerHTML = `
+        ${rows.map(([label, value]) => `
+          <div class="tool-config-row">
+            <strong>${escapeHtml(label)}</strong>
+            <code title="${escapeHtml(String(value))}">${escapeHtml(String(value))}</code>
+          </div>
+        `).join('')}
+        <div class="muted">${escapeHtml(getToolActionText(selected) || t('configHotUpdate'))}</div>
+        <div class="tool-config-actions">
+          <button class="btn small" onclick="showToolInstallModal('${escapeJsString(selected.name)}')">${escapeHtml(t('manageConfig'))}</button>
+        </div>
+      `;
+    }
+
     function renderToolsPanel() {
       const tools = Array.isArray(state.status.tools) ? state.status.tools : [];
+      const dashboardTools = state.tools && Array.isArray(state.tools.tools) ? state.tools.tools : tools;
+      const summary = state.tools?.summary || state.status.toolSummary || {};
       const connected = tools.filter(tool => tool.connected).length;
       const cliTools = tools.filter(tool => tool.kind === 'cli-config').length;
       const apps = tools.filter(tool => ['app-state', 'local-model-runtime'].includes(tool.kind)).length;

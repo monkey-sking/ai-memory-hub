@@ -275,6 +275,10 @@ test("dashboard serves externalized virtual-scroll assets", async () => {
       assert.match(html, /class="nav-label" data-i18n="overviewNav"/);
       assert.match(html, /id="sidebarToggle" class="btn small sidebar-toggle"/);
       assert.match(html, /onclick="toggleSidebar\(\)"/);
+      assert.match(html, /id="tab-dashboard"[\s\S]*class="panel compatibility-panel"[\s\S]*id="tab-memory"/);
+      assert.match(html, /data-i18n="integrationRulePreview"/);
+      assert.match(html, /data-i18n="installWorkspaceRules"/);
+      assert.match(html, /data-i18n="installGlobalRules"/);
       assert.doesNotMatch(html, /<script>\s*\/\/\s*Global tool icon/);
 
       const cssRes = await fetch(`http://127.0.0.1:${port}/css/dashboard.css`);
@@ -294,6 +298,10 @@ test("dashboard serves externalized virtual-scroll assets", async () => {
       assert.match(dashboardCss, /body\.sidebar-collapsed \.container/);
       assert.match(dashboardCss, /body\.sidebar-collapsed \.nav-label/);
       assert.doesNotMatch(dashboardCss, /(^|\n)\s*aside\s*\{/);
+      assert.match(dashboardCss, /\.compatibility-grid/);
+      assert.match(dashboardCss, /\.compatibility-pre/);
+      assert.match(dashboardCss, /\.tool-card-copy/);
+      assert.match(dashboardCss, /\.modal-tool-snippet/);
       assert.match(dashboardCss, /max-width:\s*640px/);
 
       const jsRes = await fetch(`http://127.0.0.1:${port}/js/dashboard.js`);
@@ -319,6 +327,10 @@ test("dashboard serves externalized virtual-scroll assets", async () => {
       assert.match(dashboardScript, /function applySidebarMode/);
       assert.match(dashboardScript, /function updateSidebarToggleButton/);
       assert.match(dashboardScript, /document\.body\.classList\.toggle\('sidebar-collapsed'/);
+      assert.match(dashboardScript, /toolNotDetected/);
+      assert.match(dashboardScript, /installWorkspaceRules/);
+      assert.match(dashboardScript, /rulesWritten/);
+      assert.match(dashboardScript, /t\('toolConnected'\)/);
       assert.match(dashboardScript, /api\('\/api\/backups'/);
       assert.match(dashboardScript, /new URLSearchParams/);
       assert.match(dashboardScript, /api\(`\/api\/search\?\$\{params\.toString\(\)\}`\)/);

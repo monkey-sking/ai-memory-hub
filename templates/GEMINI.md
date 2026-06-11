@@ -2,6 +2,8 @@
 
 Use `{{MEMORY_DIR}}/MEMORY.md` as the shared durable memory snapshot.
 
+{{SHARED_SKILL_LAYER}}
+
 RTK.md-style referenced instruction includes are optional unless the file exists at the referenced path. If an include is missing, continue with the visible instructions in this file and repo-local docs instead of failing or inventing tool-specific rules.
 
 Append durable memory events to `{{MEMORY_DIR}}/inbox/events.jsonl` as JSONL using this exact shape:

@@ -29,6 +29,9 @@ const MEMORY_ACCESS_MAX_STALE_PENALTY = 24;
 const CORRUPTION_MARKER_PATTERN = /[\u0000\ufffd]/;
 const TOOL_DETECTION_CACHE_TTL_MS = 30 * 1000;
 const STARTUP_MEMORY_LIMIT = 8;
+const SHARED_SKILL_LAYER_VERSION = "1";
+const SHARED_SKILL_LAYER_MARKER = `AI_MEMORY_HUB_SHARED_SKILL_LAYER v${SHARED_SKILL_LAYER_VERSION}`;
+const SHARED_SKILL_LAYER_MARKER_PREFIX = "AI_MEMORY_HUB_SHARED_SKILL_LAYER";
 const PROJECT_STATUSES = ["active", "paused", "archived", "planning"];
 const PROJECT_VISIBLE_STATUSES = ["active", "paused", "planning"];
 const DEFAULT_TASK_SPEC_FILES = [
@@ -316,13 +319,15 @@ function doctorCommand(argv) {
   const results = tools.map((name) => inspectRunnerTool(name, {
     runProbes,
     skipVersion,
-    timeoutMs
+    timeoutMs,
+    memoryDir: config.memoryDir
   }));
   const summary = {
     total: results.length,
     runnable: results.filter((item) => item.available).length,
     sharedStateOnly: results.filter((item) => item.sharedStateOnly).length,
     missing: results.filter((item) => !item.available && !item.sharedStateOnly).length,
+    skillLayer: results.filter((item) => item.install?.skillLayer).length,
     warnings: results.reduce((sum, item) => sum + item.warnings.length, 0)
   };
   console.log(JSON.stringify({
@@ -334,11 +339,14 @@ function doctorCommand(argv) {
   }, null, 2));
 }
 
-function inspectRunnerTool(tool, { runProbes = false, skipVersion = false, timeoutMs = 5000 } = {}) {
+function inspectRunnerTool(tool, { runProbes = false, skipVersion = false, timeoutMs = 5000, memoryDir = resolveMemoryDir() } = {}) {
   const name = normalizeToolName(tool);
   const profile = getRunnerProfile(name);
   const runner = getToolRunner(name);
   const warnings = getRunnerDoctorWarnings(runner);
+  const target = getInstallTargetForTool(memoryDir, name);
+  const instructionFile = target?.file || path.join(memoryDir, "tools", `${name}-shared-memory.md`);
+  const install = inspectSharedMemoryInstructions(instructionFile);
   const versionProbe = runner.available && !skipVersion
     ? runRunnerProbe(name, runner, runner.versionArgs || ["--version"], "", timeoutMs)
     : {
@@ -370,6 +378,13 @@ function inspectRunnerTool(tool, { runProbes = false, skipVersion = false, timeo
       shell: runner.shell || "",
       resolved: runner.resolvedCommands || []
     } : null,
+    install: {
+      instructionFile,
+      configured: install.configured,
+      skillLayer: install.skillLayer,
+      skillLayerVersion: install.skillLayerVersion,
+      status: install.status
+    },
     warnings,
     versionProbe,
     invocationProbe
@@ -528,16 +543,13 @@ function connectStatusCommand(argv) {
   ensureHub(config.memoryDir);
   const apply = hasFlag(argv, "--apply");
   const tools = detectTools(config.memoryDir);
-  const installedUnconfigured = tools.filter((tool) => tool.installed && !tool.configured);
+  const installedNeedingUpdate = tools.filter((tool) => tool.installed && (!tool.configured || !tool.skillLayer));
 
   if (apply) {
-    for (const tool of installedUnconfigured) {
+    for (const tool of installedNeedingUpdate) {
       const target = getInstallTargetForTool(config.memoryDir, tool.name);
       if (!target) continue;
-      const snippet = renderTemplate(target.template, {
-        MEMORY_DIR: config.memoryDir,
-        TOOL: target.tool
-      });
+      const snippet = renderInstallSnippet(target, config.memoryDir);
       ensureDir(path.dirname(target.file));
       appendIfMissing(target.file, snippet, "Shared AI Memory");
     }
@@ -554,6 +566,9 @@ function connectStatusCommand(argv) {
       configured: tool.configured,
       connected: tool.connected,
       connectionStatus: tool.connectionStatus,
+      skillLayer: tool.skillLayer,
+      skillLayerVersion: tool.skillLayerVersion,
+      skillLayerStatus: tool.skillLayerStatus,
       runnable: tool.runnable,
       runnerProfile: tool.runnerProfile,
       runnerCommandKind: tool.runnerCommandKind,
@@ -5138,10 +5153,7 @@ function appCommand(argv) {
           return sendJson(res, { error: `No preview target for tool ${toolName}` }, 404);
         }
         const target = targets[0];
-        const snippet = renderTemplate(target.template, {
-          MEMORY_DIR: config.memoryDir,
-          TOOL: target.tool
-        });
+        const snippet = renderInstallSnippet(target, config.memoryDir);
         return sendJson(res, {
           tool: target.tool,
           file: target.file,
@@ -5166,10 +5178,7 @@ function appCommand(argv) {
         }
         
         const target = targets[0];
-        const snippet = renderTemplate(target.template, {
-          MEMORY_DIR: config.memoryDir,
-          TOOL: target.tool
-        });
+        const snippet = renderInstallSnippet(target, config.memoryDir);
         
         ensureDir(path.dirname(target.file));
         appendIfMissing(target.file, snippet, "Shared AI Memory");
@@ -6411,10 +6420,7 @@ function installCommand(argv) {
   }
 
   for (const target of targets) {
-    const snippet = renderTemplate(target.template, {
-      MEMORY_DIR: config.memoryDir,
-      TOOL: target.tool
-    });
+    const snippet = renderInstallSnippet(target, config.memoryDir);
     if (!apply) {
       console.log(`\n[dry-run] ${target.tool}: ${target.file}`);
       console.log(snippet.trim());
@@ -7085,23 +7091,29 @@ function workflowSignalCommand(argv) {
 function enrichToolConnection(tool, memoryDir) {
   const target = getInstallTargetForTool(memoryDir, tool.name);
   const instructionFile = target?.file || path.join(memoryDir, "tools", `${tool.name}-shared-memory.md`);
-  const configured = hasSharedMemoryInstructions(instructionFile);
+  const instruction = inspectSharedMemoryInstructions(instructionFile);
+  const configured = instruction.configured;
   const runner = getToolRunner(tool.name);
   const connected = Boolean(tool.installed && configured);
   let connectionStatus = "missing";
   let action = "Install the tool first, then run ai-memory-hub connect --apply.";
 
-  if (tool.installed && configured) {
+  if (tool.installed && configured && instruction.skillLayer) {
     connectionStatus = runner.available ? "connected-runnable" : "connected-shared-state";
     action = runner.available
       ? "Ready for shared memory and verified dispatch runner."
       : "Ready for shared memory; no verified automatic runner yet.";
+  } else if (tool.installed && configured) {
+    connectionStatus = "connected-legacy";
+    action = `Run ai-memory-hub install --tool ${tool.name} --apply to add the Shared Skill Layer.`;
   } else if (tool.installed) {
     connectionStatus = "detected-unconfigured";
     action = `Run ai-memory-hub connect --apply or ai-memory-hub install --tool ${tool.name} --apply.`;
   } else if (configured) {
-    connectionStatus = "preconfigured-missing";
-    action = "Adapter note exists; install or launch the tool to use it.";
+    connectionStatus = instruction.skillLayer ? "preconfigured-missing" : "preconfigured-legacy";
+    action = instruction.skillLayer
+      ? "Adapter note exists; install or launch the tool to use it."
+      : `Adapter note exists but needs Shared Skill Layer v${SHARED_SKILL_LAYER_VERSION}.`;
   }
 
   return {
@@ -7109,6 +7121,9 @@ function enrichToolConnection(tool, memoryDir) {
     configured,
     connected,
     connectionStatus,
+    skillLayer: instruction.skillLayer,
+    skillLayerVersion: instruction.skillLayerVersion,
+    skillLayerStatus: instruction.status,
     runnable: Boolean(runner.available),
     runnerReason: runner.available ? "" : runner.reason || "",
     runnerProfile: runner.promptMode || "",
@@ -7122,15 +7137,41 @@ function enrichToolConnection(tool, memoryDir) {
 }
 
 function hasSharedMemoryInstructions(file) {
+  return inspectSharedMemoryInstructions(file).configured;
+}
+
+function inspectSharedMemoryInstructions(file) {
   if (!file || !fs.existsSync(file)) {
-    return false;
+    return {
+      configured: false,
+      skillLayer: false,
+      skillLayerVersion: "",
+      status: "missing"
+    };
   }
   const text = fs.readFileSync(file, "utf8");
-  return text.includes("Shared AI Memory") && (
+  const configured = text.includes("Shared AI Memory") && (
     text.includes("ai-memory-hub") ||
     text.includes(".ai-memory") ||
     text.includes("AI Memory Hub")
   );
+  const skillLayerVersion = extractSharedSkillLayerVersion(text);
+  const skillLayer = Boolean(skillLayerVersion);
+  return {
+    configured,
+    skillLayer,
+    skillLayerVersion,
+    status: skillLayer
+      ? `shared-skill-layer-v${skillLayerVersion}`
+      : configured
+        ? "legacy-shared-memory"
+        : "missing"
+  };
+}
+
+function extractSharedSkillLayerVersion(text) {
+  const match = String(text || "").match(/AI_MEMORY_HUB_SHARED_SKILL_LAYER v([0-9]+)/);
+  return match ? match[1] : "";
 }
 
 function summarizeToolConnections(tools) {
@@ -7138,6 +7179,7 @@ function summarizeToolConnections(tools) {
     total: tools.length,
     detected: tools.filter((tool) => tool.installed).length,
     configured: tools.filter((tool) => tool.configured).length,
+    skillLayer: tools.filter((tool) => tool.skillLayer).length,
     connected: tools.filter((tool) => tool.connected).length,
     runnable: tools.filter((tool) => tool.runnable).length,
     missing: tools.filter((tool) => !tool.installed).length,
@@ -12522,8 +12564,10 @@ function appendJsonl(file, value) {
 
 function appendIfMissing(file, snippet, marker) {
   const existing = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
+  const hasSkillLayer = existing.includes(SHARED_SKILL_LAYER_MARKER_PREFIX);
   if (
     existing.includes(marker) &&
+    hasSkillLayer &&
     existing.includes("Shared Agent Radio") &&
     existing.includes("Shared Task List") &&
     existing.includes("Shared Workflows") &&
@@ -12533,6 +12577,13 @@ function appendIfMissing(file, snippet, marker) {
   }
   if (existing.includes(marker)) {
     const sections = [];
+    if (!hasSkillLayer) {
+      sections.push(extractSection(
+        snippet,
+        "<!-- AI_MEMORY_HUB_SHARED_SKILL_LAYER",
+        "<!-- /AI_MEMORY_HUB_SHARED_SKILL_LAYER -->"
+      ));
+    }
     if (!existing.includes("Shared Task List")) {
       sections.push(extractSection(snippet, "## Shared Task List", "## Shared Workflows"));
     }
@@ -12596,8 +12647,24 @@ function readTemplate(name) {
   return fs.readFileSync(path.join(projectRoot(), "templates", name), "utf8");
 }
 
+function renderInstallSnippet(target, memoryDir) {
+  return renderTemplate(target.template, buildInstallTemplateValues(target.tool, memoryDir));
+}
+
+function buildInstallTemplateValues(tool, memoryDir) {
+  const baseValues = {
+    MEMORY_DIR: memoryDir,
+    TOOL: tool,
+    SHARED_SKILL_LAYER_VERSION
+  };
+  return {
+    ...baseValues,
+    SHARED_SKILL_LAYER: renderTemplate(readTemplate("shared-skill-layer.md"), baseValues)
+  };
+}
+
 function renderTemplate(template, values) {
-  return template.replace(/\{\{([A-Z_]+)\}\}/g, (_, key) => values[key] || "");
+  return template.replace(/\{\{([A-Z0-9_]+)\}\}/g, (_, key) => values[key] || "");
 }
 
 function projectRoot() {

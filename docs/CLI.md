@@ -15,6 +15,7 @@ Complete reference for all `ai-memory-hub` command-line commands.
 - [Notifications](#notifications)
 - [Context Packs](#context-packs)
 - [Project Task Specs](#project-task-specs)
+- [Shared Skill Layer](#shared-skill-layer)
 - [Runner Doctor](#runner-doctor)
 - [Dispatch Relay](#dispatch-relay)
 - [Dispatch Queue](#dispatch-queue)
@@ -751,6 +752,36 @@ ai-memory-hub task-spec run test --no-verify
 
 ---
 
+## Shared Skill Layer
+
+The Shared Skill Layer is the common instruction contract rendered into
+tool-native adapters. It is marked by `AI_MEMORY_HUB_SHARED_SKILL_LAYER v1` and
+defines how tools read startup memory, resolve missing includes such as
+`@RTK.md`, write durable memory events, use tasks/workflows for active work, and
+send risks or review requests through radio.
+
+The same contract is installed into direct instruction files for `codex`,
+`claude`, and `gemini`, native skill files for `qclaw`, `openclaw`,
+`opencode`, and the Marvis integration skill. Repo-local instructions,
+project docs, `.tasks.json`, and recipe gates act as the project-level overlay.
+
+```bash
+ai-memory-hub install --tool qclaw
+ai-memory-hub install --tool opencode
+ai-memory-hub install --tool codex --apply
+ai-memory-hub install --local --tool codex --apply
+ai-memory-hub detect
+ai-memory-hub connect status
+```
+
+`detect` and `connect status` include `skillLayer`, `skillLayerVersion`, and
+`skillLayerStatus` so legacy shared-memory snippets can be distinguished from
+current shared skill adapters. See
+[Shared Skill Layer](shared-skill-layer.md) for the memory/skill/task/workflow
+and radio boundaries.
+
+---
+
 ## Runner Doctor
 
 ### `doctor`
@@ -779,6 +810,7 @@ Doctor reports:
 - resolved command path and shim kind (`.exe`, `.cmd`, `.ps1`, native)
 - prompt mode (`stdin` vs argv)
 - output mode and session-resume capability
+- installed shared skill layer status and version
 - stderr warnings separated from actionable errors
 
 On Windows, runner profiles prefer `.cmd` or `.exe` shims over `.ps1`. Dispatch prompt payloads are sent over stdin so long prompts and JSON are not embedded in PowerShell or cmd command text. Claude Code 2.x uses `claude -p -` so the print command reads the prompt from stdin explicitly; when installed through npm, the runner derives and prefers the underlying `claude.exe` next to `claude.cmd`.
@@ -1137,8 +1169,12 @@ ai-memory-hub install --tool <tool-name> --apply
 
 **Supported tools:**
 - `claude`, `codex`, `gemini` - Direct instruction injection
-- `qclaw`, `openclaw`, `opencode` - Skill installation
+- `qclaw`, `openclaw`, `opencode` - Native skill installation
+- `marvis` - Desktop assistant integration skill
 - Others - Adapter notes
+
+All rendered adapters include the shared skill layer marker and can be checked
+with `ai-memory-hub detect` or `ai-memory-hub doctor --tool <tool-name>`.
 
 ### `backup`
 

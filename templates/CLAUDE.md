@@ -2,6 +2,8 @@
 
 Read `{{MEMORY_DIR}}/MEMORY.md` for durable cross-assistant context.
 
+{{SHARED_SKILL_LAYER}}
+
 RTK.md-style referenced instruction includes are optional unless the file exists at the referenced path. If an include is missing, continue with the visible instructions in this file and repo-local docs instead of failing or inventing tool-specific rules.
 
 When a durable preference, workflow rule, or project fact should be remembered, append a JSON line to `{{MEMORY_DIR}}/inbox/events.jsonl` using this exact shape:

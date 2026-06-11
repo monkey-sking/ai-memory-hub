@@ -1,6 +1,6 @@
 ---
 name: ai-memory-hub
-description: Local shared AI memory hub for QClaw. Use when the user mentions AI Memory Hub, shared memory, cross-agent memory, Agent Radio, 本地记忆, 共享记忆, �?AI 同步, or asks QClaw to remember durable preferences/project facts across AI tools.
+description: Local shared AI memory hub for QClaw. Use when the user mentions AI Memory Hub, shared memory, cross-agent memory, Agent Radio, 本地记忆, 共享记忆, 多 AI 同步, or asks QClaw to remember durable preferences/project facts across AI tools.
 version: 0.1.0
 metadata: {"category":"memory","keywords":["AI Memory Hub","shared memory","Agent Radio","local ledger","本地记忆","共享记忆","多AI同步"]}
 ---
@@ -12,6 +12,8 @@ Use the local shared memory directory as the durable cross-assistant memory hub:
 ```text
 {{MEMORY_DIR}}
 ```
+
+{{SHARED_SKILL_LAYER}}
 
 ## Shared AI Memory
 

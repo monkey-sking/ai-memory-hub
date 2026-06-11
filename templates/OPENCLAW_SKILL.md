@@ -13,6 +13,8 @@ Use the local shared memory directory as the durable cross-assistant memory hub:
 {{MEMORY_DIR}}
 ```
 
+{{SHARED_SKILL_LAYER}}
+
 ## Shared AI Memory
 
 At the start of a relevant session, read `{{MEMORY_DIR}}/MEMORY.md` if it exists and use it as durable user/project context.

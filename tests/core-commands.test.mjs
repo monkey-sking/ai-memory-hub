@@ -1043,6 +1043,70 @@ test("resolve finds include paths from startup memory and pins them in bootstrap
   });
 });
 
+test("install renders one shared skill layer contract for native adapters", async () => {
+  await withHub(async (memoryDir) => {
+    const qclaw = runCli(memoryDir, ["install", "--tool", "qclaw"]);
+    const opencode = runCli(memoryDir, ["install", "--tool", "opencode"]);
+    assert.equal(qclaw.status, 0, qclaw.stderr || qclaw.stdout);
+    assert.equal(opencode.status, 0, opencode.stderr || opencode.stdout);
+
+    for (const output of [qclaw.stdout, opencode.stdout]) {
+      assert.match(output, /AI_MEMORY_HUB_SHARED_SKILL_LAYER v1/);
+      assert.match(output, /## Shared Skill Layer/);
+      assert.match(output, /ai-memory-hub resolve "@RTK\.md"/);
+      assert.match(output, /ai-memory-hub task list --status active/);
+      assert.match(output, /workflow create/);
+      assert.match(output, /Broadcast risks, blockers, and handoffs through Agent Radio/);
+      assert.match(output, /Project Skill Overlay/);
+    }
+
+    assert.match(qclaw.stdout, /"source":"qclaw"/);
+    assert.match(opencode.stdout, /"source":"opencode"/);
+  });
+});
+
+test("install upgrades legacy adapter files and doctor reports skill layer status", async () => {
+  await withHub(async (memoryDir) => {
+    const toolsDir = path.join(memoryDir, "tools");
+    const adapterFile = path.join(toolsDir, "antigravity-shared-memory.md");
+    await fs.mkdir(toolsDir, { recursive: true });
+    await fs.writeFile(adapterFile, [
+      "# Shared AI Memory",
+      "",
+      "Legacy adapter content.",
+      "",
+      "## Shared Task List",
+      "",
+      "## Shared Workflows",
+      "",
+      "## Shared Agent Radio",
+      "",
+      "## Contact Other AI Tools",
+      ""
+    ].join("\n"), "utf8");
+
+    const apply = runCli(memoryDir, ["install", "--tool", "antigravity", "--apply"]);
+    assert.equal(apply.status, 0, apply.stderr || apply.stdout);
+
+    const upgraded = await fs.readFile(adapterFile, "utf8");
+    assert.match(upgraded, /AI_MEMORY_HUB_SHARED_SKILL_LAYER v1/);
+    assert.match(upgraded, /ai-memory-hub resolve "@RTK\.md"/);
+    assert.match(upgraded, /# Shared AI Memory/);
+
+    const detect = parseJson(runCli(memoryDir, ["detect"]));
+    const antigravity = detect.find((tool) => tool.name === "antigravity");
+    assert.equal(antigravity.configured, true);
+    assert.equal(antigravity.skillLayer, true);
+    assert.equal(antigravity.skillLayerVersion, "1");
+
+    const doctor = parseJson(runCli(memoryDir, ["doctor", "--tool", "antigravity", "--skip-version"]));
+    assert.equal(doctor.summary.skillLayer, 1);
+    assert.equal(doctor.tools[0].install.configured, true);
+    assert.equal(doctor.tools[0].install.skillLayer, true);
+    assert.equal(doctor.tools[0].install.skillLayerVersion, "1");
+  });
+});
+
 test("health reports missing instruction includes with resolved suggestions", async () => {
   await withHub(async (memoryDir) => {
     const knownDir = path.join(memoryDir, "known");

@@ -1002,6 +1002,97 @@ test("memory supersedes downranks replaced records and hides them from snapshot"
   });
 });
 
+test("resolve finds include paths from startup memory and pins them in bootstrap snapshots", async () => {
+  await withHub(async (memoryDir) => {
+    const knownDir = path.join(memoryDir, "known");
+    await fs.mkdir(knownDir, { recursive: true });
+    const knownPath = path.join(knownDir, "RTK.md");
+    await fs.writeFile(knownPath, "# RTK\n", "utf8");
+    await appendJsonl(path.join(memoryDir, "inbox", "events.jsonl"), {
+      id: "event-rtk-path",
+      ts: "2026-06-11T10:00:00.000Z",
+      source: "codex",
+      text: `RTK.md actual path is ${knownPath}`,
+      metadata: {
+        kind: "correction",
+        tags: ["startup"]
+      }
+    });
+
+    const sync = runCli(memoryDir, ["sync"]);
+    assert.equal(sync.status, 0, sync.stderr || sync.stdout);
+
+    const resolved = parseJson(runCli(memoryDir, ["resolve", "@RTK.md"]));
+    assert.equal(resolved.ok, true);
+    assert.equal(path.normalize(resolved.best.path), path.normalize(knownPath));
+    assert.equal(resolved.best.exists, true);
+
+    const snapshot = await fs.readFile(path.join(memoryDir, "MEMORY.md"), "utf8");
+    assert.match(snapshot, /## Startup Essentials/);
+    assert.match(snapshot, /RTK\.md actual path/);
+
+    const bootstrap = await fs.readFile(path.join(memoryDir, "BOOTSTRAP.md"), "utf8");
+    assert.match(bootstrap, /# AI Memory Hub Bootstrap/);
+    assert.match(bootstrap, /RTK\.md actual path/);
+
+    await fs.writeFile(path.join(memoryDir, "BOOTSTRAP.md"), "stale bootstrap\n", "utf8");
+    const secondSync = runCli(memoryDir, ["sync"]);
+    assert.equal(secondSync.status, 0, secondSync.stderr || secondSync.stdout);
+    const refreshedBootstrap = await fs.readFile(path.join(memoryDir, "BOOTSTRAP.md"), "utf8");
+    assert.match(refreshedBootstrap, /RTK\.md actual path/);
+  });
+});
+
+test("health reports missing instruction includes with resolved suggestions", async () => {
+  await withHub(async (memoryDir) => {
+    const knownDir = path.join(memoryDir, "known");
+    await fs.mkdir(knownDir, { recursive: true });
+    const knownPath = path.join(knownDir, "RTK.md");
+    await fs.writeFile(knownPath, "# RTK\n", "utf8");
+    await fs.mkdir(path.join(memoryDir, "tools"), { recursive: true });
+    await fs.writeFile(
+      path.join(memoryDir, "tools", "codex-app-shared-memory.md"),
+      "# Shared AI Memory\n\n@RTK.md\n",
+      "utf8"
+    );
+    await appendJsonl(path.join(memoryDir, "inbox", "events.jsonl"), {
+      id: "event-rtk-known-path",
+      ts: "2026-06-11T10:00:00.000Z",
+      source: "codex",
+      text: `RTK.md actual path is ${knownPath}`,
+      metadata: {
+        kind: "correction",
+        tags: ["startup"]
+      }
+    });
+
+    const sync = runCli(memoryDir, ["sync"]);
+    assert.equal(sync.status, 0, sync.stderr || sync.stdout);
+
+    const health = runCli(memoryDir, ["health", "--limit", "3"]);
+    assert.equal(health.status, 0, health.stderr || health.stdout);
+    assert.match(health.stdout, /Missing instruction includes/);
+    assert.match(health.stdout, /## Instruction Include Diagnostics/);
+    assert.match(health.stdout, /@RTK\.md/);
+    assert.ok(health.stdout.includes(knownPath));
+  });
+});
+
+test("sync skipped event logs include source file line and reason", async () => {
+  await withHub(async (memoryDir) => {
+    await appendJsonl(path.join(memoryDir, "inbox", "events.jsonl"), {
+      source: "codex",
+      metadata: {
+        kind: "workflow"
+      }
+    });
+
+    const sync = runCli(memoryDir, ["sync"]);
+    assert.equal(sync.status, 0, sync.stderr || sync.stdout);
+    assert.match(sync.stdout, /Skipped event \(no id\) at .*inbox[\\/]events\.jsonl:1: missing text\./);
+  });
+});
+
 test("snapshotLimit derives compact snapshot section limits for legacy config", async () => {
   await withHub(async (memoryDir) => {
     await fs.writeFile(path.join(memoryDir, "config.json"), JSON.stringify({

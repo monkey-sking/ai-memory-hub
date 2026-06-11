@@ -68,6 +68,21 @@ ai-memory-hub sync
 
 Processes events from `inbox/events.jsonl` and updates the memory system. It also rebuilds event-sourced task, workflow, and project projections from `tasks/events.jsonl`, `workflows/events.jsonl`, and `projects/events.jsonl`.
 
+### `resolve`
+
+Resolve an instruction include or file name from local paths and shared memory.
+
+```bash
+ai-memory-hub resolve "@RTK.md"
+ai-memory-hub resolve "@RTK.md" --from ~/.codex/AGENTS.md
+ai-memory-hub resolve "@RTK.md" --plain
+```
+
+The command checks direct paths, paths relative to `--from`, common tool
+configuration directories, and filesystem paths mentioned in indexed memories.
+Use it when an instruction file contains an include such as `@RTK.md` but the
+relative file is missing.
+
 ### `update`
 
 Check for updates or update to the latest version.

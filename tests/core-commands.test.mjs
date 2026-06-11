@@ -149,6 +149,61 @@ test("workflow create normalizes role lists and metadata", async () => {
   });
 });
 
+test("normalization preserves flat and nested quality gate fields", async () => {
+  await withHub(async (memoryDir) => {
+    await appendJsonl(path.join(memoryDir, "tasks", "tasks.jsonl"), {
+      id: "gate-task",
+      createdAt: "2026-06-11T00:00:00.000Z",
+      createdBy: "test",
+      title: "Gate task",
+      project: "ai-memory-hub",
+      verifyCommands: ["npm test"],
+      qualityGate: {
+        stopWhen: ["review_blocks_remain"],
+        reviewRequired: true
+      }
+    });
+    await appendJsonl(path.join(memoryDir, "workflows", "workflows.jsonl"), {
+      id: "gate-workflow",
+      createdAt: "2026-06-11T00:00:00.000Z",
+      createdBy: "test",
+      title: "Gate workflow",
+      project: "ai-memory-hub",
+      maxRepairAttempts: 2,
+      qualityGate: {
+        allowedActions: ["local_file_edits"]
+      }
+    });
+
+    const tasks = parseJson(runCli(memoryDir, [
+      "task",
+      "list",
+      "--project",
+      "ai-memory-hub"
+    ]));
+    assert.deepEqual(tasks[0].qualityGate, {
+      verifyCommands: [
+        { command: "npm test", args: [] }
+      ],
+      stopWhen: ["review_blocks_remain"],
+      reviewRequired: true
+    });
+
+    const workflows = parseJson(runCli(memoryDir, [
+      "workflow",
+      "list",
+      "--status",
+      "open",
+      "--project",
+      "ai-memory-hub"
+    ]));
+    assert.deepEqual(workflows[0].qualityGate, {
+      allowedActions: ["local_file_edits"],
+      maxRepairAttempts: 2
+    });
+  });
+});
+
 test("recipe validate rejects invalid role and dependency references", async () => {
   await withHub(async (memoryDir) => {
     await writeRecipe(memoryDir, "bad-role", {
@@ -179,6 +234,39 @@ test("recipe validate rejects invalid role and dependency references", async () 
   });
 });
 
+test("recipe validate rejects malformed quality gate fields", async () => {
+  await withHub(async (memoryDir) => {
+    await writeRecipe(memoryDir, "bad-recipe-gate", {
+      name: "bad-recipe-gate",
+      title: "Bad Recipe Gate",
+      roles: { executor: {} },
+      qualityGate: {
+        verifyCommands: "npm test"
+      },
+      steps: [
+        { id: "implementation", role: "executor", task: "Implement" }
+      ]
+    });
+
+    const badRecipeGate = runCli(memoryDir, ["recipe", "validate", "bad-recipe-gate"]);
+    assert.equal(badRecipeGate.status, 1);
+    assert.match(JSON.parse(badRecipeGate.stdout).error, /Recipe\.qualityGate\.verifyCommands must be an array/);
+
+    await writeRecipe(memoryDir, "bad-step-gate", {
+      name: "bad-step-gate",
+      title: "Bad Step Gate",
+      roles: { executor: {} },
+      steps: [
+        { id: "repair", role: "executor", task: "Repair", maxRepairAttempts: "3" }
+      ]
+    });
+
+    const badStepGate = runCli(memoryDir, ["recipe", "validate", "bad-step-gate"]);
+    assert.equal(badStepGate.status, 1);
+    assert.match(JSON.parse(badStepGate.stdout).error, /Step repair\.maxRepairAttempts must be a non-negative integer/);
+  });
+});
+
 test("recipe create validates and creates workflow tasks", async () => {
   await withHub(async (memoryDir) => {
     await writeRecipe(memoryDir, "implement-and-review", {
@@ -187,6 +275,12 @@ test("recipe create validates and creates workflow tasks", async () => {
       description: "Build with review",
       version: "1.0.0",
       variables: { priority: "normal" },
+      qualityGate: {
+        verifyCommands: ["npm test"],
+        reviewRequired: true,
+        maxRepairAttempts: 2,
+        stopWhen: ["review blocks remain"]
+      },
       roles: {
         planner: {},
         executor: {},
@@ -194,8 +288,15 @@ test("recipe create validates and creates workflow tasks", async () => {
       },
       steps: [
         { id: "plan", role: "planner", task: "Plan the change" },
-        { id: "implementation", role: "executor", task: "Implement the change", dependsOn: ["plan"] },
-        { id: "review", role: "reviewer", task: "Review the change", dependsOn: ["implementation"] }
+        {
+          id: "implementation",
+          role: "executor",
+          task: "Implement the change",
+          dependsOn: ["plan"],
+          verifyCommands: ["node --check src/index.js"],
+          maxRepairAttempts: 1
+        },
+        { id: "review", role: "reviewer", task: "Review the change", dependsOn: ["implementation"], reviewRequired: true }
       ]
     });
 
@@ -229,6 +330,51 @@ test("recipe create validates and creates workflow tasks", async () => {
       "[implement-and-review] Implement the change",
       "[implement-and-review] Review the change"
     ]);
+    assert.deepEqual(result.workflow.recipe, {
+      name: "implement-and-review",
+      title: "Implement and Review",
+      version: "1.0.0",
+      variables: { priority: "high", project: "ai-memory-hub" },
+      steps: 3
+    });
+    assert.deepEqual(result.workflow.qualityGate, {
+      verifyCommands: [
+        { command: "npm test", args: [] }
+      ],
+      stopWhen: ["review blocks remain"],
+      reviewRequired: true,
+      maxRepairAttempts: 2
+    });
+
+    const generatedTasks = parseJson(runCli(memoryDir, [
+      "task",
+      "list",
+      "--project",
+      "ai-memory-hub"
+    ]));
+    const implementationTask = generatedTasks.find((task) => task.recipeStep?.id === "implementation");
+    assert.equal(implementationTask.recipe.name, "implement-and-review");
+    assert.deepEqual(implementationTask.recipeStep.dependsOn, ["plan"]);
+    assert.equal(implementationTask.recipeStep.workflowId, result.workflow.id);
+    assert.deepEqual(implementationTask.qualityGate, {
+      verifyCommands: [
+        { command: "node --check src/index.js", args: [] }
+      ],
+      stopWhen: ["review blocks remain"],
+      reviewRequired: true,
+      maxRepairAttempts: 1
+    });
+
+    const generatedWorkflows = parseJson(runCli(memoryDir, [
+      "workflow",
+      "list",
+      "--status",
+      "open",
+      "--project",
+      "ai-memory-hub"
+    ]));
+    assert.equal(generatedWorkflows[0].recipe.name, "implement-and-review");
+    assert.equal(generatedWorkflows[0].qualityGate.reviewRequired, true);
   });
 });
 
@@ -307,6 +453,21 @@ test("built-in development recipes are discoverable, valid, and runnable", async
     assert.deepEqual(lightsOutResult.workflow.observer, ["marvis"]);
     assert.equal(lightsOutResult.recipe.name, "lights-out-local");
     assert.equal(lightsOutResult.recipe.steps, 7);
+    assert.equal(lightsOutResult.recipe.qualityGate.reviewRequired, true);
+    assert.deepEqual(lightsOutResult.recipe.qualityGate.verifyCommands, [
+      {
+        id: "declared-project-verification",
+        source: "task-spec",
+        required: true,
+        description: "Run project-declared verification commands when available."
+      },
+      {
+        id: "focused-regression-checks",
+        source: "changed-files",
+        required: true,
+        description: "Run focused syntax, unit, integration, browser, or API checks for touched files."
+      }
+    ]);
     assert.equal(lightsOutResult.tasks.length, 7);
     assert.deepEqual(lightsOutResult.tasks.map((task) => task.assignee), [
       "codex",
@@ -328,6 +489,15 @@ test("built-in development recipes are discoverable, valid, and runnable", async
     assert.equal(generatedTasks.length, 7);
     assert.ok(generatedTasks.some((task) => /forbiddenActions must include push, deletion, dependency install/.test(task.description)));
     assert.ok(generatedTasks.some((task) => task.handoff === "Depends on: repair-loop"));
+    assert.ok(generatedTasks.every((task) => task.recipe?.name === "lights-out-local"));
+    assert.ok(generatedTasks.every((task) => task.qualityGate?.reviewRequired === true));
+    assert.deepEqual(
+      generatedTasks.find((task) => task.recipeStep?.id === "repair-loop").qualityGate.stopWhen,
+      [
+        "repair attempt limit is reached",
+        "blocker requires fresh human approval"
+      ]
+    );
   });
 });
 

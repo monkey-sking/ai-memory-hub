@@ -24,10 +24,30 @@ Recipes are JSON files with `roles` and ordered `steps`. A step may include:
 - `task`: natural-language work instruction for the assigned tool.
 - `dependsOn`: step ids that must be completed first.
 
-The first built-in recipe pack keeps the existing schema and expresses richer
-workflow rules inside the task text. This is intentional: older recipe files
-continue to validate, and the current task/workflow model does not need a data
-migration.
+Recipes may also include a top-level `qualityGate` object. Individual steps may
+set gate fields directly or inside a step-level `qualityGate`; step values
+override the recipe defaults when `recipe create` builds task records. Older
+recipe files without gates continue to validate.
+
+Supported machine-readable gate fields:
+
+- `verifyCommands`: array of local command strings or command objects. Strings
+  are normalized to `{ "command": "...", "args": [] }`; objects may define
+  `id`, `source`, `command`, `args`, `cwd`, `timeoutMs`, `required`, and
+  `description`.
+- `reviewRequired`: boolean indicating whether an external review gate must
+  pass before closure.
+- `maxRepairAttempts`: non-negative integer for bounded repair loops.
+- `stopWhen`: array of stop conditions that require a note, handoff, or human
+  approval.
+- `allowedActions`: array of actions the workflow may perform under current
+  guardrails.
+- `forbiddenActions`: array of actions that must stop unless freshly approved.
+
+`recipe create` stores recipe metadata and the effective `qualityGate` on the
+created workflow and tasks. Each task also gets `recipeStep` metadata with the
+step id, role, dependency ids, and workflow id, so daemon and dashboard code can
+advance or render recipe-driven work without parsing task prose.
 
 ## Built-In Templates
 
@@ -75,7 +95,8 @@ These fields can be pasted into task notes, workflow results, or radio replies.
 
 ## Next Extensions
 
-- Add optional machine-readable step fields such as `outputs`, `stopWhen`, and
-  `qualityGate` after existing recipes have used the starter pack.
+- Add optional structured step output declarations, such as required result
+  fields and artifact paths.
 - Add dashboard rendering for recipe step dependency graphs.
-- Let `recipe create` attach expected verification commands to generated tasks.
+- Let the daemon execute `verifyCommands` and enforce `maxRepairAttempts` for
+  lights-out loops.

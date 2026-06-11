@@ -279,6 +279,9 @@ ai-memory-hub recipe create --recipe lights-out-local --tools planner:codex,exec
 
 内置模板包括 `frontend-feature`、`backend-service`、`fullstack-feature`、`lights-out-local`；
 用户可在 `~/.ai-memory/recipes/` 放置同名 JSON 模板覆盖内置版本。
+Recipe 可声明机器可读 `qualityGate`，包括验证命令、review 要求、最大修复次数、
+停止条件和允许/禁止动作；`recipe create` 会把这些字段保存在生成的 workflow/task
+记录中，供 daemon 和 dashboard 后续自动推进或展示。
 
 #### 指标统计
 

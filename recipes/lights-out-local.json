@@ -8,6 +8,44 @@
     "priority": "high",
     "maxRepairAttempts": "3"
   },
+  "qualityGate": {
+    "verifyCommands": [
+      {
+        "id": "declared-project-verification",
+        "source": "task-spec",
+        "required": true,
+        "description": "Run project-declared verification commands when available."
+      },
+      {
+        "id": "focused-regression-checks",
+        "source": "changed-files",
+        "required": true,
+        "description": "Run focused syntax, unit, integration, browser, or API checks for touched files."
+      }
+    ],
+    "reviewRequired": true,
+    "maxRepairAttempts": 3,
+    "stopWhen": [
+      "acceptance_unclear",
+      "credentials_required",
+      "human_approval_required",
+      "unsafe_action_required",
+      "verification_unavailable",
+      "max_repair_attempts_reached"
+    ],
+    "allowedActions": [
+      "read_project_and_shared_memory",
+      "local_file_edits",
+      "focused_tests",
+      "local_commit_when_guardrails_allow"
+    ],
+    "forbiddenActions": [
+      "git_push_without_approval",
+      "file_deletion_without_approval",
+      "dependency_install_without_approval",
+      "system_configuration_without_approval"
+    ]
+  },
   "roles": {
     "planner": {
       "description": "Defines scope, acceptance criteria, safety guardrails, stop conditions, and verification plan before unattended work starts."
@@ -26,7 +64,12 @@
     {
       "id": "guardrails-and-scope",
       "role": "planner",
-      "task": "Read the active task/workflow, shared memory, git status, and declared project task specs. Output JSON with scope, acceptance, assumptions, allowedActions, forbiddenActions, verificationCommands, maxRepairAttempts, and stopWhen. Default allowedActions may include local commit only when current user or workflow guardrails allow it. Default forbiddenActions must include push, deletion, dependency install, and system configuration without fresh human approval. Stop if acceptance criteria, credentials, required services, or safety limits are unclear."
+      "task": "Read the active task/workflow, shared memory, git status, and declared project task specs. Output JSON with scope, acceptance, assumptions, allowedActions, forbiddenActions, verificationCommands, maxRepairAttempts, and stopWhen. Default allowedActions may include local commit only when current user or workflow guardrails allow it. Default forbiddenActions must include push, deletion, dependency install, and system configuration without fresh human approval. Stop if acceptance criteria, credentials, required services, or safety limits are unclear.",
+      "stopWhen": [
+        "acceptance_unclear",
+        "credentials_required",
+        "unsafe_action_required"
+      ]
     },
     {
       "id": "loop-plan",
@@ -50,6 +93,11 @@
       "task": "Run the declared verification commands plus focused syntax/unit/integration checks relevant to the changed files. Fix obvious local failures within scope. Output JSON with commands, results, changed files, residual risks, and whether review is ready.",
       "dependsOn": [
         "implementation"
+      ],
+      "verifyCommands": [
+        "node --check src/index.js",
+        "npm.cmd test",
+        "git diff --check"
       ]
     },
     {
@@ -58,7 +106,8 @@
       "task": "Review the diff, verification output, run logs, safety guardrails, and missing tests. Reply PASS only when implementation, verification, and safety constraints are satisfied. Otherwise list blockers with file-level or command-level evidence.",
       "dependsOn": [
         "verification"
-      ]
+      ],
+      "reviewRequired": true
     },
     {
       "id": "repair-loop",
@@ -66,6 +115,11 @@
       "task": "If review passed and verification passed, record a no-op repair result and proceed. If review or verification has blockers, fix only the blockers, rerun the relevant verification, and request review again. Stop after maxRepairAttempts or when a blocker requires human approval, credentials, push, deletion, dependency install, or system configuration. Output JSON with attempt, fixes, commands, results, and next.",
       "dependsOn": [
         "review"
+      ],
+      "maxRepairAttempts": 3,
+      "stopWhen": [
+        "repair attempt limit is reached",
+        "blocker requires fresh human approval"
       ]
     },
     {
@@ -74,6 +128,12 @@
       "task": "Confirm final verification and review status. If local commits are allowed by the current guardrails, ensure the final local commit is recorded; never push. Write a closure note with commit hash or no-commit reason, tests, review result, unresolved risks, and follow-up tasks. Mark the source task done only when verification and review are both passing.",
       "dependsOn": [
         "repair-loop"
+      ],
+      "reviewRequired": true,
+      "verifyCommands": [
+        "node --check src/index.js",
+        "npm.cmd test",
+        "git diff --check"
       ]
     }
   ]

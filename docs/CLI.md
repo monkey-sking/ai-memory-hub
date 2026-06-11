@@ -887,6 +887,11 @@ Checks:
 - Required fields (name, title, roles, steps)
 - Role references in steps
 - Dependency references
+- Machine-readable gate field types (`verifyCommands`, `reviewRequired`,
+  `maxRepairAttempts`, `stopWhen`, `allowedActions`, `forbiddenActions`)
+  - `verifyCommands` may contain command strings or command objects with `id`,
+    `source`, `command`, `args`, `cwd`, `timeoutMs`, `required`, and
+    `description`.
 
 ### `recipe create`
 
@@ -903,6 +908,11 @@ ai-memory-hub recipe create --recipe <name> --tools <mapping> [options]
 **Optional:**
 - `--project <name>` - Project name
 - `--var <key>=<value>` - Variable assignment (can repeat)
+
+Generated workflows preserve recipe metadata and top-level `qualityGate` data.
+Generated tasks preserve `recipe`, `recipeStep`, and the effective
+`qualityGate` after applying step overrides. This lets daemon/dashboard code use
+recipe gates without parsing natural-language task text.
 
 **Example:**
 ```bash
@@ -935,6 +945,8 @@ ai-memory-hub recipe create \
 - **Roles:** planner, executor, reviewer, observer
 - **Steps:** 7 (guardrails/scope -> loop plan -> implementation -> verification -> review -> repair loop -> final verification/closure)
 - **Use:** Local unattended Loop Engineering where local commits may be allowed by current guardrails, while push, deletion, dependency install, and system configuration stop for fresh human approval
+- **Gate:** `reviewRequired: true`, bounded repair attempts, default local
+  verification commands, and explicit allowed/forbidden actions
 
 See [Development Recipe Packs](development-recipe-packs.md) for the design
 rules, stop points, and structured result expectations behind these templates.

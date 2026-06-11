@@ -170,6 +170,9 @@ const ASYNC_CALL_TRANSITIONS = {
   "abandoned": []
 };
 
+const RECIPE_GATE_STRING_ARRAY_FIELDS = ["stopWhen", "allowedActions", "forbiddenActions"];
+const RECIPE_GATE_FIELDS = ["verifyCommands", ...RECIPE_GATE_STRING_ARRAY_FIELDS, "reviewRequired", "maxRepairAttempts"];
+
 const rawArgs = process.argv.slice(2);
 const parsedArgs = parseCliArgs(rawArgs);
 const args = parsedArgs.args;
@@ -1309,8 +1312,18 @@ function recipeCreateCommand(argv) {
 
   console.log(JSON.stringify({
     workflow: result.workflow,
-    tasks: result.tasks.map((t) => ({ id: t.id, title: t.title, assignee: t.assignee })),
-    recipe: { name: result.recipe.name, steps: result.recipe.steps.length }
+    tasks: result.tasks.map((t) => ({
+      id: t.id,
+      title: t.title,
+      assignee: t.assignee,
+      recipeStep: t.recipeStep || null,
+      qualityGate: t.qualityGate || null
+    })),
+    recipe: {
+      name: result.recipe.name,
+      steps: result.recipe.steps.length,
+      qualityGate: normalizeQualityGate(extractQualityGate(result.recipe))
+    }
   }, null, 2));
 }
 
@@ -6632,7 +6645,7 @@ function writeWorkflows(memoryDir, workflows) {
   fs.writeFileSync(file, workflows.map((workflow) => JSON.stringify(normalizeWorkflow(workflow))).join("\n") + (workflows.length ? "\n" : ""), "utf8");
 }
 
-function createWorkflow({ title, createdBy, project, priority, planner, executor, reviewer, observer, plan, acceptance }) {
+function createWorkflow({ title, createdBy, project, priority, planner, executor, reviewer, observer, plan, acceptance, qualityGate }) {
   const now = new Date().toISOString();
   const cleanTitle = String(title || "").trim();
   return {
@@ -6651,6 +6664,7 @@ function createWorkflow({ title, createdBy, project, priority, planner, executor
     observer: normalizeWorkflowRole(observer),
     plan: String(plan || ""),
     acceptance: String(acceptance || ""),
+    qualityGate: normalizeQualityGate(qualityGate),
     risks: [],
     results: [],
     reviews: [],
@@ -6700,7 +6714,8 @@ function spawnWorkflowTasks(memoryDir, workflow) {
           handoff: `Workflow ${workflow.id}; role=${role}`,
           createdBy: workflow.createdBy,
           project: workflow.project,
-          priority: workflow.priority
+          priority: workflow.priority,
+          qualityGate: workflow.qualityGate
         }),
         assignee,
         status: "claimed"
@@ -6739,7 +6754,7 @@ function notifyWorkflowRoles(memoryDir, workflow) {
 function normalizeWorkflow(workflow) {
   const now = new Date().toISOString();
   const status = isWorkflowStatus(workflow.status) ? workflow.status : "open";
-  return {
+  const normalized = {
     id: workflow.id || createId(`workflow:${workflow.title || JSON.stringify(workflow)}`),
     createdAt: workflow.createdAt || workflow.ts || now,
     updatedAt: workflow.updatedAt || workflow.createdAt || workflow.ts || now,
@@ -6755,6 +6770,7 @@ function normalizeWorkflow(workflow) {
     observer: normalizeWorkflowRole(workflow.observer),
     plan: workflow.plan || "",
     acceptance: workflow.acceptance || "",
+    qualityGate: normalizeQualityGate(workflow),
     risks: Array.isArray(workflow.risks) ? workflow.risks : [],
     results: Array.isArray(workflow.results) ? workflow.results : [],
     reviews: Array.isArray(workflow.reviews) ? workflow.reviews : [],
@@ -6778,6 +6794,10 @@ function normalizeWorkflow(workflow) {
     dispatchReportPath: workflow.dispatchReportPath || "",
     notes: Array.isArray(workflow.notes) ? workflow.notes : []
   };
+  if (isPlainObject(workflow.recipe)) {
+    normalized.recipe = normalizeRecipeMetadata(workflow.recipe);
+  }
+  return normalized;
 }
 
 function normalizeWorkflowRole(value) {
@@ -6787,7 +6807,7 @@ function normalizeWorkflowRole(value) {
   return String(value || "").split(",").map((item) => item.trim()).filter(Boolean);
 }
 
-function createTask({ title, description, handoff, createdBy, project, priority }) {
+function createTask({ title, description, handoff, createdBy, project, priority, qualityGate }) {
   const now = new Date().toISOString();
   const cleanTitle = String(title || "").trim();
   const cleanPriority = normalizePriority(priority);
@@ -6804,6 +6824,7 @@ function createTask({ title, description, handoff, createdBy, project, priority 
     title: cleanTitle,
     description: String(description || ""),
     handoff: String(handoff || ""),
+    qualityGate: normalizeQualityGate(qualityGate),
     notes: []
   };
 }
@@ -6823,7 +6844,7 @@ function updateTask(memoryDir, id, updater) {
 function normalizeTask(task) {
   const now = new Date().toISOString();
   const status = isTaskStatus(task.status) ? task.status : "open";
-  return {
+  const normalized = {
     id: task.id || createId(`task:${task.title || JSON.stringify(task)}`),
     createdAt: task.createdAt || task.ts || now,
     updatedAt: task.updatedAt || task.createdAt || task.ts || now,
@@ -6836,6 +6857,7 @@ function normalizeTask(task) {
     title: task.title || task.text || "",
     description: task.description || "",
     handoff: task.handoff || "",
+    qualityGate: normalizeQualityGate(task),
     deliveryState: task.deliveryState || "",
     deliveryUpdatedAt: task.deliveryUpdatedAt || "",
     dispatchId: task.dispatchId || "",
@@ -6861,6 +6883,41 @@ function normalizeTask(task) {
       by: note.by || note.source || "unknown",
       text: String(note.text || "")
     })).filter((note) => note.text) : []
+  };
+  if (isPlainObject(task.recipe)) {
+    normalized.recipe = normalizeRecipeMetadata(task.recipe);
+  }
+  if (isPlainObject(task.recipeStep)) {
+    normalized.recipeStep = normalizeRecipeStepMetadata(task.recipeStep);
+  }
+  return normalized;
+}
+
+function normalizeRecipeMetadata(recipe) {
+  const normalized = {
+    name: String(recipe.name || ""),
+    title: String(recipe.title || ""),
+    version: String(recipe.version || "")
+  };
+  if (isPlainObject(recipe.variables)) {
+    normalized.variables = Object.fromEntries(
+      Object.entries(recipe.variables)
+        .map(([key, value]) => [String(key), String(value)])
+        .filter(([key]) => key)
+    );
+  }
+  if (Number.isInteger(recipe.steps)) {
+    normalized.steps = recipe.steps;
+  }
+  return normalized;
+}
+
+function normalizeRecipeStepMetadata(step) {
+  return {
+    id: String(step.id || ""),
+    role: String(step.role || ""),
+    dependsOn: Array.isArray(step.dependsOn) ? step.dependsOn.map((item) => String(item)).filter(Boolean) : [],
+    workflowId: String(step.workflowId || "")
   };
 }
 
@@ -7313,6 +7370,198 @@ function recipeListLocations(memoryDir) {
   ];
 }
 
+function hasOwnField(source, field) {
+  return Object.prototype.hasOwnProperty.call(source, field);
+}
+
+function extractQualityGate(source) {
+  const gate = {};
+  if (!isPlainObject(source)) {
+    return gate;
+  }
+  if (isPlainObject(source.qualityGate)) {
+    Object.assign(gate, source.qualityGate);
+  }
+  if (isPlainObject(source.gates)) {
+    Object.assign(gate, source.gates);
+  }
+  for (const field of RECIPE_GATE_FIELDS) {
+    if (hasOwnField(source, field)) {
+      gate[field] = source[field];
+    }
+  }
+  return gate;
+}
+
+function normalizeQualityGate(source) {
+  const gate = {};
+  const extracted = extractQualityGate(source);
+  if (!isPlainObject(extracted)) {
+    return gate;
+  }
+  if (Array.isArray(extracted.verifyCommands)) {
+    const verifyCommands = extracted.verifyCommands.map(normalizeVerifyCommand).filter(Boolean);
+    if (verifyCommands.length > 0) {
+      gate.verifyCommands = verifyCommands;
+    }
+  }
+  for (const field of RECIPE_GATE_STRING_ARRAY_FIELDS) {
+    if (Array.isArray(extracted[field])) {
+      const values = extracted[field].map((item) => String(item).trim()).filter(Boolean);
+      if (values.length > 0) {
+        gate[field] = values;
+      }
+    }
+  }
+  if (typeof extracted.reviewRequired === "boolean") {
+    gate.reviewRequired = extracted.reviewRequired;
+  }
+  const maxRepairAttempts = normalizeNonNegativeInteger(extracted.maxRepairAttempts);
+  if (maxRepairAttempts !== null) {
+    gate.maxRepairAttempts = maxRepairAttempts;
+  }
+  return gate;
+}
+
+function mergeQualityGates(...sources) {
+  const merged = {};
+  for (const source of sources) {
+    Object.assign(merged, normalizeQualityGate(source));
+  }
+  return merged;
+}
+
+function validateQualityGateFields(source, label) {
+  if (!isPlainObject(source)) {
+    return { valid: false, error: `${label} must be an object` };
+  }
+  if (hasOwnField(source, "verifyCommands")) {
+    if (!Array.isArray(source.verifyCommands)) {
+      return { valid: false, error: `${label}.verifyCommands must be an array` };
+    }
+    for (const [index, command] of source.verifyCommands.entries()) {
+      const validation = validateVerifyCommand(command, `${label}.verifyCommands[${index}]`);
+      if (!validation.valid) {
+        return validation;
+      }
+    }
+  }
+  for (const field of RECIPE_GATE_STRING_ARRAY_FIELDS) {
+    if (hasOwnField(source, field)) {
+      if (!Array.isArray(source[field]) || source[field].some((item) => typeof item !== "string" || item.trim() === "")) {
+        return { valid: false, error: `${label}.${field} must be an array of non-empty strings` };
+      }
+    }
+  }
+  if (hasOwnField(source, "reviewRequired") && typeof source.reviewRequired !== "boolean") {
+    return { valid: false, error: `${label}.reviewRequired must be a boolean` };
+  }
+  if (hasOwnField(source, "maxRepairAttempts") && (!Number.isInteger(source.maxRepairAttempts) || source.maxRepairAttempts < 0)) {
+    return { valid: false, error: `${label}.maxRepairAttempts must be a non-negative integer` };
+  }
+  return { valid: true };
+}
+
+function normalizeVerifyCommand(value) {
+  if (typeof value === "string") {
+    const command = value.trim();
+    return command ? { command, args: [] } : null;
+  }
+  if (!isPlainObject(value)) {
+    return null;
+  }
+  const id = String(value.id || "").trim();
+  const source = String(value.source || "").trim();
+  const command = String(value.command || "").trim();
+  if (!id && !source && !command) {
+    return null;
+  }
+  const normalized = {};
+  if (id) normalized.id = id;
+  if (source) normalized.source = source;
+  if (command) normalized.command = command;
+  if (Array.isArray(value.args)) {
+    normalized.args = value.args.map((arg) => String(arg));
+  } else if (command) {
+    normalized.args = [];
+  }
+  if (value.cwd) {
+    normalized.cwd = String(value.cwd);
+  }
+  if (Number.isInteger(value.timeoutMs) && value.timeoutMs > 0) {
+    normalized.timeoutMs = value.timeoutMs;
+  }
+  if (typeof value.required === "boolean") {
+    normalized.required = value.required;
+  }
+  if (value.description) {
+    normalized.description = String(value.description);
+  }
+  return normalized;
+}
+
+function validateVerifyCommand(command, label) {
+  if (typeof command === "string") {
+    return command.trim()
+      ? { valid: true }
+      : { valid: false, error: `${label} must be a non-empty command string` };
+  }
+  if (!isPlainObject(command)) {
+    return { valid: false, error: `${label} must be a command string or object` };
+  }
+  const hasCommandTarget = ["id", "source", "command"].some((field) => (
+    typeof command[field] === "string" && command[field].trim()
+  ));
+  if (!hasCommandTarget) {
+    return { valid: false, error: `${label} must define id, source, or command` };
+  }
+  if (hasOwnField(command, "args") && !Array.isArray(command.args)) {
+    return { valid: false, error: `${label}.args must be an array` };
+  }
+  if (hasOwnField(command, "timeoutMs") && (!Number.isInteger(command.timeoutMs) || command.timeoutMs <= 0)) {
+    return { valid: false, error: `${label}.timeoutMs must be a positive integer` };
+  }
+  if (hasOwnField(command, "required") && typeof command.required !== "boolean") {
+    return { valid: false, error: `${label}.required must be a boolean` };
+  }
+  return { valid: true };
+}
+
+function normalizeNonNegativeInteger(value) {
+  if (value === "" || value === null || value === undefined) {
+    return null;
+  }
+  const number = typeof value === "number" ? value : Number(value);
+  return Number.isInteger(number) && number >= 0 ? number : null;
+}
+
+function validateQualityGate(source, label) {
+  if (!isPlainObject(source)) {
+    return { valid: true };
+  }
+  for (const containerField of ["qualityGate", "gates"]) {
+    if (hasOwnField(source, containerField)) {
+      const validation = validateQualityGateFields(source[containerField], `${label}.${containerField}`);
+      if (!validation.valid) {
+        return validation;
+      }
+    }
+  }
+  const directFields = {};
+  for (const field of RECIPE_GATE_FIELDS) {
+    if (hasOwnField(source, field)) {
+      directFields[field] = source[field];
+    }
+  }
+  if (Object.keys(directFields).length > 0) {
+    const validation = validateQualityGateFields(directFields, label);
+    if (!validation.valid) {
+      return validation;
+    }
+  }
+  return { valid: true };
+}
+
 function validateRecipe(recipe) {
   if (!recipe.name || !recipe.title) {
     return { valid: false, error: "Recipe must have name and title" };
@@ -7326,10 +7575,25 @@ function validateRecipe(recipe) {
     return { valid: false, error: "Recipe must have at least one step" };
   }
 
+  const recipeGateValidation = validateQualityGate(recipe, "Recipe");
+  if (!recipeGateValidation.valid) {
+    return recipeGateValidation;
+  }
+
   // Check all step roles are defined
   for (const step of recipe.steps) {
+    if (!step.id || !step.task) {
+      return { valid: false, error: "Recipe steps must have id and task" };
+    }
     if (!recipe.roles[step.role]) {
       return { valid: false, error: `Step ${step.id} references undefined role: ${step.role}` };
+    }
+    if (step.dependsOn && (!Array.isArray(step.dependsOn) || step.dependsOn.some((depId) => typeof depId !== "string" || depId.trim() === ""))) {
+      return { valid: false, error: `Step ${step.id} dependsOn must be an array of non-empty strings` };
+    }
+    const stepGateValidation = validateQualityGate(step, `Step ${step.id}`);
+    if (!stepGateValidation.valid) {
+      return stepGateValidation;
     }
   }
 
@@ -7363,6 +7627,19 @@ function createWorkflowFromRecipe(memoryDir, recipeName, toolMapping, variables)
   // Merge variables
   const vars = { ...recipe.variables, ...variables };
   const roleNames = Object.keys(recipe.roles);
+  const recipeGateInput = extractQualityGate(recipe);
+  const maxRepairAttempts = normalizeNonNegativeInteger(vars.maxRepairAttempts);
+  if (maxRepairAttempts !== null && Object.keys(recipeGateInput).length > 0) {
+    recipeGateInput.maxRepairAttempts = maxRepairAttempts;
+  }
+  const recipeGate = normalizeQualityGate(recipeGateInput);
+  const recipeMetadata = normalizeRecipeMetadata({
+    name: recipe.name || recipeName,
+    title: recipe.title,
+    version: recipe.version,
+    variables: vars,
+    steps: recipe.steps.length
+  });
 
   // Create workflow
   const workflow = createWorkflow({
@@ -7377,6 +7654,10 @@ function createWorkflowFromRecipe(memoryDir, recipeName, toolMapping, variables)
     plan: `Recipe: ${recipeName}\nSteps: ${recipe.steps.length}`,
     acceptance: recipe.description || ""
   });
+  workflow.recipe = recipeMetadata;
+  if (Object.keys(recipeGate).length > 0) {
+    workflow.qualityGate = recipeGate;
+  }
 
   const workflows = readWorkflows(memoryDir);
   workflows.push(workflow);
@@ -7400,6 +7681,17 @@ function createWorkflowFromRecipe(memoryDir, recipeName, toolMapping, variables)
 
     if (step.dependsOn && step.dependsOn.length > 0) {
       task.handoff = `Depends on: ${step.dependsOn.join(", ")}`;
+    }
+    task.recipe = recipeMetadata;
+    task.recipeStep = normalizeRecipeStepMetadata({
+      id: step.id,
+      role: step.role,
+      dependsOn: step.dependsOn,
+      workflowId: workflow.id
+    });
+    const stepGate = mergeQualityGates(recipeGate, extractQualityGate(step));
+    if (Object.keys(stepGate).length > 0) {
+      task.qualityGate = stepGate;
     }
 
     tasks.push(task);

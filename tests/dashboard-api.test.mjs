@@ -290,9 +290,10 @@ test("dashboard serves externalized virtual-scroll assets", async () => {
       assert.match(dashboardCss, /\.refresh-status/);
       assert.match(dashboardCss, /\.endpoint-errors-title-row/);
       assert.match(dashboardCss, /--sidebar-collapsed-width/);
-      assert.match(dashboardCss, /body\.sidebar-collapsed aside/);
+      assert.match(dashboardCss, /body\.sidebar-collapsed #sidebar/);
       assert.match(dashboardCss, /body\.sidebar-collapsed \.container/);
       assert.match(dashboardCss, /body\.sidebar-collapsed \.nav-label/);
+      assert.doesNotMatch(dashboardCss, /(^|\n)\s*aside\s*\{/);
       assert.match(dashboardCss, /max-width:\s*640px/);
 
       const jsRes = await fetch(`http://127.0.0.1:${port}/js/dashboard.js`);

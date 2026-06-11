@@ -17,6 +17,7 @@ const DEFAULT_MEMORY_DIR = path.join(os.homedir(), ".ai-memory");
 const DEFAULT_CONFIG_PATH = path.join(DEFAULT_MEMORY_DIR, "config.json");
 const DEFAULT_DISPATCH_ACK_TIMEOUT_MS = 5 * 60 * 1000;
 const DEFAULT_DISPATCH_RUN_TIMEOUT_MS = 10 * 60 * 1000;
+const DEFAULT_DISPATCH_MAX_RETRIES = 3;
 const DEFAULT_TASK_SPEC_TIMEOUT_MS = 10 * 60 * 1000;
 const STALE_OPERATIONAL_RADIO_AFTER_DAYS = 7;
 const OPERATIONAL_RADIO_DECAY_RATE_PER_DAY = 8;
@@ -39,6 +40,7 @@ const RESEARCH_REPORTS_DIR = "research-reports";
 const DISPATCH_RUNS_DIR = "dispatch-runs";
 const DAEMON_PID_FILE = "daemon.pid";
 const DAEMON_STATUS_FILE = "daemon-status.json";
+const DAEMON_DEFAULT_TOOLS = ["codex", "gemini", "claude"];
 const DEFAULT_DASHBOARD_SHORTCUT_BINDINGS = Object.freeze({
   focusSearch: "/",
   openSearch: "mod+k",
@@ -1988,10 +1990,11 @@ function dispatchCommand(argv) {
   const to = getOption(argv, "--to") || "";
   const project = getOption(argv, "--project") || "";
   const limit = Number(getOption(argv, "--limit") || 10);
+  const respectRecipeDependencies = hasFlag(argv, "--respect-recipe-dependencies");
   const config = loadConfig();
   ensureHub(config.memoryDir);
 
-  const results = executeDispatch(config.memoryDir, { run, force, to, project, limit });
+  const results = executeDispatch(config.memoryDir, { run, force, to, project, limit, respectRecipeDependencies });
   if (results.length === 0) {
     console.log(JSON.stringify({ run, jobs: [], message: "No undispatched radio messages or active tasks matched." }, null, 2));
     return;
@@ -2190,7 +2193,7 @@ function dispatchProgressCommand(argv) {
     appendRelayStatus(config.memoryDir, job, {
       state: ASYNC_CALL_STATES.PROGRESS,
       attempt: Number(entry.attempt || 1),
-      maxRetries: Number(entry.maxRetries || 3),
+      maxRetries: normalizeDispatchRetryLimit(entry.maxRetries),
       exitCode: entry.exitCode ?? null,
       lastError: "",
       sessionId: entry.sessionId || "",
@@ -2206,7 +2209,7 @@ function dispatchProgressCommand(argv) {
       dispatchId: job.id,
       threadKey: getDispatchThreadKey(job),
       attempt: Number(entry.attempt || 1),
-      maxRetries: Number(entry.maxRetries || 3),
+      maxRetries: normalizeDispatchRetryLimit(entry.maxRetries),
       nextRetryAt: "",
       sessionId: entry.sessionId || "",
       lastError: "",
@@ -2388,10 +2391,11 @@ function dispatchRetryCommand(argv) {
   const to = getOption(argv, "--to") || "";
   const project = getOption(argv, "--project") || "";
   const limit = Number(getOption(argv, "--limit") || 10);
+  const respectRecipeDependencies = hasFlag(argv, "--respect-recipe-dependencies");
   const config = loadConfig();
   ensureHub(config.memoryDir);
 
-  const results = executeDispatchRetry(config.memoryDir, { run, to, project, limit });
+  const results = executeDispatchRetry(config.memoryDir, { run, to, project, limit, respectRecipeDependencies });
   if (results.length === 0) {
     console.log(JSON.stringify({ run, jobs: [], message: "No failed relay jobs are eligible for retry." }, null, 2));
     return;
@@ -2403,8 +2407,8 @@ function dispatchRetryCommand(argv) {
   }, null, 2));
 }
 
-function executeDispatch(memoryDir, { run = false, force = false, to = "", project = "", limit = 10 }) {
-  const jobs = buildDispatchJobs(memoryDir, { to, project, limit, force });
+function executeDispatch(memoryDir, { run = false, force = false, to = "", project = "", limit = 10, respectRecipeDependencies = false }) {
+  const jobs = buildDispatchJobs(memoryDir, { to, project, limit, force, respectRecipeDependencies });
   const results = [];
   const relayState = readLatestRelayStatusBySource(memoryDir);
   for (const job of jobs) {
@@ -2417,7 +2421,7 @@ function executeDispatch(memoryDir, { run = false, force = false, to = "", proje
       };
       if (run && !runner.sharedStateOnly) {
         const attempt = nextRelayAttempt(relayState, job);
-        const maxRetries = 3;
+        const maxRetries = getDispatchJobMaxRetries(job);
         const state = getRelayFailureState(attempt, maxRetries);
         appendRelayStatus(memoryDir, job, {
           state,
@@ -2461,7 +2465,7 @@ function executeDispatch(memoryDir, { run = false, force = false, to = "", proje
       continue;
     }
     const attempt = nextRelayAttempt(relayState, job);
-    const maxRetries = 3;
+    const maxRetries = getDispatchJobMaxRetries(job);
     appendRelayStatus(memoryDir, job, {
       state: "dispatched",
       attempt,
@@ -2548,15 +2552,16 @@ function executeDispatch(memoryDir, { run = false, force = false, to = "", proje
   return results;
 }
 
-function executeDispatchRetry(memoryDir, { run = false, to = "", project = "", limit = 10 }) {
+function executeDispatchRetry(memoryDir, { run = false, to = "", project = "", limit = 10, respectRecipeDependencies = false }) {
   const timeoutResults = run
     ? markTimedOutRelayStatuses(memoryDir, { to, project })
     : [];
   const relayState = readLatestRelayStatusBySource(memoryDir);
-  const jobs = buildRetryDispatchJobs(memoryDir, relayState, { to, project, limit });
+  const jobs = buildRetryDispatchJobs(memoryDir, relayState, { to, project, limit, respectRecipeDependencies });
   const results = [...timeoutResults];
   for (const job of jobs) {
     const runner = getToolRunner(job.tool);
+    const maxRetries = getDispatchJobMaxRetries(job, job.maxRetries);
     if (!runner.available) {
       const result = {
         ...job,
@@ -2564,24 +2569,24 @@ function executeDispatchRetry(memoryDir, { run = false, to = "", project = "", l
         reason: runner.reason
       };
       if (run && !runner.sharedStateOnly) {
-        const state = getRelayFailureState(job.attempt, job.maxRetries || 3);
+        const state = getRelayFailureState(job.attempt, maxRetries);
         appendRelayStatus(memoryDir, job, {
           state,
           attempt: job.attempt,
-          maxRetries: job.maxRetries || 3,
+          maxRetries,
           exitCode: null,
           lastError: runner.reason,
           sessionId: "",
           ackTimeout: DEFAULT_DISPATCH_ACK_TIMEOUT_MS,
-          nextRetryAt: computeNextRetryAt(job.attempt, job.maxRetries || 3)
+          nextRetryAt: computeNextRetryAt(job.attempt, maxRetries)
         });
         updateDispatchSourceState(memoryDir, job, {
           deliveryState: state,
           dispatchId: job.id,
           threadKey: getDispatchThreadKey(job),
           attempt: job.attempt,
-          maxRetries: job.maxRetries || 3,
-          nextRetryAt: computeNextRetryAt(job.attempt, job.maxRetries || 3),
+          maxRetries,
+          nextRetryAt: computeNextRetryAt(job.attempt, maxRetries),
           sessionId: "",
           lastError: runner.reason
         });
@@ -2607,7 +2612,7 @@ function executeDispatchRetry(memoryDir, { run = false, to = "", project = "", l
     appendRelayStatus(memoryDir, job, {
       state: "retrying",
       attempt: job.attempt,
-      maxRetries: job.maxRetries || 3,
+      maxRetries,
       exitCode: null,
       lastError: "",
       sessionId: "",
@@ -2619,7 +2624,7 @@ function executeDispatchRetry(memoryDir, { run = false, to = "", project = "", l
       dispatchId: job.id,
       threadKey: getDispatchThreadKey(job),
       attempt: job.attempt,
-      maxRetries: job.maxRetries || 3,
+      maxRetries,
       nextRetryAt: "",
       sessionId: "",
       lastError: ""
@@ -2629,7 +2634,7 @@ function executeDispatchRetry(memoryDir, { run = false, to = "", project = "", l
       appendRelayStatus(memoryDir, job, {
         state: "acked",
         attempt: job.attempt,
-        maxRetries: job.maxRetries || 3,
+        maxRetries,
         exitCode: 0,
         lastError: "",
         sessionId: result.sessionId || "",
@@ -2641,7 +2646,7 @@ function executeDispatchRetry(memoryDir, { run = false, to = "", project = "", l
         dispatchId: job.id,
         threadKey: getDispatchThreadKey(job),
         attempt: job.attempt,
-        maxRetries: job.maxRetries || 3,
+        maxRetries,
         nextRetryAt: "",
         sessionId: result.sessionId || "",
         lastError: ""
@@ -2649,13 +2654,13 @@ function executeDispatchRetry(memoryDir, { run = false, to = "", project = "", l
     }
     const finalState = result.exitCode === 0
       ? "completed"
-      : getRelayFailureState(job.attempt, job.maxRetries || 3);
-    const nextRetryAt = result.exitCode === 0 ? "" : computeNextRetryAt(job.attempt, job.maxRetries || 3);
+      : getRelayFailureState(job.attempt, maxRetries);
+    const nextRetryAt = result.exitCode === 0 ? "" : computeNextRetryAt(job.attempt, maxRetries);
     const lastError = result.exitCode === 0 ? "" : (result.error || result.stderr || "");
     appendRelayStatus(memoryDir, job, {
       state: finalState,
       attempt: job.attempt,
-      maxRetries: job.maxRetries || 3,
+      maxRetries,
       exitCode: result.exitCode,
       lastError,
       sessionId: result.sessionId || "",
@@ -2667,7 +2672,7 @@ function executeDispatchRetry(memoryDir, { run = false, to = "", project = "", l
       dispatchId: job.id,
       threadKey: getDispatchThreadKey(job),
       attempt: job.attempt,
-      maxRetries: job.maxRetries || 3,
+      maxRetries,
       nextRetryAt,
       sessionId: result.sessionId || "",
       lastError
@@ -2679,7 +2684,7 @@ function executeDispatchRetry(memoryDir, { run = false, to = "", project = "", l
       retry: true,
       relayState: finalState,
       attempt: job.attempt,
-      maxRetries: job.maxRetries || 3,
+      maxRetries,
       nextRetryAt,
       responseRadioId: responseMessage?.id || "",
       statusRadioId: statusMessage?.id || ""
@@ -2708,7 +2713,7 @@ function markTimedOutRelayStatuses(memoryDir, { to = "", project = "", now = Dat
     }
 
     const attempt = Number(entry.attempt || 1);
-    const maxRetries = Number(entry.maxRetries || 3);
+    const maxRetries = getDispatchJobMaxRetries(job, entry.maxRetries);
     const state = getRelayFailureState(attempt, maxRetries);
     const timeoutMs = Number(entry.ackTimeout || DEFAULT_DISPATCH_ACK_TIMEOUT_MS);
     const lastError = `Timeout: no response within ackTimeout (${timeoutMs}ms) while relay was ${entry.state || "unknown"}`;
@@ -3056,7 +3061,7 @@ function isDispatchableRadioMessage(message) {
 }
 
 function isClosedDispatchSourceState(state) {
-  return ["completed", "delivered", "done", "cancelled"].includes(String(state || "").trim().toLowerCase());
+  return ["completed", "delivered", "done", "cancelled", "blocked"].includes(String(state || "").trim().toLowerCase());
 }
 
 function isDirectDispatchRadioMessage(message, to = "") {
@@ -3091,7 +3096,7 @@ function isRadioLinkedToClosedSource(memoryDir, message) {
     .some((workflow) => refSet.has(workflow.id) && isClosedDispatchSourceState(workflow.status || workflow.deliveryState));
 }
 
-function buildDispatchJobs(memoryDir, { to, project, limit, force }) {
+function buildDispatchJobs(memoryDir, { to, project, limit, force, respectRecipeDependencies = false }) {
   const relayState = readLatestRelayStatusBySource(memoryDir);
   const dispatched = force ? new Set() : readDispatchLog(memoryDir)
     .filter((item) => item.runnable && item.exitCode === 0)
@@ -3133,25 +3138,91 @@ function buildDispatchJobs(memoryDir, { to, project, limit, force }) {
         thread: message.thread || message.id
       }];
     });
-  const tasks = readTasks(memoryDir)
-    .filter((task) => !["done", "cancelled"].includes(task.status))
+  const allTasks = readTasks(memoryDir);
+  const tasks = allTasks
+    .filter((task) => !["done", "cancelled", "blocked"].includes(task.status))
     .filter((task) => project ? task.project === project : true)
     .filter((task) => to ? task.assignee === to : Boolean(task.assignee))
+    .filter((task) => respectRecipeDependencies ? areTaskRecipeDependenciesSatisfied(task, allTasks) : true)
     .slice(0, limit)
-    .map((task) => ({
-      id: `task:${task.id}`,
-      kind: "task",
-      tool: task.assignee,
-      project: task.project || "",
-      text: `${task.title}${task.handoff ? `\nHandoff: ${task.handoff}` : ""}`,
-      refId: task.id,
-      thread: task.id
-    }));
+    .map((task) => dispatchJobFromTask(task));
   return [...messages, ...tasks]
     .filter((job) => job.tool)
     .filter((job) => !dispatched.has(job.id))
     .filter((job) => shouldDispatchJob(relayState, job, force))
     .slice(0, limit);
+}
+
+function dispatchJobFromTask(task) {
+  return {
+    id: `task:${task.id}`,
+    kind: "task",
+    tool: task.assignee,
+    project: task.project || "",
+    text: buildTaskDispatchText(task),
+    refId: task.id,
+    thread: task.id,
+    qualityGate: task.qualityGate || {},
+    recipe: task.recipe || null,
+    recipeStep: task.recipeStep || null
+  };
+}
+
+function dispatchJobFromWorkflow(workflow, tool = "") {
+  return {
+    id: `workflow:${workflow.id}`,
+    kind: "workflow",
+    tool: normalizeToolName(tool),
+    project: workflow.project || "",
+    text: buildWorkflowDispatchText(workflow),
+    refId: workflow.id,
+    thread: workflow.id,
+    qualityGate: workflow.qualityGate || {},
+    recipe: workflow.recipe || null
+  };
+}
+
+function buildTaskDispatchText(task) {
+  return [
+    task.title || "",
+    task.description ? `Description: ${task.description}` : "",
+    task.handoff ? `Handoff: ${task.handoff}` : ""
+  ].filter(Boolean).join("\n");
+}
+
+function buildWorkflowDispatchText(workflow) {
+  return [
+    workflow.title || "",
+    workflow.plan ? `Plan: ${workflow.plan}` : "",
+    workflow.acceptance ? `Acceptance: ${workflow.acceptance}` : ""
+  ].filter(Boolean).join("\n");
+}
+
+function areTaskRecipeDependenciesSatisfied(task, allTasks = []) {
+  const deps = Array.isArray(task?.recipeStep?.dependsOn) ? task.recipeStep.dependsOn : [];
+  if (deps.length === 0) {
+    return true;
+  }
+  return deps.every((depId) => {
+    const dependency = findRecipeStepTask(allTasks, task, depId);
+    return Boolean(dependency && isDispatchSourceComplete(dependency));
+  });
+}
+
+function findRecipeStepTask(tasks, task, stepId) {
+  const workflowId = task?.recipeStep?.workflowId || "";
+  const recipeName = task?.recipe?.name || "";
+  return tasks.find((candidate) => (
+    candidate?.recipeStep?.id === stepId &&
+    (!workflowId || candidate?.recipeStep?.workflowId === workflowId) &&
+    (!recipeName || candidate?.recipe?.name === recipeName)
+  )) || null;
+}
+
+function isDispatchSourceComplete(source) {
+  const status = String(source?.status || "").toLowerCase();
+  const deliveryState = String(source?.deliveryState || "").toLowerCase();
+  return status === "done" || deliveryState === ASYNC_CALL_STATES.COMPLETED;
 }
 
 function shouldDispatchJob(relayState, job, force = false) {
@@ -3166,32 +3237,32 @@ function shouldDispatchJob(relayState, job, force = false) {
   return state === "pending";
 }
 
-function buildRetryDispatchJobs(memoryDir, relayState, { to, project, limit }) {
+function buildRetryDispatchJobs(memoryDir, relayState, { to, project, limit, respectRecipeDependencies = false }) {
   const now = Date.now();
   const candidates = Object.values(relayState)
     .filter((entry) => isRelayRetryCandidate(entry, now))
-    .filter((entry) => Number(entry.attempt || 0) < Number(entry.maxRetries || 3))
     .filter((entry) => isRelayRetryRunnable(entry))
     .filter((entry) => to ? entry.tool === to : true)
-    .filter((entry) => project ? entry.project === project : true)
-    .slice(0, limit);
+    .filter((entry) => project ? entry.project === project : true);
 
   return candidates
     .map((entry) => {
-      const job = rebuildDispatchJobFromRelay(memoryDir, entry);
-      if (!job || !shouldRetryJob(job)) {
+      const job = rebuildDispatchJobFromRelay(memoryDir, entry, { respectRecipeDependencies });
+      const maxRetries = getDispatchJobMaxRetries(job, entry.maxRetries);
+      if (!job || !shouldRetryJob(job) || Number(entry.attempt || 0) >= maxRetries) {
         return null;
       }
       return {
         ...job,
         attempt: Number(entry.attempt || 0) + 1,
-        maxRetries: Number(entry.maxRetries || 3)
+        maxRetries
       };
     })
-    .filter(Boolean);
+    .filter(Boolean)
+    .slice(0, limit);
 }
 
-function rebuildDispatchJobFromRelay(memoryDir, entry) {
+function rebuildDispatchJobFromRelay(memoryDir, entry, { respectRecipeDependencies = false } = {}) {
   if (entry.sourceKind === "radio") {
     const message = readRadioMessages(memoryDir).find((item) => item.id === entry.sourceId);
     if (!message) return null;
@@ -3208,32 +3279,18 @@ function rebuildDispatchJobFromRelay(memoryDir, entry) {
     };
   }
   if (entry.sourceKind === "task") {
-    const task = readTasks(memoryDir).find((item) => item.id === entry.sourceId);
+    const tasks = readTasks(memoryDir);
+    const task = tasks.find((item) => item.id === entry.sourceId);
     if (!task) return null;
     if (isClosedDispatchSourceState(task.status || task.deliveryState)) return null;
-    return {
-      id: `task:${task.id}`,
-      kind: "task",
-      tool: task.assignee,
-      project: task.project || "",
-      text: `${task.title}${task.handoff ? `\nHandoff: ${task.handoff}` : ""}`,
-      refId: task.id,
-      thread: task.id
-    };
+    if (respectRecipeDependencies && !areTaskRecipeDependenciesSatisfied(task, tasks)) return null;
+    return dispatchJobFromTask(task);
   }
   if (entry.sourceKind === "workflow") {
     const workflow = readWorkflows(memoryDir).find((item) => item.id === entry.sourceId);
     if (!workflow) return null;
     if (isClosedDispatchSourceState(workflow.status || workflow.deliveryState)) return null;
-    return {
-      id: `workflow:${workflow.id}`,
-      kind: "workflow",
-      tool: entry.tool || "",
-      project: workflow.project || "",
-      text: `${workflow.title}${workflow.plan ? `\nPlan: ${workflow.plan}` : ""}`,
-      refId: workflow.id,
-      thread: workflow.id
-    };
+    return dispatchJobFromWorkflow(workflow, entry.tool || "");
   }
   return null;
 }
@@ -3541,6 +3598,55 @@ function getDispatchThreadKey(job) {
   return `${job.tool || "unknown"}:${job.project || "default"}:${job.thread || job.refId || job.id || ""}`;
 }
 
+function renderDispatchQualityGate(job) {
+  const gate = normalizeQualityGate(job?.qualityGate || {});
+  const lines = [];
+  if (job?.recipe?.name) {
+    lines.push(`- Recipe: ${job.recipe.name}${job.recipe.version ? `@${job.recipe.version}` : ""}`);
+  }
+  if (job?.recipeStep?.id) {
+    const deps = Array.isArray(job.recipeStep.dependsOn) && job.recipeStep.dependsOn.length > 0
+      ? `; depends on ${job.recipeStep.dependsOn.join(", ")}`
+      : "";
+    lines.push(`- Recipe step: ${job.recipeStep.id}${job.recipeStep.role ? ` (${job.recipeStep.role})` : ""}${deps}`);
+  }
+  if (typeof gate.reviewRequired === "boolean") {
+    lines.push(`- Review required: ${gate.reviewRequired ? "yes" : "no"}`);
+  }
+  if (Number.isInteger(gate.maxRepairAttempts)) {
+    lines.push(`- Max repair attempts: ${gate.maxRepairAttempts}`);
+  }
+  if (Array.isArray(gate.stopWhen) && gate.stopWhen.length > 0) {
+    lines.push(`- Stop when: ${gate.stopWhen.join("; ")}`);
+  }
+  if (Array.isArray(gate.allowedActions) && gate.allowedActions.length > 0) {
+    lines.push(`- Allowed actions: ${gate.allowedActions.join("; ")}`);
+  }
+  if (Array.isArray(gate.forbiddenActions) && gate.forbiddenActions.length > 0) {
+    lines.push(`- Forbidden actions: ${gate.forbiddenActions.join("; ")}`);
+  }
+  if (Array.isArray(gate.verifyCommands) && gate.verifyCommands.length > 0) {
+    lines.push("- Verification commands:");
+    for (const command of gate.verifyCommands) {
+      lines.push(`  - ${formatDispatchVerifyCommand(command)}`);
+    }
+  }
+  if (lines.length > 0) {
+    lines.push("- If a stop condition or forbidden action is required, stop and write a task note instead of proceeding.");
+  }
+  return lines;
+}
+
+function formatDispatchVerifyCommand(command) {
+  if (command.command) {
+    return [command.command, ...(command.args || [])].join(" ");
+  }
+  if (command.id && command.source) {
+    return `${command.id} (${command.source})`;
+  }
+  return command.id || command.source || command.description || "verify";
+}
+
 function escapeForWindowsCmd(value) {
   return String(value || "")
     .replace(/"/g, '""')
@@ -3548,6 +3654,7 @@ function escapeForWindowsCmd(value) {
 }
 
 function renderDispatchPrompt(memoryDir, job) {
+  const qualityGateLines = renderDispatchQualityGate(job);
   return [
     `__AI_MEMORY_THREAD__: ${getDispatchThreadKey(job)}`,
     `Dispatch target: ${job.tool}`,
@@ -3563,6 +3670,11 @@ function renderDispatchPrompt(memoryDir, job) {
     "- For work expected to take longer than 30 seconds, report heartbeat/progress with: ai-memory-hub dispatch progress --thread-key " + getDispatchThreadKey(job) + " --percent <0-100> --status \"short status\" --by " + (job.tool || "tool"),
     "- If you need to mention follow-up, end with a single 'Next:' line.",
     "",
+    ...(qualityGateLines.length > 0 ? [
+      "Quality gate:",
+      ...qualityGateLines,
+      ""
+    ] : []),
     "Autonomous safety rules:",
     "- Follow the user's current guardrails, project instructions, and repository policy.",
     "- Do not run git push, delete files, run destructive cleanup, install dependencies, or change system configuration unless this dispatch payload explicitly authorizes it.",
@@ -3687,8 +3799,22 @@ function nextRelayAttempt(relayState, job) {
   return Number(relayState[sourceKey]?.attempt || 0) + 1;
 }
 
-function computeNextRetryAt(attempt, maxRetries = 3) {
-  if (Number(attempt || 0) >= Number(maxRetries || 3)) {
+function getDispatchJobMaxRetries(job, fallback = DEFAULT_DISPATCH_MAX_RETRIES) {
+  const gateLimit = normalizeNonNegativeInteger(job?.qualityGate?.maxRepairAttempts);
+  if (gateLimit !== null) {
+    return gateLimit;
+  }
+  return normalizeDispatchRetryLimit(fallback);
+}
+
+function normalizeDispatchRetryLimit(value) {
+  const limit = normalizeNonNegativeInteger(value);
+  return limit !== null ? limit : DEFAULT_DISPATCH_MAX_RETRIES;
+}
+
+function computeNextRetryAt(attempt, maxRetries = DEFAULT_DISPATCH_MAX_RETRIES) {
+  const limit = normalizeDispatchRetryLimit(maxRetries);
+  if (Number(attempt || 0) >= limit) {
     return "";
   }
   const delays = [30 * 1000, 2 * 60 * 1000, 5 * 60 * 1000];
@@ -3696,8 +3822,8 @@ function computeNextRetryAt(attempt, maxRetries = 3) {
   return new Date(Date.now() + delayMs).toISOString();
 }
 
-function getRelayFailureState(attempt, maxRetries = 3) {
-  return Number(attempt || 0) >= Number(maxRetries || 3) ? "abandoned" : "failed";
+function getRelayFailureState(attempt, maxRetries = DEFAULT_DISPATCH_MAX_RETRIES) {
+  return Number(attempt || 0) >= normalizeDispatchRetryLimit(maxRetries) ? "abandoned" : "failed";
 }
 
 function isValidAsyncCallState(state) {
@@ -3734,7 +3860,7 @@ function isRelayRetryDue(entry) {
   if (Number.isNaN(nextRetryMs)) {
     return false;
   }
-  return nextRetryMs <= Date.now() && Number(entry.attempt || 0) < Number(entry.maxRetries || 3);
+  return nextRetryMs <= Date.now() && Number(entry.attempt || 0) < normalizeDispatchRetryLimit(entry.maxRetries);
 }
 
 function isRelayRetryRunnable(entry) {
@@ -3768,7 +3894,7 @@ function appendRelayStatus(memoryDir, job, patch = {}) {
     dispatchId: job.id,
     state: nextState,
     attempt: Number(patch.attempt || 1),
-    maxRetries: Number(patch.maxRetries || 3),
+    maxRetries: normalizeDispatchRetryLimit(patch.maxRetries),
     dispatchedAt: patch.state === ASYNC_CALL_STATES.DISPATCHED ? now : "",
     ackTimeout: Number(patch.ackTimeout || 0),
     sessionId: patch.sessionId || "",
@@ -4267,7 +4393,7 @@ function daemonCommand(argv) {
     console.log(`[${cycleStartedAt}] Cycle #${iteration}`);
 
     try {
-      const tools = ["codex", "gemini", "claude"];
+      const tools = DAEMON_DEFAULT_TOOLS;
 
       for (const tool of tools) {
         const runner = getToolRunner(tool);
@@ -4283,7 +4409,8 @@ function daemonCommand(argv) {
               run: true,
               to: tool,
               project,
-              limit
+              limit,
+              respectRecipeDependencies: true
             });
             const timeoutResults = retryResults.filter((result) => result.timeout);
             const retriedResults = retryResults.filter((result) => !result.timeout);
@@ -4298,7 +4425,8 @@ function daemonCommand(argv) {
               run: true,
               to: tool,
               project,
-              limit
+              limit,
+              respectRecipeDependencies: true
             });
 
             if (results.length > 0) {

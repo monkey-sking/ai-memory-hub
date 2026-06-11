@@ -699,6 +699,201 @@ test("dispatch passes Claude prompts on stdin with explicit dash argument", asyn
   });
 });
 
+test("dispatch includes quality gates in runner prompts and retry metadata", async () => {
+  await withHub(async (memoryDir) => {
+    const binDir = await createFakeCodexRunner(memoryDir);
+    const now = new Date().toISOString();
+    await appendJsonl(path.join(memoryDir, "tasks", "tasks.jsonl"), {
+      id: "task-gated",
+      createdAt: now,
+      updatedAt: now,
+      completedAt: "",
+      createdBy: "test",
+      assignee: "codex",
+      status: "claimed",
+      priority: "normal",
+      project: "test-project",
+      title: "Verify quality gate prompt",
+      description: "Use gate metadata",
+      handoff: "",
+      qualityGate: {
+        verifyCommands: ["node --check src/index.js"],
+        reviewRequired: true,
+        maxRepairAttempts: 1,
+        stopWhen: ["human_approval_required"],
+        allowedActions: ["local_file_edits"],
+        forbiddenActions: ["git_push_without_approval"]
+      },
+      recipe: {
+        name: "lights-out-local",
+        version: "1.0.0"
+      },
+      recipeStep: {
+        id: "verification",
+        role: "executor",
+        dependsOn: [],
+        workflowId: "workflow-gated"
+      },
+      notes: []
+    });
+
+    const result = runCli(
+      memoryDir,
+      ["dispatch", "--run", "--to", "codex", "--project", "test-project", "--limit", "1"],
+      prependPathEnv(binDir)
+    );
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.results.length, 1);
+    assert.equal(payload.results[0].maxRetries, 1);
+
+    const stdout = JSON.parse(payload.results[0].stdout);
+    assert.match(stdout.stdin, /Quality gate:/);
+    assert.match(stdout.stdin, /Recipe: lights-out-local@1\.0\.0/);
+    assert.match(stdout.stdin, /Recipe step: verification \(executor\)/);
+    assert.match(stdout.stdin, /Review required: yes/);
+    assert.match(stdout.stdin, /Max repair attempts: 1/);
+    assert.match(stdout.stdin, /Stop when: human_approval_required/);
+    assert.match(stdout.stdin, /Allowed actions: local_file_edits/);
+    assert.match(stdout.stdin, /Forbidden actions: git_push_without_approval/);
+    assert.match(stdout.stdin, /node --check src\/index\.js/);
+
+    const relay = await readJsonl(path.join(memoryDir, "state", "relay-status.jsonl"));
+    assert.equal(relay.at(-1).state, "completed");
+    assert.equal(relay.at(-1).maxRetries, 1);
+  });
+});
+
+test("dispatch retry respects task quality gate maxRepairAttempts", async () => {
+  await withHub(async (memoryDir) => {
+    const now = new Date().toISOString();
+    const dueTs = new Date(Date.now() - 1000).toISOString();
+    await appendJsonl(path.join(memoryDir, "tasks", "tasks.jsonl"), {
+      id: "task-retry-gated",
+      createdAt: now,
+      updatedAt: now,
+      completedAt: "",
+      createdBy: "test",
+      assignee: "codex",
+      status: "claimed",
+      priority: "normal",
+      project: "test-project",
+      title: "Retry gate",
+      description: "",
+      handoff: "",
+      qualityGate: {
+        maxRepairAttempts: 1
+      },
+      notes: []
+    });
+    await appendJsonl(path.join(memoryDir, "state", "relay-status.jsonl"), {
+      id: "relay-retry-gated",
+      ts: dueTs,
+      threadKey: "codex:test-project:task-retry-gated",
+      sourceKind: "task",
+      sourceId: "task-retry-gated",
+      dispatchId: "task:task-retry-gated",
+      state: "failed",
+      attempt: 1,
+      maxRetries: 3,
+      dispatchedAt: "",
+      ackTimeout: 100,
+      exitCode: 1,
+      lastError: "first attempt failed",
+      nextRetryAt: dueTs,
+      project: "test-project",
+      tool: "codex",
+      thread: "task-retry-gated"
+    });
+
+    const result = runCli(memoryDir, ["dispatch", "retry", "--run", "--to", "codex", "--project", "test-project"]);
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    const payload = JSON.parse(result.stdout);
+    assert.deepEqual(payload.jobs, []);
+  });
+});
+
+test("dispatch can hold recipe steps until dependencies complete", async () => {
+  await withHub(async (memoryDir) => {
+    const now = new Date().toISOString();
+    const recipe = {
+      name: "lights-out-local",
+      version: "1.0.0"
+    };
+    await appendJsonl(path.join(memoryDir, "tasks", "tasks.jsonl"), {
+      id: "step-implementation",
+      createdAt: now,
+      updatedAt: now,
+      completedAt: "",
+      createdBy: "test",
+      assignee: "",
+      status: "open",
+      priority: "normal",
+      project: "test-project",
+      title: "Implementation step",
+      description: "",
+      handoff: "",
+      recipe,
+      recipeStep: {
+        id: "implementation",
+        role: "executor",
+        dependsOn: [],
+        workflowId: "workflow-steps"
+      },
+      notes: []
+    });
+    await appendJsonl(path.join(memoryDir, "tasks", "tasks.jsonl"), {
+      id: "step-verification",
+      createdAt: now,
+      updatedAt: now,
+      completedAt: "",
+      createdBy: "test",
+      assignee: "codex",
+      status: "claimed",
+      priority: "normal",
+      project: "test-project",
+      title: "Verification step",
+      description: "",
+      handoff: "",
+      recipe,
+      recipeStep: {
+        id: "verification",
+        role: "executor",
+        dependsOn: ["implementation"],
+        workflowId: "workflow-steps"
+      },
+      notes: []
+    });
+
+    const held = runCli(memoryDir, [
+      "dispatch",
+      "--to",
+      "codex",
+      "--project",
+      "test-project",
+      "--respect-recipe-dependencies"
+    ]);
+    assert.equal(held.status, 0, held.stderr || held.stdout);
+    assert.deepEqual(JSON.parse(held.stdout).jobs, []);
+
+    const done = runCli(memoryDir, ["task", "done", "--id", "step-implementation", "--by", "test"]);
+    assert.equal(done.status, 0, done.stderr || done.stdout);
+
+    const released = runCli(memoryDir, [
+      "dispatch",
+      "--to",
+      "codex",
+      "--project",
+      "test-project",
+      "--respect-recipe-dependencies"
+    ]);
+    assert.equal(released.status, 0, released.stderr || released.stdout);
+    const payload = JSON.parse(released.stdout);
+    assert.equal(payload.results.length, 1);
+    assert.equal(payload.results[0].refId, "step-verification");
+  });
+});
+
 test("dispatch status resolves workflow relay sources and linked tasks", async () => {
   await withHub(async (memoryDir) => {
     const now = new Date().toISOString();

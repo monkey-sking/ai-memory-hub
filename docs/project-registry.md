@@ -2,15 +2,17 @@
 
 The project registry stores project metadata separately from durable memories, tasks, radio messages, and workflows. It gives every AI tool a shared source of truth for project names, aliases, status, relationships, and resource links.
 
-Data is stored at:
+Project changes are stored at:
 
 ```text
-%USERPROFILE%\.ai-memory\projects\projects.jsonl
+%USERPROFILE%\.ai-memory\projects\events.jsonl
 ```
+
+`projects/projects.jsonl` is a rebuilt compatibility projection for older readers and simple inspection.
 
 ## Record Shape
 
-Each JSONL record is normalized to this shape:
+Each `project.upsert` event stores a normalized project record under `record`:
 
 ```json
 {
@@ -86,4 +88,4 @@ ai-memory-hub project show <project-or-alias>
 
 If the project does not exist, create it first or ask the user when the identity is ambiguous. Prefer stable `id` values in automation and use `displayName` for UI labels.
 
-Do not manually edit `projects/projects.jsonl` during normal operation. Use the CLI or dashboard API so locking and normalization are applied.
+Do not manually edit `projects/events.jsonl` or `projects/projects.jsonl` during normal operation. Use the CLI or dashboard API so locking, normalization, event replay, and projection rebuilds are applied.

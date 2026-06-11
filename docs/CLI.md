@@ -66,7 +66,7 @@ Synchronize inbox events to memory ledger.
 ai-memory-hub sync
 ```
 
-Processes events from `inbox/events.jsonl` and updates the memory system.
+Processes events from `inbox/events.jsonl` and updates the memory system. It also rebuilds event-sourced task, workflow, and project projections from `tasks/events.jsonl`, `workflows/events.jsonl`, and `projects/events.jsonl`.
 
 ### `update`
 
@@ -393,7 +393,7 @@ ai-memory-hub workflow done --id <workflow-id> --by <tool>
 
 ## Project Registry
 
-Project metadata is stored in `projects/projects.jsonl`. The dashboard project selectors use the registry and hide `archived` and `test-*` projects by default.
+Project metadata is appended to `projects/events.jsonl`; `projects/projects.jsonl` is a rebuilt compatibility projection. The dashboard project selectors use the registry and hide `archived` and `test-*` projects by default.
 
 For the data model, API endpoints, dashboard behavior, and AI tool guidance, see [Project Registry](project-registry.md).
 

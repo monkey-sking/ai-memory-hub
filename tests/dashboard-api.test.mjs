@@ -668,6 +668,13 @@ test("dashboard workflow API supports CRUD actions and UI hooks", async () => {
       assert.equal(deleted.workflow.deletedBy, "dashboard-test");
       const workflows = await readJsonl(path.join(memoryDir, "workflows", "workflows.jsonl"));
       assert.equal(workflows.some((workflow) => workflow.id === workflowId), false);
+
+      const workflowEvents = await readJsonl(path.join(memoryDir, "workflows", "events.jsonl"));
+      assert.ok(workflowEvents.some((event) => (
+        event.type === "workflow.delete" &&
+        event.entityId === workflowId &&
+        event.reason === "workflow:delete"
+      )));
     } finally {
       await stopServer(child);
     }

@@ -594,7 +594,7 @@ test("dispatch launches resolved runner shim with prompt on stdin", async () => 
     assert.equal(payload.results[0].runRecordPath, "state/dispatch-runs.jsonl");
 
     const stdout = JSON.parse(payload.results[0].stdout);
-    assert.deepEqual(stdout.args, ["exec", "--sandbox", "danger-full-access"]);
+    assert.deepEqual(stdout.args, ["exec", "--sandbox", "danger-full-access", "--skip-git-repo-check"]);
     assert.match(stdout.stdin, /__AI_MEMORY_THREAD__: codex:test-project:task-stdin/);
     assert.match(stdout.stdin, /Autonomous safety rules:/);
     assert.match(stdout.stdin, /Do not run git push, delete files/);

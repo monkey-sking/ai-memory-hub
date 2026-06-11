@@ -43,6 +43,8 @@
       }
     };
 
+    const SIDEBAR_BREAKPOINT = 992;
+
     const iconAssetVersion = '20260606-app-icons-v2';
 
     const toolIconFiles = {
@@ -222,10 +224,12 @@
     const i18n = {
       en: {
         overview: "📊 Overview",
+        overviewNav: "Overview",
         memoryHub: "Memory Hub",
         agentRadio: "Collaboration Broadcast",
         tasksBoard: "Tasks Board",
         dispatchLogs: "⚡ Dispatch Logs",
+        dispatchLogsNav: "Dispatch Logs",
         workflowsPanel: "Workflows",
         analyticsPanel: "Analytics",
         settingsPanel: "Settings",
@@ -557,10 +561,12 @@
       },
       zh: {
         overview: "📊 概览看板",
+        overviewNav: "概览看板",
         memoryHub: "记忆中枢",
         agentRadio: "协作广播",
         tasksBoard: "任务看板",
         dispatchLogs: "⚡ 调度日志",
+        dispatchLogsNav: "调度日志",
         workflowsPanel: "工作流",
         analyticsPanel: "数据分析",
         settingsPanel: "设置",
@@ -928,6 +934,7 @@
       health: null,
       autoRefresh: localStorage.getItem('hub_auto_refresh') !== 'false',
       refreshInterval: Number(localStorage.getItem('hub_refresh_interval_ms') || 5000),
+      sidebarCollapsed: localStorage.getItem('hub_sidebar_collapsed') === 'true',
       fallbackRefreshInterval: 30000,
       realtime: {
         connected: false,
@@ -1252,7 +1259,42 @@
         el.placeholder = t(key);
       });
       document.getElementById('btnLang').textContent = state.lang === 'zh' ? '🌐 English' : '🌐 中文';
+      updateSidebarToggleButton();
       renderShortcutHelp();
+    }
+
+    function isMobileSidebarMode() {
+      return window.innerWidth <= SIDEBAR_BREAKPOINT;
+    }
+
+    function updateSidebarToggleButton() {
+      const btn = document.getElementById('sidebarToggle');
+      if (!btn) return;
+      const mobile = isMobileSidebarMode();
+      btn.style.display = 'inline-flex';
+      if (mobile) {
+        btn.textContent = '☰';
+        btn.setAttribute('aria-label', state.lang === 'zh' ? '打开侧边栏' : 'Open sidebar');
+        btn.title = state.lang === 'zh' ? '打开侧边栏' : 'Open sidebar';
+      } else if (state.sidebarCollapsed) {
+        btn.textContent = '›';
+        btn.setAttribute('aria-label', state.lang === 'zh' ? '展开侧边栏' : 'Expand sidebar');
+        btn.title = state.lang === 'zh' ? '展开侧边栏' : 'Expand sidebar';
+      } else {
+        btn.textContent = '‹';
+        btn.setAttribute('aria-label', state.lang === 'zh' ? '收起侧边栏' : 'Collapse sidebar');
+        btn.title = state.lang === 'zh' ? '收起侧边栏' : 'Collapse sidebar';
+      }
+    }
+
+    function applySidebarMode() {
+      const sidebar = document.getElementById('sidebar');
+      const mobile = isMobileSidebarMode();
+      document.body.classList.toggle('sidebar-collapsed', !mobile && state.sidebarCollapsed);
+      if (!mobile) {
+        sidebar?.classList.remove('active');
+      }
+      updateSidebarToggleButton();
     }
 
     // Helper: Escaping HTML safely
@@ -1652,7 +1694,14 @@
     }
 
     function toggleSidebar() {
-      document.getElementById('sidebar').classList.toggle('active');
+      const sidebar = document.getElementById('sidebar');
+      if (isMobileSidebarMode()) {
+        sidebar?.classList.toggle('active');
+        return;
+      }
+      state.sidebarCollapsed = !state.sidebarCollapsed;
+      localStorage.setItem('hub_sidebar_collapsed', state.sidebarCollapsed ? 'true' : 'false');
+      applySidebarMode();
     }
 
     // Realtime refresh handlers
@@ -2918,11 +2967,12 @@
         const navItem = document.createElement('div');
         navItem.className = 'nav-item';
         navItem.onclick = () => switchTab('analytics');
-        navItem.innerHTML = `<span data-i18n="analytics">${t('analytics')}</span>`;
+        navItem.title = t('analyticsPanel');
+        navItem.innerHTML = `<span class="nav-icon" aria-hidden="true">📈</span><span class="nav-label" data-i18n="analyticsPanel">${t('analyticsPanel')}</span>`;
         // Insert before Dispatch Logs if possible
         const dispatchNavItem = Array.from(navBar.querySelectorAll('.nav-item')).find(el => {
-           const span = el.querySelector('span');
-           return span && (span.getAttribute('data-i18n') === 'dispatchLogs');
+           const label = el.querySelector('.nav-label');
+           return label && (label.getAttribute('data-i18n') === 'dispatchLogsNav');
         });
         if (dispatchNavItem) {
           navBar.insertBefore(navItem, dispatchNavItem);
@@ -4054,18 +4104,13 @@
 
     // Initialization
     applyTheme(localStorage.getItem('hub_theme') || 'dark');
+    applySidebarMode();
     const lastTab = localStorage.getItem('hub_active_tab') || 'dashboard';
     switchTab(lastTab);
     
-    // Check screen width to handle mobile side menu toggle
+    // Keep the sidebar in mobile drawer mode or desktop collapsed mode.
     function checkWidth() {
-      const btn = document.getElementById('sidebarToggle');
-      if (window.innerWidth <= 992) {
-        btn.style.display = 'inline-flex';
-      } else {
-        btn.style.display = 'none';
-        document.getElementById('sidebar').classList.remove('active');
-      }
+      applySidebarMode();
     }
     window.addEventListener('resize', checkWidth);
     checkWidth();

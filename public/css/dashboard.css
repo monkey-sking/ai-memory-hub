@@ -21,6 +21,8 @@
       --shadow: 0 8px 24px rgba(0,0,0,0.5);
       --font-sans: 'Outfit', system-ui, -apple-system, sans-serif;
       --font-mono: 'JetBrains Mono', monospace;
+      --sidebar-width: 300px;
+      --sidebar-collapsed-width: 76px;
     }
 
     body[data-theme="light"] {
@@ -106,7 +108,7 @@
 
     /* Layout structure */
     aside {
-      width: 300px;
+      width: var(--sidebar-width);
       background: var(--bg-sidebar);
       border-right: 1px solid var(--border-color);
       display: flex;
@@ -117,8 +119,9 @@
       left: 0;
       z-index: 100;
       padding: 24px;
-      transition: transform 0.3s ease;
+      transition: width 0.24s ease, padding 0.24s ease, transform 0.3s ease;
       overflow-y: auto;
+      overflow-x: hidden;
       overscroll-behavior: contain;
     }
 
@@ -127,6 +130,7 @@
       align-items: center;
       gap: 12px;
       margin-bottom: 32px;
+      min-height: 36px;
     }
     .app-logo .icon {
       width: 36px;
@@ -149,6 +153,20 @@
       background: linear-gradient(to right, #fff, #c9d1d9);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+    body.sidebar-collapsed aside {
+      width: var(--sidebar-collapsed-width);
+      padding: 20px 12px;
+    }
+    body.sidebar-collapsed .app-logo {
+      justify-content: center;
+      margin-bottom: 24px;
+    }
+    body.sidebar-collapsed .app-logo h1,
+    body.sidebar-collapsed .tools-matrix {
+      display: none;
     }
 
     nav {
@@ -162,6 +180,7 @@
       align-items: center;
       gap: 12px;
       padding: 12px 16px;
+      min-height: 46px;
       border-radius: 8px;
       color: var(--text-muted);
       text-decoration: none;
@@ -169,6 +188,21 @@
       cursor: pointer;
       transition: all 0.2s;
       border: 1px solid transparent;
+      position: relative;
+      min-width: 0;
+    }
+    .nav-icon {
+      width: 20px;
+      flex: 0 0 20px;
+      display: inline-flex;
+      justify-content: center;
+      line-height: 1;
+    }
+    .nav-label {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     .nav-item:hover {
       color: var(--text-main);
@@ -191,6 +225,27 @@
     .nav-item.active .badge {
       background: var(--accent-blue);
       color: #fff;
+    }
+    body.sidebar-collapsed .nav-item {
+      justify-content: center;
+      gap: 0;
+      padding: 12px 10px;
+    }
+    body.sidebar-collapsed .nav-label {
+      display: none;
+    }
+    body.sidebar-collapsed .nav-item .badge {
+      position: absolute;
+      top: 5px;
+      right: 5px;
+      min-width: 16px;
+      height: 16px;
+      padding: 1px 4px;
+      border-radius: 8px;
+      font-size: 10px;
+      line-height: 14px;
+      text-align: center;
+      box-shadow: 0 0 0 2px var(--bg-sidebar);
     }
 
     .tools-matrix {
@@ -310,11 +365,15 @@
 
     /* Main Content Area */
     .container {
-      margin-left: 300px;
+      margin-left: var(--sidebar-width);
       flex: 1;
       min-width: 0;
       display: flex;
       flex-direction: column;
+      transition: margin-left 0.24s ease;
+    }
+    body.sidebar-collapsed .container {
+      margin-left: var(--sidebar-collapsed-width);
     }
 
     header {
@@ -460,6 +519,13 @@
     }
     button.danger:hover, .btn.danger:hover { background: var(--status-blocked); color: #fff; }
     button.small, .btn.small { padding: 6px 10px; font-size: 12px; border-radius: 6px; }
+    .sidebar-toggle {
+      width: 34px;
+      height: 34px;
+      padding: 0 !important;
+      font-size: 18px !important;
+      line-height: 1;
+    }
     button:disabled { opacity: 0.5; cursor: not-allowed; }
 
     /* Badge styles */
@@ -1660,12 +1726,47 @@
     /* Responsive */
     @media (max-width: 992px) {
       aside {
+        width: 300px;
+        padding: 24px;
         transform: translateX(-100%);
       }
       aside.active {
         transform: translateX(0);
       }
-      .container { margin-left: 0; }
+      body.sidebar-collapsed aside {
+        width: 300px;
+        padding: 24px;
+      }
+      body.sidebar-collapsed .app-logo .icon {
+        display: flex;
+      }
+      body.sidebar-collapsed .app-logo h1,
+      body.sidebar-collapsed .tools-matrix {
+        display: block;
+      }
+      body.sidebar-collapsed .app-logo {
+        justify-content: flex-start;
+        margin-bottom: 32px;
+      }
+      body.sidebar-collapsed .nav-item {
+        justify-content: flex-start;
+        gap: 12px;
+        padding: 12px 16px;
+      }
+      body.sidebar-collapsed .nav-label {
+        display: inline;
+      }
+      body.sidebar-collapsed .nav-item .badge {
+        position: static;
+        min-width: auto;
+        height: auto;
+        padding: 2px 6px;
+        font-size: 11px;
+        line-height: 1.5;
+        box-shadow: none;
+      }
+      .container,
+      body.sidebar-collapsed .container { margin-left: 0; }
       header {
         flex-wrap: wrap;
         gap: 12px;

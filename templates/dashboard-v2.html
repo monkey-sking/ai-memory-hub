@@ -49,19 +49,19 @@
       </div>
       <h1>AI Memory Hub</h1>
     </div>
-    <nav>
-      <div class="nav-item active" onclick="switchTab('dashboard')" data-i18n="overview">📊 Overview</div>
-      <div class="nav-item" onclick="switchTab('memory')">🧠 <span data-i18n="memoryHub">Memory Hub</span> <span class="badge" id="sidebarPending">0</span></div>
-      <div class="nav-item" onclick="switchTab('radio')">📻 <span data-i18n="agentRadio">Agent Radio</span> <span class="badge" id="sidebarRadio">0</span></div>
-      <div class="nav-item" onclick="switchTab('tasks')">📋 <span data-i18n="tasksBoard">Tasks Board</span> <span class="badge" id="sidebarTasks">0</span></div>
-      <div class="nav-item" onclick="switchTab('dispatch')" data-i18n="dispatchLogs">⚡ Dispatch Logs</div>
-      <div class="nav-item" onclick="switchTab('workflows')"><span data-i18n="workflowsPanel">🔄 Workflows</span> <span class="badge" id="sidebarWorkflows">0</span></div>
-      <div class="nav-item" onclick="switchTab('analytics')" data-i18n="analyticsPanel">📈 Analytics</div>
-      <div class="nav-item" onclick="switchTab('backups')" data-i18n="backupsPanel">🗄️ Backups</div>
-      <div class="nav-item" onclick="switchTab('settings')" data-i18n="settingsPanel">⚙️ Settings</div>
-      <div class="nav-item" onclick="switchTab('health')" data-i18n="healthPanel">💊 Health</div>
-      <div class="nav-item" onclick="switchTab('search')" data-i18n="searchPanel">🔍 Search</div>
-      <div class="nav-item" onclick="switchTab('tools')" data-i18n="toolsPanel">🔧 Tools</div>
+    <nav class="sidebar-nav">
+      <div class="nav-item active" onclick="switchTab('dashboard')" title="Overview"><span class="nav-icon" aria-hidden="true">📊</span><span class="nav-label" data-i18n="overviewNav">Overview</span></div>
+      <div class="nav-item" onclick="switchTab('memory')" title="Memory Hub"><span class="nav-icon" aria-hidden="true">🧠</span><span class="nav-label" data-i18n="memoryHub">Memory Hub</span> <span class="badge" id="sidebarPending">0</span></div>
+      <div class="nav-item" onclick="switchTab('radio')" title="Agent Radio"><span class="nav-icon" aria-hidden="true">📻</span><span class="nav-label" data-i18n="agentRadio">Agent Radio</span> <span class="badge" id="sidebarRadio">0</span></div>
+      <div class="nav-item" onclick="switchTab('tasks')" title="Tasks Board"><span class="nav-icon" aria-hidden="true">📋</span><span class="nav-label" data-i18n="tasksBoard">Tasks Board</span> <span class="badge" id="sidebarTasks">0</span></div>
+      <div class="nav-item" onclick="switchTab('dispatch')" title="Dispatch Logs"><span class="nav-icon" aria-hidden="true">⚡</span><span class="nav-label" data-i18n="dispatchLogsNav">Dispatch Logs</span></div>
+      <div class="nav-item" onclick="switchTab('workflows')" title="Workflows"><span class="nav-icon" aria-hidden="true">🔄</span><span class="nav-label" data-i18n="workflowsPanel">Workflows</span> <span class="badge" id="sidebarWorkflows">0</span></div>
+      <div class="nav-item" onclick="switchTab('analytics')" title="Analytics"><span class="nav-icon" aria-hidden="true">📈</span><span class="nav-label" data-i18n="analyticsPanel">Analytics</span></div>
+      <div class="nav-item" onclick="switchTab('backups')" title="Backups"><span class="nav-icon" aria-hidden="true">🗄️</span><span class="nav-label" data-i18n="backupsPanel">Backups</span></div>
+      <div class="nav-item" onclick="switchTab('settings')" title="Settings"><span class="nav-icon" aria-hidden="true">⚙️</span><span class="nav-label" data-i18n="settingsPanel">Settings</span></div>
+      <div class="nav-item" onclick="switchTab('health')" title="Health"><span class="nav-icon" aria-hidden="true">💊</span><span class="nav-label" data-i18n="healthPanel">Health</span></div>
+      <div class="nav-item" onclick="switchTab('search')" title="Search"><span class="nav-icon" aria-hidden="true">🔍</span><span class="nav-label" data-i18n="searchPanel">Search</span></div>
+      <div class="nav-item" onclick="switchTab('tools')" title="Tools"><span class="nav-icon" aria-hidden="true">🔧</span><span class="nav-label" data-i18n="toolsPanel">Tools</span></div>
     </nav>
 
     <div class="tools-matrix">
@@ -76,7 +76,7 @@
     <header>
       <div class="header-left">
         <div style="display:flex;align-items:center;gap:12px;">
-          <button id="sidebarToggle" class="btn small" style="display:none;" onclick="toggleSidebar()">☰</button>
+          <button id="sidebarToggle" class="btn small sidebar-toggle" style="display:none;" onclick="toggleSidebar()" aria-label="Toggle sidebar" title="Toggle sidebar">☰</button>
           <h2 style="margin:0;font-size:18px;font-weight:600;" data-i18n="operations">Hub Operations</h2>
         </div>
         <div class="workspace-info">

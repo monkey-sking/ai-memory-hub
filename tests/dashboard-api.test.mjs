@@ -273,6 +273,9 @@ test("dashboard serves externalized virtual-scroll assets", async () => {
       assert.match(html, /class="sidebar-nav"/);
       assert.match(html, /class="nav-icon"/);
       assert.match(html, /class="nav-label" data-i18n="overviewNav"/);
+      assert.match(html, /data-i18n="taskExecutionPanel"/);
+      assert.match(html, /id="executionStatusBars"/);
+      assert.match(html, /id="executionActiveList"/);
       assert.match(html, /id="sidebarToggle" class="btn small sidebar-toggle"/);
       assert.match(html, /onclick="toggleSidebar\(\)"/);
       assert.match(html, /id="tab-dashboard"[\s\S]*class="panel compatibility-panel"[\s\S]*id="tab-memory"/);
@@ -302,6 +305,8 @@ test("dashboard serves externalized virtual-scroll assets", async () => {
       assert.match(dashboardCss, /\.compatibility-pre/);
       assert.match(dashboardCss, /\.tool-card-copy/);
       assert.match(dashboardCss, /\.modal-tool-snippet/);
+      assert.match(dashboardCss, /\.task-execution-grid/);
+      assert.match(dashboardCss, /\.execution-bar-fill/);
       assert.match(dashboardCss, /max-width:\s*640px/);
 
       const jsRes = await fetch(`http://127.0.0.1:${port}/js/dashboard.js`);
@@ -323,6 +328,8 @@ test("dashboard serves externalized virtual-scroll assets", async () => {
       assert.match(dashboardScript, /function renderShortcutHelp/);
       assert.match(dashboardScript, /function applySettingsDraft/);
       assert.match(dashboardScript, /function applyTheme/);
+      assert.match(dashboardScript, /function renderTaskExecutionPanel/);
+      assert.match(dashboardScript, /api\('\/api\/metrics'/);
       assert.match(dashboardScript, /hub_sidebar_collapsed/);
       assert.match(dashboardScript, /function applySidebarMode/);
       assert.match(dashboardScript, /function updateSidebarToggleButton/);
@@ -337,6 +344,20 @@ test("dashboard serves externalized virtual-scroll assets", async () => {
       assert.match(dashboardScript, /api\(action\.endpoint/);
       assert.match(dashboardScript, /settingNotifications/);
       assert.doesNotMatch(dashboardScript, /echarts\.init/);
+
+      const metricsRes = await fetch(`http://127.0.0.1:${port}/api/metrics`);
+      assert.equal(metricsRes.status, 200);
+      const metrics = await metricsRes.json();
+      assert.equal(metrics.tasks.total, 0);
+      assert.deepEqual(metrics.tasks.byStatus, {});
+      assert.equal(metrics.queue.running, 0);
+      assert.ok(Array.isArray(metrics.recentFailures));
+
+      const dashboardRes = await fetch(`http://127.0.0.1:${port}/api/dashboard`);
+      assert.equal(dashboardRes.status, 200);
+      const dashboard = await dashboardRes.json();
+      assert.equal(dashboard.metrics.tasks.total, metrics.tasks.total);
+      assert.equal(dashboard.metrics.relay.successRate, metrics.relay.successRate);
 
       const traversalRes = await fetch(`http://127.0.0.1:${port}/js/%2e%2e/%2e%2e/package.json`);
       assert.notEqual(traversalRes.status, 200);
@@ -372,6 +393,8 @@ test("dashboard serves externalized virtual-scroll assets", async () => {
   assert.match(dashboardJs, /function renderShortcutHelp/);
   assert.match(dashboardJs, /function applySettingsDraft/);
   assert.match(dashboardJs, /function applyTheme/);
+  assert.match(dashboardJs, /function renderTaskExecutionPanel/);
+  assert.match(dashboardJs, /api\('\/api\/metrics'/);
   assert.match(dashboardJs, /hub_sidebar_collapsed/);
   assert.match(dashboardJs, /function applySidebarMode/);
   assert.match(dashboardJs, /function updateSidebarToggleButton/);

@@ -56,6 +56,7 @@
 ~/.ai-memory/
   ├── profile.md              # 用户配置文件
   ├── MEMORY.md              # AI 工具读取的快照
+  ├── BOOTSTRAP.md           # 启动关键记忆快照
   ├── INDEX.md               # 可读的分层索引
   ├── inbox/                 # 待同步的事件
   │   └── events.jsonl
@@ -201,6 +202,7 @@ ai-memory-hub update            # 更新到最新版本
 ```bash
 ai-memory-hub memory search <query> --project <name> --tag <tag>   # 搜索记忆
 ai-memory-hub memory snapshot --project <name> --tags a,b --limit 40 # 过滤快照视图
+ai-memory-hub resolve "@RTK.md" --from ~/.codex/AGENTS.md          # 解析缺失的 @include
 ```
 
 #### 消息总线

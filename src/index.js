@@ -27,6 +27,7 @@ const MEMORY_ACCESS_MAX_HEAT = 12;
 const MEMORY_ACCESS_MAX_STALE_PENALTY = 24;
 const CORRUPTION_MARKER_PATTERN = /[\u0000\ufffd]/;
 const TOOL_DETECTION_CACHE_TTL_MS = 30 * 1000;
+const STARTUP_MEMORY_LIMIT = 8;
 const PROJECT_STATUSES = ["active", "paused", "archived", "planning"];
 const PROJECT_VISIBLE_STATUSES = ["active", "paused", "planning"];
 const DEFAULT_TASK_SPEC_FILES = [
@@ -245,6 +246,8 @@ async function main() {
       return searchCommand(rest);
     case "snapshot":
       return snapshotCommand(rest);
+    case "resolve":
+      return resolveCommand(rest);
     case "pull":
       return pullCommand(rest);
     case "backup":
@@ -3093,20 +3096,43 @@ function buildDispatchJobs(memoryDir, { to, project, limit, force }) {
   const dispatched = force ? new Set() : readDispatchLog(memoryDir)
     .filter((item) => item.runnable && item.exitCode === 0)
     .reduce((set, item) => set.add(item.id), new Set());
-  const messages = readRadioMessages(memoryDir)
+
+  // 读取消息并按时间倒序排序（最新的在前）
+  const allMessages = readRadioMessages(memoryDir)
     .filter((message) => project ? message.project === project : true)
     .filter((message) => isDirectDispatchRadioMessage(message, to))
     .filter((message) => !isRadioLinkedToClosedSource(memoryDir, message))
-    .slice(-limit)
-    .map((message) => ({
-      id: `radio:${message.id}`,
-      kind: "radio",
-      tool: normalizeToolName(message.to),
-      project: message.project || "",
-      text: message.text,
-      refId: message.id,
-      thread: message.thread || message.id
-    }));
+    .sort((a, b) => (b.ts || "").localeCompare(a.ts || ""));
+
+  // 只取最新的limit条
+  const messages = allMessages
+    .slice(0, limit)
+    .flatMap((message) => {
+      const target = normalizeToolName(message.to);
+      if (target === "all") {
+        const tools = ["codex", "gemini", "claude"];
+        return tools
+          .filter((tool) => to ? tool === to : true)
+          .map((tool) => ({
+            id: `radio:${message.id}:${tool}`,
+            kind: "radio",
+            tool: normalizeToolName(tool),
+            project: message.project || "",
+            text: message.text,
+            refId: message.id,
+            thread: message.thread || message.id
+          }));
+      }
+      return [{
+        id: `radio:${message.id}`,
+        kind: "radio",
+        tool: target,
+        project: message.project || "",
+        text: message.text,
+        refId: message.id,
+        thread: message.thread || message.id
+      }];
+    });
   const tasks = readTasks(memoryDir)
     .filter((task) => !["done", "cancelled"].includes(task.status))
     .filter((task) => project ? task.project === project : true)
@@ -3864,14 +3890,18 @@ function syncCommand(argv) {
 
 function syncIndexedEvents(config, dryRun) {
   const inboxPath = path.join(config.memoryDir, "inbox", "events.jsonl");
-  const events = readEvents(inboxPath);
+  const eventEntries = readEventsWithLocations(inboxPath);
+  const events = eventEntries.map((entry) => entry.event);
   const backupRun = dryRun
     ? null
     : runAutomaticBackupStrategy(config, {
       trigger: "sync",
       includePreSync: events.length > 0
-    });
+  });
   if (events.length === 0) {
+    if (!dryRun) {
+      rebuildMemoryOutputs(config, readLedger(config.memoryDir));
+    }
     const projections = dryRun ? null : rebuildEventSourcedProjections(config.memoryDir);
     console.log("No pending memory events.");
     if (projections) {
@@ -3890,10 +3920,12 @@ function syncIndexedEvents(config, dryRun) {
   const knownIds = new Set(ledger.map((item) => item.localEventId || item.id).filter(Boolean));
   const newRecords = [];
 
-  for (const event of events) {
+  for (const entry of eventEntries) {
+    const event = entry.event;
     const normalizedEvent = normalizeMemoryEvent(event);
-    if (!normalizedEvent.text || looksSensitive(normalizedEvent.text)) {
-      console.log(`Skipped event ${event.id || "(no id)"}: missing text or looks sensitive.`);
+    const skipReason = getMemoryEventSkipReason(normalizedEvent);
+    if (skipReason) {
+      console.log(`Skipped event ${event.id || "(no id)"} at ${formatEventLocation(entry)}: ${skipReason}.`);
       remaining.push(event);
       continue;
     }
@@ -4055,6 +4087,36 @@ function snapshotCommand(argv) {
     limit,
     filterSummary: formatMemoryFilterSummary(filters)
   }));
+}
+
+function resolveCommand(argv) {
+  const query = positionalArgs(argv).join(" ").trim();
+  if (!query) {
+    throw new Error("Usage: ai-memory-hub resolve <name|@include|path> [--from <instruction-file>] [--limit N] [--plain]");
+  }
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const limit = getOption(argv, "--limit")
+    ? parsePositiveIntegerOption(getOption(argv, "--limit"), "--limit")
+    : 10;
+  const fromFile = getOption(argv, "--from") || getOption(argv, "--file") || "";
+  const result = resolveReference(query, config, {
+    fromFile,
+    limit
+  });
+  if (hasFlag(argv, "--plain")) {
+    if (result.best?.path) {
+      console.log(result.best.path);
+    }
+    if (!result.ok) {
+      process.exitCode = 1;
+    }
+    return;
+  }
+  console.log(JSON.stringify(result, null, 2));
+  if (!result.ok) {
+    process.exitCode = 1;
+  }
 }
 
 function pullCommand() {
@@ -6250,6 +6312,7 @@ Commands:
   index      Rebuild MEMORY.md, INDEX.md, and the structured local index.
   search     Search indexed local memories.
   snapshot   Print a filtered memory snapshot view without rewriting MEMORY.md.
+  resolve    Resolve an @include or file name from local paths and memory.
   task       Share task/todo state across AI tools.
   workflow   Coordinate planner/executor/reviewer/observer work across AI tools.
   project    Manage project metadata, aliases, resources, and archive state.
@@ -6286,6 +6349,7 @@ Examples:
   ${APP_NAME} index
   ${APP_NAME} search "git commit rules" --limit 5 --tag workflow
   ${APP_NAME} snapshot --project ai-memory-hub --tags workflow,git --limit 20
+  ${APP_NAME} resolve "@RTK.md" --from ~/.codex/AGENTS.md
   ${APP_NAME} task add "Review README task-list section" --description "Goal: check task docs. Scope: README only. Acceptance: examples are accurate." --handoff "Next: reviewer verifies wording." --from codex --project ai-memory-hub --priority high
   ${APP_NAME} task list --status active
   ${APP_NAME} task claim --id <task-id> --by claude
@@ -6413,6 +6477,11 @@ function ensureHub(memoryDir) {
   const memoryPath = path.join(memoryDir, "MEMORY.md");
   if (!fs.existsSync(memoryPath)) {
     fs.writeFileSync(memoryPath, "# Shared AI Memory\n\nNo local memories indexed yet.\n", "utf8");
+  }
+
+  const bootstrapPath = path.join(memoryDir, "BOOTSTRAP.md");
+  if (!fs.existsSync(bootstrapPath)) {
+    fs.writeFileSync(bootstrapPath, renderEmptyBootstrapSnapshot(memoryDir), "utf8");
   }
 
   const projectsFile = getProjectsFile(memoryDir);
@@ -7135,6 +7204,213 @@ function getInstallTargets(memoryDir) {
       template: readTemplate("shared-instructions.md")
     }))
   ];
+}
+
+function resolveReference(query, config, options = {}) {
+  const normalizedQuery = normalizeResolveQuery(query);
+  const fromFile = options.fromFile ? resolvePossiblyHomePath(options.fromFile) : "";
+  const records = Array.isArray(options.records)
+    ? options.records
+    : buildMemoryIndex(readLedger(config.memoryDir), config).records;
+  const candidates = [];
+  const seen = new Set();
+  const addCandidate = (candidatePath, source, evidence = "", confidence = 50) => {
+    const resolvedPath = normalizeCandidatePath(candidatePath);
+    if (!resolvedPath || !pathMatchesResolveQuery(resolvedPath, normalizedQuery)) {
+      return;
+    }
+    const key = resolvedPath.toLowerCase();
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    candidates.push({
+      path: resolvedPath,
+      exists: fs.existsSync(resolvedPath),
+      source,
+      confidence,
+      evidence: sanitizeInlineText(evidence).slice(0, 240)
+    });
+  };
+
+  for (const candidate of getDirectResolveCandidates(normalizedQuery, config, fromFile)) {
+    addCandidate(candidate.path, candidate.source, candidate.evidence, candidate.confidence);
+  }
+
+  for (const record of records) {
+    const text = String(record.text || "");
+    if (!text || !textMentionsResolveQuery(text, normalizedQuery)) {
+      continue;
+    }
+    for (const candidatePath of extractFilesystemPathCandidates(text)) {
+      addCandidate(
+        candidatePath,
+        `memory:${record.localEventId || record.id || record.source || "record"}`,
+        text,
+        70 + Math.min(25, Number(record.importance || 0) / 4)
+      );
+    }
+  }
+
+  candidates.sort((a, b) =>
+    Number(b.exists) - Number(a.exists) ||
+    Number(b.confidence || 0) - Number(a.confidence || 0) ||
+    a.path.localeCompare(b.path)
+  );
+  const limited = candidates.slice(0, Number(options.limit || 10));
+  return {
+    ok: limited.length > 0,
+    query,
+    normalizedQuery,
+    fromFile,
+    best: limited[0] || null,
+    candidates: limited
+  };
+}
+
+function getDirectResolveCandidates(normalizedQuery, config, fromFile = "") {
+  const home = os.homedir();
+  const roots = [
+    process.cwd(),
+    home,
+    path.join(home, ".codex"),
+    path.join(home, ".claude"),
+    path.join(home, ".gemini"),
+    config.memoryDir,
+    path.join(config.memoryDir, "tools"),
+    projectRoot()
+  ];
+  const candidates = [];
+  const add = (candidatePath, source, confidence = 50) => {
+    candidates.push({ path: candidatePath, source, confidence, evidence: source });
+  };
+  if (fromFile) {
+    add(path.resolve(path.dirname(fromFile), normalizedQuery), `relative:${fromFile}`, 90);
+  }
+  if (path.isAbsolute(normalizedQuery)) {
+    add(normalizedQuery, "absolute-path", 95);
+  }
+  for (const root of roots) {
+    add(path.resolve(root, normalizedQuery), `root:${root}`, root === home ? 80 : 65);
+  }
+  return candidates;
+}
+
+function normalizeResolveQuery(query) {
+  const clean = String(query || "").trim().replace(/^@+/, "");
+  return clean.replace(/^["']|["']$/g, "");
+}
+
+function textMentionsResolveQuery(text, normalizedQuery) {
+  const basename = path.basename(normalizedQuery).toLowerCase();
+  const normalizedText = normalizeSearchText(text);
+  return normalizedText.includes(normalizeSearchText(normalizedQuery)) ||
+    (basename && normalizedText.includes(basename));
+}
+
+function extractFilesystemPathCandidates(text) {
+  const source = String(text || "");
+  const matches = [
+    ...(source.match(/[A-Za-z]:\\[^\s`'")\]}，。；;]+/g) || []),
+    ...(source.match(/~[\\/][^\s`'")\]}，。；;]+/g) || [])
+  ];
+  return matches.map((item) => item.replace(/[.,，。；;:]+$/g, ""));
+}
+
+function normalizeCandidatePath(candidatePath) {
+  const clean = resolvePossiblyHomePath(candidatePath);
+  if (!clean) {
+    return "";
+  }
+  return path.isAbsolute(clean) ? path.normalize(clean) : path.resolve(clean);
+}
+
+function resolvePossiblyHomePath(value) {
+  const clean = String(value || "").trim().replace(/^["']|["']$/g, "");
+  if (!clean) {
+    return "";
+  }
+  if (clean === "~") {
+    return os.homedir();
+  }
+  if (clean.startsWith("~/") || clean.startsWith("~\\")) {
+    return path.join(os.homedir(), clean.slice(2));
+  }
+  return clean;
+}
+
+function pathMatchesResolveQuery(candidatePath, normalizedQuery) {
+  if (!normalizedQuery) {
+    return false;
+  }
+  const candidate = path.normalize(candidatePath).toLowerCase();
+  const query = path.normalize(normalizedQuery).toLowerCase();
+  if (candidate === query || candidate.endsWith(`${path.sep}${query}`)) {
+    return true;
+  }
+  return path.basename(candidate).toLowerCase() === path.basename(query).toLowerCase();
+}
+
+function analyzeInstructionIncludes(config, options = {}) {
+  const records = Array.isArray(options.records) ? options.records : buildMemoryIndex(readLedger(config.memoryDir), config).records;
+  const files = getInstructionIncludeFiles(config.memoryDir);
+  const diagnostics = {
+    filesScanned: 0,
+    includesChecked: 0,
+    missing: []
+  };
+  for (const file of files) {
+    if (!fs.existsSync(file)) {
+      continue;
+    }
+    diagnostics.filesScanned += 1;
+    const text = fs.readFileSync(file, "utf8");
+    for (const include of extractInstructionIncludes(text)) {
+      diagnostics.includesChecked += 1;
+      const expectedPath = path.resolve(path.dirname(file), normalizeResolveQuery(include));
+      if (fs.existsSync(expectedPath)) {
+        continue;
+      }
+      const resolved = resolveReference(include, config, {
+        fromFile: file,
+        records,
+        limit: 5
+      });
+      diagnostics.missing.push({
+        file,
+        include,
+        expectedPath,
+        suggestions: resolved.candidates.filter((candidate) => candidate.exists).slice(0, 5)
+      });
+    }
+  }
+  diagnostics.ok = diagnostics.missing.length === 0;
+  return diagnostics;
+}
+
+function getInstructionIncludeFiles(memoryDir) {
+  const targets = [
+    ...getInstallTargets(memoryDir),
+    ...getLocalInstallTargets(process.cwd(), memoryDir)
+  ];
+  const files = new Set();
+  for (const target of targets) {
+    if (target.file) {
+      files.add(path.resolve(target.file));
+    }
+  }
+  return [...files].sort();
+}
+
+function extractInstructionIncludes(text) {
+  const includes = [];
+  for (const line of String(text || "").split(/\r?\n/)) {
+    const match = line.match(/^\s*@([A-Za-z0-9_.-][A-Za-z0-9_.\\/-]*)\s*$/);
+    if (match) {
+      includes.push(`@${match[1]}`);
+    }
+  }
+  return [...new Set(includes)];
 }
 
 function renderDashboard() {
@@ -9736,6 +10012,7 @@ function getDaysSinceTimestamp(value) {
 function rebuildMemoryOutputs(config, ledger) {
   const index = buildMemoryIndex(ledger, config);
   fs.writeFileSync(path.join(config.memoryDir, "MEMORY.md"), renderMemorySnapshot(index, config), "utf8");
+  fs.writeFileSync(path.join(config.memoryDir, "BOOTSTRAP.md"), renderBootstrapSnapshot(index, config), "utf8");
   fs.writeFileSync(path.join(config.memoryDir, "INDEX.md"), renderIndexMarkdown(index), "utf8");
   writeJson(path.join(config.memoryDir, "memories", "index.json"), index);
 }
@@ -9941,11 +10218,13 @@ function renderMemorySnapshot(index, config, options = {}) {
   const recentLimit = snapshotLimits.recentLimit;
   const totalLimit = Number(options.limit || snapshotLimits.snapshotLimit || 0);
   const visibleRecords = index.records.filter((item) => !item.superseded);
+  const startup = selectStartupMemoryRecords(visibleRecords, config);
+  const startupKeys = new Set(startup.map(getMemoryRecordStableKey).filter(Boolean));
   const allCore = visibleRecords
-    .filter((item) => item.layer === "core")
+    .filter((item) => item.layer === "core" && !startupKeys.has(getMemoryRecordStableKey(item)))
     .sort(sortByImportance);
   const allRecent = [...visibleRecords]
-    .filter((item) => item.layer === "working")
+    .filter((item) => item.layer === "working" && !startupKeys.has(getMemoryRecordStableKey(item)))
     .sort((a, b) => String(b.ts || "").localeCompare(String(a.ts || "")));
   let core = allCore.slice(0, coreLimit);
   let recent = allRecent.slice(0, recentLimit);
@@ -9963,7 +10242,7 @@ function renderMemorySnapshot(index, config, options = {}) {
     "",
     "Use `ai-memory-hub search <query> --limit 10` when task-specific context is needed.",
     "",
-    "## Core Memory",
+    "Startup-critical records are repeated in `BOOTSTRAP.md` and pinned below.",
     ""
   ];
   if (options.filterSummary) {
@@ -9976,6 +10255,17 @@ function renderMemorySnapshot(index, config, options = {}) {
     return lines.join("\n");
   }
 
+  if (startup.length > 0) {
+    lines.push("## Startup Essentials");
+    lines.push("");
+    for (const memory of startup) {
+      lines.push(renderMemoryLine(memory));
+    }
+    lines.push("");
+  }
+
+  lines.push("## Core Memory");
+  lines.push("");
   for (const memory of core) {
     lines.push(renderMemoryLine(memory));
   }
@@ -9993,6 +10283,72 @@ function renderMemorySnapshot(index, config, options = {}) {
   lines.push(`- Top projects: ${index.projects.slice(0, 8).map((item) => `${item.key}(${item.count})`).join(", ") || "none"}.`);
   lines.push("");
   return lines.join("\n");
+}
+
+function renderEmptyBootstrapSnapshot(memoryDir) {
+  return [
+    "# AI Memory Hub Bootstrap",
+    "",
+    `Memory directory: \`${memoryDir}\`.`,
+    "",
+    "No startup-critical memories have been indexed yet.",
+    "",
+    "If an instruction include such as `@RTK.md` is missing, run `ai-memory-hub resolve \"@RTK.md\"` and then use the resolved local path when reading the include.",
+    ""
+  ].join("\n");
+}
+
+function renderBootstrapSnapshot(index, config) {
+  const startup = selectStartupMemoryRecords(index.records || [], config);
+  const lines = [
+    "# AI Memory Hub Bootstrap",
+    "",
+    `Rebuilt locally at ${index.stats.rebuiltAt}.`,
+    "",
+    "This file repeats startup-critical records that should remain reachable even when `MEMORY.md` is compacted.",
+    "",
+    "If an instruction include such as `@RTK.md` is missing, run `ai-memory-hub resolve \"@RTK.md\"` and then use the resolved local path when reading the include.",
+    "",
+    "## Startup Essentials",
+    ""
+  ];
+  if (startup.length === 0) {
+    lines.push("- No startup-critical memories found.");
+  } else {
+    for (const memory of startup) {
+      lines.push(renderMemoryLine(memory));
+    }
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+
+function selectStartupMemoryRecords(records = [], _config = {}) {
+  return [...records]
+    .filter((record) => !record.superseded && isStartupMemoryRecord(record))
+    .sort(sortByImportance)
+    .slice(0, STARTUP_MEMORY_LIMIT);
+}
+
+function isStartupMemoryRecord(record) {
+  const tags = normalizeList(record.tags?.length ? record.tags : record.metadata?.tags);
+  const scope = normalizeMemoryScope(record.scope || record.metadata?.scope || "");
+  const kind = normalizeMemoryKind(record.kind || record.metadata?.kind || "note");
+  const text = String(record.text || "");
+  if (tags.some((tag) => ["startup", "bootstrap", "boot", "agent-startup", "critical", "pinned"].includes(tag))) {
+    return true;
+  }
+  if (["startup", "bootstrap", "agent-startup"].includes(scope)) {
+    return true;
+  }
+  if (!["preference", "workflow", "correction", "project", "lesson", "reference"].includes(kind)) {
+    return false;
+  }
+  return /RTK\.md|AGENTS\.md|CLAUDE\.md|GEMINI\.md|@include|@引用|Shared AI Memory|Shared Agent Radio|Shared Task List|Shared Workflows|ai-memory-hub search|inbox\/events\.jsonl|memories\/ledger\.jsonl|MEMORY\.md|共享记忆|共同记忆|启动|启动关键|指令/i.test(text);
+}
+
+function getMemoryRecordStableKey(record) {
+  return getMemoryPrimaryKey(record) || record.id || record.localEventId || record.text || "";
 }
 
 function resolveSnapshotLimits(config = {}) {
@@ -10156,6 +10512,18 @@ function renderMemoryHealthReport(config, index, options = {}) {
     }
   }
 
+  if (analysis.includeDiagnostics?.missing?.length > 0) {
+    lines.push("");
+    lines.push("## Instruction Include Diagnostics");
+    lines.push("");
+    for (const item of analysis.includeDiagnostics.missing.slice(0, analysis.issueLimit)) {
+      const suggestions = item.suggestions.length
+        ? ` Suggestions: ${item.suggestions.map((candidate) => `\`${candidate.path}\``).join(", ")}.`
+        : " No existing local suggestions found.";
+      lines.push(`- ${item.include} in \`${item.file}\` is missing at \`${item.expectedPath}\`.${suggestions}`);
+    }
+  }
+
   lines.push("");
   return lines.join("\n");
 }
@@ -10172,6 +10540,7 @@ function analyzeMemoryHealth(config, index, options = {}) {
   const storage = getMemoryStorageSummary(config.memoryDir);
   const growthTrend = getMemoryGrowthTrend(records, 14);
   const pendingInbox = countJsonlLines(path.join(config.memoryDir, "inbox", "events.jsonl"));
+  const includeDiagnostics = analyzeInstructionIncludes(config, { records });
   const issues = [];
   const repairSuggestions = [];
 
@@ -10227,6 +10596,20 @@ function analyzeMemoryHealth(config, index, options = {}) {
       })
     });
   }
+  if (includeDiagnostics.missing.length > 0) {
+    const first = includeDiagnostics.missing[0];
+    addIssue({
+      level: "medium",
+      title: "Missing instruction includes",
+      detail: `${includeDiagnostics.missing.length} @include reference(s) are missing from tool instruction files. First missing include: ${first.include} in ${first.file}.`,
+      action: createHealthRepairAction({
+        id: "resolve-missing-instruction-include",
+        label: "Resolve missing instruction include",
+        command: `ai-memory-hub resolve "${first.include}" --from "${first.file}"`,
+        detail: "Resolve the missing include from local candidate paths and shared memory before assuming the referenced instruction file is unavailable."
+      })
+    });
+  }
   if (storage.backupsBytes > storage.ledgerBytes && storage.backupsBytes > 0) {
     addIssue({
       level: "low",
@@ -10244,7 +10627,8 @@ function analyzeMemoryHealth(config, index, options = {}) {
   const score = Math.max(0, 100
     - Math.min(40, Math.round(duplicateRate * 200))
     - Math.min(35, corruptedRecords.length * 8)
-    - Math.min(10, pendingInbox));
+    - Math.min(10, pendingInbox)
+    - Math.min(10, includeDiagnostics.missing.length * 3));
 
   return {
     generatedAt: new Date().toISOString(),
@@ -10256,6 +10640,7 @@ function analyzeMemoryHealth(config, index, options = {}) {
     duplicateRecords,
     duplicateRate,
     corruptedRecords,
+    includeDiagnostics,
     storage,
     growthTrend,
     issues,
@@ -10330,7 +10715,17 @@ function formatHealthAnalysisForDashboard(analysis) {
     corruptedRecords: analysis.corruptedRecords.slice(0, issueLimit).map((record) => ({
       pointer: formatMemoryRecordPointer(record),
       text: truncateText(record.text, 160)
-    }))
+    })),
+    includeDiagnostics: {
+      filesScanned: analysis.includeDiagnostics?.filesScanned || 0,
+      includesChecked: analysis.includeDiagnostics?.includesChecked || 0,
+      missing: (analysis.includeDiagnostics?.missing || []).slice(0, issueLimit).map((item) => ({
+        file: item.file,
+        include: item.include,
+        expectedPath: item.expectedPath,
+        suggestions: item.suggestions
+      }))
+    }
   };
 }
 
@@ -11120,6 +11515,7 @@ function writeInboxEvents(inboxPath, events) {
 function getBackupFileCatalog(memoryDir) {
   return [
     { name: "MEMORY.md", target: path.join(memoryDir, "MEMORY.md"), kind: "snapshot" },
+    { name: "BOOTSTRAP.md", target: path.join(memoryDir, "BOOTSTRAP.md"), kind: "snapshot" },
     { name: "profile.md", target: path.join(memoryDir, "profile.md"), kind: "profile" },
     { name: "inbox-events.jsonl", target: path.join(memoryDir, "inbox", "events.jsonl"), kind: "inbox" },
     { name: "memory-ledger.jsonl", target: path.join(memoryDir, "memories", "ledger.jsonl"), kind: "memory" },
@@ -11838,6 +12234,50 @@ function normalizeMemoryEvent(event) {
   };
 }
 
+function getMemoryEventSkipReason(normalizedEvent) {
+  if (!normalizedEvent.text) {
+    return "missing text";
+  }
+  if (looksSensitive(normalizedEvent.text)) {
+    return "looks sensitive";
+  }
+  return "";
+}
+
+function readEventsWithLocations(file) {
+  if (!fs.existsSync(file)) {
+    return [];
+  }
+  return fs.readFileSync(file, "utf8")
+    .split(/\r?\n/)
+    .map((line, index) => ({ line, lineNumber: index + 1 }))
+    .filter((entry) => entry.line.trim())
+    .map((entry) => ({
+      file,
+      lineNumber: entry.lineNumber,
+      event: parseJsonlLine(entry.line, file, entry.lineNumber)
+    }));
+}
+
+function parseJsonlLine(line, _file = "", _lineNumber = 0) {
+  const raw = String(line || "").trim();
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return {
+      id: createId(raw),
+      ts: new Date().toISOString(),
+      source: "raw",
+      text: raw,
+      metadata: { kind: "raw" }
+    };
+  }
+}
+
+function formatEventLocation(entry) {
+  return `${entry.file}:${entry.lineNumber}`;
+}
+
 function readEvents(file) {
   if (!fs.existsSync(file)) {
     return [];
@@ -11846,19 +12286,7 @@ function readEvents(file) {
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
-    .map((line) => {
-      try {
-        return JSON.parse(line);
-      } catch {
-        return {
-          id: createId(line),
-          ts: new Date().toISOString(),
-          source: "raw",
-          text: line,
-          metadata: { kind: "raw" }
-        };
-      }
-    });
+    .map((line) => parseJsonlLine(line, file));
 }
 
 function createRadioMessage({ from, to, type, text, thread, replyTo, project }) {

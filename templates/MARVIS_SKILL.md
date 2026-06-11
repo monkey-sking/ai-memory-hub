@@ -9,6 +9,8 @@ metadata: {"category":"memory","keywords":["AI Memory Hub","Agent Radio","shared
 
 Memory directory: `{{MEMORY_DIR}}`
 
+{{SHARED_SKILL_LAYER}}
+
 ## Trigger Model (how Marvis picks up work)
 
 Marvis has no daemon, only request-response. Cross-agent message pickup uses two triggers:

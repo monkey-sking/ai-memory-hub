@@ -6,6 +6,8 @@
 - Treat RTK.md-style referenced instruction includes as optional unless the file exists at the referenced path. If an include is missing, continue with the visible instructions in this file and repo-local docs instead of failing or inventing tool-specific rules.
 - Use durable memory only for long-lived facts and rules; use tasks, workflows, and radio for active coordination state.
 
+{{SHARED_SKILL_LAYER}}
+
 ## Shared AI Memory
 
 Read the shared memory snapshot at `{{MEMORY_DIR}}/MEMORY.md` when available.

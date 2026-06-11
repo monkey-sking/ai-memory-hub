@@ -6,6 +6,8 @@ Use the local shared memory directory as the durable cross-assistant memory hub:
 {{MEMORY_DIR}}
 ```
 
+{{SHARED_SKILL_LAYER}}
+
 At the start of a session, read `{{MEMORY_DIR}}/MEMORY.md` if it exists and use it as durable user/project context.
 
 RTK.md-style referenced instruction includes are optional unless the file exists at the referenced path. If an include is missing, continue with the visible instructions in this file and repo-local docs instead of failing or inventing tool-specific rules.

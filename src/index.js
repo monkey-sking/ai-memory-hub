@@ -27,6 +27,8 @@ const MEMORY_ACCESS_MAX_HEAT = 12;
 const MEMORY_ACCESS_MAX_STALE_PENALTY = 24;
 const CORRUPTION_MARKER_PATTERN = /[\u0000\ufffd]/;
 const TOOL_DETECTION_CACHE_TTL_MS = 30 * 1000;
+const PROJECT_STATUSES = ["active", "paused", "archived", "planning"];
+const PROJECT_VISIBLE_STATUSES = ["active", "paused", "planning"];
 const DEFAULT_TASK_SPEC_FILES = [
   ".tasks.json",
   "task-specs.json",
@@ -198,6 +200,9 @@ async function main() {
       return memoryCommand(rest);
     case "radio":
       return radioCommand(rest);
+    case "project":
+    case "projects":
+      return projectCommand(rest);
     case "task":
     case "todo":
       return taskCommand(rest);
@@ -431,6 +436,7 @@ function getStatusObject() {
   const activeTasks = tasks.filter((task) => !["done", "cancelled"].includes(task.status)).length;
   const workflows = readWorkflows(memoryDir);
   const activeWorkflows = workflows.filter((workflow) => !["done", "cancelled"].includes(workflow.status)).length;
+  const projects = readProjects(memoryDir);
   const relayLatest = Object.values(readLatestRelayStatusByThread(memoryDir));
   const backups = countBackupDirs(memoryDir);
   const lock = readLockStatus(memoryDir);
@@ -462,6 +468,14 @@ function getStatusObject() {
       review: workflows.filter((workflow) => workflow.status === "review").length,
       blocked: workflows.filter((workflow) => workflow.status === "blocked").length,
       done: workflows.filter((workflow) => workflow.status === "done").length
+    },
+    projects: {
+      total: projects.length,
+      visible: projects.filter(isProjectVisible).length,
+      active: projects.filter((project) => project.status === "active").length,
+      paused: projects.filter((project) => project.status === "paused").length,
+      planning: projects.filter((project) => project.status === "planning").length,
+      archived: projects.filter((project) => project.status === "archived").length
     },
     relay: {
       totalThreads: relayLatest.length,
@@ -719,6 +733,209 @@ function radioPromoteCommand(argv) {
     promotedAt: new Date().toISOString()
   });
   console.log(`Promoted radio message to memory inbox: ${message.id}`);
+}
+
+function projectCommand(argv) {
+  const action = argv[0] || "list";
+  const actionArgs = argv.slice(1);
+  switch (action) {
+    case "list":
+      return projectListCommand(actionArgs);
+    case "add":
+    case "create":
+      return projectAddCommand(actionArgs);
+    case "update":
+      return projectUpdateCommand(actionArgs);
+    case "show":
+      return projectShowCommand(actionArgs);
+    case "alias":
+      return projectAliasCommand(actionArgs);
+    case "relate":
+      return projectRelateCommand(actionArgs);
+    case "delete":
+    case "archive":
+      return projectArchiveCommand(actionArgs);
+    case "migrate":
+      return projectMigrateCommand(actionArgs);
+    default:
+      throw new Error("Usage: ai-memory-hub project <list|add|update|show|alias|relate|archive|migrate> ...");
+  }
+}
+
+function projectListCommand(argv) {
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const status = getOption(argv, "--status") || "all";
+  const includeHidden = hasFlag(argv, "--include-hidden");
+  const projects = filterProjects(readProjects(config.memoryDir), { status, includeHidden });
+  console.log(JSON.stringify(projects, null, 2));
+}
+
+function projectAddCommand(argv) {
+  const id = positionalArgs(argv)[0] || getOption(argv, "--id") || "";
+  const name = getOption(argv, "--name") || positionalArgs(argv).slice(1).join(" ").trim();
+  if (!id || !name) {
+    throw new Error("Usage: ai-memory-hub project add <id> --name <name> [--status active] [--type game] [--description text]");
+  }
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  return withHubLock(config.memoryDir, "project-add", () => {
+    const projects = readProjects(config.memoryDir);
+    if (findProjectIndex(projects, id) !== -1) {
+      throw new Error(`Project already exists: ${id}`);
+    }
+    const project = createProject({
+      id,
+      name,
+      displayName: getOption(argv, "--display-name") || name,
+      status: getOption(argv, "--status") || "active",
+      type: getOption(argv, "--type") || "",
+      description: getOption(argv, "--description") || "",
+      aliases: parseProjectListOption(getOption(argv, "--aliases") || getOption(argv, "--alias")),
+      resources: parseProjectResourceOptions(argv)
+    });
+    projects.push(project);
+    writeProjects(config.memoryDir, projects);
+    console.log(JSON.stringify(project, null, 2));
+  }, config.sync.lockStaleMs);
+}
+
+function projectUpdateCommand(argv) {
+  const id = getOption(argv, "--id") || positionalArgs(argv)[0] || "";
+  if (!id) {
+    throw new Error("Usage: ai-memory-hub project update <id> [--name text] [--display-name text] [--status active] [--type game] [--description text]");
+  }
+  const patch = {};
+  for (const [flag, key] of [
+    ["--name", "name"],
+    ["--display-name", "displayName"],
+    ["--status", "status"],
+    ["--type", "type"],
+    ["--description", "description"]
+  ]) {
+    const value = getOption(argv, flag);
+    if (value !== "") {
+      patch[key] = value;
+    }
+  }
+  const resources = parseProjectResourceOptions(argv);
+  if (Object.keys(resources).length > 0) {
+    patch.resources = resources;
+  }
+  if (Object.keys(patch).length === 0) {
+    throw new Error("project update requires at least one editable field");
+  }
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  return withHubLock(config.memoryDir, "project-update", () => {
+    const project = updateProject(config.memoryDir, id, (current) => ({
+      ...current,
+      ...patch,
+      resources: patch.resources ? { ...(current.resources || {}), ...patch.resources } : current.resources
+    }));
+    console.log(JSON.stringify(project, null, 2));
+  }, config.sync.lockStaleMs);
+}
+
+function projectShowCommand(argv) {
+  const id = getOption(argv, "--id") || positionalArgs(argv)[0] || "";
+  if (!id) {
+    throw new Error("Usage: ai-memory-hub project show <id-or-alias>");
+  }
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const project = findProject(readProjects(config.memoryDir), id);
+  if (!project) {
+    throw new Error(`Project not found: ${id}`);
+  }
+  console.log(JSON.stringify(project, null, 2));
+}
+
+function projectAliasCommand(argv) {
+  const [id, alias] = positionalArgs(argv);
+  if (!id || !alias) {
+    throw new Error("Usage: ai-memory-hub project alias <id-or-alias> <alias>");
+  }
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  return withHubLock(config.memoryDir, "project-alias", () => {
+    const project = updateProject(config.memoryDir, id, (current) => ({
+      ...current,
+      aliases: uniqueStringList([...(current.aliases || []), alias])
+    }));
+    console.log(JSON.stringify(project, null, 2));
+  }, config.sync.lockStaleMs);
+}
+
+function projectRelateCommand(argv) {
+  const id = getOption(argv, "--id") || positionalArgs(argv)[0] || "";
+  const basedOn = getOption(argv, "--based-on") || getOption(argv, "--parent") || "";
+  const relation = getOption(argv, "--relation") || "";
+  if (!id || !basedOn || !relation) {
+    throw new Error("Usage: ai-memory-hub project relate <id-or-alias> --based-on <parent-id> --relation <type>");
+  }
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  return withHubLock(config.memoryDir, "project-relate", () => {
+    const parent = findProject(readProjects(config.memoryDir), basedOn);
+    const project = updateProject(config.memoryDir, id, (current) => ({
+      ...current,
+      metadata: {
+        ...(current.metadata || {}),
+        basedOn: parent?.id || basedOn,
+        relation
+      }
+    }));
+    console.log(JSON.stringify(project, null, 2));
+  }, config.sync.lockStaleMs);
+}
+
+function projectArchiveCommand(argv) {
+  const id = getOption(argv, "--id") || positionalArgs(argv)[0] || "";
+  if (!id) {
+    throw new Error("Usage: ai-memory-hub project archive <id-or-alias> [--by tool]");
+  }
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  return withHubLock(config.memoryDir, "project-archive", () => {
+    const now = new Date().toISOString();
+    const project = updateProject(config.memoryDir, id, (current) => ({
+      ...current,
+      status: "archived",
+      archivedAt: now,
+      archivedBy: getOption(argv, "--by") || getOption(argv, "--from") || "manual"
+    }));
+    console.log(JSON.stringify(project, null, 2));
+  }, config.sync.lockStaleMs);
+}
+
+function projectMigrateCommand(argv) {
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const apply = hasFlag(argv, "--apply");
+  const before = readProjects(config.memoryDir);
+  const migrated = mergeSeedProjects(before);
+  if (!apply) {
+    console.log(JSON.stringify({
+      apply,
+      existing: before.length,
+      after: migrated.length,
+      added: migrated.length - before.length,
+      hint: "Pass --apply to write missing seed projects."
+    }, null, 2));
+    return;
+  }
+  return withHubLock(config.memoryDir, "project-migrate", () => {
+    const current = readProjects(config.memoryDir);
+    const currentMigrated = mergeSeedProjects(current);
+    writeProjects(config.memoryDir, currentMigrated);
+    console.log(JSON.stringify({
+      apply,
+      existing: current.length,
+      after: currentMigrated.length,
+      added: currentMigrated.length - current.length
+    }, null, 2));
+  }, config.sync.lockStaleMs);
 }
 
 function sessionCommand(argv) {
@@ -4235,6 +4452,56 @@ function appCommand(argv) {
       if (req.method === "GET" && url.pathname === "/api/workflows") {
         return sendJson(res, getDashboardWorkflows(config.memoryDir));
       }
+      if (req.method === "GET" && url.pathname === "/api/projects") {
+        return sendJson(res, getDashboardProjects(config.memoryDir, {
+          status: url.searchParams.get("status") || "all",
+          includeHidden: url.searchParams.get("includeHidden") === "1"
+        }));
+      }
+      if (req.method === "POST" && url.pathname === "/api/projects") {
+        const body = await readRequestJson(req);
+        if (!body.id || typeof body.id !== "string") {
+          return sendJson(res, { error: "id is required" }, 400);
+        }
+        if (!body.name || typeof body.name !== "string") {
+          return sendJson(res, { error: "name is required" }, 400);
+        }
+        let project;
+        withHubLock(config.memoryDir, "project-create", () => {
+          project = createDashboardProject(config.memoryDir, body);
+        }, config.sync.lockStaleMs);
+        broadcastDashboardUpdate("project:create");
+        return sendJson(res, { ok: true, project, projects: getDashboardProjects(config.memoryDir), status: getStatusObject() });
+      }
+      const projectApiMatch = url.pathname.match(/^\/api\/projects\/([^/]+)$/);
+      if (projectApiMatch) {
+        const projectId = decodeURIComponent(projectApiMatch[1]);
+        if (req.method === "GET") {
+          const project = findProject(readProjects(config.memoryDir), projectId);
+          if (!project) {
+            return sendJson(res, { error: "project not found" }, 404);
+          }
+          return sendJson(res, { project });
+        }
+        if (req.method === "PATCH") {
+          const body = await readRequestJson(req);
+          let project;
+          withHubLock(config.memoryDir, "project-update", () => {
+            project = updateDashboardProject(config.memoryDir, projectId, body);
+          }, config.sync.lockStaleMs);
+          broadcastDashboardUpdate("project:update");
+          return sendJson(res, { ok: true, project, projects: getDashboardProjects(config.memoryDir), status: getStatusObject() });
+        }
+        if (req.method === "DELETE") {
+          const body = await readRequestJson(req);
+          let project;
+          withHubLock(config.memoryDir, "project-archive", () => {
+            project = archiveDashboardProject(config.memoryDir, projectId, body);
+          }, config.sync.lockStaleMs);
+          broadcastDashboardUpdate("project:archive");
+          return sendJson(res, { ok: true, project, projects: getDashboardProjects(config.memoryDir), status: getStatusObject() });
+        }
+      }
       if (req.method === "POST" && url.pathname === "/api/workflows") {
         const body = await readRequestJson(req);
         if (!body.title || typeof body.title !== "string") {
@@ -4738,6 +5005,7 @@ function getDashboardSnapshot(memoryDir) {
     radio: getDashboardRadio(memoryDir),
     tasks: getDashboardTasks(memoryDir),
     workflows: getDashboardWorkflows(memoryDir),
+    projects: getDashboardProjects(memoryDir),
     dispatch: getDashboardDispatch(memoryDir),
     metrics: calculateMetrics(memoryDir),
     tools: getDashboardTools(memoryDir),
@@ -4775,6 +5043,98 @@ function getDashboardWorkflows(memoryDir) {
       .sort((a, b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")))
       .slice(0, 100)
   };
+}
+
+function getDashboardProjects(memoryDir, { status = "all", includeHidden = false } = {}) {
+  const projects = filterProjects(readProjects(memoryDir), { status, includeHidden });
+  const visibleProjects = filterProjects(projects, { status: "visible" });
+  const registryIds = new Set(projects.map((project) => project.id));
+  const registryAliases = new Set(projects.flatMap((project) => [project.name, project.displayName, ...(project.aliases || [])].map((value) => String(value || "").toLowerCase())));
+  const referenced = [
+    ...readTasks(memoryDir).map((item) => item.project),
+    ...readRadioMessages(memoryDir).map((item) => item.project),
+    ...readWorkflows(memoryDir).map((item) => item.project)
+  ].map((item) => String(item || "").trim()).filter(Boolean);
+  const unregisteredProjects = uniqueStringList(referenced)
+    .filter((project) => !registryIds.has(project) && !registryAliases.has(project.toLowerCase()) && !isHiddenProjectId(project))
+    .sort((a, b) => a.localeCompare(b, "zh-Hans"));
+  return {
+    projects,
+    visibleProjects,
+    unregisteredProjects,
+    statuses: PROJECT_STATUSES,
+    visibleStatuses: PROJECT_VISIBLE_STATUSES
+  };
+}
+
+function createDashboardProject(memoryDir, body) {
+  const projects = readProjects(memoryDir);
+  if (findProjectIndex(projects, body.id) !== -1) {
+    throw new Error(`Project already exists: ${body.id}`);
+  }
+  const project = createProject({
+    id: body.id,
+    name: body.name,
+    displayName: body.displayName || body.display_name || body.name,
+    status: body.status || "active",
+    type: body.type || "",
+    description: body.description || "",
+    metadata: isPlainObject(body.metadata) ? body.metadata : {},
+    aliases: Array.isArray(body.aliases) ? body.aliases : parseProjectListOption(body.aliases),
+    resources: isPlainObject(body.resources) ? body.resources : {}
+  });
+  projects.push(project);
+  writeProjects(memoryDir, projects);
+  return project;
+}
+
+function updateDashboardProject(memoryDir, id, body) {
+  if (!isPlainObject(body)) {
+    throw new Error("project update body must be an object");
+  }
+  const patch = {};
+  for (const key of ["name", "displayName", "type", "description"]) {
+    if (Object.prototype.hasOwnProperty.call(body, key)) {
+      patch[key] = String(body[key] || "").trim();
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(body, "status")) {
+    patch.status = normalizeProjectStatus(body.status);
+  }
+  if (Object.prototype.hasOwnProperty.call(body, "metadata")) {
+    if (!isPlainObject(body.metadata)) {
+      throw new Error("metadata must be an object");
+    }
+    patch.metadata = body.metadata;
+  }
+  if (Object.prototype.hasOwnProperty.call(body, "aliases")) {
+    patch.aliases = Array.isArray(body.aliases) ? uniqueStringList(body.aliases) : parseProjectListOption(body.aliases);
+  }
+  if (Object.prototype.hasOwnProperty.call(body, "resources")) {
+    if (!isPlainObject(body.resources)) {
+      throw new Error("resources must be an object");
+    }
+    patch.resources = body.resources;
+  }
+  if (Object.keys(patch).length === 0) {
+    throw new Error("project update requires at least one editable field");
+  }
+  return updateProject(memoryDir, id, (current) => ({
+    ...current,
+    ...patch,
+    metadata: patch.metadata ? { ...(current.metadata || {}), ...patch.metadata } : current.metadata,
+    resources: patch.resources ? { ...(current.resources || {}), ...patch.resources } : current.resources
+  }));
+}
+
+function archiveDashboardProject(memoryDir, id, body = {}) {
+  const now = new Date().toISOString();
+  return updateProject(memoryDir, id, (current) => ({
+    ...current,
+    status: "archived",
+    archivedAt: now,
+    archivedBy: body.by || body.from || "dashboard"
+  }));
 }
 
 function createDashboardWorkflow(memoryDir, body) {
@@ -5876,6 +6236,7 @@ Commands:
   snapshot   Print a filtered memory snapshot view without rewriting MEMORY.md.
   task       Share task/todo state across AI tools.
   workflow   Coordinate planner/executor/reviewer/observer work across AI tools.
+  project    Manage project metadata, aliases, resources, and archive state.
   session    Manage session handoff for context transfer between tools.
   rpc        Synchronous request-response RPC calls between tools.
   notify     Send cross-platform notifications with severity-based routing.
@@ -5921,6 +6282,8 @@ Examples:
   ${APP_NAME} doctor --tool claude
   ${APP_NAME} workflow create "Review dashboard changes" --from codex --project ai-memory-hub --planner codex --executor opencode --reviewer qclaw --spawn-tasks --notify
   ${APP_NAME} workflow list --status active
+  ${APP_NAME} project list --status visible
+  ${APP_NAME} project add my-app --name "My App" --status active --type tool
   ${APP_NAME} dispatch --project ai-memory-hub
   ${APP_NAME} dispatch --to codex --run
   ${APP_NAME} dispatch status --thread <thread-id> --project ai-memory-hub
@@ -6017,6 +6380,7 @@ function ensureHub(memoryDir) {
     path.join(memoryDir, "radio"),
     path.join(memoryDir, "tasks"),
     path.join(memoryDir, "workflows"),
+    path.join(memoryDir, "projects"),
     path.join(memoryDir, "tools"),
     path.join(memoryDir, "backups"),
     path.join(memoryDir, "locks"),
@@ -6034,6 +6398,27 @@ function ensureHub(memoryDir) {
   if (!fs.existsSync(memoryPath)) {
     fs.writeFileSync(memoryPath, "# Shared AI Memory\n\nNo local memories indexed yet.\n", "utf8");
   }
+
+  const projectsFile = getProjectsFile(memoryDir);
+  if (!fs.existsSync(projectsFile)) {
+    writeProjects(memoryDir, getSeedProjects());
+  }
+
+  const projectsReadmePath = path.join(memoryDir, "projects", "README.md");
+  if (!fs.existsSync(projectsReadmePath)) {
+    fs.writeFileSync(projectsReadmePath, renderProjectRegistryReadme(), "utf8");
+  }
+}
+
+function renderProjectRegistryReadme() {
+  return `# Project Registry
+
+Project metadata is stored in \`projects.jsonl\` as one JSON object per line.
+
+Use \`ai-memory-hub project list\`, \`project add\`, \`project update\`, \`project alias\`, and \`project relate\` to manage records. The dashboard project selectors show only \`active\`, \`paused\`, and \`planning\` projects and hide \`archived\` or \`test-*\` entries by default.
+
+Writes use the shared hub lock, but this registry is currently read-modify-write. Avoid simultaneous manual edits; prefer the CLI or dashboard API.
+`;
 }
 
 function loadConfig() {
@@ -6909,6 +7294,307 @@ function writeWorkflows(memoryDir, workflows) {
   const file = path.join(memoryDir, "workflows", "workflows.jsonl");
   ensureDir(path.dirname(file));
   fs.writeFileSync(file, workflows.map((workflow) => JSON.stringify(normalizeWorkflow(workflow))).join("\n") + (workflows.length ? "\n" : ""), "utf8");
+}
+
+function readProjects(memoryDir) {
+  return readEvents(getProjectsFile(memoryDir))
+    .map(normalizeProject)
+    .filter((project) => project.id && project.name);
+}
+
+function writeProjects(memoryDir, projects) {
+  const file = getProjectsFile(memoryDir);
+  ensureDir(path.dirname(file));
+  fs.writeFileSync(file, projects.map((project) => JSON.stringify(normalizeProject(project))).join("\n") + (projects.length ? "\n" : ""), "utf8");
+}
+
+function getProjectsFile(memoryDir) {
+  return path.join(memoryDir, "projects", "projects.jsonl");
+}
+
+function createProject({ id, name, displayName, status, type, description, metadata, aliases, resources }) {
+  const now = new Date().toISOString();
+  return normalizeProject({
+    id,
+    name,
+    displayName: displayName || name,
+    status: status || "active",
+    type: type || "",
+    description: description || "",
+    metadata: isPlainObject(metadata) ? metadata : {},
+    aliases: Array.isArray(aliases) ? aliases : [],
+    resources: isPlainObject(resources) ? resources : {},
+    createdAt: now,
+    updatedAt: now
+  });
+}
+
+function updateProject(memoryDir, id, updater) {
+  const projects = readProjects(memoryDir);
+  const index = findProjectIndex(projects, id);
+  if (index === -1) {
+    throw new Error(`Project not found: ${id}`);
+  }
+  const updated = normalizeProject({
+    ...updater(projects[index]),
+    updatedAt: new Date().toISOString()
+  });
+  projects[index] = updated;
+  writeProjects(memoryDir, projects);
+  return updated;
+}
+
+function normalizeProject(project) {
+  const now = new Date().toISOString();
+  const id = String(project.id || project.project || project.key || "").trim();
+  const name = String(project.name || project.displayName || id || "").trim();
+  const status = normalizeProjectStatus(project.status || "active");
+  const normalized = {
+    id,
+    name,
+    displayName: String(project.displayName || project.display_name || name || id).trim(),
+    status,
+    type: String(project.type || "").trim(),
+    description: String(project.description || project.text || "").trim(),
+    metadata: isPlainObject(project.metadata) ? { ...project.metadata } : {},
+    aliases: uniqueStringList(project.aliases),
+    resources: normalizeProjectResources(project.resources),
+    createdAt: project.createdAt || project.ts || now,
+    updatedAt: project.updatedAt || project.createdAt || project.ts || now
+  };
+  for (const key of ["archivedAt", "archivedBy"]) {
+    if (project[key]) {
+      normalized[key] = String(project[key]);
+    }
+  }
+  return normalized;
+}
+
+function normalizeProjectStatus(status) {
+  const value = String(status || "").trim().toLowerCase();
+  if (!PROJECT_STATUSES.includes(value)) {
+    throw new Error(`Invalid project status: ${status}. Expected ${PROJECT_STATUSES.join("|")}.`);
+  }
+  return value;
+}
+
+function normalizeProjectResources(resources) {
+  if (!isPlainObject(resources)) {
+    return {};
+  }
+  const normalized = {};
+  for (const [key, value] of Object.entries(resources)) {
+    const cleanKey = String(key || "").trim();
+    if (!cleanKey) {
+      continue;
+    }
+    if (Array.isArray(value)) {
+      const values = value.map((item) => String(item || "").trim()).filter(Boolean);
+      if (values.length > 0) {
+        normalized[cleanKey] = values;
+      }
+      continue;
+    }
+    if (isPlainObject(value)) {
+      normalized[cleanKey] = value;
+      continue;
+    }
+    const text = String(value || "").trim();
+    if (text) {
+      normalized[cleanKey] = text;
+    }
+  }
+  return normalized;
+}
+
+function filterProjects(projects, { status = "all", includeHidden = false } = {}) {
+  const cleanStatus = String(status || "all").trim().toLowerCase();
+  return projects
+    .filter((project) => {
+      if (cleanStatus === "all") return true;
+      if (cleanStatus === "visible") return isProjectVisible(project);
+      normalizeProjectStatus(cleanStatus);
+      return project.status === cleanStatus;
+    })
+    .filter((project) => includeHidden || cleanStatus !== "visible" || !isHiddenProjectId(project.id))
+    .sort((a, b) => String(a.displayName || a.name || a.id).localeCompare(String(b.displayName || b.name || b.id), "zh-Hans"));
+}
+
+function isProjectVisible(project) {
+  return PROJECT_VISIBLE_STATUSES.includes(project.status) && !isHiddenProjectId(project.id);
+}
+
+function isHiddenProjectId(id) {
+  return String(id || "").toLowerCase().startsWith("test-");
+}
+
+function findProject(projects, query) {
+  const index = findProjectIndex(projects, query);
+  return index === -1 ? null : projects[index];
+}
+
+function findProjectIndex(projects, query) {
+  const clean = String(query || "").trim();
+  if (!clean) {
+    return -1;
+  }
+  const exact = projects.findIndex((project) => project.id === clean);
+  if (exact !== -1) {
+    return exact;
+  }
+  const normalized = clean.toLowerCase();
+  const alias = projects.findIndex((project) => (
+    [project.name, project.displayName, ...(project.aliases || [])]
+      .some((value) => String(value || "").toLowerCase() === normalized)
+  ));
+  if (alias !== -1) {
+    return alias;
+  }
+  const prefixMatches = projects
+    .map((project, index) => ({ project, index }))
+    .filter(({ project }) => String(project.id || "").toLowerCase().startsWith(normalized));
+  return prefixMatches.length === 1 ? prefixMatches[0].index : -1;
+}
+
+function parseProjectListOption(value) {
+  return String(value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function parseProjectResourceOptions(argv) {
+  const resources = {};
+  for (const key of ["feishu", "repo", "docs"]) {
+    const value = getOption(argv, `--${key}`);
+    if (value !== "") {
+      resources[key] = key === "docs" ? parseProjectListOption(value) : value;
+    }
+  }
+  for (let index = 0; index < argv.length; index += 1) {
+    if (argv[index] !== "--resource") {
+      continue;
+    }
+    const raw = argv[index + 1] || "";
+    const equals = raw.indexOf("=");
+    if (equals > 0) {
+      const key = raw.slice(0, equals).trim();
+      const value = raw.slice(equals + 1).trim();
+      if (key && value) {
+        resources[key] = value;
+      }
+    }
+  }
+  return resources;
+}
+
+function uniqueStringList(value) {
+  const values = Array.isArray(value) ? value : parseProjectListOption(value);
+  const seen = new Set();
+  const output = [];
+  for (const item of values) {
+    const text = String(item || "").trim();
+    const key = text.toLowerCase();
+    if (!text || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    output.push(text);
+  }
+  return output;
+}
+
+function mergeSeedProjects(projects) {
+  const merged = [...projects];
+  for (const seed of getSeedProjects()) {
+    if (findProjectIndex(merged, seed.id) === -1) {
+      merged.push(seed);
+    }
+  }
+  return merged;
+}
+
+function getSeedProjects() {
+  return [
+    {
+      id: "base-project",
+      name: "base-project",
+      displayName: "base-project",
+      status: "active",
+      type: "game",
+      description: "sample-project主题游戏",
+      metadata: {},
+      aliases: ["sample-project", "base-project(sample-project)"],
+      resources: {},
+      createdAt: "2026-05-01T00:00:00Z",
+      updatedAt: "2026-06-11T12:00:00Z"
+    },
+    {
+      id: "sample-backend",
+      name: "sample-project",
+      displayName: "sample-project",
+      status: "active",
+      type: "game",
+      description: "面向55+银发用户的麻将堆叠二消游戏",
+      metadata: {
+        target: "55+ 银发用户",
+        tech: ["Unity", "Luban", "YooAsset", "HybridCLR"]
+      },
+      aliases: ["sample-project"],
+      resources: {
+        feishu: "<feishu-url>"
+      },
+      createdAt: "2026-05-18T00:00:00Z",
+      updatedAt: "2026-06-11T12:00:00Z"
+    },
+    {
+      id: "sample-media",
+      name: "sample-project",
+      displayName: "sample-project",
+      status: "active",
+      type: "game",
+      description: "《sample-project》的西游主题换皮版本",
+      metadata: {
+        basedOn: "sample-backend",
+        relation: "reskin"
+      },
+      aliases: ["sample-project"],
+      resources: {
+        feishu: "<feishu-url>",
+        repo: "<local-repo-path>"
+      },
+      createdAt: "2026-06-03T00:00:00Z",
+      updatedAt: "2026-06-11T12:00:00Z"
+    },
+    {
+      id: "sample-game",
+      name: "sample-game：九九归一",
+      displayName: "sample-game",
+      status: "paused",
+      type: "game",
+      description: "81关线性卷轴地图，6种核心玩法综合游戏",
+      metadata: {},
+      aliases: ["sample-game", "xy_puzzle_collection"],
+      resources: {},
+      createdAt: "2026-04-01T00:00:00Z",
+      updatedAt: "2026-06-11T12:00:00Z"
+    },
+    {
+      id: "ai-memory-hub",
+      name: "AI Memory Hub",
+      displayName: "AI Memory Hub",
+      status: "active",
+      type: "tool",
+      description: "本地优先的多AI工具共享记忆中心",
+      metadata: {},
+      aliases: [],
+      resources: {
+        repo: "https://github.com/<owner>/ai-memory-hub"
+      },
+      createdAt: "2026-06-01T00:00:00Z",
+      updatedAt: "2026-06-11T12:00:00Z"
+    }
+  ].map(normalizeProject);
 }
 
 function createWorkflow({ title, createdBy, project, priority, planner, executor, reviewer, observer, plan, acceptance, qualityGate }) {

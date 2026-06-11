@@ -675,6 +675,132 @@ test("dashboard workflow API supports CRUD actions and UI hooks", async () => {
   });
 });
 
+test("dashboard projects API exposes registry data and UI hooks", async () => {
+  const dashboardHtml = await fs.readFile(path.join(repoRoot, "templates", "dashboard-v2.html"), "utf8");
+  assert.match(dashboardHtml, /id="tab-projects"/);
+  assert.match(dashboardHtml, /id="projectEditor"/);
+  assert.match(dashboardHtml, /id="sidebarProjects"/);
+  assert.match(dashboardHtml, /onclick="showProjectForm\(\)"/);
+  assert.match(dashboardHtml, /onclick="saveProject\(\)"/);
+
+  const dashboardJs = await fs.readFile(path.join(repoRoot, "public", "js", "dashboard.js"), "utf8");
+  assert.match(dashboardJs, /function renderProjectsPanel/);
+  assert.match(dashboardJs, /async function saveProject/);
+  assert.match(dashboardJs, /async function archiveProject/);
+  assert.match(dashboardJs, /function renderProjectResourceValueHTML/);
+  assert.match(dashboardJs, /api\('\/api\/projects'\)/);
+  assert.match(dashboardJs, /projectMatchesFilter/);
+  assert.match(dashboardJs, /project-resource-link/);
+  assert.match(dashboardJs, /projectIdLabel: "Project ID"/);
+  assert.match(dashboardJs, /projectIdLabel: "项目 ID"/);
+
+  const dashboardCss = await fs.readFile(path.join(repoRoot, "public", "css", "dashboard.css"), "utf8");
+  assert.match(dashboardCss, /\.project-resource-link/);
+  assert.match(dashboardCss, /text-overflow:\s*ellipsis/);
+  assert.match(dashboardCss, /white-space:\s*nowrap/);
+
+  const projectGuide = await fs.readFile(path.join(repoRoot, "docs", "project-registry.md"), "utf8");
+  assert.match(projectGuide, /GET    \/api\/projects/);
+  assert.match(projectGuide, /ai-memory-hub project show <project-or-alias>/);
+
+  await withHub(async (memoryDir) => {
+    const port = await getFreePort();
+    const child = spawn(process.execPath, [cliPath, "app", "--port", String(port)], {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        AI_MEMORY_DIR: memoryDir
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true
+    });
+    const stderr = [];
+    child.stderr.on("data", (chunk) => stderr.push(String(chunk)));
+    try {
+      await waitForServer(port, child);
+      const initialRes = await fetch(`http://127.0.0.1:${port}/api/projects`);
+      assert.equal(initialRes.status, 200);
+      const initial = await initialRes.json();
+      assert.ok(initial.projects.some((project) => project.id === "ai-memory-hub"));
+      assert.ok(initial.visibleProjects.some((project) => project.id === "sample-media"));
+      assert.ok(initial.visibleProjects.every((project) => project.status !== "archived"));
+      assert.deepEqual(initial.statuses, ["active", "paused", "archived", "planning"]);
+
+      const createRes = await fetch(`http://127.0.0.1:${port}/api/projects`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: "dashboard-project",
+          name: "Dashboard Project",
+          displayName: "Dashboard Project",
+          status: "planning",
+          type: "tool",
+          description: "Created from dashboard API test.",
+          aliases: ["dashboard alias"],
+          resources: {
+            repo: "<local-repo-path>",
+            docs: ["https://example.test/project"]
+          }
+        })
+      });
+      if (createRes.status !== 200) {
+        assert.fail(await createRes.text());
+      }
+      const created = await createRes.json();
+      assert.equal(created.ok, true);
+      assert.equal(created.project.id, "dashboard-project");
+      assert.equal(created.project.status, "planning");
+      assert.ok(created.projects.visibleProjects.some((project) => project.id === "dashboard-project"));
+
+      const updateRes = await fetch(`http://127.0.0.1:${port}/api/projects/dashboard-project`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "paused",
+          aliases: ["dashboard alias", "dashboard paused"],
+          resources: { feishu: "https://example.test/feishu" },
+          metadata: { relation: "example" }
+        })
+      });
+      if (updateRes.status !== 200) {
+        assert.fail(await updateRes.text());
+      }
+      const updated = await updateRes.json();
+      assert.equal(updated.project.status, "paused");
+      assert.ok(updated.project.aliases.includes("dashboard paused"));
+      assert.equal(updated.project.resources.feishu, "https://example.test/feishu");
+      assert.equal(updated.project.metadata.relation, "example");
+
+      const aliasRes = await fetch(`http://127.0.0.1:${port}/api/projects/${encodeURIComponent("dashboard paused")}`);
+      assert.equal(aliasRes.status, 200);
+      const aliasPayload = await aliasRes.json();
+      assert.equal(aliasPayload.project.id, "dashboard-project");
+
+      const archiveRes = await fetch(`http://127.0.0.1:${port}/api/projects/dashboard-project`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ by: "dashboard-test" })
+      });
+      if (archiveRes.status !== 200) {
+        assert.fail(await archiveRes.text());
+      }
+      const archived = await archiveRes.json();
+      assert.equal(archived.project.status, "archived");
+      assert.equal(archived.project.archivedBy, "dashboard-test");
+      assert.equal(archived.projects.visibleProjects.some((project) => project.id === "dashboard-project"), false);
+
+      const dashboardRes = await fetch(`http://127.0.0.1:${port}/api/dashboard`);
+      assert.equal(dashboardRes.status, 200);
+      const dashboard = await dashboardRes.json();
+      assert.ok(dashboard.projects.projects.some((project) => project.id === "dashboard-project" && project.status === "archived"));
+      assert.equal(dashboard.projects.visibleProjects.some((project) => project.id === "dashboard-project"), false);
+    } finally {
+      await stopServer(child);
+    }
+    assert.deepEqual(stderr, []);
+  });
+});
+
 test("dashboard search and backup APIs expose cross-hub data", async () => {
   await withHub(async (memoryDir) => {
     const now = new Date().toISOString();

@@ -225,6 +225,19 @@ ai-memory-hub workflow start --id <id> --by <tool>
 ai-memory-hub workflow done --id <id> --by <tool>
 ```
 
+#### 项目注册表
+
+```bash
+ai-memory-hub project list --status visible
+ai-memory-hub project add <id> --name <name> --status active
+ai-memory-hub project update <id> --status paused
+ai-memory-hub project alias <id> <alias>
+ai-memory-hub project relate <id> --based-on <parent-id> --relation reskin
+ai-memory-hub project archive <id> --by <tool>
+```
+
+See [docs/project-registry.md](docs/project-registry.md) for the data model, API endpoints, dashboard behavior, and AI tool guidance.
+
 #### Session 管理
 
 ```bash

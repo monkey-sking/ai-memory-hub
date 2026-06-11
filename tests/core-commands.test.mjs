@@ -96,6 +96,96 @@ test("task add creates normalized task records", async () => {
   });
 });
 
+test("project registry CLI manages metadata, aliases, relations, and archive state", async () => {
+  await withHub(async (memoryDir) => {
+    const visibleSeeds = parseJson(runCli(memoryDir, ["project", "list", "--status", "visible"]));
+    assert.ok(visibleSeeds.some((project) => project.id === "ai-memory-hub"));
+    assert.ok(visibleSeeds.some((project) => project.id === "sample-media"));
+    assert.ok(visibleSeeds.every((project) => project.status !== "archived"));
+
+    const project = parseJson(runCli(memoryDir, [
+      "project",
+      "add",
+      "registry-demo",
+      "--name",
+      "Registry Test",
+      "--display-name",
+      "Registry Test Project",
+      "--status",
+      "planning",
+      "--type",
+      "tool",
+      "--description",
+      "Project registry CLI coverage",
+      "--aliases",
+      "registry-test,registry demo",
+      "--feishu",
+      "https://example.test/wiki",
+      "--repo",
+      "<local-repo-path>",
+      "--docs",
+      "https://example.test/doc-a,https://example.test/doc-b"
+    ]));
+    assert.equal(project.id, "registry-demo");
+    assert.equal(project.status, "planning");
+    assert.equal(project.displayName, "Registry Test Project");
+    assert.deepEqual(project.aliases, ["registry-test", "registry demo"]);
+    assert.equal(project.resources.feishu, "https://example.test/wiki");
+    assert.deepEqual(project.resources.docs, ["https://example.test/doc-a", "https://example.test/doc-b"]);
+
+    const aliased = parseJson(runCli(memoryDir, ["project", "show", "registry demo"]));
+    assert.equal(aliased.id, "registry-demo");
+
+    const updated = parseJson(runCli(memoryDir, [
+      "project",
+      "update",
+      "registry-demo",
+      "--status",
+      "active",
+      "--description",
+      "Updated registry project",
+      "--resource",
+      "dashboard=https://127.0.0.1:38789"
+    ]));
+    assert.equal(updated.status, "active");
+    assert.equal(updated.description, "Updated registry project");
+    assert.equal(updated.resources.dashboard, "https://127.0.0.1:38789");
+
+    const withAlias = parseJson(runCli(memoryDir, ["project", "alias", "registry-demo", "registry-alias"]));
+    assert.ok(withAlias.aliases.includes("registry-alias"));
+
+    const related = parseJson(runCli(memoryDir, [
+      "project",
+      "relate",
+      "registry-alias",
+      "--based-on",
+      "ai-memory-hub",
+      "--relation",
+      "plugin"
+    ]));
+    assert.equal(related.metadata.basedOn, "ai-memory-hub");
+    assert.equal(related.metadata.relation, "plugin");
+
+    const archived = parseJson(runCli(memoryDir, ["project", "archive", "registry-demo", "--by", "codex"]));
+    assert.equal(archived.status, "archived");
+    assert.equal(archived.archivedBy, "codex");
+
+    const visibleAfterArchive = parseJson(runCli(memoryDir, ["project", "list", "--status", "visible"]));
+    assert.equal(visibleAfterArchive.some((item) => item.id === "registry-demo"), false);
+
+    const migratePreview = parseJson(runCli(memoryDir, ["project", "migrate"]));
+    assert.equal(migratePreview.apply, false);
+    assert.equal(migratePreview.added, 0);
+
+    const migrateApply = parseJson(runCli(memoryDir, ["project", "migrate", "--apply"]));
+    assert.equal(migrateApply.apply, true);
+    assert.equal(migrateApply.added, 0);
+
+    const projectsFile = await fs.readFile(path.join(memoryDir, "projects", "projects.jsonl"), "utf8");
+    assert.match(projectsFile, /"id":"registry-demo"/);
+  });
+});
+
 test("workflow create normalizes role lists and metadata", async () => {
   await withHub(async (memoryDir) => {
     const workflow = parseJson(runCli(memoryDir, [

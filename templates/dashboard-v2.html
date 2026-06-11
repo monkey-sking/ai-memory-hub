@@ -56,6 +56,7 @@
       <div class="nav-item" onclick="switchTab('tasks')" title="Tasks Board"><span class="nav-icon" aria-hidden="true">📋</span><span class="nav-label" data-i18n="tasksBoard">Tasks Board</span> <span class="badge" id="sidebarTasks">0</span></div>
       <div class="nav-item" onclick="switchTab('dispatch')" title="Dispatch Logs"><span class="nav-icon" aria-hidden="true">⚡</span><span class="nav-label" data-i18n="dispatchLogsNav">Dispatch Logs</span></div>
       <div class="nav-item" onclick="switchTab('workflows')" title="Workflows"><span class="nav-icon" aria-hidden="true">🔄</span><span class="nav-label" data-i18n="workflowsPanel">Workflows</span> <span class="badge" id="sidebarWorkflows">0</span></div>
+      <div class="nav-item" onclick="switchTab('projects')" title="Projects"><span class="nav-icon" aria-hidden="true">🗂️</span><span class="nav-label" data-i18n="projectsPanel">Projects</span> <span class="badge" id="sidebarProjects">0</span></div>
       <div class="nav-item" onclick="switchTab('analytics')" title="Analytics"><span class="nav-icon" aria-hidden="true">📈</span><span class="nav-label" data-i18n="analyticsPanel">Analytics</span></div>
       <div class="nav-item" onclick="switchTab('backups')" title="Backups"><span class="nav-icon" aria-hidden="true">🗄️</span><span class="nav-label" data-i18n="backupsPanel">Backups</span></div>
       <div class="nav-item" onclick="switchTab('settings')" title="Settings"><span class="nav-icon" aria-hidden="true">⚙️</span><span class="nav-label" data-i18n="settingsPanel">Settings</span></div>
@@ -576,6 +577,108 @@
 
           <div class="workflow-list" id="workflowsList">
             <div class="muted" data-i18n="loadingWorkflows">Loading workflows...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Projects Tab -->
+      <div id="tab-projects" class="tab-panel">
+        <div class="summary-grid projects-summary">
+          <div class="summary-card">
+            <span data-i18n="projectTotal">Total Projects</span>
+            <strong id="projectTotal">0</strong>
+          </div>
+          <div class="summary-card">
+            <span data-i18n="projectVisible">Visible</span>
+            <strong id="projectVisible">0</strong>
+          </div>
+          <div class="summary-card">
+            <span data-i18n="projectArchived">Archived</span>
+            <strong id="projectArchived">0</strong>
+          </div>
+          <div class="summary-card">
+            <span data-i18n="projectUnregistered">Unregistered</span>
+            <strong id="projectUnregistered">0</strong>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <h3 class="panel-title" data-i18n="projectRegistry">Project Registry</h3>
+            <button class="primary" onclick="showProjectForm()" data-i18n="createProject">+ New Project</button>
+          </div>
+          <div class="filter-strip project-toolbar">
+            <input type="text" id="projectSearch" data-i18n-placeholder="searchText" placeholder="Search projects..." oninput="renderProjectsPanel()">
+            <select id="projectFilterStatus" onchange="renderProjectsPanel()">
+              <option value="visible" data-i18n="visibleProjects">Visible Projects</option>
+              <option value="all" data-i18n="allStatuses">All Statuses</option>
+              <option value="active">active</option>
+              <option value="planning">planning</option>
+              <option value="paused">paused</option>
+              <option value="archived">archived</option>
+            </select>
+          </div>
+
+          <div class="workflow-editor" id="projectEditor" hidden>
+            <div class="form-row">
+              <div class="form-group">
+                <label data-i18n="projectIdLabel">Project ID</label>
+                <input type="text" id="projectId" data-i18n-placeholder="projectIdPlaceholder" placeholder="kebab-case or stable name">
+              </div>
+              <div class="form-group">
+                <label data-i18n="projectNameLabel">Name</label>
+                <input type="text" id="projectName" data-i18n-placeholder="projectNamePlaceholder" placeholder="Project name">
+              </div>
+              <div class="form-group">
+                <label data-i18n="projectDisplayNameLabel">Display Name</label>
+                <input type="text" id="projectDisplayName" data-i18n-placeholder="projectDisplayNamePlaceholder" placeholder="Shown in selectors">
+              </div>
+              <div class="form-group">
+                <label data-i18n="statusLabel">Status</label>
+                <select id="projectStatus">
+                  <option value="active">active</option>
+                  <option value="planning">planning</option>
+                  <option value="paused">paused</option>
+                  <option value="archived">archived</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label data-i18n="projectTypeLabel">Type</label>
+                <input type="text" id="projectType" data-i18n-placeholder="projectTypePlaceholder" placeholder="tool, game, docs...">
+              </div>
+              <div class="form-group" style="grid-column: span 3;">
+                <label data-i18n="projectAliasesLabel">Aliases</label>
+                <input type="text" id="projectAliases" data-i18n-placeholder="projectAliasesPlaceholder" placeholder="Comma-separated aliases">
+              </div>
+            </div>
+            <div class="form-group">
+              <label data-i18n="projectDescriptionLabel">Description</label>
+              <textarea id="projectDescription" data-i18n-placeholder="projectDescriptionPlaceholder" placeholder="Project purpose and scope"></textarea>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label data-i18n="projectFeishuLabel">Feishu</label>
+                <input type="text" id="projectFeishu" placeholder="https://...">
+              </div>
+              <div class="form-group">
+                <label data-i18n="projectRepoLabel">Repository</label>
+                <input type="text" id="projectRepo" placeholder="<local-repo-path>">
+              </div>
+              <div class="form-group" style="grid-column: span 2;">
+                <label data-i18n="projectDocsLabel">Docs</label>
+                <input type="text" id="projectDocs" data-i18n-placeholder="projectDocsPlaceholder" placeholder="Comma-separated links">
+              </div>
+            </div>
+            <div class="workflow-form-actions">
+              <button class="primary" onclick="saveProject()" id="btnSaveProject" data-i18n="saveProject">Save Project</button>
+              <button class="btn" onclick="cancelProjectEdit()" data-i18n="cancel">Cancel</button>
+            </div>
+          </div>
+
+          <div class="workflow-list" id="projectsList">
+            <div class="muted" data-i18n="loadingProjects">Loading projects...</div>
           </div>
         </div>
       </div>

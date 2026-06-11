@@ -9,6 +9,7 @@ Complete reference for all `ai-memory-hub` command-line commands.
 - [Message Bus (Radio)](#message-bus-radio)
 - [Task Management](#task-management)
 - [Workflow System](#workflow-system)
+- [Project Registry](#project-registry)
 - [Session Management](#session-management)
 - [RPC Communication](#rpc-communication)
 - [Notifications](#notifications)
@@ -386,6 +387,85 @@ Complete a workflow.
 
 ```bash
 ai-memory-hub workflow done --id <workflow-id> --by <tool>
+```
+
+---
+
+## Project Registry
+
+Project metadata is stored in `projects/projects.jsonl`. The dashboard project selectors use the registry and hide `archived` and `test-*` projects by default.
+
+For the data model, API endpoints, dashboard behavior, and AI tool guidance, see [Project Registry](project-registry.md).
+
+### `project list`
+
+List registered projects.
+
+```bash
+ai-memory-hub project list [--status visible|active|planning|paused|archived|all] [--include-hidden]
+```
+
+### `project add`
+
+Create a project record.
+
+```bash
+ai-memory-hub project add <id> --name <name> [--status active] [--type tool] [--description text]
+```
+
+Useful resource options:
+
+```bash
+ai-memory-hub project add sample-media --name "sample-project" --type game --feishu <url> --repo <local-repo-path>
+```
+
+### `project update`
+
+Update project metadata.
+
+```bash
+ai-memory-hub project update <id-or-alias> [--name text] [--display-name text] [--status paused] [--type game] [--description text]
+```
+
+### `project show`
+
+Resolve a project by id, name, display name, or alias.
+
+```bash
+ai-memory-hub project show <id-or-alias>
+```
+
+### `project alias`
+
+Add an alias.
+
+```bash
+ai-memory-hub project alias <id-or-alias> <alias>
+```
+
+### `project relate`
+
+Record project relationships such as reskins, forks, or sequels.
+
+```bash
+ai-memory-hub project relate <id-or-alias> --based-on <parent-id> --relation reskin
+```
+
+### `project archive`
+
+Soft-delete a project by moving it to `archived`.
+
+```bash
+ai-memory-hub project archive <id-or-alias> --by <tool>
+```
+
+### `project migrate`
+
+Ensure seed projects are present.
+
+```bash
+ai-memory-hub project migrate          # preview
+ai-memory-hub project migrate --apply  # write missing seed projects
 ```
 
 ---

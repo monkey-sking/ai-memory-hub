@@ -66,9 +66,14 @@
   ├── radio/                 # 消息总线
   │   └── messages.jsonl
   ├── tasks/                 # 任务管理
-  │   └── tasks.jsonl
+  │   ├── events.jsonl
+  │   └── tasks.jsonl        # 兼容投影
   ├── workflows/             # 工作流
-  │   └── workflows.jsonl
+  │   ├── events.jsonl
+  │   └── workflows.jsonl    # 兼容投影
+  ├── projects/              # 项目注册表
+  │   ├── events.jsonl
+  │   └── projects.jsonl     # 兼容投影
   ├── sessions/              # 会话管理
   │   └── sessions.jsonl
   ├── rpc/                   # RPC 调用

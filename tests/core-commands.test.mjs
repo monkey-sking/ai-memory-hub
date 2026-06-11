@@ -54,6 +54,14 @@ async function appendJsonl(file, value) {
   await fs.appendFile(file, `${JSON.stringify(value)}\n`, "utf8");
 }
 
+async function readJsonl(file) {
+  const text = await fs.readFile(file, "utf8");
+  return text
+    .split(/\r?\n/)
+    .filter((line) => line.trim())
+    .map((line) => JSON.parse(line));
+}
+
 test("task add creates normalized task records", async () => {
   await withHub(async (memoryDir) => {
     const task = parseJson(runCli(memoryDir, [
@@ -93,6 +101,13 @@ test("task add creates normalized task records", async () => {
     ]));
     assert.equal(tasks.length, 1);
     assert.equal(tasks[0].id, task.id);
+
+    const events = await readJsonl(path.join(memoryDir, "tasks", "events.jsonl"));
+    assert.ok(events.some((event) => (
+      event.type === "task.upsert" &&
+      event.entityId === task.id &&
+      event.record.title === "Build task telemetry"
+    )));
   });
 });
 
@@ -183,6 +198,74 @@ test("project registry CLI manages metadata, aliases, relations, and archive sta
 
     const projectsFile = await fs.readFile(path.join(memoryDir, "projects", "projects.jsonl"), "utf8");
     assert.match(projectsFile, /"id":"registry-demo"/);
+
+    const events = await readJsonl(path.join(memoryDir, "projects", "events.jsonl"));
+    assert.ok(events.some((event) => event.type === "project.upsert" && event.entityId === "registry-demo"));
+    assert.ok(events.some((event) => event.reason === "project:update" && event.record.archivedBy === "codex"));
+  });
+});
+
+test("task, workflow, and project projections rebuild from event streams", async () => {
+  await withHub(async (memoryDir) => {
+    const task = parseJson(runCli(memoryDir, [
+      "task",
+      "add",
+      "Rebuild projection task",
+      "--from",
+      "codex",
+      "--project",
+      "ai-memory-hub"
+    ]));
+    const project = parseJson(runCli(memoryDir, [
+      "project",
+      "add",
+      "projection-demo",
+      "--name",
+      "Projection Demo",
+      "--status",
+      "planning"
+    ]));
+    const workflow = parseJson(runCli(memoryDir, [
+      "workflow",
+      "create",
+      "Projection workflow",
+      "--from",
+      "codex",
+      "--project",
+      "ai-memory-hub"
+    ]));
+
+    await fs.writeFile(path.join(memoryDir, "tasks", "tasks.jsonl"), `${JSON.stringify({
+      id: "stale-projection-only",
+      title: "Stale projection only",
+      project: "ai-memory-hub"
+    })}\n`, "utf8");
+    await fs.writeFile(path.join(memoryDir, "workflows", "workflows.jsonl"), `${JSON.stringify({
+      id: "stale-workflow-projection-only",
+      title: "Stale workflow projection only",
+      project: "ai-memory-hub"
+    })}\n`, "utf8");
+    await fs.rm(path.join(memoryDir, "projects", "projects.jsonl"), { force: true });
+
+    const listBeforeSync = parseJson(runCli(memoryDir, ["task", "list", "--status", "all", "--limit", "50"]));
+    assert.ok(listBeforeSync.some((item) => item.id === task.id));
+    assert.equal(listBeforeSync.some((item) => item.id === "stale-projection-only"), false);
+
+    const sync = runCli(memoryDir, ["sync"]);
+    assert.equal(sync.status, 0, sync.stderr || sync.stdout);
+    assert.match(sync.stdout, /Rebuilt event-sourced projections: tasks=/);
+    assert.match(sync.stdout, /workflows=/);
+
+    const tasksProjection = await readJsonl(path.join(memoryDir, "tasks", "tasks.jsonl"));
+    assert.ok(tasksProjection.some((item) => item.id === task.id));
+    assert.equal(tasksProjection.some((item) => item.id === "stale-projection-only"), false);
+
+    const workflowsProjection = await readJsonl(path.join(memoryDir, "workflows", "workflows.jsonl"));
+    assert.ok(workflowsProjection.some((item) => item.id === workflow.id));
+    assert.equal(workflowsProjection.some((item) => item.id === "stale-workflow-projection-only"), false);
+
+    const projectsProjection = await readJsonl(path.join(memoryDir, "projects", "projects.jsonl"));
+    assert.ok(projectsProjection.some((item) => item.id === project.id));
   });
 });
 
@@ -236,6 +319,13 @@ test("workflow create normalizes role lists and metadata", async () => {
     ]));
     assert.equal(workflows.length, 1);
     assert.equal(workflows[0].id, workflow.id);
+
+    const events = await readJsonl(path.join(memoryDir, "workflows", "events.jsonl"));
+    assert.ok(events.some((event) => (
+      event.type === "workflow.upsert" &&
+      event.entityId === workflow.id &&
+      event.record.title === "Ship dashboard flow"
+    )));
   });
 });
 

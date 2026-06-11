@@ -63,10 +63,10 @@ const RUNNER_PROFILES = {
   codex: {
     tool: "codex",
     commandCandidates: ["codex.cmd", "codex"],
-    args: ["exec", "--sandbox", "danger-full-access"],
+    args: ["exec", "--sandbox", "danger-full-access", "--skip-git-repo-check"],
     promptMode: "stdin",
     outputMode: "text",
-    preview: "codex exec --sandbox danger-full-access <stdin>",
+    preview: "codex exec --sandbox danger-full-access --skip-git-repo-check <stdin>",
     versionArgs: ["--version"],
     probeArgs: ["--help"],
     capabilities: ["direct-dispatch", "stdin-prompt", "text-output"]
@@ -3872,7 +3872,11 @@ function syncIndexedEvents(config, dryRun) {
       includePreSync: events.length > 0
     });
   if (events.length === 0) {
+    const projections = dryRun ? null : rebuildEventSourcedProjections(config.memoryDir);
     console.log("No pending memory events.");
+    if (projections) {
+      console.log(`Rebuilt event-sourced projections: tasks=${projections.tasks}, workflows=${projections.workflows}, projects=${projections.projects}.`);
+    }
     if (backupRun?.created.length) {
       console.log(`Created ${backupRun.created.length} scheduled backup(s).`);
     }
@@ -3932,10 +3936,12 @@ function syncIndexedEvents(config, dryRun) {
   if (!dryRun) {
     const updatedLedger = [...ledger, ...newRecords];
     rebuildMemoryOutputs(config, updatedLedger);
+    const projections = rebuildEventSourcedProjections(config.memoryDir);
     writeJson(path.join(config.memoryDir, "state", "last-sync.json"), {
       syncedAt: new Date().toISOString(),
       indexed: newRecords.length,
       pending: remaining.length,
+      projections,
       backupDir: backup?.dir || "",
       backups: backupRun
         ? {
@@ -3955,6 +3961,12 @@ function syncIndexedEvents(config, dryRun) {
   }
 
   console.log(`Indexed ${synced} memory event(s) into the local hub.`);
+  if (!dryRun) {
+    const lastSync = readJson(path.join(config.memoryDir, "state", "last-sync.json"));
+    if (lastSync.projections) {
+      console.log(`Rebuilt event-sourced projections: tasks=${lastSync.projections.tasks}, workflows=${lastSync.projections.workflows}, projects=${lastSync.projections.projects}.`);
+    }
+  }
 }
 
 function indexCommand() {
@@ -4132,7 +4144,7 @@ function daemonCommand(argv) {
 
   const config = loadConfig();
   ensureHub(config.memoryDir);
-  const intervalMs = Number(getOption(argv, "--interval-ms") || 10000);
+  const intervalMs = Number(getOption(argv, "--interval-ms") || 5000); // 改为 5 秒轮询，支持更快的实时协作
   const limit = Number(getOption(argv, "--limit") || 10);
   const projects = getOption(argv, "--project");
   const projectList = projects ? projects.split(",") : [];
@@ -5229,14 +5241,18 @@ function deleteDashboardWorkflow(memoryDir, id, body = {}) {
   if (index === -1) {
     throw new Error(`Workflow not found: ${id}`);
   }
-  const [deleted] = workflows.splice(index, 1);
-  writeWorkflows(memoryDir, workflows);
+  const deleted = workflows[index];
   const by = body.by || body.from || "dashboard";
-  return {
+  const deletedWorkflow = {
     ...deleted,
     deletedAt: new Date().toISOString(),
     deletedBy: by
   };
+  deleteEntityRecord(memoryDir, getWorkflowEventStoreDefinition(), deleted.id, {
+    reason: "workflow:delete",
+    source: by
+  });
+  return deletedWorkflow;
 }
 
 function setDashboardWorkflowStatus(memoryDir, id, body) {
@@ -7273,43 +7289,253 @@ function writeLedger(memoryDir, ledger) {
 }
 
 function readTasks(memoryDir) {
-  return readEvents(path.join(memoryDir, "tasks", "tasks.jsonl"))
+  bootstrapEntityEventsFromProjection(memoryDir, getTaskEventStoreDefinition());
+  const events = readEntityEvents(memoryDir, getTaskEventStoreDefinition());
+  if (events.length > 0) {
+    return replayEntityEvents(events, getTaskEventStoreDefinition());
+  }
+  return readEvents(getTasksFile(memoryDir))
     .map(normalizeTask)
     .filter((task) => task.id && task.title);
 }
 
 function writeTasks(memoryDir, tasks) {
-  const file = path.join(memoryDir, "tasks", "tasks.jsonl");
-  ensureDir(path.dirname(file));
-  fs.writeFileSync(file, tasks.map((task) => JSON.stringify(normalizeTask(task))).join("\n") + (tasks.length ? "\n" : ""), "utf8");
+  writeEntityRecords(memoryDir, getTaskEventStoreDefinition(), tasks);
 }
 
 function readWorkflows(memoryDir) {
-  return readEvents(path.join(memoryDir, "workflows", "workflows.jsonl"))
+  bootstrapEntityEventsFromProjection(memoryDir, getWorkflowEventStoreDefinition());
+  const events = readEntityEvents(memoryDir, getWorkflowEventStoreDefinition());
+  if (events.length > 0) {
+    return replayEntityEvents(events, getWorkflowEventStoreDefinition());
+  }
+  return readEvents(getWorkflowsFile(memoryDir))
     .map(normalizeWorkflow)
     .filter((workflow) => workflow.id && workflow.title);
 }
 
 function writeWorkflows(memoryDir, workflows) {
-  const file = path.join(memoryDir, "workflows", "workflows.jsonl");
-  ensureDir(path.dirname(file));
-  fs.writeFileSync(file, workflows.map((workflow) => JSON.stringify(normalizeWorkflow(workflow))).join("\n") + (workflows.length ? "\n" : ""), "utf8");
+  writeEntityRecords(memoryDir, getWorkflowEventStoreDefinition(), workflows);
 }
 
 function readProjects(memoryDir) {
+  bootstrapEntityEventsFromProjection(memoryDir, getProjectEventStoreDefinition());
+  const events = readEntityEvents(memoryDir, getProjectEventStoreDefinition());
+  if (events.length > 0) {
+    return replayEntityEvents(events, getProjectEventStoreDefinition());
+  }
   return readEvents(getProjectsFile(memoryDir))
     .map(normalizeProject)
     .filter((project) => project.id && project.name);
 }
 
 function writeProjects(memoryDir, projects) {
-  const file = getProjectsFile(memoryDir);
-  ensureDir(path.dirname(file));
-  fs.writeFileSync(file, projects.map((project) => JSON.stringify(normalizeProject(project))).join("\n") + (projects.length ? "\n" : ""), "utf8");
+  writeEntityRecords(memoryDir, getProjectEventStoreDefinition(), projects);
+}
+
+function getTasksFile(memoryDir) {
+  return path.join(memoryDir, "tasks", "tasks.jsonl");
+}
+
+function getWorkflowsFile(memoryDir) {
+  return path.join(memoryDir, "workflows", "workflows.jsonl");
 }
 
 function getProjectsFile(memoryDir) {
   return path.join(memoryDir, "projects", "projects.jsonl");
+}
+
+function getTaskEventStoreDefinition() {
+  return {
+    entity: "task",
+    dirName: "tasks",
+    projectionName: "tasks.jsonl",
+    normalize: normalizeTask,
+    isValid: (task) => task.id && task.title
+  };
+}
+
+function getProjectEventStoreDefinition() {
+  return {
+    entity: "project",
+    dirName: "projects",
+    projectionName: "projects.jsonl",
+    normalize: normalizeProject,
+    isValid: (project) => project.id && project.name
+  };
+}
+
+function getWorkflowEventStoreDefinition() {
+  return {
+    entity: "workflow",
+    dirName: "workflows",
+    projectionName: "workflows.jsonl",
+    normalize: normalizeWorkflow,
+    isValid: (workflow) => workflow.id && workflow.title
+  };
+}
+
+function getEntityProjectionFile(memoryDir, definition) {
+  return path.join(memoryDir, definition.dirName, definition.projectionName);
+}
+
+function getEntityEventsFile(memoryDir, definition) {
+  return path.join(memoryDir, definition.dirName, "events.jsonl");
+}
+
+function readEntityEvents(memoryDir, definition) {
+  return readEvents(getEntityEventsFile(memoryDir, definition))
+    .filter((event) => event.entity === definition.entity || String(event.type || "").startsWith(`${definition.entity}.`));
+}
+
+function bootstrapEntityEventsFromProjection(memoryDir, definition) {
+  const eventsFile = getEntityEventsFile(memoryDir, definition);
+  if (countJsonlLines(eventsFile) > 0) {
+    return;
+  }
+  const records = readEvents(getEntityProjectionFile(memoryDir, definition))
+    .map(definition.normalize)
+    .filter(definition.isValid);
+  if (records.length === 0) {
+    return;
+  }
+  appendEntityEvents(memoryDir, definition, records, {
+    action: "upsert",
+    source: "migration",
+    reason: `${definition.projectionName}:import`
+  });
+  materializeEntityProjection(memoryDir, definition);
+}
+
+function writeEntityRecords(memoryDir, definition, records, options = {}) {
+  const normalized = records
+    .map(definition.normalize)
+    .filter(definition.isValid);
+  const current = new Map(replayEntityEvents(readEntityEvents(memoryDir, definition), definition).map((record) => [record.id, record]));
+  const upserts = normalized.filter((record) => {
+    const existing = current.get(record.id);
+    if (!existing) {
+      return true;
+    }
+    if (!isEntityRecordNewerOrSame(record, existing)) {
+      return false;
+    }
+    return JSON.stringify(record) !== JSON.stringify(existing);
+  });
+  if (upserts.length > 0) {
+    appendEntityEvents(memoryDir, definition, upserts, {
+      action: "upsert",
+      source: options.source || "ai-memory-hub",
+      reason: options.reason || `${definition.entity}:write`
+    });
+  }
+  materializeEntityProjection(memoryDir, definition);
+}
+
+function appendEntityRecord(memoryDir, definition, record, options = {}) {
+  const normalized = definition.normalize(record);
+  if (!definition.isValid(normalized)) {
+    throw new Error(`Invalid ${definition.entity} record: ${normalized.id || "missing id"}`);
+  }
+  appendEntityEvents(memoryDir, definition, [normalized], {
+    action: "upsert",
+    source: options.source || "ai-memory-hub",
+    reason: options.reason || `${definition.entity}:upsert`
+  });
+  materializeEntityProjection(memoryDir, definition);
+  return normalized;
+}
+
+function deleteEntityRecord(memoryDir, definition, id, options = {}) {
+  const entityId = String(id || "").trim();
+  if (!entityId) {
+    throw new Error(`Invalid ${definition.entity} id`);
+  }
+  appendEntityEvents(memoryDir, definition, [{ id: entityId }], {
+    action: "delete",
+    source: options.source || "ai-memory-hub",
+    reason: options.reason || `${definition.entity}:delete`
+  });
+  materializeEntityProjection(memoryDir, definition);
+}
+
+function appendEntityEvents(memoryDir, definition, records, { action = "upsert", source = "ai-memory-hub", reason = "" } = {}) {
+  const file = getEntityEventsFile(memoryDir, definition);
+  for (const record of records) {
+    appendJsonl(file, createEntityEvent(definition, action, record, { source, reason }));
+  }
+}
+
+function createEntityEvent(definition, action, record, { source = "ai-memory-hub", reason = "" } = {}) {
+  const ts = new Date().toISOString();
+  const entityId = record.id || record.entityId || "";
+  return {
+    id: createId(`${definition.entity}:${action}:${entityId}:${JSON.stringify(record)}:${ts}`),
+    schemaVersion: 1,
+    ts,
+    source,
+    entity: definition.entity,
+    action,
+    type: `${definition.entity}.${action}`,
+    entityId,
+    reason,
+    record: action === "delete" ? undefined : record
+  };
+}
+
+function replayEntityEvents(events, definition) {
+  const byId = new Map();
+  for (const event of events) {
+    const action = String(event.action || String(event.type || "").split(".").pop() || "").toLowerCase();
+    const record = event.record || event[definition.entity] || event.payload;
+    const entityId = String(event.entityId || record?.id || "").trim();
+    if (!entityId) {
+      continue;
+    }
+    if (["delete", "remove", "tombstone"].includes(action)) {
+      byId.delete(entityId);
+      continue;
+    }
+    if (!["upsert", "create", "update", "snapshot"].includes(action) || !isPlainObject(record)) {
+      continue;
+    }
+    const normalized = definition.normalize(record);
+    if (definition.isValid(normalized)) {
+      byId.set(normalized.id, normalized);
+    }
+  }
+  return [...byId.values()];
+}
+
+function materializeEntityProjection(memoryDir, definition) {
+  const records = replayEntityEvents(readEntityEvents(memoryDir, definition), definition);
+  const file = getEntityProjectionFile(memoryDir, definition);
+  ensureDir(path.dirname(file));
+  fs.writeFileSync(file, records.map((record) => JSON.stringify(record)).join("\n") + (records.length ? "\n" : ""), "utf8");
+  return records;
+}
+
+function rebuildEventSourcedProjections(memoryDir) {
+  bootstrapEntityEventsFromProjection(memoryDir, getTaskEventStoreDefinition());
+  bootstrapEntityEventsFromProjection(memoryDir, getProjectEventStoreDefinition());
+  bootstrapEntityEventsFromProjection(memoryDir, getWorkflowEventStoreDefinition());
+  const tasks = materializeEntityProjection(memoryDir, getTaskEventStoreDefinition());
+  const projects = materializeEntityProjection(memoryDir, getProjectEventStoreDefinition());
+  const workflows = materializeEntityProjection(memoryDir, getWorkflowEventStoreDefinition());
+  return {
+    tasks: tasks.length,
+    projects: projects.length,
+    workflows: workflows.length
+  };
+}
+
+function isEntityRecordNewerOrSame(record, existing) {
+  const recordTime = Date.parse(record.updatedAt || record.createdAt || "");
+  const existingTime = Date.parse(existing.updatedAt || existing.createdAt || "");
+  if (Number.isNaN(recordTime) || Number.isNaN(existingTime)) {
+    return true;
+  }
+  return recordTime >= existingTime;
 }
 
 function createProject({ id, name, displayName, status, type, description, metadata, aliases, resources }) {
@@ -7339,9 +7565,9 @@ function updateProject(memoryDir, id, updater) {
     ...updater(projects[index]),
     updatedAt: new Date().toISOString()
   });
-  projects[index] = updated;
-  writeProjects(memoryDir, projects);
-  return updated;
+  return appendEntityRecord(memoryDir, getProjectEventStoreDefinition(), updated, {
+    reason: "project:update"
+  });
 }
 
 function normalizeProject(project) {
@@ -7633,9 +7859,9 @@ function updateWorkflow(memoryDir, id, updater) {
     throw new Error(`Workflow not found: ${id}`);
   }
   const updated = normalizeWorkflow(updater(workflows[index]));
-  workflows[index] = updated;
-  writeWorkflows(memoryDir, workflows);
-  return updated;
+  return appendEntityRecord(memoryDir, getWorkflowEventStoreDefinition(), updated, {
+    reason: "workflow:update"
+  });
 }
 
 function findWorkflowIndex(workflows, id) {
@@ -7788,9 +8014,9 @@ function updateTask(memoryDir, id, updater) {
     throw new Error(`Task not found: ${id}`);
   }
   const updated = normalizeTask(updater(tasks[index]));
-  tasks[index] = updated;
-  writeTasks(memoryDir, tasks);
-  return updated;
+  return appendEntityRecord(memoryDir, getTaskEventStoreDefinition(), updated, {
+    reason: "task:update"
+  });
 }
 
 function normalizeTask(task) {
@@ -10899,7 +11125,11 @@ function getBackupFileCatalog(memoryDir) {
     { name: "memory-ledger.jsonl", target: path.join(memoryDir, "memories", "ledger.jsonl"), kind: "memory" },
     { name: "radio-messages.jsonl", target: path.join(memoryDir, "radio", "messages.jsonl"), kind: "radio" },
     { name: "tasks.jsonl", target: path.join(memoryDir, "tasks", "tasks.jsonl"), kind: "tasks" },
+    { name: "tasks-events.jsonl", target: path.join(memoryDir, "tasks", "events.jsonl"), kind: "tasks" },
     { name: "workflows.jsonl", target: path.join(memoryDir, "workflows", "workflows.jsonl"), kind: "workflows" },
+    { name: "workflows-events.jsonl", target: path.join(memoryDir, "workflows", "events.jsonl"), kind: "workflows" },
+    { name: "projects.jsonl", target: path.join(memoryDir, "projects", "projects.jsonl"), kind: "projects" },
+    { name: "projects-events.jsonl", target: path.join(memoryDir, "projects", "events.jsonl"), kind: "projects" },
     { name: "config.json", target: path.join(memoryDir, "config.json"), kind: "config" }
   ];
 }

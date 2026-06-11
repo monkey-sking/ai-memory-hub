@@ -315,6 +315,7 @@ ai-memory-hub metrics          # 显示所有指标
 ### 🔌 支持的 AI 工具
 
 #### 已验证支持
+- ✅ **Hermes Agent** - 已适配：记忆写入、任务管理、Radio 通信、定时同步
 - ✅ **Claude Code** - Anthropic 官方 CLI
 - ✅ **Codex** - 代码生成工具
 - ✅ **Gemini** - Google AI 工具

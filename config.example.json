@@ -11,6 +11,9 @@
     }
   },
   "tools": {
+    "hermes": {
+      "enabled": true
+    },
     "codex": {
       "enabled": true
     },

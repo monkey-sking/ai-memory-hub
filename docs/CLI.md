@@ -805,10 +805,12 @@ ai-memory-hub dispatch --run --to claude --project ai-memory-hub --limit 1
 - `--to <tool>` - Target tool
 - `--project <name>` - Project filter
 - `--limit <n>` - Maximum jobs
+- `--respect-recipe-dependencies` - Hold recipe step tasks until their
+  `recipeStep.dependsOn` tasks are done or completed
 
 Direct dispatch only runs radio messages addressed to a concrete tool such as `codex`, `gemini`, or `claude`, plus assigned tasks. Radio broadcasts addressed to `all` stay in shared state for tools to poll or reply to, but the daemon does not fan them out into automatic CLI execution. This keeps coordination notes from being retried as stale work.
 
-Every runner prompt includes autonomous safety rules: follow the current user/project guardrails, do not run `git push`, delete files, run destructive cleanup, install dependencies, or change system configuration unless the dispatch payload explicitly authorizes it. Local commits are allowed only when user/project rules allow them and verification has passed.
+Every runner prompt includes autonomous safety rules: follow the current user/project guardrails, do not run `git push`, delete files, run destructive cleanup, install dependencies, or change system configuration unless the dispatch payload explicitly authorizes it. If the source task or workflow has a `qualityGate`, the prompt also includes its review requirement, max repair attempts, stop conditions, allowed/forbidden actions, and verification commands. Local commits are allowed only when user/project rules allow them and verification has passed.
 
 Each executed runner also writes a structured run record to `state/dispatch-runs.jsonl` and raw output logs under `dispatch-runs/`. The record includes `runId`, source task/radio/workflow, command metadata, `cwd`, start/end time, duration, exit code, stdout/stderr log paths, status, error summary, and verification result.
 
@@ -848,11 +850,14 @@ Progress entries appear as `progress` in `dispatch status`, `metrics`, and the d
 
 ### `dispatch retry`
 
-Retry failed relay jobs whose `nextRetryAt` is due. With `--run`, this also scans latest relay states for stale `dispatched`, `acked`, `progress`, or `retrying` entries and marks them `failed` or `abandoned` when `ackTimeout` has elapsed. Broadcast radio messages are not retried through direct CLI runners; convert them into targeted radio messages or assigned tasks when executable follow-up is needed. Relays whose source task, workflow, radio message, or linked radio thread is already completed, delivered, done, or cancelled are skipped instead of resurrected as stale work.
+Retry failed relay jobs whose `nextRetryAt` is due. With `--run`, this also scans latest relay states for stale `dispatched`, `acked`, `progress`, or `retrying` entries and marks them `failed` or `abandoned` when `ackTimeout` has elapsed. Broadcast radio messages are not retried through direct CLI runners; convert them into targeted radio messages or assigned tasks when executable follow-up is needed. Relays whose source task, workflow, radio message, or linked radio thread is already completed, delivered, done, cancelled, or blocked are skipped instead of resurrected as stale work.
 
 ```bash
 ai-memory-hub dispatch retry --run --project ai-memory-hub
 ```
+
+Use `--respect-recipe-dependencies` to apply the same recipe step dependency
+filter that the daemon uses.
 
 Timed-out entries use `progressAt` first, then `dispatchedAt`, `deliveryUpdatedAt`, `ts`, or `updatedAt` as the fallback timeout base. Timeout failures become visible in `dispatch status`, `metrics`, task notes, and the dashboard dispatch panel.
 
@@ -1161,7 +1166,7 @@ ai-memory-hub watch [--interval-ms <ms>]
 
 ### `daemon`
 
-Start the local dispatch daemon. It checks verified runners (`codex`, `gemini`, `claude`), marks stale relay entries timed out, retries due failures, and dispatches new matching tasks or radio messages.
+Start the local dispatch daemon. It checks verified runners (`codex`, `gemini`, `claude`), marks stale relay entries timed out, retries due failures, and dispatches new matching tasks or radio messages. Daemon dispatch uses `--respect-recipe-dependencies` semantics by default, so recipe-generated steps do not run before their declared dependencies complete.
 
 ```bash
 ai-memory-hub daemon [--interval-ms <ms>] [--project <name[,name]>] [--limit <n>]
@@ -1179,6 +1184,11 @@ The daemon writes runtime metadata to:
 - `state/daemon-status.json`
 
 Use `ai-memory-hub daemon status` to inspect whether the recorded process is running, stale, stopped, or missing. Use `Ctrl+C` or send `SIGTERM` to stop the daemon cleanly; shutdown updates `daemon-status.json` and removes the PID file when it belongs to the current daemon process.
+
+For recipe-generated lights-out work, the daemon passes `qualityGate` details
+into runner prompts and uses `qualityGate.maxRepairAttempts` as the relay retry
+limit. Tasks that are `blocked`, `cancelled`, `done`, or already completed are
+not automatically resurrected by retries.
 
 ### `app`
 

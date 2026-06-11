@@ -301,7 +301,8 @@ ai-memory-hub recipe create --recipe lights-out-local --tools planner:codex,exec
 用户可在 `~/.ai-memory/recipes/` 放置同名 JSON 模板覆盖内置版本。
 Recipe 可声明机器可读 `qualityGate`，包括验证命令、review 要求、最大修复次数、
 停止条件和允许/禁止动作；`recipe create` 会把这些字段保存在生成的 workflow/task
-记录中，供 daemon 和 dashboard 后续自动推进或展示。
+记录中。daemon 会按 `recipeStep.dependsOn` 顺序派发 recipe 任务，把 `qualityGate`
+写入 runner prompt，并用 `maxRepairAttempts` 作为 retry 上限；dashboard 可展示这些字段。
 
 #### 指标统计
 

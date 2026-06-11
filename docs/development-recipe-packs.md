@@ -48,6 +48,9 @@ Supported machine-readable gate fields:
 created workflow and tasks. Each task also gets `recipeStep` metadata with the
 step id, role, dependency ids, and workflow id, so daemon and dashboard code can
 advance or render recipe-driven work without parsing task prose.
+Daemon dispatch respects those recipe dependencies by default and passes the
+effective `qualityGate` into runner prompts. `maxRepairAttempts` is also used as
+the relay retry limit for task dispatch and retry.
 
 ## Built-In Templates
 
@@ -98,5 +101,5 @@ These fields can be pasted into task notes, workflow results, or radio replies.
 - Add optional structured step output declarations, such as required result
   fields and artifact paths.
 - Add dashboard rendering for recipe step dependency graphs.
-- Let the daemon execute `verifyCommands` and enforce `maxRepairAttempts` for
-  lights-out loops.
+- Let the daemon execute `verifyCommands` directly instead of only passing them
+  into runner prompts.

@@ -1,0 +1,19 @@
+.dashboard {
+  color: #f0f3f6;
+}
+
+.dashboard-header {
+  margin-bottom: 24px;
+}
+
+.dashboard-header h2 {
+  font-size: 24px;
+  margin: 0;
+}
+
+.dashboard-content {
+  background: #141b2f;
+  border: 1px solid #212c46;
+  border-radius: 12px;
+  padding: 24px;
+}

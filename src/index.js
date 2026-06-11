@@ -4216,6 +4216,9 @@ function appCommand(argv) {
       if (req.method === "GET" && url.pathname === "/api/dashboard") {
         return sendJson(res, getDashboardSnapshot(config.memoryDir));
       }
+      if (req.method === "GET" && url.pathname === "/api/metrics") {
+        return sendJson(res, calculateMetrics(config.memoryDir));
+      }
       if (req.method === "GET" && url.pathname === "/api/status") {
         return sendJson(res, getStatusObject());
       }
@@ -4231,6 +4234,80 @@ function appCommand(argv) {
       }
       if (req.method === "GET" && url.pathname === "/api/workflows") {
         return sendJson(res, getDashboardWorkflows(config.memoryDir));
+      }
+      if (req.method === "POST" && url.pathname === "/api/workflows") {
+        const body = await readRequestJson(req);
+        if (!body.title || typeof body.title !== "string") {
+          return sendJson(res, { error: "title is required" }, 400);
+        }
+        let workflow;
+        withHubLock(config.memoryDir, "workflow-create", () => {
+          workflow = createDashboardWorkflow(config.memoryDir, body);
+        }, config.sync.lockStaleMs);
+        broadcastDashboardUpdate("workflow:create");
+        return sendJson(res, { ok: true, workflow, status: getStatusObject() });
+      }
+      const workflowApiMatch = url.pathname.match(/^\/api\/workflows\/([^/]+)(?:\/([^/]+))?$/);
+      if (workflowApiMatch) {
+        const workflowId = decodeURIComponent(workflowApiMatch[1]);
+        const workflowAction = workflowApiMatch[2] ? decodeURIComponent(workflowApiMatch[2]) : "";
+        if (req.method === "PATCH" && !workflowAction) {
+          const body = await readRequestJson(req);
+          let workflow;
+          withHubLock(config.memoryDir, "workflow-update", () => {
+            workflow = updateDashboardWorkflow(config.memoryDir, workflowId, body);
+          }, config.sync.lockStaleMs);
+          broadcastDashboardUpdate("workflow:update");
+          return sendJson(res, { ok: true, workflow, status: getStatusObject() });
+        }
+        if (req.method === "DELETE" && !workflowAction) {
+          const body = await readRequestJson(req);
+          let workflow;
+          withHubLock(config.memoryDir, "workflow-delete", () => {
+            workflow = deleteDashboardWorkflow(config.memoryDir, workflowId, body);
+          }, config.sync.lockStaleMs);
+          broadcastDashboardUpdate("workflow:delete");
+          return sendJson(res, { ok: true, workflow, status: getStatusObject() });
+        }
+        if (req.method === "POST" && workflowAction === "status") {
+          const body = await readRequestJson(req);
+          if (!body.status || typeof body.status !== "string") {
+            return sendJson(res, { error: "status is required" }, 400);
+          }
+          let workflow;
+          withHubLock(config.memoryDir, "workflow-status", () => {
+            workflow = setDashboardWorkflowStatus(config.memoryDir, workflowId, body);
+          }, config.sync.lockStaleMs);
+          broadcastDashboardUpdate("workflow:status");
+          return sendJson(res, { ok: true, workflow, status: getStatusObject() });
+        }
+        if (req.method === "POST" && ["result", "review", "note"].includes(workflowAction)) {
+          const body = await readRequestJson(req);
+          if (!body.text || typeof body.text !== "string") {
+            return sendJson(res, { error: "text is required" }, 400);
+          }
+          let workflow;
+          withHubLock(config.memoryDir, `workflow-${workflowAction}`, () => {
+            workflow = appendDashboardWorkflowEntry(config.memoryDir, workflowId, workflowAction, body);
+          }, config.sync.lockStaleMs);
+          broadcastDashboardUpdate(`workflow:${workflowAction}`);
+          return sendJson(res, { ok: true, workflow, status: getStatusObject() });
+        }
+        if (req.method === "POST" && workflowAction === "signal") {
+          const body = await readRequestJson(req);
+          if (!body.to || typeof body.to !== "string") {
+            return sendJson(res, { error: "to is required" }, 400);
+          }
+          if (!body.text || typeof body.text !== "string") {
+            return sendJson(res, { error: "text is required" }, 400);
+          }
+          let result;
+          withHubLock(config.memoryDir, "workflow-signal", () => {
+            result = signalDashboardWorkflow(config.memoryDir, workflowId, body);
+          }, config.sync.lockStaleMs);
+          broadcastDashboardUpdate("workflow:signal");
+          return sendJson(res, { ok: true, ...result, status: getStatusObject() });
+        }
       }
       if (req.method === "GET" && url.pathname === "/api/dispatch") {
         return sendJson(res, getDashboardDispatch(config.memoryDir));
@@ -4662,6 +4739,7 @@ function getDashboardSnapshot(memoryDir) {
     tasks: getDashboardTasks(memoryDir),
     workflows: getDashboardWorkflows(memoryDir),
     dispatch: getDashboardDispatch(memoryDir),
+    metrics: calculateMetrics(memoryDir),
     tools: getDashboardTools(memoryDir),
     backups: getDashboardBackups(memoryDir),
     settings: getDashboardSettings()
@@ -4697,6 +4775,194 @@ function getDashboardWorkflows(memoryDir) {
       .sort((a, b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")))
       .slice(0, 100)
   };
+}
+
+function createDashboardWorkflow(memoryDir, body) {
+  const workflows = readWorkflows(memoryDir);
+  let workflow = createWorkflow({
+    title: body.title,
+    createdBy: body.from || body.createdBy || body.by || "dashboard",
+    project: body.project || path.basename(process.cwd()),
+    priority: body.priority || "normal",
+    planner: body.planner || "",
+    executor: body.executor || "",
+    reviewer: body.reviewer || "",
+    observer: body.observer || "",
+    plan: body.plan || "",
+    acceptance: body.acceptance || "",
+    qualityGate: body.qualityGate
+  });
+  const status = String(body.status || "").trim();
+  if (status) {
+    assertWorkflowStatus(status);
+    workflow = {
+      ...workflow,
+      status,
+      completedAt: status === "done" ? new Date().toISOString() : ""
+    };
+  }
+  workflow = {
+    ...workflow,
+    risks: normalizeDashboardList(body.risks)
+  };
+  workflows.push(workflow);
+  writeWorkflows(memoryDir, workflows);
+  if (body.spawnTasks) {
+    spawnWorkflowTasks(memoryDir, workflow);
+  }
+  if (body.notify) {
+    notifyWorkflowRoles(memoryDir, workflow);
+  }
+  return readWorkflows(memoryDir).find((item) => item.id === workflow.id) || workflow;
+}
+
+function updateDashboardWorkflow(memoryDir, id, body) {
+  const by = body.by || body.from || "dashboard";
+  const patch = {};
+  const changedFields = [];
+  for (const key of ["title", "project", "plan", "acceptance"]) {
+    if (Object.prototype.hasOwnProperty.call(body, key)) {
+      patch[key] = String(body[key] || "").trim();
+      changedFields.push(key);
+    }
+  }
+  for (const key of ["planner", "executor", "reviewer", "observer"]) {
+    if (Object.prototype.hasOwnProperty.call(body, key)) {
+      patch[key] = normalizeWorkflowRole(body[key]);
+      changedFields.push(key);
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(body, "priority")) {
+    patch.priority = normalizePriority(body.priority);
+    changedFields.push("priority");
+  }
+  if (Object.prototype.hasOwnProperty.call(body, "status")) {
+    const status = String(body.status || "").trim();
+    assertWorkflowStatus(status);
+    patch.status = status;
+    changedFields.push("status");
+  }
+  if (Object.prototype.hasOwnProperty.call(body, "risks")) {
+    patch.risks = normalizeDashboardList(body.risks);
+    changedFields.push("risks");
+  }
+  if (changedFields.length === 0) {
+    throw new Error("workflow update requires at least one editable field");
+  }
+  return updateWorkflow(memoryDir, id, (current) => {
+    const now = new Date().toISOString();
+    const notes = [...(current.notes || [])];
+    notes.push(createTaskNote(by, `Updated workflow fields: ${changedFields.join(", ")}.`));
+    return {
+      ...current,
+      ...patch,
+      updatedAt: now,
+      completedAt: patch.status ? (patch.status === "done" ? now : "") : current.completedAt || "",
+      notes
+    };
+  });
+}
+
+function deleteDashboardWorkflow(memoryDir, id, body = {}) {
+  const workflows = readWorkflows(memoryDir);
+  const index = findWorkflowIndex(workflows, id);
+  if (index === -1) {
+    throw new Error(`Workflow not found: ${id}`);
+  }
+  const [deleted] = workflows.splice(index, 1);
+  writeWorkflows(memoryDir, workflows);
+  const by = body.by || body.from || "dashboard";
+  return {
+    ...deleted,
+    deletedAt: new Date().toISOString(),
+    deletedBy: by
+  };
+}
+
+function setDashboardWorkflowStatus(memoryDir, id, body) {
+  const status = String(body.status || "").trim();
+  assertWorkflowStatus(status);
+  const by = body.by || body.from || "dashboard";
+  const note = String(body.note || "").trim();
+  return updateWorkflow(memoryDir, id, (current) => {
+    const now = new Date().toISOString();
+    const notes = [...(current.notes || [])];
+    notes.push(createTaskNote(by, note || `Status changed to ${status}.`));
+    return {
+      ...current,
+      status,
+      updatedAt: now,
+      completedAt: status === "done" ? now : "",
+      notes
+    };
+  });
+}
+
+function appendDashboardWorkflowEntry(memoryDir, id, action, body) {
+  const by = body.by || body.from || "dashboard";
+  const role = String(body.role || "").trim();
+  const text = String(body.text || "").trim();
+  const now = new Date().toISOString();
+  if (action === "note") {
+    return updateWorkflow(memoryDir, id, (current) => ({
+      ...current,
+      updatedAt: now,
+      notes: [
+        ...(current.notes || []),
+        createTaskNote(by, text)
+      ]
+    }));
+  }
+  const field = action === "review" ? "reviews" : "results";
+  return updateWorkflow(memoryDir, id, (current) => ({
+    ...current,
+    status: action === "review" && !["done", "cancelled"].includes(current.status) ? "review" : current.status,
+    updatedAt: now,
+    [field]: [
+      ...(current[field] || []),
+      { ts: now, by, role, text }
+    ]
+  }));
+}
+
+function signalDashboardWorkflow(memoryDir, id, body) {
+  const by = body.by || body.from || "dashboard";
+  const workflow = readWorkflows(memoryDir).find((item) => item.id === id || item.id.startsWith(id));
+  if (!workflow) {
+    throw new Error(`Workflow not found: ${id}`);
+  }
+  const message = createRadioMessage({
+    from: by,
+    to: body.to,
+    type: body.type || "handoff",
+    text: `[workflow:${workflow.id}] ${body.text}`,
+    thread: workflow.id,
+    project: workflow.project
+  });
+  appendJsonl(path.join(memoryDir, "radio", "messages.jsonl"), message);
+  const updated = updateWorkflow(memoryDir, workflow.id, (current) => ({
+    ...current,
+    updatedAt: new Date().toISOString(),
+    linkedRadio: [
+      ...(current.linkedRadio || []),
+      message.id
+    ],
+    notes: [
+      ...(current.notes || []),
+      createTaskNote(by, `Signal sent to ${body.to}.`)
+    ]
+  }));
+  return { workflow: updated, message };
+}
+
+function normalizeDashboardList(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item || "").trim()).filter(Boolean);
+  }
+  return String(value || "")
+    .split(/\r?\n|,/)
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function getDashboardDispatch(memoryDir) {

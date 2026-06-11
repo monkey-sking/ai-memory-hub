@@ -479,6 +479,179 @@ test("dashboard settings API persists editable runtime preferences", async () =>
   });
 });
 
+test("dashboard workflow API supports CRUD actions and UI hooks", async () => {
+  const dashboardHtml = await fs.readFile(path.join(repoRoot, "templates", "dashboard-v2.html"), "utf8");
+  assert.match(dashboardHtml, /id="workflowEditor"/);
+  assert.match(dashboardHtml, /onclick="showWorkflowForm\(\)"/);
+  assert.match(dashboardHtml, /onclick="saveWorkflow\(\)"/);
+  assert.match(dashboardHtml, /onclick="cancelWorkflowEdit\(\)"/);
+
+  const dashboardJs = await fs.readFile(path.join(repoRoot, "public", "js", "dashboard.js"), "utf8");
+  assert.match(dashboardJs, /function renderWorkflowsPanel/);
+  assert.match(dashboardJs, /function showWorkflowForm/);
+  assert.match(dashboardJs, /async function saveWorkflow/);
+  assert.match(dashboardJs, /async function deleteWorkflow/);
+  assert.match(dashboardJs, /async function setWorkflowStatus/);
+  assert.match(dashboardJs, /async function addWorkflowEntry/);
+  assert.match(dashboardJs, /async function signalWorkflow/);
+  assert.match(dashboardJs, /api\(`\/api\/workflows\/\$\{encodeURIComponent\(id\)\}`/);
+
+  await withHub(async (memoryDir) => {
+    const port = await getFreePort();
+    const child = spawn(process.execPath, [cliPath, "app", "--port", String(port)], {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        AI_MEMORY_DIR: memoryDir
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true
+    });
+    const stderr = [];
+    child.stderr.on("data", (chunk) => stderr.push(String(chunk)));
+    try {
+      await waitForServer(port, child);
+      const createRes = await fetch(`http://127.0.0.1:${port}/api/workflows`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: "Dashboard workflow CRUD",
+          from: "dashboard-test",
+          project: "ai-memory-hub",
+          priority: "high",
+          status: "planned",
+          planner: "codex",
+          executor: "codex,claude",
+          reviewer: "claude",
+          observer: "marvis",
+          plan: "Create, edit, review, and signal from dashboard.",
+          acceptance: "Workflow API actions persist.",
+          risks: "Regression risk\nReview delay"
+        })
+      });
+      if (createRes.status !== 200) {
+        assert.fail(await createRes.text());
+      }
+      const created = await createRes.json();
+      assert.equal(created.ok, true);
+      assert.equal(created.workflow.title, "Dashboard workflow CRUD");
+      assert.equal(created.workflow.status, "planned");
+      assert.equal(created.workflow.priority, "high");
+      assert.deepEqual(created.workflow.planner, ["codex"]);
+      assert.deepEqual(created.workflow.executor, ["codex", "claude"]);
+      assert.deepEqual(created.workflow.reviewer, ["claude"]);
+      assert.deepEqual(created.workflow.risks, ["Regression risk", "Review delay"]);
+      const workflowId = created.workflow.id;
+
+      const updateRes = await fetch(`http://127.0.0.1:${port}/api/workflows/${workflowId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: "Dashboard workflow CRUD updated",
+          by: "dashboard-test",
+          status: "in_progress",
+          reviewer: "gemini",
+          risks: "Scope creep, stale review"
+        })
+      });
+      if (updateRes.status !== 200) {
+        assert.fail(await updateRes.text());
+      }
+      const updated = await updateRes.json();
+      assert.equal(updated.workflow.title, "Dashboard workflow CRUD updated");
+      assert.equal(updated.workflow.status, "in_progress");
+      assert.deepEqual(updated.workflow.reviewer, ["gemini"]);
+      assert.deepEqual(updated.workflow.risks, ["Scope creep", "stale review"]);
+      assert.match(updated.workflow.notes.at(-1).text, /Updated workflow fields/);
+
+      const statusRes = await fetch(`http://127.0.0.1:${port}/api/workflows/${workflowId}/status`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "blocked", by: "dashboard-test", note: "Waiting for reviewer." })
+      });
+      if (statusRes.status !== 200) {
+        assert.fail(await statusRes.text());
+      }
+      const statusPayload = await statusRes.json();
+      assert.equal(statusPayload.workflow.status, "blocked");
+      assert.match(statusPayload.workflow.notes.at(-1).text, /Waiting for reviewer/);
+
+      const resultRes = await fetch(`http://127.0.0.1:${port}/api/workflows/${workflowId}/result`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ by: "codex", role: "executor", text: "Implementation finished." })
+      });
+      if (resultRes.status !== 200) {
+        assert.fail(await resultRes.text());
+      }
+      const resultPayload = await resultRes.json();
+      assert.equal(resultPayload.workflow.results.at(-1).text, "Implementation finished.");
+      assert.equal(resultPayload.workflow.results.at(-1).role, "executor");
+
+      const reviewRes = await fetch(`http://127.0.0.1:${port}/api/workflows/${workflowId}/review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ by: "claude", role: "reviewer", text: "Review passed." })
+      });
+      if (reviewRes.status !== 200) {
+        assert.fail(await reviewRes.text());
+      }
+      const reviewPayload = await reviewRes.json();
+      assert.equal(reviewPayload.workflow.status, "review");
+      assert.equal(reviewPayload.workflow.reviews.at(-1).text, "Review passed.");
+
+      const noteRes = await fetch(`http://127.0.0.1:${port}/api/workflows/${workflowId}/note`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ by: "dashboard-test", text: "Dashboard note persisted." })
+      });
+      if (noteRes.status !== 200) {
+        assert.fail(await noteRes.text());
+      }
+      const notePayload = await noteRes.json();
+      assert.equal(notePayload.workflow.notes.at(-1).text, "Dashboard note persisted.");
+
+      const signalRes = await fetch(`http://127.0.0.1:${port}/api/workflows/${workflowId}/signal`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ by: "dashboard-test", to: "claude", type: "handoff", text: "Please review workflow CRUD." })
+      });
+      if (signalRes.status !== 200) {
+        assert.fail(await signalRes.text());
+      }
+      const signalPayload = await signalRes.json();
+      assert.equal(signalPayload.message.to, "claude");
+      assert.match(signalPayload.message.text, new RegExp(`\\[workflow:${workflowId}\\] Please review workflow CRUD\\.`));
+      assert.ok(signalPayload.workflow.linkedRadio.includes(signalPayload.message.id));
+
+      const listedRes = await fetch(`http://127.0.0.1:${port}/api/workflows`);
+      assert.equal(listedRes.status, 200);
+      const listed = await listedRes.json();
+      assert.ok(listed.workflows.some((workflow) => workflow.id === workflowId && workflow.linkedRadio.includes(signalPayload.message.id)));
+
+      const radio = await readJsonl(path.join(memoryDir, "radio", "messages.jsonl"));
+      assert.ok(radio.some((message) => message.id === signalPayload.message.id && message.thread === workflowId));
+
+      const deleteRes = await fetch(`http://127.0.0.1:${port}/api/workflows/${workflowId}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ by: "dashboard-test" })
+      });
+      if (deleteRes.status !== 200) {
+        assert.fail(await deleteRes.text());
+      }
+      const deleted = await deleteRes.json();
+      assert.equal(deleted.workflow.id, workflowId);
+      assert.equal(deleted.workflow.deletedBy, "dashboard-test");
+      const workflows = await readJsonl(path.join(memoryDir, "workflows", "workflows.jsonl"));
+      assert.equal(workflows.some((workflow) => workflow.id === workflowId), false);
+    } finally {
+      await stopServer(child);
+    }
+    assert.deepEqual(stderr, []);
+  });
+});
+
 test("dashboard search and backup APIs expose cross-hub data", async () => {
   await withHub(async (memoryDir) => {
     const now = new Date().toISOString();

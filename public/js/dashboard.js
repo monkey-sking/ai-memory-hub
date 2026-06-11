@@ -246,6 +246,19 @@
         syncInbox: "Sync Inbox",
         activeTasks: "Active Tasks",
         workflowStages: "Workflow Stages",
+        taskExecutionPanel: "Task Execution Panel",
+        taskTotalLabel: "Total Tasks",
+        avgTaskDuration: "Avg Duration",
+        relaySuccessRate: "Relay Success",
+        queueRunningLabel: "Queue Running",
+        statusPipeline: "Status Pipeline",
+        toolLoadLabel: "Tool Load",
+        recentFailuresLabel: "Recent Failures",
+        activeExecutionLabel: "Active Execution",
+        noMetricsAvailable: "No metrics available.",
+        noFailures: "No recent failures.",
+        noToolLoad: "No assigned tool load yet.",
+        noActiveExecution: "No active execution tasks.",
         pendingEvents: "Pending Events",
         radioMessages: "Broadcast Messages",
         durableLedger: "Durable Ledger",
@@ -396,6 +409,49 @@
         workflowManagement: "🔄 Workflow Management",
         createWorkflow: "+ New Workflow",
         loadingWorkflows: "Loading workflows...",
+        workflowTotal: "Total Workflows",
+        workflowActive: "Active",
+        workflowReviewQueue: "In Review",
+        workflowBlockedQueue: "Blocked",
+        workflowTitleLabel: "Workflow Title",
+        workflowTitlePlaceholder: "Short workflow title",
+        statusLabel: "Status",
+        allStatuses: "All Statuses",
+        plannerLabel: "Planner",
+        executorLabel: "Executor",
+        reviewerLabel: "Reviewer",
+        observerLabel: "Observer",
+        workflowPlanLabel: "Plan",
+        workflowPlanPlaceholder: "Concrete steps and state transitions",
+        workflowAcceptanceLabel: "Acceptance",
+        workflowAcceptancePlaceholder: "What must be true before closing",
+        workflowRisksLabel: "Risks",
+        workflowRisksPlaceholder: "One risk per line",
+        saveWorkflow: "Save Workflow",
+        cancel: "Cancel",
+        editWorkflow: "Edit",
+        deleteWorkflow: "Delete",
+        startWorkflow: "Start",
+        markReview: "Review",
+        markDone: "Done",
+        workflowResult: "Add Result",
+        workflowReview: "Add Review",
+        workflowNote: "Add Note",
+        workflowSignal: "Signal",
+        workflowLogs: "Execution Logs",
+        workflowLinkedItems: "Linked Items",
+        noWorkflowLogs: "No workflow logs yet.",
+        workflowSaved: "Workflow saved.",
+        workflowDeleted: "Workflow deleted.",
+        workflowUpdated: "Workflow updated.",
+        confirmDeleteWorkflow: "Delete this workflow record?",
+        promptWorkflowResult: "Execution result:",
+        promptWorkflowReview: "Review note:",
+        promptWorkflowNote: "Workflow note:",
+        promptWorkflowSignalTo: "Signal recipient:",
+        promptWorkflowSignalText: "Signal message:",
+        noWorkflowsMatch: "No workflows match the current filters.",
+        workflowTitleRequired: "Workflow title is required.",
         systemSettings: "⚙️ System Settings",
         settingsCurrentSnapshot: "Snapshot Limit",
         settingsCurrentRefresh: "Refresh Interval",
@@ -608,6 +664,19 @@
         syncInbox: "同步收件箱",
         activeTasks: "活跃任务数",
         workflowStages: "工作流阶段",
+        taskExecutionPanel: "任务执行面板",
+        taskTotalLabel: "任务总数",
+        avgTaskDuration: "平均耗时",
+        relaySuccessRate: "Relay 成功率",
+        queueRunningLabel: "队列执行中",
+        statusPipeline: "状态流转",
+        toolLoadLabel: "工具负载",
+        recentFailuresLabel: "近期失败",
+        activeExecutionLabel: "执行中任务",
+        noMetricsAvailable: "暂无指标数据。",
+        noFailures: "暂无近期失败。",
+        noToolLoad: "暂无已分配工具负载。",
+        noActiveExecution: "暂无执行中的任务。",
         pendingEvents: "待同步事件",
         radioMessages: "广播消息数",
         durableLedger: "长期记忆账本",
@@ -758,6 +827,49 @@
         workflowManagement: "🔄 工作流管理",
         createWorkflow: "+ 创建工作流",
         loadingWorkflows: "加载工作流中...",
+        workflowTotal: "工作流总数",
+        workflowActive: "活跃",
+        workflowReviewQueue: "评审中",
+        workflowBlockedQueue: "阻塞",
+        workflowTitleLabel: "工作流标题",
+        workflowTitlePlaceholder: "简短的工作流标题",
+        statusLabel: "状态",
+        allStatuses: "所有状态",
+        plannerLabel: "规划者",
+        executorLabel: "执行者",
+        reviewerLabel: "评审者",
+        observerLabel: "观察者",
+        workflowPlanLabel: "计划",
+        workflowPlanPlaceholder: "具体步骤和状态流转",
+        workflowAcceptanceLabel: "验收标准",
+        workflowAcceptancePlaceholder: "关闭前必须满足的条件",
+        workflowRisksLabel: "风险",
+        workflowRisksPlaceholder: "每行一个风险",
+        saveWorkflow: "保存工作流",
+        cancel: "取消",
+        editWorkflow: "编辑",
+        deleteWorkflow: "删除",
+        startWorkflow: "开始",
+        markReview: "转评审",
+        markDone: "完成",
+        workflowResult: "添加结果",
+        workflowReview: "添加评审",
+        workflowNote: "添加备注",
+        workflowSignal: "发送信号",
+        workflowLogs: "执行日志",
+        workflowLinkedItems: "关联项",
+        noWorkflowLogs: "暂无工作流日志。",
+        workflowSaved: "工作流已保存。",
+        workflowDeleted: "工作流已删除。",
+        workflowUpdated: "工作流已更新。",
+        confirmDeleteWorkflow: "确定删除这条工作流记录吗？",
+        promptWorkflowResult: "执行结果：",
+        promptWorkflowReview: "评审备注：",
+        promptWorkflowNote: "工作流备注：",
+        promptWorkflowSignalTo: "信号接收方：",
+        promptWorkflowSignalText: "信号内容：",
+        noWorkflowsMatch: "没有符合当前筛选条件的工作流。",
+        workflowTitleRequired: "请填写工作流标题。",
         systemSettings: "⚙️ 系统设置",
         settingsCurrentSnapshot: "快照限制",
         settingsCurrentRefresh: "刷新间隔",
@@ -998,6 +1110,7 @@
       workflows: [],
       dispatch: [],
       relay: [],
+      metrics: null,
       tools: null,
       selectedTool: '',
       backups: null,
@@ -1390,6 +1503,10 @@
         .replace(/\r/g, '\\r')
         .replace(/\n/g, '\\n')
         .replace(/</g, '\\x3c');
+    }
+
+    function cssToken(val) {
+      return String(val || 'unknown').toLowerCase().replace(/[^a-z0-9_-]+/g, '-');
     }
 
     // Lightweight markdown parser for memory.md
@@ -1887,6 +2004,7 @@
       state.workflows = (snapshot.workflows && snapshot.workflows.workflows) || [];
       state.dispatch = (snapshot.dispatch && snapshot.dispatch.logs) || [];
       state.relay = (snapshot.dispatch && snapshot.dispatch.relay) || [];
+      state.metrics = snapshot.metrics || state.metrics;
       state.tools = snapshot.tools || state.tools;
       state.backups = snapshot.backups || state.backups;
       state.settings = snapshot.settings || state.settings;
@@ -2004,13 +2122,14 @@
           recordEndpointError('/api/dashboard', dashboardErr);
         }
 
-        const [statusRes, memoryRes, radioRes, tasksRes, workflowsRes, dispatchRes, toolsRes, backupsRes, settingsRes] = await Promise.allSettled([
+        const [statusRes, memoryRes, radioRes, tasksRes, workflowsRes, dispatchRes, metricsRes, toolsRes, backupsRes, settingsRes] = await Promise.allSettled([
           api('/api/status'),
           api('/api/memory'),
           api('/api/radio'),
           api('/api/tasks'),
           api('/api/workflows'),
           api('/api/dispatch'),
+          api('/api/metrics'),
           api('/api/tools'),
           api('/api/backups'),
           api('/api/settings')
@@ -2051,6 +2170,12 @@
           recordEndpointError('/api/dispatch', dispatchRes.reason);
           state.dispatch = [];
           state.relay = [];
+        }
+        if (metricsRes.status === 'fulfilled') {
+          state.metrics = metricsRes.value || null;
+        } else {
+          recordEndpointError('/api/metrics', metricsRes.reason);
+          state.metrics = null;
         }
         if (toolsRes.status === 'fulfilled') {
           state.tools = toolsRes.value || null;
@@ -2165,6 +2290,7 @@
       // Render tab components
       renderDashboardOverview();
       renderWorkflowStages();
+      renderTaskExecutionPanel();
       renderMemoryHub();
       renderRadioFeed();
       renderTasksList();
@@ -2221,11 +2347,19 @@
           projectSet.add(tsk.project);
         }
       });
+      const workflowProjSet = new Set();
+      state.workflows.forEach(workflow => {
+        if (workflow.project) {
+          workflowProjSet.add(workflow.project);
+          projectSet.add(workflow.project);
+        }
+      });
 
       updateSelectOptions('filterRadioFromOpt', Array.from(fromSet), t('senderAll'));
       updateSelectOptions('filterRadioToOpt', Array.from(toSet), t('recipientAll'));
       updateSelectOptions('filterRadioProject', Array.from(projectSet), t('allProjects'));
       updateSelectOptions('filterTaskProject', Array.from(tskProjSet), t('allProjects'));
+      updateSelectOptions('workflowFilterProject', Array.from(workflowProjSet), t('allProjects'));
       updateProjectInputOptions(Array.from(projectSet));
     }
 
@@ -2528,6 +2662,144 @@
         `;
       }).join('');
       document.getElementById('workflowList').innerHTML = workflowRows || `<div class="muted">${t('noWorkflows')}</div>`;
+    }
+
+    function countBy(items, getKey) {
+      return (Array.isArray(items) ? items : []).reduce((acc, item) => {
+        const key = String(getKey(item) || '').trim();
+        if (key) acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      }, {});
+    }
+
+    function normalizePercentText(value) {
+      if (typeof value === 'string' && value.trim()) return value.trim();
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric)) return '-';
+      return numeric <= 1 ? `${Math.round(numeric * 100)}%` : `${Math.round(numeric)}%`;
+    }
+
+    function renderExecutionBars(entries, total, options = {}) {
+      const max = Math.max(1, Number(total || 0));
+      const visible = entries.filter(([, count]) => Number(count || 0) > 0);
+      if (visible.length === 0) {
+        return `<div class="muted">${escapeHtml(options.emptyText || t('noMetricsAvailable'))}</div>`;
+      }
+      return visible.map(([key, count]) => {
+        const numericCount = Number(count || 0);
+        const percent = Math.round((numericCount / max) * 100);
+        const width = Math.min(100, Math.max(numericCount > 0 ? 4 : 0, percent));
+        const label = options.label ? options.label(key) : key;
+        const icon = options.icon ? options.icon(key) : '';
+        return `
+          <div class="execution-bar-row">
+            <div class="execution-bar-label">
+              ${icon}
+              <span>${escapeHtml(label)}</span>
+              <strong>${escapeHtml(String(numericCount))}</strong>
+            </div>
+            <div class="execution-bar-track">
+              <div class="execution-bar-fill status-${cssToken(key)}" style="width:${width}%"></div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderTaskExecutionPanel() {
+      const metrics = state.metrics || {};
+      const taskMetrics = metrics.tasks || {};
+      const relayMetrics = metrics.relay || {};
+      const queueMetrics = metrics.queue || {};
+      const fallbackByStatus = countBy(state.tasks, task => task.status || 'open');
+      const fallbackByTool = countBy(state.tasks, task => task.assignee || task.createdBy || t('unassigned'));
+      const byStatus = Object.keys(taskMetrics.byStatus || {}).length ? taskMetrics.byStatus : fallbackByStatus;
+      const byTool = Object.keys(taskMetrics.byTool || {}).length ? taskMetrics.byTool : fallbackByTool;
+      const totalTasks = Number(taskMetrics.total || 0) || state.tasks.length || 0;
+      const setText = (id, value) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = String(value);
+      };
+
+      setText('executionTaskTotal', totalTasks);
+      setText('executionAvgDuration', taskMetrics.avgDurationHuman || formatDurationMs(taskMetrics.avgDurationMs) || '-');
+      setText('executionRelaySuccess', normalizePercentText(relayMetrics.successRate));
+      setText('executionQueueRunning', queueMetrics.running || 0);
+
+      const statusOrder = ['open', 'claimed', 'in_progress', 'blocked', 'done', 'cancelled'];
+      const statusEntries = [
+        ...statusOrder.map(status => [status, byStatus[status] || 0]),
+        ...Object.entries(byStatus).filter(([status]) => !statusOrder.includes(status))
+      ];
+      const statusBars = document.getElementById('executionStatusBars');
+      if (statusBars) {
+        statusBars.innerHTML = renderExecutionBars(statusEntries, totalTasks, {
+          emptyText: t('noMetricsAvailable'),
+          label: key => key.replace(/_/g, ' ')
+        });
+      }
+
+      const toolEntries = Object.entries(byTool)
+        .sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0))
+        .slice(0, 6);
+      const toolBars = document.getElementById('executionToolBars');
+      if (toolBars) {
+        const toolTotal = toolEntries.reduce((sum, [, count]) => sum + Number(count || 0), 0);
+        toolBars.innerHTML = renderExecutionBars(toolEntries, toolTotal, {
+          emptyText: t('noToolLoad'),
+          label: key => (toolDisplayNames[state.lang] && toolDisplayNames[state.lang][key]) || key,
+          icon: key => renderToolIcon(key, 18)
+        });
+      }
+
+      const failures = Array.isArray(metrics.recentFailures) ? metrics.recentFailures.slice(0, 5) : [];
+      const failuresEl = document.getElementById('executionFailures');
+      if (failuresEl) {
+        failuresEl.innerHTML = failures.length ? failures.map(failure => `
+          <div class="execution-failure">
+            <div>
+              <strong>${escapeHtml(failure.type || t('requestFailed'))}</strong>
+              <span>${escapeHtml(failure.id || '')}</span>
+            </div>
+            <p>${escapeHtml(failure.error || t('emptyErrorDetail'))}</p>
+            ${failure.time ? `<small>${escapeHtml(formatDateTime(failure.time))}</small>` : ''}
+          </div>
+        `).join('') : `<div class="muted">${escapeHtml(t('noFailures'))}</div>`;
+      }
+
+      const activeTasks = state.tasks
+        .filter(task => ['claimed', 'in_progress', 'blocked'].includes(task.status))
+        .slice(0, 6);
+      const activeEl = document.getElementById('executionActiveList');
+      if (activeEl) {
+        activeEl.innerHTML = activeTasks.length ? activeTasks.map(task => {
+          const relay = getTaskRelay(task);
+          const progress = Number(relay?.progressPercent ?? task.progressPercent);
+          const progressHtml = Number.isFinite(progress)
+            ? `<div class="execution-progress"><div style="width:${Math.min(100, Math.max(0, progress))}%"></div></div>`
+            : '';
+          const assigneeName = (toolDisplayNames[state.lang] && toolDisplayNames[state.lang][task.assignee]) || task.assignee || t('unassigned');
+          return `
+            <div class="execution-active-row">
+              <div class="execution-active-main">
+                <span class="badge status-${cssToken(task.status)}">${escapeHtml(task.status || 'open')}</span>
+                <strong>${escapeHtml(task.title || task.id)}</strong>
+                <span>${renderToolIcon(task.assignee, 18)} ${escapeHtml(assigneeName)}</span>
+              </div>
+              <div class="execution-active-meta">
+                <span>${escapeHtml(task.project || t('defaultProj'))}</span>
+                <span>${escapeHtml(formatElapsedTime(task.createdAt, task.completedAt || ''))}</span>
+                ${relay ? `<span>${escapeHtml(relay.state || relay.deliveryState || '')}</span>` : ''}
+              </div>
+              ${progressHtml}
+              <div class="stream-actions">
+                ${task.status !== 'in_progress' ? `<button class="small" onclick="updateTaskStatus('${escapeJsString(task.id)}', 'in_progress')">${escapeHtml(t('startWork'))}</button>` : ''}
+                <button class="primary small" onclick="updateTaskStatus('${escapeJsString(task.id)}', 'done')">${escapeHtml(t('completeTask'))}</button>
+              </div>
+            </div>
+          `;
+        }).join('') : `<div class="muted">${escapeHtml(t('noActiveExecution'))}</div>`;
+      }
     }
 
     function renderRadioCardHTML(msg) {
@@ -3314,41 +3586,355 @@
       }
     }
 
-    function renderWorkflowsPanel() {
-      const container = document.getElementById('workflowsList');
-      if (!container) return;
+    function findWorkflowById(id) {
+      const cleanId = String(id || '').trim();
+      if (!cleanId) return null;
       const workflows = Array.isArray(state.workflows) ? state.workflows : [];
-      if (workflows.length === 0) {
-        container.innerHTML = `<div class="muted">${t('noWorkflows')}</div>`;
-        return;
+      const exact = workflows.find(workflow => workflow.id === cleanId);
+      if (exact) return exact;
+      const prefixMatches = workflows.filter(workflow => String(workflow.id || '').startsWith(cleanId));
+      return prefixMatches.length === 1 ? prefixMatches[0] : null;
+    }
+
+    function getWorkflowRoleValues(workflow, role) {
+      const value = workflow?.[role];
+      if (Array.isArray(value)) return value.map(item => String(item || '').trim()).filter(Boolean);
+      return String(value || '').split(',').map(item => item.trim()).filter(Boolean);
+    }
+
+    function getWorkflowSearchText(workflow) {
+      const roleValues = ['planner', 'executor', 'reviewer', 'observer']
+        .flatMap(role => getWorkflowRoleValues(workflow, role));
+      const logs = [
+        ...(workflow.results || []),
+        ...(workflow.reviews || []),
+        ...(workflow.notes || [])
+      ].map(item => [item.by, item.role, item.text].filter(Boolean).join(' '));
+      return [
+        workflow.id,
+        workflow.title,
+        workflow.project,
+        workflow.status,
+        workflow.priority,
+        workflow.createdBy,
+        workflow.plan,
+        workflow.acceptance,
+        ...(workflow.risks || []),
+        ...roleValues,
+        ...logs
+      ].filter(Boolean).join(' ').toLowerCase();
+    }
+
+    function collectWorkflowLogs(workflow) {
+      const normalizeEntries = (items, label) => (Array.isArray(items) ? items : [])
+        .map(item => ({
+          type: label,
+          ts: item.ts || item.createdAt || item.updatedAt || '',
+          by: item.by || item.from || '',
+          role: item.role || '',
+          text: item.text || ''
+        }))
+        .filter(item => item.text || item.by || item.role);
+      return [
+        ...normalizeEntries(workflow.results, t('workflowResult')),
+        ...normalizeEntries(workflow.reviews, t('workflowReview')),
+        ...normalizeEntries(workflow.notes, t('workflowNote'))
+      ].sort((a, b) => String(b.ts || '').localeCompare(String(a.ts || '')));
+    }
+
+    function renderWorkflowLogsHTML(workflow) {
+      const logs = collectWorkflowLogs(workflow).slice(0, 8);
+      if (logs.length === 0) {
+        return `<div class="task-note-item">${escapeHtml(t('noWorkflowLogs'))}</div>`;
       }
-      container.innerHTML = workflows.map(workflow => {
-        const roles = ['planner', 'executor', 'reviewer', 'observer']
-          .map(role => {
-            const values = Array.isArray(workflow[role]) ? workflow[role] : workflow[role] ? [workflow[role]] : [];
-            return values.length > 0 ? `${role}: ${values.join(', ')}` : '';
-          })
-          .filter(Boolean)
-          .join(' | ');
-        const results = Array.isArray(workflow.results) ? workflow.results.length : 0;
-        const reviews = Array.isArray(workflow.reviews) ? workflow.reviews.length : 0;
+      return logs.map(entry => {
+        const meta = [
+          entry.type,
+          entry.role,
+          entry.by,
+          entry.ts ? formatDateTime(entry.ts) : ''
+        ].filter(Boolean).join(' · ');
         return `
-          <div class="workflow-row">
-            <div>
-              <div class="workflow-title">${escapeHtml(workflow.title || 'Untitled Workflow')}</div>
-              <div class="workflow-meta">${escapeHtml(workflow.project || t('defaultProj'))}${roles ? ` | ${escapeHtml(roles)}` : ''}</div>
-              <div class="workflow-meta">${results} result(s) | ${reviews} review(s)</div>
-            </div>
-            <span class="badge status-${escapeHtml(workflow.status || 'open')}">${escapeHtml(workflow.status || 'open')}</span>
+          <div class="task-note-item">
+            <strong>${escapeHtml(meta)}</strong>
+            <div>${escapeHtml(entry.text)}</div>
           </div>
         `;
       }).join('');
     }
 
+    function renderWorkflowTextBlock(label, value) {
+      const text = Array.isArray(value) ? value.join('\n') : String(value || '').trim();
+      if (!text) return '';
+      const htmlText = escapeHtml(text).replace(/\n/g, '<br>');
+      return `
+        <div class="task-handoff">
+          <strong>${escapeHtml(label)}:</strong>
+          <span>${htmlText}</span>
+        </div>
+      `;
+    }
+
+    function renderWorkflowCardHTML(workflow) {
+      const id = escapeJsString(workflow.id || '');
+      const status = workflow.status || 'open';
+      const roleBadges = [
+        ['planner', t('plannerLabel')],
+        ['executor', t('executorLabel')],
+        ['reviewer', t('reviewerLabel')],
+        ['observer', t('observerLabel')]
+      ].map(([role, label]) => {
+        const values = getWorkflowRoleValues(workflow, role);
+        return values.length
+          ? `<span class="badge status-open">${escapeHtml(label)}: ${escapeHtml(values.join(', '))}</span>`
+          : '';
+      }).filter(Boolean).join(' ');
+      const linkedItems = [
+        ...(Array.isArray(workflow.linkedTasks) && workflow.linkedTasks.length ? [`tasks: ${workflow.linkedTasks.join(', ')}`] : []),
+        ...(Array.isArray(workflow.linkedRadio) && workflow.linkedRadio.length ? [`radio: ${workflow.linkedRadio.join(', ')}`] : [])
+      ].join(' | ');
+      const meta = [
+        `${t('projectLabel')}: ${workflow.project || t('defaultProj')}`,
+        `${t('priorityLabel')}: ${workflow.priority || 'normal'}`,
+        `${t('sourceLabel')}: ${workflow.createdBy || 'dashboard'}`,
+        workflow.updatedAt ? formatDateTime(workflow.updatedAt) : ''
+      ].filter(Boolean).join(' | ');
+      const canStart = !['in_progress', 'review', 'done', 'cancelled'].includes(status);
+      const canReview = !['review', 'done', 'cancelled'].includes(status);
+      const canDone = !['done', 'cancelled'].includes(status);
+      const transitionButtons = [
+        canStart ? `<button class="btn small" onclick="setWorkflowStatus('${id}', 'in_progress')">${escapeHtml(t('startWorkflow'))}</button>` : '',
+        canReview ? `<button class="btn small" onclick="setWorkflowStatus('${id}', 'review')">${escapeHtml(t('markReview'))}</button>` : '',
+        canDone ? `<button class="primary small" onclick="setWorkflowStatus('${id}', 'done')">${escapeHtml(t('markDone'))}</button>` : ''
+      ].filter(Boolean).join('');
+      return `
+        <div class="workflow-row">
+          <div>
+            <div class="workflow-title">${escapeHtml(workflow.title || 'Untitled Workflow')}</div>
+            <div class="workflow-meta">${escapeHtml(meta)}</div>
+            ${roleBadges ? `<div class="task-meta">${roleBadges}</div>` : ''}
+            ${renderWorkflowTextBlock(t('workflowPlanLabel'), workflow.plan)}
+            ${renderWorkflowTextBlock(t('workflowAcceptanceLabel'), workflow.acceptance)}
+            ${renderWorkflowTextBlock(t('workflowRisksLabel'), workflow.risks)}
+            ${linkedItems ? `<div class="workflow-meta">${escapeHtml(t('workflowLinkedItems'))}: ${escapeHtml(linkedItems)}</div>` : ''}
+            <details class="stream-collapsible">
+              <summary>${escapeHtml(t('workflowLogs'))}</summary>
+              <div class="task-notes">${renderWorkflowLogsHTML(workflow)}</div>
+            </details>
+            <div class="stream-actions">
+              ${transitionButtons}
+              <button class="btn small" onclick="editWorkflow('${id}')">${escapeHtml(t('editWorkflow'))}</button>
+              <button class="btn small" onclick="addWorkflowEntry('${id}', 'result')">${escapeHtml(t('workflowResult'))}</button>
+              <button class="btn small" onclick="addWorkflowEntry('${id}', 'review')">${escapeHtml(t('workflowReview'))}</button>
+              <button class="btn small" onclick="addWorkflowEntry('${id}', 'note')">${escapeHtml(t('workflowNote'))}</button>
+              <button class="btn small" onclick="signalWorkflow('${id}')">${escapeHtml(t('workflowSignal'))}</button>
+              <button class="btn small danger" onclick="deleteWorkflow('${id}')">${escapeHtml(t('deleteWorkflow'))}</button>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
+            <span class="badge status-${escapeHtml(status)}">${escapeHtml(status)}</span>
+            <span class="badge priority-${escapeHtml(workflow.priority || 'normal')}">${escapeHtml(workflow.priority || 'normal')}</span>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderWorkflowsPanel() {
+      const container = document.getElementById('workflowsList');
+      if (!container) return;
+      const workflows = Array.isArray(state.workflows) ? state.workflows : [];
+      const setText = (id, value) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = String(value);
+      };
+      setText('workflowTotal', workflows.length);
+      setText('workflowActive', workflows.filter(workflow => ['open', 'planned', 'in_progress'].includes(workflow.status || 'open')).length);
+      setText('workflowReview', workflows.filter(workflow => workflow.status === 'review').length);
+      setText('workflowBlocked', workflows.filter(workflow => workflow.status === 'blocked').length);
+
+      const search = String(document.getElementById('workflowSearch')?.value || '').trim().toLowerCase();
+      const statusFilter = document.getElementById('workflowFilterStatus')?.value || '';
+      const projectFilter = document.getElementById('workflowFilterProject')?.value || '';
+      const visibleWorkflows = workflows.filter(workflow => {
+        if (statusFilter && workflow.status !== statusFilter) return false;
+        if (projectFilter && workflow.project !== projectFilter) return false;
+        return !search || getWorkflowSearchText(workflow).includes(search);
+      });
+
+      if (workflows.length === 0) {
+        container.innerHTML = `<div class="muted">${escapeHtml(t('noWorkflows'))}</div>`;
+        return;
+      }
+      if (visibleWorkflows.length === 0) {
+        container.innerHTML = `<div class="muted">${escapeHtml(t('noWorkflowsMatch'))}</div>`;
+        return;
+      }
+      container.innerHTML = visibleWorkflows.map(renderWorkflowCardHTML).join('');
+    }
+
+    function setWorkflowFieldValue(id, value) {
+      const el = document.getElementById(id);
+      if (el) el.value = value ?? '';
+    }
+
+    function getWorkflowFieldValue(id) {
+      return String(document.getElementById(id)?.value || '').trim();
+    }
+
+    function showWorkflowForm(workflowId = '') {
+      const editor = document.getElementById('workflowEditor');
+      if (!editor) return;
+      const workflow = workflowId ? findWorkflowById(workflowId) : null;
+      if (workflowId && !workflow) {
+        showToast(`Workflow not found: ${workflowId}`, 'error');
+        return;
+      }
+      setWorkflowFieldValue('wfId', workflow?.id || '');
+      setWorkflowFieldValue('wfTitle', workflow?.title || '');
+      setWorkflowFieldValue('wfBy', workflow?.createdBy || 'dashboard');
+      setWorkflowFieldValue('wfProject', workflow?.project || document.getElementById('workflowFilterProject')?.value || 'default');
+      setWorkflowFieldValue('wfPriority', workflow?.priority || 'normal');
+      setWorkflowFieldValue('wfStatus', workflow?.status || 'open');
+      setWorkflowFieldValue('wfPlanner', getWorkflowRoleValues(workflow, 'planner').join(','));
+      setWorkflowFieldValue('wfExecutor', getWorkflowRoleValues(workflow, 'executor').join(','));
+      setWorkflowFieldValue('wfReviewer', getWorkflowRoleValues(workflow, 'reviewer').join(','));
+      setWorkflowFieldValue('wfObserver', getWorkflowRoleValues(workflow, 'observer').join(','));
+      setWorkflowFieldValue('wfPlan', workflow?.plan || '');
+      setWorkflowFieldValue('wfAcceptance', workflow?.acceptance || '');
+      setWorkflowFieldValue('wfRisks', Array.isArray(workflow?.risks) ? workflow.risks.join('\n') : '');
+      editor.hidden = false;
+      document.getElementById('wfTitle')?.focus();
+      editor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function cancelWorkflowEdit() {
+      const editor = document.getElementById('workflowEditor');
+      if (editor) editor.hidden = true;
+      ['wfId', 'wfTitle', 'wfPlan', 'wfAcceptance', 'wfRisks', 'wfPlanner', 'wfExecutor', 'wfReviewer', 'wfObserver'].forEach(id => setWorkflowFieldValue(id, ''));
+      setWorkflowFieldValue('wfBy', 'dashboard');
+      setWorkflowFieldValue('wfProject', 'default');
+      setWorkflowFieldValue('wfPriority', 'normal');
+      setWorkflowFieldValue('wfStatus', 'open');
+    }
+
+    async function saveWorkflow() {
+      const id = getWorkflowFieldValue('wfId');
+      const title = getWorkflowFieldValue('wfTitle');
+      if (!title) {
+        showToast(t('workflowTitleRequired'), 'error');
+        document.getElementById('wfTitle')?.focus();
+        return;
+      }
+      const button = document.getElementById('btnSaveWorkflow');
+      setButtonLoading(button, true, t('saveWorkflow'));
+      const body = {
+        title,
+        by: getWorkflowFieldValue('wfBy') || 'dashboard',
+        from: getWorkflowFieldValue('wfBy') || 'dashboard',
+        project: getWorkflowFieldValue('wfProject') || 'default',
+        priority: getWorkflowFieldValue('wfPriority') || 'normal',
+        status: getWorkflowFieldValue('wfStatus') || 'open',
+        planner: getWorkflowFieldValue('wfPlanner'),
+        executor: getWorkflowFieldValue('wfExecutor'),
+        reviewer: getWorkflowFieldValue('wfReviewer'),
+        observer: getWorkflowFieldValue('wfObserver'),
+        plan: getWorkflowFieldValue('wfPlan'),
+        acceptance: getWorkflowFieldValue('wfAcceptance'),
+        risks: getWorkflowFieldValue('wfRisks')
+      };
+      try {
+        await api(id ? `/api/workflows/${encodeURIComponent(id)}` : '/api/workflows', {
+          method: id ? 'PATCH' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        cancelWorkflowEdit();
+        await refreshData();
+        showToast(id ? t('workflowUpdated') : t('workflowSaved'), 'success');
+      } catch (err) {
+        showToast(getErrorMessage(err), 'error');
+      } finally {
+        setButtonLoading(button, false);
+      }
+    }
+
+    function editWorkflow(id) {
+      showWorkflowForm(id);
+    }
+
     function createWorkflow() {
-      showToast(state.lang === 'zh'
-        ? '当前面板仅展示工作流。创建工作流请先使用 ai-memory-hub workflow create。'
-        : 'This panel is read-only. Create workflows with ai-memory-hub workflow create.', 'info');
+      showWorkflowForm();
+    }
+
+    async function deleteWorkflow(id) {
+      if (!confirm(t('confirmDeleteWorkflow'))) return;
+      try {
+        await api(`/api/workflows/${encodeURIComponent(id)}`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ by: 'dashboard' })
+        });
+        await refreshData();
+        showToast(t('workflowDeleted'), 'success');
+      } catch (err) {
+        showToast(getErrorMessage(err), 'error');
+      }
+    }
+
+    async function setWorkflowStatus(id, status) {
+      try {
+        await api(`/api/workflows/${encodeURIComponent(id)}/status`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status, by: 'dashboard' })
+        });
+        await refreshData();
+        showToast(t('workflowUpdated'), 'success');
+      } catch (err) {
+        showToast(getErrorMessage(err), 'error');
+      }
+    }
+
+    async function addWorkflowEntry(id, action) {
+      const promptKey = action === 'review'
+        ? 'promptWorkflowReview'
+        : action === 'note'
+          ? 'promptWorkflowNote'
+          : 'promptWorkflowResult';
+      const text = prompt(t(promptKey));
+      if (!text) return;
+      const role = action === 'review' ? 'reviewer' : action === 'result' ? 'executor' : '';
+      try {
+        await api(`/api/workflows/${encodeURIComponent(id)}/${encodeURIComponent(action)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, role, by: 'dashboard' })
+        });
+        await refreshData();
+        showToast(t('workflowUpdated'), 'success');
+      } catch (err) {
+        showToast(getErrorMessage(err), 'error');
+      }
+    }
+
+    async function signalWorkflow(id) {
+      const workflow = findWorkflowById(id);
+      const defaultTo = getWorkflowRoleValues(workflow, 'reviewer')[0] || getWorkflowRoleValues(workflow, 'executor')[0] || 'all';
+      const to = prompt(t('promptWorkflowSignalTo'), defaultTo);
+      if (!to) return;
+      const text = prompt(t('promptWorkflowSignalText'));
+      if (!text) return;
+      try {
+        await api(`/api/workflows/${encodeURIComponent(id)}/signal`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ to, text, type: 'handoff', by: 'dashboard' })
+        });
+        await refreshData();
+        showToast(t('workflowUpdated'), 'success');
+      } catch (err) {
+        showToast(getErrorMessage(err), 'error');
+      }
     }
 
     function renderBackupsPanel() {
@@ -3850,33 +4436,58 @@
       setText('toolsRunnable', tools.filter(tool => tool.runnable || tool.installed || tool.connected).length);
       setText('toolsCLI', cliTools);
       setText('toolsApps', apps);
+      setText('toolsSuccessRate', formatToolPercent(summary.runs?.successRate));
+      setText('toolsActiveDispatches', String(summary.activeDispatches || 0));
+      setText('toolsLastUpdated', state.tools?.generatedAt ? `${t('dashboardReady')} · ${formatDateTime(state.tools.generatedAt)}` : '');
 
       const grid = document.getElementById('toolsGrid');
       if (!grid) return;
-      grid.innerHTML = tools.map(tool => {
-        const displayName = (toolDisplayNames[state.lang] && toolDisplayNames[state.lang][tool.name]) || tool.name;
-        const kindBadge = (toolKindBadges[state.lang] && toolKindBadges[state.lang][tool.kind]) || tool.kind || '';
-        const detail = [tool.connectionStatus, tool.runnerCommandKind, tool.action || tool.dir].filter(Boolean).join(' · ');
+      const filter = document.getElementById('toolsStatusFilter')?.value || 'all';
+      const visibleTools = dashboardTools.filter(tool => toolMatchesStatusFilter(tool, filter));
+      if (state.selectedTool && !visibleTools.some(tool => tool.name === state.selectedTool)) {
+        state.selectedTool = '';
+      }
+      grid.innerHTML = visibleTools.map(tool => {
+        const displayName = getToolDisplayName(tool.name);
+        const kindBadge = getToolKindLabel(tool.kind);
+        const detailText = getToolDetailText(tool);
+        const statusMeta = getToolStatusMeta(tool);
+        const success = formatToolPercent(tool.performance?.successRate);
+        const runtime = formatDurationMs(tool.performance?.avgDurationMs);
+        const lastRun = tool.performance?.lastRunAt ? formatDateTime(tool.performance.lastRunAt) : '-';
         return `
-          <div class="tool-card" onclick="showToolInstallModal('${escapeHtml(tool.name)}')">
-            <div style="display:flex;align-items:center;gap:10px;">
+          <div class="tool-card ${state.selectedTool === tool.name ? 'active' : ''}" onclick="showToolInstallModal('${escapeJsString(tool.name)}')" title="${escapeHtml(detailText)}">
+            <div class="tool-card-main">
               ${renderToolIcon(tool.name, 28, tool.kind)}
-              <div>
-                <strong>${escapeHtml(displayName)}</strong>
-                <div class="muted" style="font-size:12px;">${escapeHtml(kindBadge)}</div>
-                <div class="muted tool-card-detail">${escapeHtml(detail || 'not detected')}</div>
+              <div class="tool-card-copy">
+                <strong class="tool-card-title">${escapeHtml(displayName)}</strong>
+                <div class="muted tool-card-kind">${escapeHtml(kindBadge)}</div>
+                <div class="muted tool-card-detail">${escapeHtml(detailText)}</div>
+              </div>
+              <div class="tool-card-badges">
+                <span class="badge ${statusMeta.className}">${escapeHtml(statusMeta.label)}</span>
               </div>
             </div>
-            <span class="badge ${tool.connected ? 'status-done' : 'status-open'}">${tool.connected ? 'connected' : 'missing'}</span>
+            <div class="tool-card-metrics">
+              ${renderToolMetric(t('runsLabel'), tool.metrics?.totalRuns || 0)}
+              ${renderToolMetric(t('successRate'), success)}
+              ${renderToolMetric(t('avgRuntime'), runtime)}
+            </div>
+            <div class="muted tool-card-last-run">${escapeHtml(t('lastRun'))}: ${escapeHtml(lastRun)}</div>
           </div>
         `;
-      }).join('') || `<div class="muted">${t('scanning')}</div>`;
+      }).join('') || `<div class="muted">${escapeHtml(tools.length ? t('noToolsMatch') : t('scanning'))}</div>`;
+      renderToolPerformanceBars(dashboardTools);
+      renderToolUsageChart(dashboardTools);
+      renderToolConfigPanel(dashboardTools, visibleTools);
     }
 
     async function refreshTools() {
       try {
-        const response = await api('/api/detect');
+        const response = await api('/api/tools?refresh=1');
+        state.tools = response || null;
         state.status.tools = Array.isArray(response.tools) ? response.tools : [];
+        state.status.toolSummary = response.summary || state.status.toolSummary;
         renderToolsPanel();
         showToast(t('refreshTools'), 'success');
       } catch (error) {

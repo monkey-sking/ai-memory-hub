@@ -142,6 +142,49 @@
           <div class="workflow-list" id="workflowList"></div>
         </div>
 
+        <div class="panel task-execution-panel">
+          <div class="panel-header">
+            <h3 class="panel-title" data-i18n="taskExecutionPanel">Task Execution Panel</h3>
+            <button class="btn small" onclick="switchTab('tasks')" data-i18n="fullBoard">Full Board</button>
+          </div>
+          <div class="execution-summary-grid">
+            <div class="summary-card compact">
+              <span data-i18n="taskTotalLabel">Total Tasks</span>
+              <strong id="executionTaskTotal">0</strong>
+            </div>
+            <div class="summary-card compact">
+              <span data-i18n="avgTaskDuration">Avg Duration</span>
+              <strong id="executionAvgDuration">0ms</strong>
+            </div>
+            <div class="summary-card compact">
+              <span data-i18n="relaySuccessRate">Relay Success</span>
+              <strong id="executionRelaySuccess">0%</strong>
+            </div>
+            <div class="summary-card compact">
+              <span data-i18n="queueRunningLabel">Queue Running</span>
+              <strong id="executionQueueRunning">0</strong>
+            </div>
+          </div>
+          <div class="task-execution-grid">
+            <section class="execution-section">
+              <h4 data-i18n="statusPipeline">Status Pipeline</h4>
+              <div id="executionStatusBars" class="execution-bars"></div>
+            </section>
+            <section class="execution-section">
+              <h4 data-i18n="toolLoadLabel">Tool Load</h4>
+              <div id="executionToolBars" class="execution-bars"></div>
+            </section>
+            <section class="execution-section">
+              <h4 data-i18n="recentFailuresLabel">Recent Failures</h4>
+              <div id="executionFailures" class="execution-failures"></div>
+            </section>
+          </div>
+          <div class="execution-section active-execution-section">
+            <h4 data-i18n="activeExecutionLabel">Active Execution</h4>
+            <div id="executionActiveList" class="execution-active-list"></div>
+          </div>
+        </div>
+
         <div class="dashboard-grid">
           <div class="panel">
             <div class="panel-header">
@@ -415,10 +458,122 @@
 
       <!-- Workflows Tab -->
       <div id="tab-workflows" class="tab-panel">
+        <div class="summary-grid workflows-summary">
+          <div class="summary-card">
+            <span data-i18n="workflowTotal">Total Workflows</span>
+            <strong id="workflowTotal">0</strong>
+          </div>
+          <div class="summary-card">
+            <span data-i18n="workflowActive">Active</span>
+            <strong id="workflowActive">0</strong>
+          </div>
+          <div class="summary-card">
+            <span data-i18n="workflowReviewQueue">In Review</span>
+            <strong id="workflowReview">0</strong>
+          </div>
+          <div class="summary-card">
+            <span data-i18n="workflowBlockedQueue">Blocked</span>
+            <strong id="workflowBlocked">0</strong>
+          </div>
+        </div>
+
         <div class="panel">
           <div class="panel-header">
             <h3 class="panel-title" data-i18n="workflowManagement">🔄 Workflow Management</h3>
+            <button class="primary" onclick="showWorkflowForm()" data-i18n="createWorkflow">+ New Workflow</button>
           </div>
+          <div class="filter-strip workflow-toolbar">
+            <input type="text" id="workflowSearch" data-i18n-placeholder="searchText" placeholder="Search workflows..." oninput="renderWorkflowsPanel()">
+            <select id="workflowFilterStatus" onchange="renderWorkflowsPanel()">
+              <option value="" data-i18n="allStatuses">All Statuses</option>
+              <option value="open">open</option>
+              <option value="planned">planned</option>
+              <option value="in_progress">in_progress</option>
+              <option value="review">review</option>
+              <option value="blocked">blocked</option>
+              <option value="done">done</option>
+              <option value="cancelled">cancelled</option>
+            </select>
+            <select id="workflowFilterProject" onchange="renderWorkflowsPanel()">
+              <option value="" data-i18n="allProjects">All Projects</option>
+            </select>
+          </div>
+
+          <div class="workflow-editor" id="workflowEditor" hidden>
+            <input type="hidden" id="wfId">
+            <div class="form-row">
+              <div class="form-group" style="grid-column: span 2;">
+                <label data-i18n="workflowTitleLabel">Workflow Title</label>
+                <input type="text" id="wfTitle" data-i18n-placeholder="workflowTitlePlaceholder" placeholder="Short workflow title">
+              </div>
+              <div class="form-group">
+                <label data-i18n="sourceLabel">Source</label>
+                <input type="text" id="wfBy" value="dashboard">
+              </div>
+              <div class="form-group">
+                <label data-i18n="projectLabel">Project</label>
+                <input type="text" id="wfProject" value="default">
+              </div>
+              <div class="form-group">
+                <label data-i18n="priorityLabel">Priority</label>
+                <select id="wfPriority">
+                  <option value="low" data-i18n="lowOpt">Low</option>
+                  <option value="normal" selected data-i18n="normOpt">Normal</option>
+                  <option value="high" data-i18n="highOpt">High</option>
+                  <option value="urgent" data-i18n="urgOpt">Urgent</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label data-i18n="statusLabel">Status</label>
+                <select id="wfStatus">
+                  <option value="open">open</option>
+                  <option value="planned">planned</option>
+                  <option value="in_progress">in_progress</option>
+                  <option value="review">review</option>
+                  <option value="blocked">blocked</option>
+                  <option value="done">done</option>
+                  <option value="cancelled">cancelled</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label data-i18n="plannerLabel">Planner</label>
+                <input type="text" id="wfPlanner" placeholder="codex">
+              </div>
+              <div class="form-group">
+                <label data-i18n="executorLabel">Executor</label>
+                <input type="text" id="wfExecutor" placeholder="claude,codex">
+              </div>
+              <div class="form-group">
+                <label data-i18n="reviewerLabel">Reviewer</label>
+                <input type="text" id="wfReviewer" placeholder="gemini">
+              </div>
+              <div class="form-group">
+                <label data-i18n="observerLabel">Observer</label>
+                <input type="text" id="wfObserver" placeholder="marvis">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group" style="grid-column: span 2;">
+                <label data-i18n="workflowPlanLabel">Plan</label>
+                <textarea id="wfPlan" data-i18n-placeholder="workflowPlanPlaceholder" placeholder="Concrete steps and state transitions"></textarea>
+              </div>
+              <div class="form-group" style="grid-column: span 2;">
+                <label data-i18n="workflowAcceptanceLabel">Acceptance</label>
+                <textarea id="wfAcceptance" data-i18n-placeholder="workflowAcceptancePlaceholder" placeholder="What must be true before closing"></textarea>
+              </div>
+            </div>
+            <div class="form-group">
+              <label data-i18n="workflowRisksLabel">Risks</label>
+              <textarea id="wfRisks" data-i18n-placeholder="workflowRisksPlaceholder" placeholder="One risk per line"></textarea>
+            </div>
+            <div class="workflow-form-actions">
+              <button class="primary" onclick="saveWorkflow()" id="btnSaveWorkflow" data-i18n="saveWorkflow">Save Workflow</button>
+              <button class="btn" onclick="cancelWorkflowEdit()" data-i18n="cancel">Cancel</button>
+            </div>
+          </div>
+
           <div class="workflow-list" id="workflowsList">
             <div class="muted" data-i18n="loadingWorkflows">Loading workflows...</div>
           </div>

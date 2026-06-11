@@ -931,6 +931,11 @@ ai-memory-hub recipe create \
 - **Steps:** 7 (requirements -> system analysis -> design doc -> task decomposition -> implementation -> quality fix -> review)
 - **Use:** End-to-end changes spanning UI, API, state, docs, and cross-agent handoffs
 
+#### `lights-out-local`
+- **Roles:** planner, executor, reviewer, observer
+- **Steps:** 7 (guardrails/scope -> loop plan -> implementation -> verification -> review -> repair loop -> final verification/closure)
+- **Use:** Local unattended Loop Engineering where local commits may be allowed by current guardrails, while push, deletion, dependency install, and system configuration stop for fresh human approval
+
 See [Development Recipe Packs](development-recipe-packs.md) for the design
 rules, stop points, and structured result expectations behind these templates.
 

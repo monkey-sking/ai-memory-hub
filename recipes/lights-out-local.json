@@ -1,0 +1,80 @@
+{
+  "name": "lights-out-local",
+  "title": "Lights-Out Local Loop Engineering",
+  "description": "Local unattended engineering loop with explicit plan, implementation, verification, review, bounded repair, final verification, and closure gates. Local commits are allowed when current guardrails permit them; push, deletion, dependency install, and system configuration require fresh human approval.",
+  "version": "1.0.0",
+  "variables": {
+    "feature": "lights-out-local",
+    "priority": "high",
+    "maxRepairAttempts": "3"
+  },
+  "roles": {
+    "planner": {
+      "description": "Defines scope, acceptance criteria, safety guardrails, stop conditions, and verification plan before unattended work starts."
+    },
+    "executor": {
+      "description": "Implements, verifies, repairs, and prepares local commits without crossing the workflow guardrails."
+    },
+    "reviewer": {
+      "description": "Reviews the diff, run logs, tests, risk notes, and safety compliance before closure."
+    },
+    "observer": {
+      "description": "Tracks loop state, handoffs, attempts, final summary, and unresolved risks in shared task or workflow notes."
+    }
+  },
+  "steps": [
+    {
+      "id": "guardrails-and-scope",
+      "role": "planner",
+      "task": "Read the active task/workflow, shared memory, git status, and declared project task specs. Output JSON with scope, acceptance, assumptions, allowedActions, forbiddenActions, verificationCommands, maxRepairAttempts, and stopWhen. Default allowedActions may include local commit only when current user or workflow guardrails allow it. Default forbiddenActions must include push, deletion, dependency install, and system configuration without fresh human approval. Stop if acceptance criteria, credentials, required services, or safety limits are unclear."
+    },
+    {
+      "id": "loop-plan",
+      "role": "planner",
+      "task": "Produce the Loop Engineering plan: implementation steps, expected files, verification matrix, review target, repair policy, and final closure criteria. Keep scope narrow and record non-goals. Output JSON with files, commands, risks, and next.",
+      "dependsOn": [
+        "guardrails-and-scope"
+      ]
+    },
+    {
+      "id": "implementation",
+      "role": "executor",
+      "task": "Implement the approved scope in small, reviewable increments. Keep unrelated refactors out of scope. Do not push, delete files, install dependencies, or change system configuration unless fresh human approval is present. Record assumptions and any deviation as task notes.",
+      "dependsOn": [
+        "loop-plan"
+      ]
+    },
+    {
+      "id": "verification",
+      "role": "executor",
+      "task": "Run the declared verification commands plus focused syntax/unit/integration checks relevant to the changed files. Fix obvious local failures within scope. Output JSON with commands, results, changed files, residual risks, and whether review is ready.",
+      "dependsOn": [
+        "implementation"
+      ]
+    },
+    {
+      "id": "review",
+      "role": "reviewer",
+      "task": "Review the diff, verification output, run logs, safety guardrails, and missing tests. Reply PASS only when implementation, verification, and safety constraints are satisfied. Otherwise list blockers with file-level or command-level evidence.",
+      "dependsOn": [
+        "verification"
+      ]
+    },
+    {
+      "id": "repair-loop",
+      "role": "executor",
+      "task": "If review passed and verification passed, record a no-op repair result and proceed. If review or verification has blockers, fix only the blockers, rerun the relevant verification, and request review again. Stop after maxRepairAttempts or when a blocker requires human approval, credentials, push, deletion, dependency install, or system configuration. Output JSON with attempt, fixes, commands, results, and next.",
+      "dependsOn": [
+        "review"
+      ]
+    },
+    {
+      "id": "final-verification-and-closure",
+      "role": "observer",
+      "task": "Confirm final verification and review status. If local commits are allowed by the current guardrails, ensure the final local commit is recorded; never push. Write a closure note with commit hash or no-commit reason, tests, review result, unresolved risks, and follow-up tasks. Mark the source task done only when verification and review are both passing.",
+      "dependsOn": [
+        "repair-loop"
+      ]
+    }
+  ]
+}

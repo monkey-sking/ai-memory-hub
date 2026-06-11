@@ -12,7 +12,8 @@ cross-tool templates that create shared workflows and task records.
 - Add stop points for unclear requirements, unsafe scope, missing verification,
   or unresolved review blockers.
 - Prefer structured step outputs so another tool can continue without guessing.
-- Provide starter templates for frontend, backend, and fullstack work.
+- Provide starter templates for frontend, backend, fullstack, and unattended
+  local loop work.
 
 ## Recipe Shape
 
@@ -36,6 +37,9 @@ migration.
   implementation, quality fix, and review.
 - `fullstack-feature`: end-to-end requirements, system analysis, design doc,
   shared task decomposition, implementation, quality fix, and review.
+- `lights-out-local`: local unattended loop engineering with guardrails,
+  implementation, verification, review, bounded repair, final verification, and
+  closure.
 
 Built-in templates live in the repository `recipes/` directory. User templates
 in `~/.ai-memory/recipes/` are still supported and override built-ins with the
@@ -51,6 +55,7 @@ Recipe step text should tell an agent to stop and report blockers when:
   actions outside the current user guardrails.
 - Verification cannot run or returns unexplained failures.
 - Review returns blockers.
+- A lights-out run reaches its repair attempt limit.
 
 ## Structured Results
 

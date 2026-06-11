@@ -238,13 +238,24 @@ test("built-in development recipes are discoverable, valid, and runnable", async
     const frontend = recipes.find((recipe) => recipe.name === "frontend-feature");
     const backend = recipes.find((recipe) => recipe.name === "backend-service");
     const fullstack = recipes.find((recipe) => recipe.name === "fullstack-feature");
+    const lightsOut = recipes.find((recipe) => recipe.name === "lights-out-local");
     assert.equal(frontend.source, "builtin");
     assert.equal(backend.source, "builtin");
     assert.equal(fullstack.source, "builtin");
+    assert.equal(lightsOut.source, "builtin");
     assert.deepEqual(fullstack.roles, ["planner", "executor", "reviewer", "observer"]);
+    assert.deepEqual(lightsOut.roles, ["planner", "executor", "reviewer", "observer"]);
+    assert.equal(lightsOut.steps, 7);
 
     const validation = parseJson(runCli(memoryDir, ["recipe", "validate", "fullstack-feature"]));
     assert.deepEqual(validation, { valid: true, message: "Recipe is valid" });
+
+    const lightsOutShow = parseJson(runCli(memoryDir, ["recipe", "show", "lights-out-local"]));
+    assert.equal(lightsOutShow.steps.at(-1).id, "final-verification-and-closure");
+    assert.match(lightsOutShow.description, /Local commits are allowed/);
+
+    const lightsOutValidation = parseJson(runCli(memoryDir, ["recipe", "validate", "lights-out-local"]));
+    assert.deepEqual(lightsOutValidation, { valid: true, message: "Recipe is valid" });
 
     const result = parseJson(runCli(memoryDir, [
       "recipe",
@@ -274,6 +285,49 @@ test("built-in development recipes are discoverable, valid, and runnable", async
       "codex",
       "gemini"
     ]);
+
+    const lightsOutResult = parseJson(runCli(memoryDir, [
+      "recipe",
+      "create",
+      "--recipe",
+      "lights-out-local",
+      "--tools",
+      "planner:codex,executor:codex,reviewer:gemini,observer:marvis",
+      "--project",
+      "lights-out-project",
+      "--var",
+      "priority=high"
+    ]));
+
+    assert.equal(lightsOutResult.workflow.title, "Lights-Out Local Loop Engineering - lights-out-project");
+    assert.equal(lightsOutResult.workflow.priority, "high");
+    assert.deepEqual(lightsOutResult.workflow.planner, ["codex"]);
+    assert.deepEqual(lightsOutResult.workflow.executor, ["codex"]);
+    assert.deepEqual(lightsOutResult.workflow.reviewer, ["gemini"]);
+    assert.deepEqual(lightsOutResult.workflow.observer, ["marvis"]);
+    assert.equal(lightsOutResult.recipe.name, "lights-out-local");
+    assert.equal(lightsOutResult.recipe.steps, 7);
+    assert.equal(lightsOutResult.tasks.length, 7);
+    assert.deepEqual(lightsOutResult.tasks.map((task) => task.assignee), [
+      "codex",
+      "codex",
+      "codex",
+      "codex",
+      "gemini",
+      "codex",
+      "marvis"
+    ]);
+    assert.match(lightsOutResult.tasks[6].title, /Confirm final verification/);
+
+    const generatedTasks = parseJson(runCli(memoryDir, [
+      "task",
+      "list",
+      "--project",
+      "lights-out-project"
+    ]));
+    assert.equal(generatedTasks.length, 7);
+    assert.ok(generatedTasks.some((task) => /forbiddenActions must include push, deletion, dependency install/.test(task.description)));
+    assert.ok(generatedTasks.some((task) => task.handoff === "Depends on: repair-loop"));
   });
 });
 

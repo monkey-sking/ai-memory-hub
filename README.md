@@ -274,9 +274,10 @@ ai-memory-hub recipe list
 ai-memory-hub recipe show <name>
 ai-memory-hub recipe validate <name>
 ai-memory-hub recipe create --recipe fullstack-feature --tools planner:claude,executor:codex,reviewer:gemini,observer:marvis
+ai-memory-hub recipe create --recipe lights-out-local --tools planner:codex,executor:codex,reviewer:gemini,observer:codex
 ```
 
-内置模板包括 `frontend-feature`、`backend-service`、`fullstack-feature`；
+内置模板包括 `frontend-feature`、`backend-service`、`fullstack-feature`、`lights-out-local`；
 用户可在 `~/.ai-memory/recipes/` 放置同名 JSON 模板覆盖内置版本。
 
 #### 指标统计

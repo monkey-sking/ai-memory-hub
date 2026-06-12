@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import type { AnyRecord } from '../lib/api'
-import { apiGet, asArray, asRecord, boolOf, numberOf, textOf } from '../lib/api'
+import { apiGet, apiPost, asArray, asRecord, boolOf, numberOf, textOf } from '../lib/api'
 import type { AppLanguage, AppOutletContext } from '../lib/i18n'
 import './Dashboard.css'
 
@@ -138,7 +138,49 @@ const labels = {
     dispatchLogs: '运行日志',
     settingsPanel: '运行偏好',
     yes: '是',
-    no: '否'
+    no: '否',
+    syncInbox: '同步 Inbox',
+    rebuildSnapshot: '重建快照',
+    running: '执行中',
+    recordMemory: '记录记忆',
+    memoryText: '记忆内容',
+    kind: '类型',
+    source: '来源',
+    save: '保存',
+    addTask: '新增任务',
+    description: '描述',
+    handoff: '交接',
+    priority: '优先级',
+    allProjects: '全部项目',
+    allPriorities: '全部优先级',
+    open: '待处理',
+    active: '进行中',
+    completed: '已完成',
+    claim: '认领',
+    start: '开始',
+    block: '阻塞',
+    unblock: '解除阻塞',
+    complete: '完成',
+    reopen: '重开',
+    approve: '通过',
+    reject: '拒绝',
+    addNote: '添加备注',
+    notePlaceholder: '备注或状态原因',
+    broadcastMessage: '发送 Radio',
+    searchText: '搜索文本',
+    allSenders: '全部发送方',
+    allRecipients: '全部接收方',
+    allTypes: '全部类型',
+    promoteToMemory: '提升为记忆',
+    triggerDispatch: '立即触发调度',
+    forceDispatch: '强制执行',
+    limit: '数量',
+    created: '创建时间',
+    assignee: '执行人',
+    notes: '备注',
+    review: '审核',
+    clear: '清空',
+    cancel: '取消'
   },
   en: {
     refresh: 'Refresh',
@@ -186,7 +228,49 @@ const labels = {
     dispatchLogs: 'Run logs',
     settingsPanel: 'Runtime preferences',
     yes: 'Yes',
-    no: 'No'
+    no: 'No',
+    syncInbox: 'Sync Inbox',
+    rebuildSnapshot: 'Rebuild Snapshot',
+    running: 'Running',
+    recordMemory: 'Record memory',
+    memoryText: 'Memory text',
+    kind: 'Kind',
+    source: 'Source',
+    save: 'Save',
+    addTask: 'Add task',
+    description: 'Description',
+    handoff: 'Handoff',
+    priority: 'Priority',
+    allProjects: 'All projects',
+    allPriorities: 'All priorities',
+    open: 'Open',
+    active: 'Active',
+    completed: 'Completed',
+    claim: 'Claim',
+    start: 'Start',
+    block: 'Block',
+    unblock: 'Unblock',
+    complete: 'Complete',
+    reopen: 'Reopen',
+    approve: 'Approve',
+    reject: 'Reject',
+    addNote: 'Add note',
+    notePlaceholder: 'Note or status reason',
+    broadcastMessage: 'Send radio',
+    searchText: 'Search text',
+    allSenders: 'All senders',
+    allRecipients: 'All recipients',
+    allTypes: 'All types',
+    promoteToMemory: 'Promote to memory',
+    triggerDispatch: 'Trigger dispatch',
+    forceDispatch: 'Force run',
+    limit: 'Limit',
+    created: 'Created',
+    assignee: 'Assignee',
+    notes: 'Notes',
+    review: 'Review',
+    clear: 'Clear',
+    cancel: 'Cancel'
   }
 }
 
@@ -195,6 +279,7 @@ export default function Dashboard({ section }: DashboardProps) {
   const [data, setData] = useState<DashboardSnapshot | null>(null)
   const [health, setHealth] = useState<AnyRecord | null>(null)
   const [loading, setLoading] = useState(true)
+  const [busyAction, setBusyAction] = useState('')
   const [error, setError] = useState('')
 
   const copy = labels[language]
@@ -211,6 +296,19 @@ export default function Dashboard({ section }: DashboardProps) {
       setLoading(false)
     }
   }, [])
+
+  const runHubAction = useCallback(async (path: string, action: string) => {
+    setBusyAction(action)
+    setError('')
+    try {
+      await apiPost<AnyRecord>(path, {})
+      await refresh()
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : String(nextError))
+    } finally {
+      setBusyAction('')
+    }
+  }, [refresh])
 
   useEffect(() => {
     let active = true
@@ -245,6 +343,12 @@ export default function Dashboard({ section }: DashboardProps) {
           <p className="page-subtitle">{subtitles[language][section]}</p>
         </div>
         <div className="header-actions">
+          <button className="btn ghost" type="button" onClick={() => void runHubAction('/api/pull', 'pull')} disabled={loading || Boolean(busyAction)}>
+            {busyAction === 'pull' ? copy.running : copy.rebuildSnapshot}
+          </button>
+          <button className="btn ghost" type="button" onClick={() => void runHubAction('/api/sync', 'sync')} disabled={loading || Boolean(busyAction)}>
+            {busyAction === 'sync' ? copy.running : copy.syncInbox}
+          </button>
           <button className="btn ghost" type="button" onClick={toggleLanguage}>
             {copy.language}
           </button>
@@ -261,16 +365,24 @@ export default function Dashboard({ section }: DashboardProps) {
         </section>
       ) : null}
 
-      {section === 'overview' && <Overview copy={copy} model={viewModel} />}
-      {section === 'memory' && <MemoryPanel copy={copy} model={viewModel} />}
-      {section === 'tasks' && <TasksPanel copy={copy} model={viewModel} />}
-      {section === 'radio' && <RadioPanel copy={copy} model={viewModel} />}
-      {section === 'dispatch' && <DispatchPanel copy={copy} model={viewModel} />}
-      {section === 'workflows' && <WorkflowsPanel copy={copy} model={viewModel} />}
-      {section === 'tools' && <ToolsPanel copy={copy} model={viewModel} />}
-      {section === 'projects' && <ProjectsPanel copy={copy} model={viewModel} />}
-      {section === 'health' && <HealthPanel copy={copy} model={viewModel} health={health} />}
-      {section === 'settings' && <SettingsPanel copy={copy} model={viewModel} />}
+      {loading && !data ? (
+        <section className="notice">
+          <span>{copy.refreshing}</span>
+        </section>
+      ) : (
+        <>
+          {section === 'overview' && <Overview copy={copy} model={viewModel} />}
+          {section === 'memory' && <MemoryPanel copy={copy} model={viewModel} onRefresh={refresh} />}
+          {section === 'tasks' && <TasksPanel copy={copy} model={viewModel} onRefresh={refresh} />}
+          {section === 'radio' && <RadioPanel copy={copy} model={viewModel} onRefresh={refresh} />}
+          {section === 'dispatch' && <DispatchPanel copy={copy} model={viewModel} onRefresh={refresh} />}
+          {section === 'workflows' && <WorkflowsPanel copy={copy} model={viewModel} />}
+          {section === 'tools' && <ToolsPanel copy={copy} model={viewModel} />}
+          {section === 'projects' && <ProjectsPanel copy={copy} model={viewModel} />}
+          {section === 'health' && <HealthPanel copy={copy} model={viewModel} health={health} />}
+          {section === 'settings' && <SettingsPanel copy={copy} model={viewModel} />}
+        </>
+      )}
     </div>
   )
 }
@@ -360,84 +472,627 @@ function Overview({ copy, model }: { copy: Copy; model: ViewModel }) {
   )
 }
 
-function MemoryPanel({ copy, model }: { copy: Copy; model: ViewModel }) {
+function MemoryPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; onRefresh: () => Promise<void> }) {
   const pending = asArray<AnyRecord>(model.memory.pending)
+  const [text, setText] = useState('')
+  const [kind, setKind] = useState('note')
+  const [source, setSource] = useState('dashboard-next')
+  const [recordOpen, setRecordOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const submitMemory = async () => {
+    const nextText = text.trim()
+    if (!nextText || saving) return
+    setSaving(true)
+    setError('')
+    try {
+      await apiPost<AnyRecord>('/api/record', { text: nextText, kind, source })
+      setText('')
+      await onRefresh()
+      setRecordOpen(false)
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : String(nextError))
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <div className="panel-grid two">
       <Panel title={copy.memorySnapshot}>
         <pre className="text-snapshot">{textOf(model.memory.memory, copy.noData)}</pre>
       </Panel>
       <div className="stack">
+        <Panel title={copy.recordMemory}>
+          <div className="section-actions compact">
+            <button className="btn full-width" type="button" onClick={() => { setError(''); setRecordOpen(true) }}>
+            {copy.recordMemory}
+            </button>
+          </div>
+        </Panel>
         <MetricCard label={copy.pendingEvents} value={formatNumber(pending.length)} tone="warning" />
         <Panel title={copy.profile}>
           <pre className="text-snapshot small">{textOf(model.memory.profile, copy.noData)}</pre>
         </Panel>
       </div>
+      {recordOpen ? (
+        <Modal title={copy.recordMemory} onClose={() => setRecordOpen(false)}>
+          <div className="form-grid">
+            <label className="field span-all">
+              <span>{copy.memoryText}</span>
+              <textarea value={text} onChange={event => setText(event.target.value)} rows={5} />
+            </label>
+            <label className="field">
+              <span>{copy.kind}</span>
+              <select value={kind} onChange={event => setKind(event.target.value)}>
+                <option value="preference">preference</option>
+                <option value="workflow">workflow</option>
+                <option value="project">project</option>
+                <option value="correction">correction</option>
+                <option value="note">note</option>
+              </select>
+            </label>
+            <label className="field">
+              <span>{copy.source}</span>
+              <input value={source} onChange={event => setSource(event.target.value)} />
+            </label>
+            {error ? <div className="inline-error span-all">{error}</div> : null}
+            <div className="form-actions span-all">
+              <button className="btn ghost" type="button" onClick={() => setRecordOpen(false)}>
+                {copy.cancel}
+              </button>
+              <button className="btn" type="button" onClick={() => void submitMemory()} disabled={saving || !text.trim()}>
+                {saving ? copy.running : copy.save}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
     </div>
   )
 }
 
-function TasksPanel({ copy, model }: { copy: Copy; model: ViewModel }) {
+function TasksPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; onRefresh: () => Promise<void> }) {
+  const [projectFilter, setProjectFilter] = useState('')
+  const [priorityFilter, setPriorityFilter] = useState('')
+  const [query, setQuery] = useState('')
+  const [newTask, setNewTask] = useState({ title: '', project: 'ai-memory-hub', priority: 'normal', description: '', handoff: '' })
+  const [createOpen, setCreateOpen] = useState(false)
+  const [busy, setBusy] = useState('')
+  const [error, setError] = useState('')
+
+  const projectOptions = useMemo(() => uniqueSorted([
+    ...model.tasks.map(task => textOf(task.project)).filter(Boolean),
+    ...model.visibleProjects.map(project => textOf(project.id || project.name)).filter(Boolean)
+  ]), [model.tasks, model.visibleProjects])
+  const priorityOptions = useMemo(() => uniqueSorted(model.tasks.map(task => textOf(task.priority)).filter(Boolean)), [model.tasks])
+  const cleanQuery = query.trim().toLowerCase()
+  const filteredTasks = model.tasks.filter(task => {
+    if (projectFilter && textOf(task.project) !== projectFilter) return false
+    if (priorityFilter && textOf(task.priority) !== priorityFilter) return false
+    if (!cleanQuery) return true
+    return [
+      task.title,
+      task.description,
+      task.handoff,
+      task.assignee,
+      task.createdBy,
+      task.status,
+      task.project
+    ].some(value => textOf(value).toLowerCase().includes(cleanQuery))
+  })
+  const columns = {
+    open: filteredTasks.filter(task => textOf(task.status, 'open') === 'open'),
+    active: filteredTasks.filter(task => ['claimed', 'in_progress', 'blocked'].includes(textOf(task.status))),
+    completed: filteredTasks.filter(task => ['done', 'cancelled'].includes(textOf(task.status)))
+  }
+
+  const mutateTask = async (action: string, path: string, body: AnyRecord) => {
+    setBusy(action)
+    setError('')
+    try {
+      await apiPost<AnyRecord>(path, body)
+      await onRefresh()
+      return true
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : String(nextError))
+      return false
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const submitTask = async () => {
+    const title = newTask.title.trim()
+    if (!title) return
+    const succeeded = await mutateTask('add-task', '/api/task/add', {
+      ...newTask,
+      title,
+      from: 'dashboard-next'
+    })
+    if (succeeded) {
+      setNewTask({ title: '', project: newTask.project, priority: 'normal', description: '', handoff: '' })
+      setCreateOpen(false)
+    }
+  }
+
   return (
-    <Panel title={copy.recentTasks}>
-      <DataTable
-        emptyText={copy.noData}
-        columns={[copy.status, copy.project, copy.owner, copy.title, copy.updated]}
-        rows={model.tasks.map(task => [
-          <StatusBadge status={textOf(task.status)} />,
-          textOf(task.project, '-'),
-          textOf(task.assignee || task.createdBy, '-'),
-          textOf(task.title, '-'),
-          formatDate(textOf(task.updatedAt || task.createdAt))
-        ])}
-      />
-    </Panel>
+    <div className="stack">
+      <Panel title={copy.recentTasks}>
+        <div className="section-actions">
+          <button className="btn" type="button" onClick={() => { setError(''); setCreateOpen(true) }}>
+            {copy.addTask}
+          </button>
+        </div>
+        <div className="filter-strip">
+          <label className="field">
+            <span>{copy.searchText}</span>
+            <input value={query} onChange={event => setQuery(event.target.value)} />
+          </label>
+          <label className="field">
+            <span>{copy.project}</span>
+            <select value={projectFilter} onChange={event => setProjectFilter(event.target.value)}>
+              <option value="">{copy.allProjects}</option>
+              {projectOptions.map(project => <option value={project} key={project}>{project}</option>)}
+            </select>
+          </label>
+          <label className="field">
+            <span>{copy.priority}</span>
+            <select value={priorityFilter} onChange={event => setPriorityFilter(event.target.value)}>
+              <option value="">{copy.allPriorities}</option>
+              {priorityOptions.map(priority => <option value={priority} key={priority}>{priority}</option>)}
+            </select>
+          </label>
+          <button className="btn ghost" type="button" onClick={() => { setQuery(''); setProjectFilter(''); setPriorityFilter('') }}>
+            {copy.clear}
+          </button>
+        </div>
+        {error ? <div className="inline-error">{error}</div> : null}
+        <div className="kanban-grid">
+          <TaskColumn title={copy.open} count={columns.open.length} tasks={columns.open} copy={copy} busy={busy} onMutate={mutateTask} />
+          <TaskColumn title={copy.active} count={columns.active.length} tasks={columns.active} copy={copy} busy={busy} onMutate={mutateTask} />
+          <TaskColumn title={copy.completed} count={columns.completed.length} tasks={columns.completed} copy={copy} busy={busy} onMutate={mutateTask} />
+        </div>
+      </Panel>
+      {createOpen ? (
+        <Modal title={copy.addTask} onClose={() => setCreateOpen(false)}>
+          <div className="form-grid task-form-grid">
+            <label className="field span-2">
+              <span>{copy.title}</span>
+              <input value={newTask.title} onChange={event => setNewTask(value => ({ ...value, title: event.target.value }))} />
+            </label>
+            <label className="field">
+              <span>{copy.project}</span>
+              <input value={newTask.project} onChange={event => setNewTask(value => ({ ...value, project: event.target.value }))} list="task-project-options" />
+            </label>
+            <label className="field">
+              <span>{copy.priority}</span>
+              <select value={newTask.priority} onChange={event => setNewTask(value => ({ ...value, priority: event.target.value }))}>
+                <option value="low">low</option>
+                <option value="normal">normal</option>
+                <option value="high">high</option>
+                <option value="urgent">urgent</option>
+              </select>
+            </label>
+            <label className="field span-2">
+              <span>{copy.description}</span>
+              <textarea value={newTask.description} onChange={event => setNewTask(value => ({ ...value, description: event.target.value }))} rows={3} />
+            </label>
+            <label className="field span-2">
+              <span>{copy.handoff}</span>
+              <textarea value={newTask.handoff} onChange={event => setNewTask(value => ({ ...value, handoff: event.target.value }))} rows={3} />
+            </label>
+            <datalist id="task-project-options">
+              {projectOptions.map(project => <option value={project} key={project} />)}
+            </datalist>
+            {error ? <div className="inline-error span-all">{error}</div> : null}
+            <div className="form-actions span-all">
+              <button className="btn ghost" type="button" onClick={() => setCreateOpen(false)}>
+                {copy.cancel}
+              </button>
+              <button className="btn" type="button" onClick={() => void submitTask()} disabled={busy === 'add-task' || !newTask.title.trim()}>
+                {busy === 'add-task' ? copy.running : copy.addTask}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
+    </div>
   )
 }
 
-function RadioPanel({ copy, model }: { copy: Copy; model: ViewModel }) {
+type TaskMutator = (action: string, path: string, body: AnyRecord) => Promise<boolean>
+
+function TaskColumn({ title, count, tasks, copy, busy, onMutate }: {
+  title: string
+  count: number
+  tasks: AnyRecord[]
+  copy: Copy
+  busy: string
+  onMutate: TaskMutator
+}) {
   return (
-    <Panel title={copy.recentRadio}>
-      <DataTable
-        emptyText={copy.noData}
-        columns={[copy.type, copy.from, copy.to, copy.project, copy.message]}
-        rows={model.radio.slice().reverse().map(message => [
-          <StatusBadge status={textOf(message.type, 'note')} />,
-          textOf(message.from, '-'),
-          textOf(message.to, '-'),
-          textOf(message.project, '-'),
-          textOf(message.text, '-')
-        ])}
-      />
-    </Panel>
+    <section className="kanban-column">
+      <header className="kanban-header">
+        <h4>{title}</h4>
+        <span className="count-pill">{formatNumber(count)}</span>
+      </header>
+      <div className="kanban-list">
+        {tasks.length ? tasks.map(task => (
+          <TaskCard key={textOf(task.id)} task={task} copy={copy} busy={busy} onMutate={onMutate} />
+        )) : <EmptyState text={copy.noData} />}
+      </div>
+    </section>
   )
 }
 
-function DispatchPanel({ copy, model }: { copy: Copy; model: ViewModel }) {
+function TaskCard({ task, copy, busy, onMutate }: { task: AnyRecord; copy: Copy; busy: string; onMutate: TaskMutator }) {
+  const [note, setNote] = useState('')
+  const id = textOf(task.id)
+  const status = textOf(task.status, 'open')
+  const actionBase = `${id}:`
+  const isBusy = busy.startsWith(actionBase)
+  const notes = asArray<AnyRecord>(task.notes).slice(-3)
+
+  const setStatus = async (nextStatus: string, fallbackNote = '') => {
+    const nextNote = note.trim() || fallbackNote
+    const succeeded = await onMutate(`${actionBase}${nextStatus}`, '/api/task/status', {
+      id,
+      status: nextStatus,
+      by: 'dashboard-next',
+      note: nextNote
+    })
+    if (succeeded) setNote('')
+  }
+
+  const review = async (decision: 'approved' | 'rejected') => {
+    await onMutate(`${actionBase}${decision}`, '/api/task/review', {
+      id,
+      decision,
+      by: 'dashboard-next',
+      note: note.trim()
+    })
+    setNote('')
+  }
+
   return (
-    <div className="panel-grid two">
-      <Panel title={copy.dispatchThreads}>
-        <DataTable
-          emptyText={copy.noData}
-          columns={[copy.status, copy.to, copy.project, copy.updated]}
-          rows={model.relay.map(entry => [
-            <StatusBadge status={textOf(entry.state, 'pending')} />,
-            textOf(entry.tool, '-'),
-            textOf(entry.project, '-'),
-            formatDate(textOf(entry.ts || entry.deliveryUpdatedAt))
-          ])}
-        />
+    <article className="task-card">
+      <div className="task-card-top">
+        <StatusBadge status={status} />
+        <StatusBadge status={textOf(task.priority, 'normal')} />
+      </div>
+      <h4>{textOf(task.title, '-')}</h4>
+      {task.description ? <p className="task-description">{textOf(task.description)}</p> : null}
+      {task.handoff ? <p className="task-handoff"><strong>{copy.handoff}:</strong> {textOf(task.handoff)}</p> : null}
+      <div className="task-meta-grid">
+        <Property label={copy.project} value={textOf(task.project, '-')} />
+        <Property label={copy.assignee} value={textOf(task.assignee || task.createdBy, '-')} />
+        <Property label={copy.created} value={formatDate(textOf(task.createdAt))} />
+        <Property label={copy.updated} value={formatDate(textOf(task.updatedAt || task.createdAt))} />
+      </div>
+      {task.reviewStatus ? (
+        <div className="task-review">
+          <strong>{copy.review}: {textOf(task.reviewStatus)}</strong>
+          <span>{textOf(task.reviewedBy, '-')} · {formatDate(textOf(task.reviewedAt))}</span>
+          {task.reviewNote ? <p>{textOf(task.reviewNote)}</p> : null}
+        </div>
+      ) : null}
+      {notes.length ? (
+        <div className="task-notes">
+          <strong>{copy.notes}</strong>
+          {notes.map((item, indexValue) => (
+            <p key={`${textOf(item.ts)}-${indexValue}`}>
+              <span>{textOf(item.by, '-')} · {formatDate(textOf(item.ts))}</span>
+              {textOf(item.text, '-')}
+            </p>
+          ))}
+        </div>
+      ) : null}
+      <label className="field note-field">
+        <span>{copy.addNote}</span>
+        <input value={note} onChange={event => setNote(event.target.value)} placeholder={copy.notePlaceholder} />
+      </label>
+      <div className="task-actions">
+        {status === 'open' ? (
+          <button className="btn small" type="button" disabled={isBusy} onClick={() => onMutate(`${actionBase}claim`, '/api/task/claim', { id, by: 'dashboard-next' })}>
+            {copy.claim}
+          </button>
+        ) : null}
+        {['claimed', 'blocked'].includes(status) ? (
+          <button className="btn small" type="button" disabled={isBusy} onClick={() => void setStatus('in_progress')}>
+            {status === 'blocked' ? copy.unblock : copy.start}
+          </button>
+        ) : null}
+        {['claimed', 'in_progress'].includes(status) ? (
+          <button className="btn small ghost" type="button" disabled={isBusy} onClick={() => void setStatus('blocked', 'Blocked from dashboard-next')}>
+            {copy.block}
+          </button>
+        ) : null}
+        {['claimed', 'in_progress', 'blocked'].includes(status) ? (
+          <button className="btn small" type="button" disabled={isBusy} onClick={() => void setStatus('done')}>
+            {copy.complete}
+          </button>
+        ) : null}
+        {['done', 'cancelled'].includes(status) ? (
+          <button className="btn small ghost" type="button" disabled={isBusy} onClick={() => void setStatus('open')}>
+            {copy.reopen}
+          </button>
+        ) : null}
+        <button className="btn small ghost" type="button" disabled={isBusy || !note.trim()} onClick={() => void setStatus(status)}>
+          {copy.addNote}
+        </button>
+        {status !== 'cancelled' ? (
+          <>
+            <button className="btn small ghost" type="button" disabled={isBusy} onClick={() => void review('approved')}>
+              {copy.approve}
+            </button>
+            <button className="btn small ghost" type="button" disabled={isBusy} onClick={() => void review('rejected')}>
+              {copy.reject}
+            </button>
+          </>
+        ) : null}
+      </div>
+    </article>
+  )
+}
+
+function RadioPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; onRefresh: () => Promise<void> }) {
+  const [form, setForm] = useState({ text: '', from: 'dashboard-next', to: 'all', type: 'note', project: 'ai-memory-hub' })
+  const [query, setQuery] = useState('')
+  const [fromFilter, setFromFilter] = useState('')
+  const [toFilter, setToFilter] = useState('')
+  const [typeFilter, setTypeFilter] = useState('')
+  const [projectFilter, setProjectFilter] = useState('')
+  const [composeOpen, setComposeOpen] = useState(false)
+  const [busy, setBusy] = useState('')
+  const [error, setError] = useState('')
+  const senderOptions = useMemo(() => uniqueSorted(model.radio.map(message => textOf(message.from)).filter(Boolean)), [model.radio])
+  const recipientOptions = useMemo(() => uniqueSorted(model.radio.map(message => textOf(message.to)).filter(Boolean)), [model.radio])
+  const typeOptions = useMemo(() => uniqueSorted(model.radio.map(message => textOf(message.type)).filter(Boolean)), [model.radio])
+  const projectOptions = useMemo(() => uniqueSorted([
+    ...model.radio.map(message => textOf(message.project)).filter(Boolean),
+    ...model.visibleProjects.map(project => textOf(project.id || project.name)).filter(Boolean)
+  ]), [model.radio, model.visibleProjects])
+  const cleanQuery = query.trim().toLowerCase()
+  const filteredMessages = model.radio.filter(message => {
+    if (fromFilter && textOf(message.from) !== fromFilter) return false
+    if (toFilter && textOf(message.to) !== toFilter) return false
+    if (typeFilter && textOf(message.type) !== typeFilter) return false
+    if (projectFilter && textOf(message.project) !== projectFilter) return false
+    if (!cleanQuery) return true
+    return [message.text, message.thread, message.project, message.from, message.to, message.type]
+      .some(value => textOf(value).toLowerCase().includes(cleanQuery))
+  }).slice().reverse()
+
+  const submitRadio = async () => {
+    const text = form.text.trim()
+    if (!text || busy) return
+    setBusy('send')
+    setError('')
+    try {
+      await apiPost<AnyRecord>('/api/radio/send', { ...form, text })
+      setForm(value => ({ ...value, text: '' }))
+      setComposeOpen(false)
+      await onRefresh()
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : String(nextError))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const promote = async (id: string) => {
+    if (!id) return
+    setBusy(`promote:${id}`)
+    setError('')
+    try {
+      await apiPost<AnyRecord>('/api/radio/promote', { id })
+      await onRefresh()
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : String(nextError))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  return (
+    <div className="stack">
+      <Panel title={copy.recentRadio}>
+        <div className="section-actions">
+          <button className="btn" type="button" onClick={() => { setError(''); setComposeOpen(true) }}>
+            {copy.broadcastMessage}
+          </button>
+        </div>
+        <div className="filter-strip">
+          <label className="field">
+            <span>{copy.searchText}</span>
+            <input value={query} onChange={event => setQuery(event.target.value)} />
+          </label>
+          <label className="field">
+            <span>{copy.from}</span>
+            <select value={fromFilter} onChange={event => setFromFilter(event.target.value)}>
+              <option value="">{copy.allSenders}</option>
+              {senderOptions.map(sender => <option value={sender} key={sender}>{sender}</option>)}
+            </select>
+          </label>
+          <label className="field">
+            <span>{copy.to}</span>
+            <select value={toFilter} onChange={event => setToFilter(event.target.value)}>
+              <option value="">{copy.allRecipients}</option>
+              {recipientOptions.map(recipient => <option value={recipient} key={recipient}>{recipient}</option>)}
+            </select>
+          </label>
+          <label className="field">
+            <span>{copy.type}</span>
+            <select value={typeFilter} onChange={event => setTypeFilter(event.target.value)}>
+              <option value="">{copy.allTypes}</option>
+              {typeOptions.map(type => <option value={type} key={type}>{type}</option>)}
+            </select>
+          </label>
+          <label className="field">
+            <span>{copy.project}</span>
+            <select value={projectFilter} onChange={event => setProjectFilter(event.target.value)}>
+              <option value="">{copy.allProjects}</option>
+              {projectOptions.map(project => <option value={project} key={project}>{project}</option>)}
+            </select>
+          </label>
+          <button className="btn ghost" type="button" onClick={() => { setQuery(''); setFromFilter(''); setToFilter(''); setTypeFilter(''); setProjectFilter('') }}>
+            {copy.clear}
+          </button>
+        </div>
+        {error ? <div className="inline-error">{error}</div> : null}
+        <div className="radio-stream">
+          {filteredMessages.length ? filteredMessages.map(message => (
+            <article className="radio-card" key={textOf(message.id) || `${textOf(message.ts)}-${textOf(message.from)}`}>
+              <div className="radio-card-header">
+                <div className="message-meta">
+                  <StatusBadge status={textOf(message.type, 'note')} />
+                  <span>{textOf(message.from, '-')} {'->'} {textOf(message.to, '-')}</span>
+                </div>
+                <span className="muted-text">{formatDate(textOf(message.ts || message.createdAt))}</span>
+              </div>
+              <p>{textOf(message.text, '-')}</p>
+              <div className="radio-card-footer">
+                <span className="chip">{textOf(message.project, '-')}</span>
+                {message.thread ? <span className="chip">{textOf(message.thread)}</span> : null}
+                <button className="btn small ghost" type="button" disabled={busy === `promote:${textOf(message.id)}`} onClick={() => void promote(textOf(message.id))}>
+                  {copy.promoteToMemory}
+                </button>
+              </div>
+            </article>
+          )) : <EmptyState text={copy.noData} />}
+        </div>
       </Panel>
-      <Panel title={copy.dispatchLogs}>
-        <DataTable
-          emptyText={copy.noData}
-          columns={[copy.type, copy.message]}
-          rows={model.dispatchLogs.slice(0, 20).map(log => [
-            textOf(log.type || log.level, 'log'),
-            textOf(log.message || log.text || log.error, '-')
-          ])}
-        />
+      {composeOpen ? (
+        <Modal title={copy.broadcastMessage} onClose={() => setComposeOpen(false)}>
+          <div className="form-grid">
+            <label className="field span-all">
+              <span>{copy.message}</span>
+              <textarea value={form.text} onChange={event => setForm(value => ({ ...value, text: event.target.value }))} rows={4} />
+            </label>
+            <label className="field">
+              <span>{copy.from}</span>
+              <input value={form.from} onChange={event => setForm(value => ({ ...value, from: event.target.value }))} />
+            </label>
+            <label className="field">
+              <span>{copy.to}</span>
+              <input value={form.to} onChange={event => setForm(value => ({ ...value, to: event.target.value }))} list="radio-recipient-options" />
+            </label>
+            <label className="field">
+              <span>{copy.type}</span>
+              <select value={form.type} onChange={event => setForm(value => ({ ...value, type: event.target.value }))}>
+                <option value="note">note</option>
+                <option value="review">review</option>
+                <option value="handoff">handoff</option>
+                <option value="risk">risk</option>
+                <option value="request">request</option>
+                <option value="done">done</option>
+              </select>
+            </label>
+            <label className="field">
+              <span>{copy.project}</span>
+              <input value={form.project} onChange={event => setForm(value => ({ ...value, project: event.target.value }))} list="radio-project-options" />
+            </label>
+            <datalist id="radio-recipient-options">
+              {recipientOptions.map(to => <option value={to} key={to} />)}
+            </datalist>
+            <datalist id="radio-project-options">
+              {projectOptions.map(project => <option value={project} key={project} />)}
+            </datalist>
+            {error ? <div className="inline-error span-all">{error}</div> : null}
+            <div className="form-actions span-all">
+              <button className="btn ghost" type="button" onClick={() => setComposeOpen(false)}>
+                {copy.cancel}
+              </button>
+              <button className="btn" type="button" onClick={() => void submitRadio()} disabled={busy === 'send' || !form.text.trim()}>
+                {busy === 'send' ? copy.running : copy.broadcastMessage}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
+    </div>
+  )
+}
+
+function DispatchPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; onRefresh: () => Promise<void> }) {
+  const [force, setForce] = useState(false)
+  const [limit, setLimit] = useState(10)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  const trigger = async () => {
+    setBusy(true)
+    setError('')
+    try {
+      await apiPost<AnyRecord>('/api/dispatch/run', { force, limit })
+      await onRefresh()
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : String(nextError))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="stack">
+      <Panel title={copy.triggerDispatch}>
+        <div className="form-grid dispatch-control-grid">
+          <label className="field checkbox-field">
+            <input type="checkbox" checked={force} onChange={event => setForce(event.target.checked)} />
+            <span>{copy.forceDispatch}</span>
+          </label>
+          <label className="field">
+            <span>{copy.limit}</span>
+            <input type="number" min={1} max={50} value={limit} onChange={event => setLimit(Number(event.target.value) || 10)} />
+          </label>
+          <div className="form-actions">
+            <button className="btn" type="button" onClick={() => void trigger()} disabled={busy}>
+              {busy ? copy.running : copy.triggerDispatch}
+            </button>
+          </div>
+        </div>
+        {error ? <div className="inline-error">{error}</div> : null}
       </Panel>
+      <div className="panel-grid two">
+        <Panel title={copy.dispatchThreads}>
+          <div className="stack">
+            {model.relay.length ? model.relay.map(entry => (
+              <div className="dispatch-card" key={textOf(entry.id || entry.threadKey || entry.sourceId)}>
+                <div className="dispatch-card-header">
+                  <div>
+                    <strong>{textOf(entry.tool, '-')}</strong>
+                    <span>{textOf(entry.project, '-')}</span>
+                  </div>
+                  <StatusBadge status={textOf(entry.state, 'pending')} />
+                </div>
+                <p>{textOf(entry.threadKey || entry.thread || entry.sourceId, '-')}</p>
+                {entry.progressPercent !== undefined && entry.progressPercent !== null ? (
+                  <div className="progress-line">
+                    <span style={{ width: `${Math.min(100, Math.max(0, numberOf(entry.progressPercent)))}%` }} />
+                  </div>
+                ) : null}
+                {entry.progressStatus ? <p>{textOf(entry.progressStatus)}</p> : null}
+                {entry.lastError ? <p className="error-text">{textOf(entry.lastError)}</p> : null}
+                <span className="muted-text">{formatDate(textOf(entry.ts || entry.progressAt || entry.deliveryUpdatedAt))}</span>
+              </div>
+            )) : <EmptyState text={copy.noData} />}
+          </div>
+        </Panel>
+        <Panel title={copy.dispatchLogs}>
+          <DataTable
+            emptyText={copy.noData}
+            columns={[copy.status, copy.to, copy.project, copy.message]}
+            rows={model.dispatchLogs.slice(0, 30).map(log => [
+              <StatusBadge status={textOf(log.runStatus || log.status || log.exitCode, 'log')} />,
+              textOf(log.tool, '-'),
+              textOf(log.project, '-'),
+              textOf(log.message || log.text || log.error || log.lastError, '-')
+            ])}
+          />
+        </Panel>
+      </div>
     </div>
   )
 }
@@ -564,6 +1219,30 @@ function MetricCard({ label, value, tone = 'default' }: { label: string; value: 
       <span>{label}</span>
       <strong>{value}</strong>
     </section>
+  )
+}
+
+function Modal({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [onClose])
+
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+      <section className="modal-panel" role="dialog" aria-modal="true" aria-label={title} onMouseDown={event => event.stopPropagation()}>
+        <header className="modal-header">
+          <h3>{title}</h3>
+          <button className="btn small ghost" type="button" onClick={onClose} aria-label={`Close ${title}`}>
+            x
+          </button>
+        </header>
+        {children}
+      </section>
+    </div>
   )
 }
 
@@ -697,4 +1376,9 @@ function formatNumber(value: unknown): string {
 
 function formatBool(value: boolean, copy: Copy): string {
   return value ? copy.yes : copy.no
+}
+
+function uniqueSorted(values: string[]): string[] {
+  return Array.from(new Set(values.map(value => value.trim()).filter(Boolean)))
+    .sort((left, right) => left.localeCompare(right))
 }

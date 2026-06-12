@@ -45,6 +45,8 @@
 .header-actions {
   display: flex;
   flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 10px;
 }
 
@@ -73,6 +75,12 @@
   border-color: var(--border);
   background: var(--bg-panel);
   color: var(--text-muted);
+}
+
+.btn.small {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
 }
 
 .notice {
@@ -104,6 +112,175 @@
 
 .panel-grid.two {
   grid-template-columns: minmax(0, 1.4fr) minmax(320px, 0.8fr);
+}
+
+.form-grid,
+.filter-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.task-form-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.dispatch-control-grid {
+  grid-template-columns: minmax(180px, 1fr) minmax(120px, 180px) auto;
+  align-items: end;
+}
+
+.field {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+}
+
+.field span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-subtle);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.field input,
+.field select,
+.field textarea {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #0b1020;
+  color: var(--text);
+  outline: none;
+}
+
+.field input,
+.field select {
+  height: 38px;
+  padding: 0 10px;
+}
+
+.field textarea {
+  min-height: 86px;
+  padding: 10px;
+  resize: vertical;
+}
+
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+  border-color: rgba(96, 210, 189, 0.72);
+}
+
+.checkbox-field {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+}
+
+.checkbox-field input {
+  width: 18px;
+  height: 18px;
+}
+
+.form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.section-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.section-actions.compact {
+  justify-content: stretch;
+  margin-bottom: 0;
+}
+
+.full-width {
+  width: 100%;
+}
+
+.span-all {
+  grid-column: 1 / -1;
+}
+
+.span-2 {
+  grid-column: span 2;
+}
+
+.inline-error,
+.error-text {
+  color: #ffd7da;
+}
+
+.inline-error {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(240, 113, 120, 0.42);
+  border-radius: 8px;
+  background: rgba(240, 113, 120, 0.1);
+  font-size: 13px;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(3, 8, 20, 0.72);
+  backdrop-filter: blur(10px);
+}
+
+.modal-panel {
+  width: min(720px, calc(100vw - 32px));
+  max-height: min(760px, calc(100vh - 48px));
+  min-width: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 18px;
+  border: 1px solid rgba(96, 210, 189, 0.28);
+  border-radius: 8px;
+  background: #11182a;
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.45);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.modal-header h3 {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 760;
+  letter-spacing: 0;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modal-header .btn {
+  flex: 0 0 auto;
 }
 
 .metric-card,
@@ -343,6 +520,188 @@ td {
   gap: 14px;
 }
 
+.kanban-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.kanban-column {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid rgba(38, 52, 82, 0.72);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.018);
+}
+
+.kanban-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.kanban-header h4,
+.task-card h4 {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 760;
+  line-height: 1.3;
+}
+
+.count-pill {
+  display: inline-grid;
+  min-width: 28px;
+  min-height: 24px;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.kanban-list {
+  display: grid;
+  gap: 12px;
+}
+
+.task-card,
+.radio-card,
+.dispatch-card {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(38, 52, 82, 0.78);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.026);
+}
+
+.task-card {
+  display: grid;
+  gap: 10px;
+}
+
+.task-card-top,
+.task-actions,
+.radio-card-header,
+.radio-card-footer,
+.dispatch-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.task-card-top,
+.radio-card-header,
+.dispatch-card-header {
+  justify-content: space-between;
+}
+
+.task-description,
+.task-handoff,
+.task-review p,
+.radio-card p,
+.dispatch-card p {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.task-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.task-review,
+.task-notes {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid rgba(38, 52, 82, 0.62);
+  border-radius: 8px;
+  background: rgba(11, 16, 32, 0.5);
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.task-notes p {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.task-notes span,
+.muted-text {
+  color: var(--text-subtle);
+  font-size: 12px;
+}
+
+.note-field input {
+  height: 34px;
+}
+
+.task-actions {
+  flex-wrap: wrap;
+}
+
+.radio-stream {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.radio-card {
+  display: grid;
+  gap: 10px;
+}
+
+.radio-card-footer {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+.dispatch-card {
+  display: grid;
+  gap: 8px;
+}
+
+.dispatch-card-header > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.dispatch-card-header strong,
+.dispatch-card-header span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.progress-line {
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(147, 164, 189, 0.14);
+}
+
+.progress-line span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent-strong);
+}
+
 .tool-card {
   min-width: 0;
   padding: 16px;
@@ -455,6 +814,16 @@ td {
   .settings-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .kanban-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .form-grid,
+  .filter-strip,
+  .task-form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 720px) {
@@ -472,12 +841,26 @@ td {
 
   .dashboard-grid,
   .property-grid,
-  .settings-grid {
+  .settings-grid,
+  .form-grid,
+  .filter-strip,
+  .task-form-grid,
+  .dispatch-control-grid,
+  .task-meta-grid {
     grid-template-columns: 1fr;
   }
 
-  .panel.span-2 {
+  .panel.span-2,
+  .span-2 {
     grid-column: auto;
+  }
+
+  .form-actions {
+    justify-content: stretch;
+  }
+
+  .form-actions .btn {
+    width: 100%;
   }
 
   .page-header h2 {

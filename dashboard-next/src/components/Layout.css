@@ -1,11 +1,25 @@
 .app-layout {
-  display: flex;
   min-height: 100vh;
-  background: #090d16;
+  background:
+    radial-gradient(circle at 20% 0%, rgba(63, 183, 163, 0.08), transparent 28rem),
+    linear-gradient(180deg, #0b1020 0%, #0d1322 100%);
 }
 
 .main-content {
-  flex: 1;
-  margin-left: 300px;
+  min-height: 100vh;
+  margin-left: var(--sidebar-width);
   padding: 24px;
+  transition: margin-left 0.2s ease;
+}
+
+.sidebar-is-collapsed .main-content {
+  margin-left: var(--sidebar-collapsed-width);
+}
+
+@media (max-width: 900px) {
+  .main-content,
+  .sidebar-is-collapsed .main-content {
+    margin-left: 0;
+    padding: 76px 14px 18px;
+  }
 }

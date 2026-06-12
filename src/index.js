@@ -124,6 +124,17 @@ const RUNNER_PROFILES = {
     probeArgs: ["--help"],
     capabilities: ["direct-dispatch", "stdin-prompt", "text-output"]
   },
+  mimocode: {
+    tool: "mimocode",
+    commandCandidates: ["mimo.cmd", "mimo", "mimocode.cmd", "mimocode"],
+    args: ["run", "--never-ask-questions"],
+    promptMode: "argv",
+    outputMode: "text",
+    preview: "mimo run --never-ask-questions <prompt>",
+    versionArgs: ["--version"],
+    probeArgs: ["--help"],
+    capabilities: ["direct-dispatch", "argv-prompt", "text-output", "opencode-compatible"]
+  },
   marvis: {
     tool: "marvis",
     sharedStateOnly: true,
@@ -6792,6 +6803,7 @@ function defaultConfig(memoryDir) {
       qclaw: { enabled: true },
       openclaw: { enabled: true },
       opencode: { enabled: true },
+      mimocode: { enabled: true },
       cursor: { enabled: true },
       windsurf: { enabled: true },
       vscode: { enabled: true },
@@ -6998,6 +7010,11 @@ function detectTools(memoryDir = resolveMemoryDir()) {
       name: "opencode",
       kind: "skill-config",
       dir: path.join(home, ".config", "opencode")
+    },
+    {
+      name: "mimocode",
+      kind: "skill-config",
+      dir: path.join(home, ".config", "mimocode")
     },
     {
       name: "cursor",
@@ -7492,6 +7509,11 @@ function getLocalInstallTargets(cwd, memoryDir) {
       template: readTemplate("shared-instructions.md")
     },
     {
+      tool: "mimocode",
+      file: path.join(cwd, ".mimocode", "skills", "ai-memory-hub", "SKILL.md"),
+      template: readTemplate("MIMOCODE_SKILL.md")
+    },
+    {
       tool: "vscode",
       file: path.join(cwd, ".github", "copilot-instructions.md"),
       template: readTemplate("shared-instructions.md")
@@ -7576,6 +7598,11 @@ function getInstallTargets(memoryDir) {
       tool: "opencode",
       file: path.join(home, ".config", "opencode", "skills", "ai-memory-hub", "SKILL.md"),
       template: readTemplate("OPENCODE_SKILL.md")
+    },
+    {
+      tool: "mimocode",
+      file: path.join(home, ".config", "mimocode", "skills", "ai-memory-hub", "SKILL.md"),
+      template: readTemplate("MIMOCODE_SKILL.md")
     },
     ...[
       "claude-desktop",
@@ -11762,7 +11789,7 @@ function scoreImportance(memory, topics, ordinal, total, access = {}) {
   if (["project", "lesson"].includes(kind)) score += 30;
   if (["reference", "raw", "note"].includes(kind)) score += 10;
   if (/must|always|never|必须|不要|偏好|规范|规则|纠错|红线|合规|错误|lesson/i.test(text)) score += 18;
-  if (/github|git|lark|feishu|qclaw|claude|codex|opencode|memory|飞书|微信|小游戏/i.test(text)) score += 8;
+  if (/github|git|lark|feishu|qclaw|claude|codex|opencode|mimocode|mimo code|memory|飞书|微信|小游戏/i.test(text)) score += 8;
   if (topics.length > 0) score += Math.min(10, topics.length * 2);
   const recency = total > 0 ? ordinal / total : 0;
   score += Math.round(recency * 8);
@@ -11817,7 +11844,7 @@ function inferTopics(memory) {
   const text = `${memory.text || ""} ${memory.project || memory.metadata?.project || ""} ${tags.join(" ")}`.toLowerCase();
   const topics = [];
   const rules = [
-    ["ai-memory-hub", /ai-memory|shared memory|memory hub|agent radio|opencode|qclaw|claude|codex|gemini|共享记忆|本地记忆/],
+    ["ai-memory-hub", /ai-memory|shared memory|memory hub|agent radio|opencode|mimocode|mimo code|qclaw|claude|codex|gemini|共享记忆|本地记忆/],
     ["game", /game|unity|mahjong|match|西游|麻将|小游戏|策划|关卡|体力|广告|分享/],
     ["wechat-mini-game", /wechat|微信|小游戏|wx\.|sendgift|红包|开放能力/],
     ["lark-feishu", /lark|feishu|飞书|多维表格|任务|文档|lark-cli/],

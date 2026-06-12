@@ -11,7 +11,7 @@ same way.
   corrections. Tools append JSONL events to `inbox/events.jsonl`; `sync`
   indexes them into the ledger and snapshots.
 - **Skill adapters** are tool-native instruction files, such as Codex
-  `AGENTS.md`, Claude `CLAUDE.md`, QClaw/OpenClaw/OpenCode `SKILL.md`, and
+  `AGENTS.md`, Claude `CLAUDE.md`, QClaw/OpenClaw/OpenCode/MiMo Code `SKILL.md`, and
   Marvis integration instructions. They contain the common startup and workflow
   contract.
 - **Tasks** store active single-owner work and handoff state. Use them for
@@ -44,6 +44,7 @@ Preview an adapter:
 ```bash
 ai-memory-hub install --tool qclaw
 ai-memory-hub install --tool opencode
+ai-memory-hub install --tool mimocode
 ```
 
 Apply globally or locally:

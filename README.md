@@ -8,7 +8,7 @@
 
 ### 🌟 项目简介
 
-`ai-memory-hub` 是一个给多个 AI 工具共用的本地协作层。它让 Claude、Codex、Gemini、Antigravity、QClaw、OpenClaw、OpenCode、Marvis 等工具使用同一个本地目录共享记忆、消息和任务，同时每个工具继续使用自己的模型 Token、服务商和计费账户。
+`ai-memory-hub` 是一个给多个 AI 工具共用的本地协作层。它让 Claude、Codex、Gemini、Antigravity、QClaw、OpenClaw、OpenCode、MiMo Code、Marvis 等工具使用同一个本地目录共享记忆、消息和任务，同时每个工具继续使用自己的模型 Token、服务商和计费账户。
 
 **核心特点**：
 - ✅ **不代理 LLM 请求** - 各工具直连自己的 API
@@ -28,7 +28,7 @@
 - **消息总线 (Radio)** - 工具间实时消息传递
 - **任务管理** - 共享任务队列和状态追踪
 - **工作流系统** - 多角色协作工作流模板
-- **Shared Skill Layer** - 为 Codex/Claude/QClaw/OpenCode/Marvis 等工具安装同一套协作流程
+- **Shared Skill Layer** - 为 Codex/Claude/QClaw/OpenCode/MiMo Code/Marvis 等工具安装同一套协作流程
 - **Capability Registry** - 汇总工具能力、接入方式、自动执行状态和安全权限边界
 - **Session 切换** - 跨工具上下文传递
 
@@ -325,6 +325,7 @@ ai-memory-hub metrics          # 显示所有指标
 - ✅ **QClaw / OpenClaw** - 开源 AI 工具
 - ✅ **Marvis** - 腾讯 AI 助手
 - ✅ **OpenCode** - 代码辅助工具
+- ✅ **MiMo Code** - 小米 MiMo 团队基于 OpenCode 构建的终端编程 Agent
 
 #### 预配置支持（待安装）
 - 🔵 VS Code + Continue/Cline
@@ -414,7 +415,7 @@ MIT License - 详见 [LICENSE](LICENSE)
 
 ### 🌟 Overview
 
-`ai-memory-hub` is a local collaboration layer for multiple AI tools. It allows Claude, Codex, Gemini, Antigravity, QClaw, OpenClaw, OpenCode, Marvis and other tools to share memory, messages and tasks using a single local directory, while each tool continues to use its own model tokens, service providers and billing accounts.
+`ai-memory-hub` is a local collaboration layer for multiple AI tools. It allows Claude, Codex, Gemini, Antigravity, QClaw, OpenClaw, OpenCode, MiMo Code, Marvis and other tools to share memory, messages and tasks using a single local directory, while each tool continues to use its own model tokens, service providers and billing accounts.
 
 **Key Features**:
 - ✅ **No LLM proxying** - Tools connect directly to their APIs

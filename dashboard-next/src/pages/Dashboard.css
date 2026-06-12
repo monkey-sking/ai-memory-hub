@@ -261,7 +261,7 @@
 
 .modal-panel {
   width: min(720px, calc(100vw - 32px));
-  max-height: min(760px, calc(100vh - 48px));
+  max-height: min(760px, calc(100vh - 64px));
   min-width: 0;
   overflow: auto;
   overscroll-behavior: contain;
@@ -677,10 +677,11 @@ td {
 }
 
 .note-field input {
-  height: 34px;
+  height: 38px;
 }
 
 .task-actions {
+  align-items: flex-start;
   flex-wrap: wrap;
   row-gap: 8px;
 }

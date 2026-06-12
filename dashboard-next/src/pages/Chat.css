@@ -149,7 +149,8 @@
 }
 
 .chat-input button {
-  height: 38px;
+  min-height: 38px;
+  padding: 0 14px;
   border: 1px solid rgba(96, 210, 189, 0.42);
   border-radius: 8px;
   background: var(--accent-soft);

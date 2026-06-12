@@ -1537,6 +1537,7 @@ test("github backup configure and status round trip", async () => {
       assert.equal(configured.github.branch, "backup");
       assert.equal(configured.github.schedule.time, "04:15");
       assert.equal(configured.github.schedule.taskName, "AMH Backup Test");
+      assert.equal(configured.github.allowPlaintextSensitive, false);
       assert.equal(configured.github.include.includes("config.json"), false);
 
       const status = parseJson(runCli(memoryDir, ["backup", "status"]));
@@ -1544,9 +1545,17 @@ test("github backup configure and status round trip", async () => {
       assert.equal(status.remoteUrl, remoteUrl);
       assert.equal(status.repoDir, path.resolve(repoDir));
       assert.equal(status.branch, "backup");
+      assert.equal(status.allowPlaintextSensitive, false);
       assert.equal(status.include.includes("config.json"), false);
       assert.equal(status.repo.exists, true);
       assert.equal(status.repo.isGitRepo, false);
+
+      const allowed = parseJson(runCli(memoryDir, ["backup", "configure", "--allow-plaintext-sensitive"]));
+      assert.equal(allowed.github.allowPlaintextSensitive, true);
+      assert.match(allowed.warnings.join(" "), /Data security reminder/);
+
+      const blocked = parseJson(runCli(memoryDir, ["backup", "configure", "--block-plaintext-sensitive"]));
+      assert.equal(blocked.github.allowPlaintextSensitive, false);
     });
   });
 });
@@ -1571,6 +1580,7 @@ test("github backup run creates a local git snapshot and skips no-change commits
       assert.equal(first.committed, true);
       assert.equal(first.pushed, false);
       assert.equal(first.push, false);
+      assert.equal(first.wouldPush, false);
       assert.equal(first.files.includes("config.json"), false);
 
       const snapshotFiles = await fs.readdir(path.join(repoDir, "snapshot"));
@@ -1614,7 +1624,37 @@ test("github backup run creates a local git snapshot and skips no-change commits
   });
 });
 
-test("github backup sensitive scan blocks secrets without blocking label-only words", async () => {
+test("github backup no-push preserves sensitive user data locally", { skip: !gitAvailable() }, async () => {
+  await withHub(async (memoryDir) => {
+    await withTempDir(".tmp-amh-github-sensitive-local-", async (repoDir) => {
+      const fakeToken = "ghp_" + "B".repeat(32);
+      const localPath = ["C:", "Users", "Jane", "private.json"].join("/");
+      await fs.writeFile(path.join(memoryDir, "MEMORY.md"), `credential ${fakeToken}\npath ${localPath}\n`, "utf8");
+
+      const result = parseJson(runCli(memoryDir, [
+        "backup",
+        "run",
+        "--no-push",
+        "--repo-dir",
+        repoDir,
+        "--reason",
+        "full-restore-test"
+      ]));
+
+      assert.equal(result.ok, true);
+      assert.equal(result.push, false);
+      assert.equal(result.wouldPush, false);
+      assert.equal(result.scan.ok, false);
+      assert.match(result.warnings.join(" "), /Local backup contains private user data/);
+
+      const snapshot = await fs.readFile(path.join(repoDir, "snapshot", "MEMORY.md"), "utf8");
+      assert.match(snapshot, new RegExp(fakeToken));
+      assert.match(snapshot, /private\.json/);
+    });
+  });
+});
+
+test("github backup sensitive scan warns on dry run and blocks plaintext upload by default", async () => {
   await withHub(async (memoryDir) => {
     await withTempDir(".tmp-amh-github-scan-", async (repoDir) => {
       await fs.writeFile(path.join(memoryDir, "MEMORY.md"), "token and password are labels here.\n", "utf8");
@@ -1628,27 +1668,57 @@ test("github backup sensitive scan blocks secrets without blocking label-only wo
       ]));
       assert.equal(benign.scan.ok, true);
       assert.deepEqual(benign.scan.issues, []);
+      assert.equal(benign.wouldPush, false);
+      assert.equal(benign.wouldBlockPush, false);
 
       const fakeToken = "ghp_" + "A".repeat(32);
       const localPath = ["C:", "Users", "Jane", "secret.txt"].join("/");
       await fs.writeFile(path.join(memoryDir, "MEMORY.md"), `credential ${fakeToken}\npath ${localPath}\n`, "utf8");
 
       const before = JSON.parse(await fs.readFile(path.join(memoryDir, "config.json"), "utf8"));
-      const blocked = runCli(memoryDir, [
+      const drySensitive = parseJson(runCli(memoryDir, [
         "backup",
         "run",
         "--dry-run",
         "--repo-dir",
         repoDir
+      ]));
+      assert.equal(drySensitive.scan.ok, false);
+      assert.equal(drySensitive.wouldPush, false);
+      assert.equal(drySensitive.wouldBlockPush, false);
+      assert.match(drySensitive.warnings.join(" "), /Local backup contains private user data/);
+
+      const dryUpload = parseJson(runCli(memoryDir, [
+        "backup",
+        "run",
+        "--dry-run",
+        "--repo-dir",
+        repoDir,
+        "--remote-url",
+        "https://github.com/<owner>/<repo>.git"
+      ]));
+      assert.equal(dryUpload.wouldPush, true);
+      assert.equal(dryUpload.wouldBlockPush, true);
+      assert.match(dryUpload.warnings.join(" "), /Data security reminder/);
+      assert.match(dryUpload.warnings.join(" "), /blocked by default/);
+
+      const afterDryRun = JSON.parse(await fs.readFile(path.join(memoryDir, "config.json"), "utf8"));
+      assert.equal(afterDryRun.backup.github.lastRunAt, before.backup.github.lastRunAt);
+      assert.equal(afterDryRun.backup.github.lastError, before.backup.github.lastError);
+
+      const blocked = runCli(memoryDir, [
+        "backup",
+        "run",
+        "--repo-dir",
+        repoDir,
+        "--remote-url",
+        "https://github.com/<owner>/<repo>.git"
       ]);
       assert.notEqual(blocked.status, 0);
-      assert.match(blocked.stderr, /sensitive content scan/);
+      assert.match(blocked.stderr, /push blocked by sensitive content scan/);
       assert.match(blocked.stderr, /github-token/);
       assert.match(blocked.stderr, /local-absolute-path/);
-
-      const after = JSON.parse(await fs.readFile(path.join(memoryDir, "config.json"), "utf8"));
-      assert.equal(after.backup.github.lastRunAt, before.backup.github.lastRunAt);
-      assert.equal(after.backup.github.lastError, before.backup.github.lastError);
+      assert.match(blocked.stderr, /Data security reminder/);
     });
   });
 });

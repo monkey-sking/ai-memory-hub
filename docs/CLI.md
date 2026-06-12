@@ -1227,6 +1227,8 @@ ai-memory-hub backup configure \
   --repo-dir "%USERPROFILE%\.ai-memory-github-backup" \
   --branch main
 ai-memory-hub backup run [--no-push] [--dry-run] [--reason <text>]
+ai-memory-hub backup configure --allow-plaintext-sensitive
+ai-memory-hub backup configure --block-plaintext-sensitive
 
 # Windows Scheduled Task management
 ai-memory-hub backup schedule status
@@ -1239,10 +1241,16 @@ GitHub backups export a snapshot repo containing `README.md`,
 `config.json` because configuration may contain local paths or private remote
 URLs. Include configuration only by explicit operator choice.
 
-Before a GitHub backup writes or pushes data, AMH scans selected files for
-credential-shaped values, local absolute paths, and known internal URL shapes.
-`--dry-run` performs the same scan and reports the selected files without
-writing backup state.
+Backups are intended for full restore. `backup run --no-push` writes a complete
+local snapshot even when user data contains private URLs, local paths, or other
+restore-critical values.
+
+Before a plaintext GitHub push, AMH scans selected files for credential-shaped
+values, local absolute paths, and known internal URL shapes. If anything is
+found, the push is blocked by default so private data is not uploaded by
+accident. Use `backup configure --allow-plaintext-sensitive` only when the
+remote is approved for plaintext private backup data. `--dry-run` performs the
+same scan and reports `wouldBlockPush` without writing backup state.
 
 ### `watch`
 

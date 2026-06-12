@@ -127,10 +127,11 @@ const RUNNER_PROFILES = {
   mimocode: {
     tool: "mimocode",
     commandCandidates: ["mimo.cmd", "mimo", "mimocode.cmd", "mimocode"],
-    args: ["run", "--never-ask-questions"],
+    args: ["run"],
     promptMode: "argv",
     outputMode: "text",
-    preview: "mimo run --never-ask-questions <prompt>",
+    compactPrompt: true,
+    preview: "mimo run <prompt>",
     versionArgs: ["--version"],
     probeArgs: ["--help"],
     capabilities: ["direct-dispatch", "argv-prompt", "text-output", "opencode-compatible"]
@@ -3455,7 +3456,9 @@ function resolveRunnerCommand(profile) {
 }
 
 function runDispatchJob(memoryDir, job, runner) {
-  const prompt = renderDispatchPrompt(memoryDir, job);
+  const prompt = runner.compactPrompt
+    ? renderCompactDispatchPrompt(memoryDir, job)
+    : renderDispatchPrompt(memoryDir, job);
   const args = buildRunnerArgs(memoryDir, job, runner, prompt);
   const input = runner.promptMode === "stdin" ? prompt : "";
   const runId = createDispatchRunId(job);
@@ -3735,6 +3738,18 @@ function renderDispatchPrompt(memoryDir, job) {
     "Payload:",
     job.text
   ].join("\n");
+}
+
+function renderCompactDispatchPrompt(memoryDir, job) {
+  const qualityGateLines = renderDispatchQualityGate(job);
+  const parts = [
+    `Payload: ${job.text}`,
+    "Instruction: Do this AI Memory Hub dispatch payload directly; keep the response compact; do not ask what to work on.",
+    qualityGateLines.length > 0 ? `Quality gate: ${qualityGateLines.join("; ")}` : "",
+    "Safety: Do not run git push, delete files, run destructive cleanup, install dependencies, or change system configuration unless explicitly authorized in the payload. If you cannot proceed, say exactly what configuration or input is missing.",
+    `AMH metadata: thread=${getDispatchThreadKey(job)} project=${job.project || "(none)"} ref=${job.refId}`
+  ];
+  return parts.filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
 }
 
 function readDispatchLog(memoryDir) {

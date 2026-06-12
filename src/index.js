@@ -44,6 +44,7 @@ const DISPATCH_RUNS_DIR = "dispatch-runs";
 const DAEMON_PID_FILE = "daemon.pid";
 const DAEMON_STATUS_FILE = "daemon-status.json";
 const DAEMON_DEFAULT_TOOLS = ["codex", "gemini", "claude"];
+const TOOL_CAPABILITY_REGISTRY_VERSION = 1;
 const DEFAULT_DASHBOARD_SHORTCUT_BINDINGS = Object.freeze({
   focusSearch: "/",
   openSearch: "mod+k",
@@ -198,6 +199,9 @@ async function main() {
       return initCommand(rest);
     case "detect":
       return detectCommand();
+    case "capability":
+    case "capabilities":
+      return capabilitiesCommand(rest);
     case "status":
       return statusCommand();
     case "record":
@@ -306,6 +310,25 @@ function initCommand(argv) {
 function detectCommand() {
   const tools = detectTools();
   console.log(JSON.stringify(tools, null, 2));
+}
+
+function capabilitiesCommand(argv) {
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const tool = getOption(argv, "--tool") || getOption(argv, "--to") || positionalArgs(argv)[0] || "";
+  const registry = buildCapabilityRegistry(config.memoryDir, {
+    refresh: hasFlag(argv, "--refresh")
+  });
+  if (tool) {
+    const name = normalizeToolName(tool);
+    console.log(JSON.stringify({
+      ...registry,
+      tools: registry.tools.filter((entry) => normalizeToolName(entry.name) === name),
+      summary: summarizeCapabilityRegistry(registry.tools.filter((entry) => normalizeToolName(entry.name) === name))
+    }, null, 2));
+    return;
+  }
+  console.log(JSON.stringify(registry, null, 2));
 }
 
 function doctorCommand(argv) {
@@ -462,6 +485,7 @@ function getStatusObject() {
   const lock = readLockStatus(memoryDir);
   const tools = getCachedDetectedTools(memoryDir);
   const toolSummary = summarizeToolConnections(tools);
+  const capabilityRegistry = buildCapabilityRegistry(memoryDir, { tools, includeMetrics: false });
   const daemon = buildDaemonStatus(memoryDir);
 
   return {
@@ -513,6 +537,7 @@ function getStatusObject() {
     lock,
     daemon,
     toolSummary,
+    capabilitySummary: capabilityRegistry.summary,
     tools
   };
 }
@@ -4805,6 +4830,11 @@ function appCommand(argv) {
           refresh: url.searchParams.get("refresh") === "1"
         }));
       }
+      if (req.method === "GET" && url.pathname === "/api/capabilities") {
+        return sendJson(res, buildCapabilityRegistry(config.memoryDir, {
+          refresh: url.searchParams.get("refresh") === "1"
+        }));
+      }
       if (req.method === "GET" && url.pathname === "/api/backups") {
         return sendJson(res, getDashboardBackups(config));
       }
@@ -5557,8 +5587,13 @@ function getDashboardTools(memoryDir, { refresh = false } = {}) {
   const tasks = readTasks(memoryDir);
   const radio = readRadioMessages(memoryDir);
   const metricsByTool = buildToolMetricsByName({ runs, relay, tasks, radio });
+  const capabilityRegistry = buildCapabilityRegistry(memoryDir, { tools, metricsByTool });
+  const capabilitiesByTool = Object.fromEntries(
+    capabilityRegistry.tools.map((entry) => [normalizeToolName(entry.name), entry])
+  );
   const enrichedTools = tools.map((tool) => {
     const metrics = metricsByTool[normalizeToolName(tool.name)] || createEmptyToolMetrics();
+    const registryEntry = capabilitiesByTool[normalizeToolName(tool.name)] || null;
     return {
       ...tool,
       metrics,
@@ -5584,7 +5619,10 @@ function getDashboardTools(memoryDir, { refresh = false } = {}) {
         runnerCommandKind: tool.runnerCommandKind || "",
         sharedStateOnly: Boolean(tool.sharedStateOnly),
         action: tool.action || ""
-      }
+      },
+      capability: registryEntry?.capability || {},
+      permissions: registryEntry?.permissions || {},
+      health: registryEntry?.health || {}
     };
   });
   const runSummary = summarizeToolRunMetrics(enrichedTools);
@@ -5595,10 +5633,202 @@ function getDashboardTools(memoryDir, { refresh = false } = {}) {
       ...summarizeToolConnections(tools),
       activeDispatches: relay.filter((entry) => ["dispatched", "acked", "progress", "retrying"].includes(entry.state)).length,
       runs: runSummary,
-      kindBreakdown: countToolsByKind(tools)
+      kindBreakdown: countToolsByKind(tools),
+      capabilities: capabilityRegistry.summary
     },
+    capabilities: capabilityRegistry.summary,
     tools: enrichedTools
   };
+}
+
+function buildCapabilityRegistry(memoryDir, {
+  refresh = false,
+  tools = null,
+  metricsByTool = null,
+  includeMetrics = true
+} = {}) {
+  const detectedTools = tools || (refresh ? refreshDetectedTools(memoryDir) : getCachedDetectedTools(memoryDir));
+  const effectiveMetricsByTool = metricsByTool || (includeMetrics
+    ? buildToolMetricsByName({
+      runs: readDispatchRuns(memoryDir),
+      relay: Object.values(readLatestRelayStatusByThread(memoryDir)),
+      tasks: readTasks(memoryDir),
+      radio: readRadioMessages(memoryDir)
+    })
+    : {});
+  const entries = detectedTools.map((tool) => buildToolCapabilityEntry(
+    tool,
+    effectiveMetricsByTool[normalizeToolName(tool.name)] || createEmptyToolMetrics(),
+    { includeMetrics }
+  ));
+  return {
+    ok: true,
+    version: TOOL_CAPABILITY_REGISTRY_VERSION,
+    generatedAt: new Date().toISOString(),
+    memoryDir,
+    summary: summarizeCapabilityRegistry(entries),
+    tools: entries
+  };
+}
+
+function buildToolCapabilityEntry(tool, metrics = createEmptyToolMetrics(), { includeMetrics = true } = {}) {
+  const name = normalizeToolName(tool.name);
+  const profile = getRunnerProfile(name) || {};
+  const profileCapabilities = normalizeCapabilityList(profile.capabilities);
+  const directCli = profileCapabilities.includes("direct-dispatch");
+  const autoDispatch = Boolean(tool.runnable && directCli);
+  const gatewayRest = ["qclaw", "openclaw"].includes(name);
+  const cdpCandidate = ["claude-desktop", "codex-app", "antigravity", "antigravity-cockpit"].includes(name);
+  const desktopAutomation = tool.kind === "app-state";
+  const sharedState = Boolean(tool.connected || tool.configured || profile.sharedStateOnly);
+  const diagnosticOnly = !directCli && !gatewayRest && !cdpCandidate && !sharedState;
+  const capability = {
+    integrationMode: deriveCapabilityIntegrationMode({
+      autoDispatch,
+      directCli,
+      gatewayRest,
+      cdpCandidate,
+      desktopAutomation,
+      sharedState,
+      diagnosticOnly
+    }),
+    directCli,
+    autoDispatch,
+    sharedState,
+    gatewayRest,
+    cdpCandidate,
+    desktopAutomation,
+    diagnosticOnly,
+    sessionResume: profileCapabilities.includes("session-resume"),
+    promptModes: profile.promptMode ? [profile.promptMode] : [],
+    outputModes: profile.outputMode ? [profile.outputMode] : [],
+    capabilities: profileCapabilities
+  };
+  const permissions = buildToolPermissionPolicy(capability);
+  const health = buildToolCapabilityHealth(tool, capability);
+  const entry = {
+    name: tool.name,
+    kind: tool.kind || "",
+    installed: Boolean(tool.installed),
+    configured: Boolean(tool.configured),
+    connected: Boolean(tool.connected),
+    connectionStatus: tool.connectionStatus || "",
+    capability,
+    runner: {
+      profile: tool.runnerProfile || profile.promptMode || "",
+      commandKind: tool.runnerCommandKind || "",
+      usesShell: Boolean(tool.runnerUsesShell),
+      command: tool.runnerCommand || "",
+      reason: tool.runnerReason || "",
+      sharedStateOnly: Boolean(tool.sharedStateOnly || profile.sharedStateOnly)
+    },
+    install: {
+      instructionFile: tool.instructionFile || "",
+      skillLayer: Boolean(tool.skillLayer),
+      skillLayerVersion: tool.skillLayerVersion || "",
+      skillLayerStatus: tool.skillLayerStatus || ""
+    },
+    permissions,
+    health
+  };
+  if (includeMetrics) {
+    entry.metrics = metrics;
+  }
+  return entry;
+}
+
+function deriveCapabilityIntegrationMode({
+  autoDispatch,
+  directCli,
+  gatewayRest,
+  cdpCandidate,
+  desktopAutomation,
+  sharedState,
+  diagnosticOnly
+}) {
+  if (autoDispatch) return "direct-cli";
+  if (gatewayRest) return "gateway-rest-candidate";
+  if (cdpCandidate) return "cdp-candidate";
+  if (sharedState) return "shared-state";
+  if (directCli) return "direct-cli-missing";
+  if (desktopAutomation) return "desktop-automation-candidate";
+  return diagnosticOnly ? "diagnostic-only" : "unknown";
+}
+
+function buildToolPermissionPolicy(capability) {
+  return {
+    canAutoDispatch: Boolean(capability.autoDispatch),
+    canUseSharedState: Boolean(capability.sharedState),
+    canUseGatewayRest: Boolean(capability.gatewayRest),
+    canUseDesktopAutomation: Boolean(capability.cdpCandidate || capability.desktopAutomation),
+    defaultGuardrails: ["no-push", "no-delete-files", "no-install-dependencies"],
+    requiresApprovalFor: ["push", "delete-files", "install-dependencies", "system-config", "destructive-commands"]
+  };
+}
+
+function buildToolCapabilityHealth(tool, capability) {
+  const reasons = [];
+  if (capability.autoDispatch && tool.connected) {
+    return {
+      status: "ready-automated",
+      reasons: ["Shared Skill Layer is installed and a verified direct runner is available."]
+    };
+  }
+  if (!tool.installed && tool.configured) {
+    return {
+      status: "preconfigured-missing-tool",
+      reasons: ["Adapter instructions exist, but the local tool state was not detected."]
+    };
+  }
+  if (tool.connected || (tool.configured && capability.sharedState)) {
+    reasons.push("Shared Skill Layer or legacy shared memory instructions are configured.");
+    if (!capability.autoDispatch) {
+      reasons.push("No verified direct runner is available; coordinate through shared state or a future adapter.");
+    }
+    return { status: "ready-shared-state", reasons };
+  }
+  if (tool.installed && !tool.configured) {
+    return {
+      status: "needs-adapter",
+      reasons: ["Tool state was detected but shared memory instructions are not installed."]
+    };
+  }
+  if (capability.gatewayRest || capability.cdpCandidate || capability.desktopAutomation) {
+    return {
+      status: "adapter-candidate",
+      reasons: ["No active connection is configured yet, but this tool has a known non-CLI integration path."]
+    };
+  }
+  return {
+    status: "missing",
+    reasons: ["Tool state and shared memory instructions were not detected."]
+  };
+}
+
+function summarizeCapabilityRegistry(entries) {
+  return {
+    total: entries.length,
+    directCliProfiles: entries.filter((entry) => entry.capability.directCli).length,
+    autoDispatch: entries.filter((entry) => entry.capability.autoDispatch).length,
+    sharedState: entries.filter((entry) => entry.capability.sharedState).length,
+    gatewayRestCandidates: entries.filter((entry) => entry.capability.gatewayRest).length,
+    cdpCandidates: entries.filter((entry) => entry.capability.cdpCandidate).length,
+    desktopAutomationCandidates: entries.filter((entry) => entry.capability.desktopAutomation).length,
+    diagnosticOnly: entries.filter((entry) => entry.capability.diagnosticOnly).length,
+    readyAutomated: entries.filter((entry) => entry.health.status === "ready-automated").length,
+    readySharedState: entries.filter((entry) => entry.health.status === "ready-shared-state").length,
+    needsAdapter: entries.filter((entry) => entry.health.status === "needs-adapter").length,
+    preconfiguredMissingTools: entries.filter((entry) => entry.health.status === "preconfigured-missing-tool").length,
+    adapterCandidates: entries.filter((entry) => entry.health.status === "adapter-candidate").length,
+    missing: entries.filter((entry) => entry.health.status === "missing").length
+  };
+}
+
+function normalizeCapabilityList(value) {
+  const values = Array.isArray(value) ? value : [];
+  return [...new Set(values
+    .map((item) => String(item || "").trim().toLowerCase())
+    .filter(Boolean))];
 }
 
 function createEmptyToolMetrics() {
@@ -6439,6 +6669,8 @@ function helpCommand() {
 Commands:
   init       Create ~/.ai-memory and config.
   detect     Detect installed AI tools.
+  capabilities
+             Show the cross-tool capability registry and safety policy.
   status     Show hub and tool status.
   record     Append a local memory event.
   radio      Send, list, and promote cross-agent radio messages.
@@ -6492,6 +6724,7 @@ Examples:
   ${APP_NAME} task done --id <task-id> --by codex
   ${APP_NAME} connect
   ${APP_NAME} connect --apply
+  ${APP_NAME} capabilities --tool claude
   ${APP_NAME} connect request --from gemini --to codex --project ai-memory-hub --text "Please inspect the current task list." --task
   ${APP_NAME} doctor --tool claude
   ${APP_NAME} workflow create "Review dashboard changes" --from codex --project ai-memory-hub --planner codex --executor opencode --reviewer qclaw --spawn-tasks --notify

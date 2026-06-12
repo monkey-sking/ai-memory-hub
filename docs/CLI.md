@@ -16,6 +16,7 @@ Complete reference for all `ai-memory-hub` command-line commands.
 - [Context Packs](#context-packs)
 - [Project Task Specs](#project-task-specs)
 - [Shared Skill Layer](#shared-skill-layer)
+- [Capability Registry](#capability-registry)
 - [Runner Doctor](#runner-doctor)
 - [Dispatch Relay](#dispatch-relay)
 - [Dispatch Queue](#dispatch-queue)
@@ -57,6 +58,7 @@ Shows:
 - Relay thread status
 - Lock status
 - Tool summary
+- Capability summary
 - Connected tools
 
 ### `sync`
@@ -779,6 +781,35 @@ ai-memory-hub connect status
 current shared skill adapters. See
 [Shared Skill Layer](shared-skill-layer.md) for the memory/skill/task/workflow
 and radio boundaries.
+
+---
+
+## Capability Registry
+
+### `capabilities`
+
+Print the cross-tool capability registry used by automation, review, and
+dashboard code. The registry is derived from tool detection, runner profiles,
+shared skill install state, and dispatch metrics.
+
+```bash
+ai-memory-hub capabilities
+ai-memory-hub capabilities --tool claude
+ai-memory-hub capabilities --refresh
+```
+
+The output includes:
+- `summary.directCliProfiles` and `summary.autoDispatch`
+- gateway and CDP adapter candidates
+- each tool's `capability.integrationMode`
+- conservative `permissions` guardrails
+- `health.status` for ready, adapter-needed, candidate, or missing states
+
+`ai-memory-hub status` includes `capabilitySummary`. The dashboard server exposes
+the same model through `GET /api/capabilities`, and `/api/tools` attaches each
+tool's `capability`, `permissions`, and `health` objects. See
+[Capability Registry](capability-registry.md) for the data model and safety
+policy.
 
 ---
 

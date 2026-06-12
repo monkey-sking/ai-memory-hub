@@ -29,6 +29,7 @@
 - **任务管理** - 共享任务队列和状态追踪
 - **工作流系统** - 多角色协作工作流模板
 - **Shared Skill Layer** - 为 Codex/Claude/QClaw/OpenCode/Marvis 等工具安装同一套协作流程
+- **Capability Registry** - 汇总工具能力、接入方式、自动执行状态和安全权限边界
 - **Session 切换** - 跨工具上下文传递
 
 #### 3. 通信机制
@@ -193,6 +194,7 @@ ai-memory-hub metrics
 ```bash
 ai-memory-hub init              # 初始化 hub
 ai-memory-hub status            # 显示状态
+ai-memory-hub capabilities      # 查看工具能力注册表
 ai-memory-hub sync              # 同步记忆
 ai-memory-hub update --check    # 检查更新
 ai-memory-hub update            # 更新到最新版本
@@ -372,6 +374,7 @@ ai-memory-hub metrics          # 显示所有指标
 - [更新指南](docs/UPDATE.md) - 如何更新到最新版本
 - [记忆生命周期](docs/memory-lifecycle.md) - 记忆系统设计
 - [Shared Skill Layer](docs/shared-skill-layer.md) - 跨工具 skill/adapter 边界与安装验证
+- [Capability Registry](docs/capability-registry.md) - 工具能力、接入模式和权限边界
 - [中继协议](docs/relay-protocol.md) - 工具间通信协议
 - [CLI 命令参考](docs/CLI.md) - 完整命令文档（待创建）
 - [工作流模板指南](docs/RECIPES.md) - 如何编写模板（待创建）
@@ -426,6 +429,7 @@ MIT License - 详见 [LICENSE](LICENSE)
 - **Task Management** - Shared task queue and status tracking
 - **Workflow System** - Multi-role collaboration templates
 - **Shared Skill Layer** - Common startup, memory, task, workflow, and review instructions for native tool adapters
+- **Capability Registry** - Tool capability, integration mode, automation readiness, and safety policy summaries
 - **RPC Communication** - Synchronous request-response
 - **Priority Scheduler** - Task scheduling and retry control
 - **Metrics Dashboard** - Success rates, durations, failures
@@ -465,6 +469,7 @@ ai-memory-hub recipe create \
 - [Update Guide](docs/UPDATE.md)
 - [Memory Lifecycle](docs/memory-lifecycle.md)
 - [Shared Skill Layer](docs/shared-skill-layer.md)
+- [Capability Registry](docs/capability-registry.md)
 - [Relay Protocol](docs/relay-protocol.md)
 - [CLI Reference](docs/CLI.md) (coming soon)
 

@@ -48,7 +48,7 @@
   },
   "aliases": ["bbwk", "帮帮悟空"],
   "resources": {
-    "feishu": "<feishu-url>",
+    "feishu": "<feishu-folder-url>",
     "repo": "<local-repo-path>",
     "docs": []
   },
@@ -145,10 +145,10 @@ ai-memory-hub project relate <id> --based-on <parent-id> --relation reskin
 
 ```jsonl
 {"id":"重回拾光","name":"重回拾光","displayName":"重回拾光","status":"active","type":"game","description":"铁环跑跑主题游戏","aliases":["铁环跑跑","重回拾光(铁环跑跑)"],"createdAt":"2026-05-01T00:00:00Z","updatedAt":"2026-06-11T12:00:00Z"}
-{"id":"hwyxxl","name":"脑瓜转一转","displayName":"脑瓜转一转","status":"active","type":"game","description":"面向55+银发用户的麻将堆叠二消游戏","metadata":{"target":"55+ 银发用户","tech":["Unity","Luban","YooAsset","HybridCLR"]},"resources":{"feishu":"<feishu-url>"},"createdAt":"2026-05-18T00:00:00Z","updatedAt":"2026-06-11T12:00:00Z"}
-{"id":"bbwk","name":"帮帮悟空吧","displayName":"帮帮悟空吧","status":"active","type":"game","description":"《脑瓜转一转》的西游主题换皮版本","metadata":{"basedOn":"hwyxxl","relation":"reskin"},"aliases":["帮帮悟空"],"resources":{"feishu":"<feishu-url>","repo":"<local-repo-path>"},"createdAt":"2026-06-03T00:00:00Z","updatedAt":"2026-06-11T12:00:00Z"}
+{"id":"hwyxxl","name":"脑瓜转一转","displayName":"脑瓜转一转","status":"active","type":"game","description":"面向55+银发用户的麻将堆叠二消游戏","metadata":{"target":"55+ 银发用户","tech":["Unity","Luban","YooAsset","HybridCLR"]},"resources":{"feishu":"<feishu-folder-url>"},"createdAt":"2026-05-18T00:00:00Z","updatedAt":"2026-06-11T12:00:00Z"}
+{"id":"bbwk","name":"帮帮悟空吧","displayName":"帮帮悟空吧","status":"active","type":"game","description":"《脑瓜转一转》的西游主题换皮版本","metadata":{"basedOn":"hwyxxl","relation":"reskin"},"aliases":["帮帮悟空"],"resources":{"feishu":"<feishu-folder-url>","repo":"<local-repo-path>"},"createdAt":"2026-06-03T00:00:00Z","updatedAt":"2026-06-11T12:00:00Z"}
 {"id":"西游释厄传九九归一","name":"西游释厄传：九九归一","displayName":"西游释厄传九九归一","status":"paused","type":"game","description":"81关线性卷轴地图，6种核心玩法综合游戏","aliases":["西游释厄传","xy_puzzle_collection"],"createdAt":"2026-04-01T00:00:00Z","updatedAt":"2026-06-11T12:00:00Z"}
-{"id":"ai-memory-hub","name":"AI Memory Hub","displayName":"AI Memory Hub","status":"active","type":"tool","description":"本地优先的多AI工具共享记忆中心","resources":{"repo":"https://github.com/<owner>/ai-memory-hub"},"createdAt":"2026-06-01T00:00:00Z","updatedAt":"2026-06-11T12:00:00Z"}
+{"id":"ai-memory-hub","name":"AI Memory Hub","displayName":"AI Memory Hub","status":"active","type":"tool","description":"本地优先的多AI工具共享记忆中心","resources":{"repo":"https://github.com/<owner>/<repo>"},"createdAt":"2026-06-01T00:00:00Z","updatedAt":"2026-06-11T12:00:00Z"}
 ```
 
 ## 五、实施步骤

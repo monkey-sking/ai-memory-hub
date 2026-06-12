@@ -1209,16 +1209,40 @@ with `ai-memory-hub detect` or `ai-memory-hub doctor --tool <tool-name>`.
 
 ### `backup`
 
-Create a backup.
+Create local hub backups, inspect/prune retention, and manage optional GitHub
+data backups.
 
 ```bash
+# Local filesystem backups
 ai-memory-hub backup [--reason <text>]
+ai-memory-hub backup --reason "before-major-refactor"
+ai-memory-hub backup list --limit 20
+ai-memory-hub backup prune --daily 7 --weekly 4 --pre-sync 20 [--apply]
+
+# GitHub data backup configuration and execution
+ai-memory-hub backup status
+ai-memory-hub backup configure \
+  --enabled \
+  --remote-url "https://github.com/<owner>/<repo>.git" \
+  --repo-dir "%USERPROFILE%\.ai-memory-github-backup" \
+  --branch main
+ai-memory-hub backup run [--no-push] [--dry-run] [--reason <text>]
+
+# Windows Scheduled Task management
+ai-memory-hub backup schedule status
+ai-memory-hub backup schedule install --time 03:30 [--dry-run]
+ai-memory-hub backup schedule uninstall
 ```
 
-**Example:**
-```bash
-ai-memory-hub backup --reason "before-major-refactor"
-```
+GitHub backups export a snapshot repo containing `README.md`,
+`manifest.json`, and `snapshot/`. The default include list excludes
+`config.json` because configuration may contain local paths or private remote
+URLs. Include configuration only by explicit operator choice.
+
+Before a GitHub backup writes or pushes data, AMH scans selected files for
+credential-shaped values, local absolute paths, and known internal URL shapes.
+`--dry-run` performs the same scan and reports the selected files without
+writing backup state.
 
 ### `watch`
 

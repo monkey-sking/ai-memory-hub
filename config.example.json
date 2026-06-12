@@ -5,9 +5,41 @@
     "snapshotLimit": 200,
     "lockStaleMs": 120000,
     "backupRetention": {
-      "enabled": true,
-      "maxCount": 50,
-      "maxAgeDays": 0
+      "daily": 7,
+      "weekly": 4,
+      "preSync": 20,
+      "pruneAfterSync": true
+    }
+  },
+  "backup": {
+    "github": {
+      "enabled": false,
+      "remoteUrl": "https://github.com/<owner>/<private-backup-repo>.git",
+      "repoDir": "%USERPROFILE%\\.ai-memory-github-backup",
+      "branch": "main",
+      "include": [
+        "MEMORY.md",
+        "BOOTSTRAP.md",
+        "profile.md",
+        "inbox-events.jsonl",
+        "memory-ledger.jsonl",
+        "radio-messages.jsonl",
+        "tasks.jsonl",
+        "tasks-events.jsonl",
+        "workflows.jsonl",
+        "workflows-events.jsonl",
+        "projects.jsonl",
+        "projects-events.jsonl"
+      ],
+      "exclude": [],
+      "schedule": {
+        "enabled": false,
+        "time": "03:30",
+        "taskName": "AI Memory Hub GitHub Backup"
+      },
+      "lastRunAt": "",
+      "lastCommit": "",
+      "lastError": ""
     }
   },
   "tools": {

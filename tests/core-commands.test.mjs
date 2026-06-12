@@ -19,6 +19,22 @@ async function withHub(fn) {
   }
 }
 
+async function withTempDir(prefix, fn) {
+  const dir = await fs.mkdtemp(path.join(repoRoot, prefix));
+  try {
+    await fn(dir);
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+}
+
+function gitAvailable() {
+  return spawnSync("git", ["--version"], {
+    encoding: "utf8",
+    windowsHide: true
+  }).status === 0;
+}
+
 function runCli(memoryDir, args) {
   return spawnSync(process.execPath, [cliPath, ...args], {
     cwd: repoRoot,
@@ -202,6 +218,47 @@ test("project registry CLI manages metadata, aliases, relations, and archive sta
     const events = await readJsonl(path.join(memoryDir, "projects", "events.jsonl"));
     assert.ok(events.some((event) => event.type === "project.upsert" && event.entityId === "registry-demo"));
     assert.ok(events.some((event) => event.reason === "project:update" && event.record.archivedBy === "codex"));
+  });
+});
+
+test("project migrate skips seed projects when existing aliases already identify them", async () => {
+  await withHub(async (memoryDir) => {
+    const project = {
+      id: "local-memory-hub",
+      name: "Local Memory Hub",
+      displayName: "Local Memory Hub",
+      status: "active",
+      type: "tool",
+      description: "Existing local project with a seed alias.",
+      metadata: {},
+      aliases: ["ai-memory-hub"],
+      resources: {},
+      createdAt: "2026-06-01T00:00:00Z",
+      updatedAt: "2026-06-12T00:00:00Z"
+    };
+    const event = {
+      id: "test-project-alias-seed",
+      schemaVersion: 1,
+      ts: "2026-06-12T00:00:00.000Z",
+      source: "test",
+      entity: "project",
+      action: "upsert",
+      type: "project.upsert",
+      entityId: project.id,
+      reason: "test",
+      record: project
+    };
+
+    await fs.writeFile(path.join(memoryDir, "projects", "events.jsonl"), `${JSON.stringify(event)}\n`, "utf8");
+    await fs.writeFile(path.join(memoryDir, "projects", "projects.jsonl"), `${JSON.stringify(project)}\n`, "utf8");
+
+    const migrated = parseJson(runCli(memoryDir, ["project", "migrate", "--apply"]));
+    assert.equal(migrated.added, 4);
+
+    const projects = parseJson(runCli(memoryDir, ["project", "list", "--status", "all"]));
+    assert.equal(projects.some((item) => item.id === "ai-memory-hub"), false);
+    assert.equal(projects.filter((item) => item.id === "local-memory-hub").length, 1);
+    assert.equal(projects.length, 5);
   });
 });
 
@@ -1451,6 +1508,170 @@ test("backup list and prune expose retention candidates without applying by defa
     assert.equal(prune.apply, false);
     assert.equal(prune.prune, 2);
     assert.equal((await fs.readdir(backupsDir)).length, 3);
+  });
+});
+
+test("github backup configure and status round trip", async () => {
+  await withHub(async (memoryDir) => {
+    await withTempDir(".tmp-amh-github-config-", async (repoDir) => {
+      const remoteUrl = "https://github.com/<owner>/<repo>.git";
+      const configured = parseJson(runCli(memoryDir, [
+        "backup",
+        "configure",
+        "--enabled",
+        "--remote-url",
+        remoteUrl,
+        "--repo-dir",
+        repoDir,
+        "--branch",
+        "backup",
+        "--time",
+        "04:15",
+        "--task-name",
+        "AMH Backup Test"
+      ]));
+
+      assert.equal(configured.github.enabled, true);
+      assert.equal(configured.github.remoteUrl, remoteUrl);
+      assert.equal(configured.github.repoDir, path.resolve(repoDir));
+      assert.equal(configured.github.branch, "backup");
+      assert.equal(configured.github.schedule.time, "04:15");
+      assert.equal(configured.github.schedule.taskName, "AMH Backup Test");
+      assert.equal(configured.github.include.includes("config.json"), false);
+
+      const status = parseJson(runCli(memoryDir, ["backup", "status"]));
+      assert.equal(status.enabled, true);
+      assert.equal(status.remoteUrl, remoteUrl);
+      assert.equal(status.repoDir, path.resolve(repoDir));
+      assert.equal(status.branch, "backup");
+      assert.equal(status.include.includes("config.json"), false);
+      assert.equal(status.repo.exists, true);
+      assert.equal(status.repo.isGitRepo, false);
+    });
+  });
+});
+
+test("github backup run creates a local git snapshot and skips no-change commits", { skip: !gitAvailable() }, async () => {
+  await withHub(async (memoryDir) => {
+    await withTempDir(".tmp-amh-github-run-", async (repoDir) => {
+      await fs.writeFile(path.join(memoryDir, "profile.md"), "# Profile\n\nStable test profile.\n", "utf8");
+
+      const first = parseJson(runCli(memoryDir, [
+        "backup",
+        "run",
+        "--no-push",
+        "--repo-dir",
+        repoDir,
+        "--reason",
+        "core-test"
+      ]));
+
+      assert.equal(first.ok, true);
+      assert.equal(first.changed, true);
+      assert.equal(first.committed, true);
+      assert.equal(first.pushed, false);
+      assert.equal(first.push, false);
+      assert.equal(first.files.includes("config.json"), false);
+
+      const snapshotFiles = await fs.readdir(path.join(repoDir, "snapshot"));
+      assert.ok(snapshotFiles.includes("MEMORY.md"));
+      assert.equal(snapshotFiles.includes("config.json"), false);
+
+      const manifestText = await fs.readFile(path.join(repoDir, "manifest.json"), "utf8");
+      assert.equal(manifestText.includes(memoryDir), false);
+      const manifest = JSON.parse(manifestText);
+      assert.equal(manifest.source, "ai-memory-hub");
+      assert.equal(manifest.files.some((file) => file.name === "config.json"), false);
+
+      const firstCount = spawnSync("git", ["-C", repoDir, "rev-list", "--count", "HEAD"], {
+        encoding: "utf8",
+        windowsHide: true
+      });
+      assert.equal(firstCount.status, 0, firstCount.stderr || firstCount.stdout);
+      assert.equal(firstCount.stdout.trim(), "1");
+
+      const second = parseJson(runCli(memoryDir, [
+        "backup",
+        "run",
+        "--no-push",
+        "--repo-dir",
+        repoDir,
+        "--reason",
+        "core-test"
+      ]));
+
+      assert.equal(second.changed, false);
+      assert.equal(second.committed, false);
+      assert.equal(second.commit, first.commit);
+
+      const secondCount = spawnSync("git", ["-C", repoDir, "rev-list", "--count", "HEAD"], {
+        encoding: "utf8",
+        windowsHide: true
+      });
+      assert.equal(secondCount.status, 0, secondCount.stderr || secondCount.stdout);
+      assert.equal(secondCount.stdout.trim(), "1");
+    });
+  });
+});
+
+test("github backup sensitive scan blocks secrets without blocking label-only words", async () => {
+  await withHub(async (memoryDir) => {
+    await withTempDir(".tmp-amh-github-scan-", async (repoDir) => {
+      await fs.writeFile(path.join(memoryDir, "MEMORY.md"), "token and password are labels here.\n", "utf8");
+
+      const benign = parseJson(runCli(memoryDir, [
+        "backup",
+        "run",
+        "--dry-run",
+        "--repo-dir",
+        repoDir
+      ]));
+      assert.equal(benign.scan.ok, true);
+      assert.deepEqual(benign.scan.issues, []);
+
+      const fakeToken = "ghp_" + "A".repeat(32);
+      const localPath = ["C:", "Users", "Jane", "secret.txt"].join("/");
+      await fs.writeFile(path.join(memoryDir, "MEMORY.md"), `credential ${fakeToken}\npath ${localPath}\n`, "utf8");
+
+      const before = JSON.parse(await fs.readFile(path.join(memoryDir, "config.json"), "utf8"));
+      const blocked = runCli(memoryDir, [
+        "backup",
+        "run",
+        "--dry-run",
+        "--repo-dir",
+        repoDir
+      ]);
+      assert.notEqual(blocked.status, 0);
+      assert.match(blocked.stderr, /sensitive content scan/);
+      assert.match(blocked.stderr, /github-token/);
+      assert.match(blocked.stderr, /local-absolute-path/);
+
+      const after = JSON.parse(await fs.readFile(path.join(memoryDir, "config.json"), "utf8"));
+      assert.equal(after.backup.github.lastRunAt, before.backup.github.lastRunAt);
+      assert.equal(after.backup.github.lastError, before.backup.github.lastError);
+    });
+  });
+});
+
+test("github backup schedule dry run validates command and time", async () => {
+  await withHub(async (memoryDir) => {
+    const result = parseJson(runCli(memoryDir, [
+      "backup",
+      "schedule",
+      "install",
+      "--dry-run",
+      "--time",
+      "04:05",
+      "--task-name",
+      "AMH Backup Dry Run"
+    ]));
+
+    assert.equal(result.apply, false);
+    assert.equal(result.time, "04:05");
+    assert.equal(result.taskName, "AMH Backup Dry Run");
+    assert.match(result.command, /backup/);
+    assert.match(result.command, /run/);
+    assert.match(result.command, /--memory-dir/);
   });
 });
 

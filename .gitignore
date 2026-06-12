@@ -11,6 +11,8 @@ tmp/
 # committed or uploaded with this repository.
 .ai-memory/
 **/.ai-memory/
+C*UsersAdministrator.ai-memoryinboxevents.jsonl
+**/C*UsersAdministrator.ai-memoryinboxevents.jsonl
 
 # Local AI Memory Hub target rule files (environment-specific instructions)
 CLAUDE.md

@@ -272,7 +272,36 @@ const labels = {
     createdBy: '创建者',
     noMatches: '没有匹配结果',
     confirmDelete: '确认删除',
-    confirmDeleteWorkflow: '删除后会从工作流列表移除，请确认只删除当前工作流。'
+    confirmDeleteWorkflow: '删除后会从工作流列表移除，请确认只删除当前工作流。',
+    refreshTools: '刷新工具',
+    detectTools: '重新检测',
+    refreshCapabilities: '刷新能力',
+    manageConfig: '管理配置',
+    installLocal: '写入本项目',
+    installGlobal: '写入全局',
+    localTarget: '本项目目标',
+    globalTarget: '全局目标',
+    rulePreview: '规则预览',
+    previewUnavailable: '无可用预览',
+    generatedAt: '生成时间',
+    successRate: '成功率',
+    avgRuntime: '平均耗时',
+    lastRun: '最后运行',
+    activeDispatches: '活跃调度',
+    totalRuns: '运行次数',
+    runner: 'Runner',
+    command: '命令',
+    healthReasons: '健康原因',
+    toolFilterAll: '全部工具',
+    toolFilterReady: '已就绪',
+    toolFilterConnected: '已连接',
+    toolFilterRunnable: '可运行',
+    toolFilterMissing: '缺失',
+    toolFilterNeeds: '需配置',
+    capabilitySummary: '能力摘要',
+    directCli: '直接 CLI',
+    sharedState: '共享状态',
+    autoDispatchLabel: '自动调度'
   },
   en: {
     refresh: 'Refresh',
@@ -438,7 +467,36 @@ const labels = {
     createdBy: 'Created by',
     noMatches: 'No matches',
     confirmDelete: 'Confirm delete',
-    confirmDeleteWorkflow: 'This removes the workflow from the list. Confirm that only this workflow should be deleted.'
+    confirmDeleteWorkflow: 'This removes the workflow from the list. Confirm that only this workflow should be deleted.',
+    refreshTools: 'Refresh tools',
+    detectTools: 'Detect again',
+    refreshCapabilities: 'Refresh capabilities',
+    manageConfig: 'Manage config',
+    installLocal: 'Write project',
+    installGlobal: 'Write global',
+    localTarget: 'Project target',
+    globalTarget: 'Global target',
+    rulePreview: 'Rule preview',
+    previewUnavailable: 'No preview available',
+    generatedAt: 'Generated at',
+    successRate: 'Success rate',
+    avgRuntime: 'Avg runtime',
+    lastRun: 'Last run',
+    activeDispatches: 'Active dispatches',
+    totalRuns: 'Runs',
+    runner: 'Runner',
+    command: 'Command',
+    healthReasons: 'Health reasons',
+    toolFilterAll: 'All tools',
+    toolFilterReady: 'Ready',
+    toolFilterConnected: 'Connected',
+    toolFilterRunnable: 'Runnable',
+    toolFilterMissing: 'Missing',
+    toolFilterNeeds: 'Needs config',
+    capabilitySummary: 'Capability summary',
+    directCli: 'Direct CLI',
+    sharedState: 'Shared state',
+    autoDispatchLabel: 'Auto dispatch'
   }
 }
 
@@ -548,7 +606,7 @@ export default function Dashboard({ section }: DashboardProps) {
           {section === 'analytics' && <AnalyticsPanel copy={copy} model={viewModel} />}
           {section === 'backups' && <BackupsPanel copy={copy} model={viewModel} onRefresh={refresh} />}
           {section === 'search' && <SearchPanel copy={copy} />}
-          {section === 'tools' && <ToolsPanel copy={copy} model={viewModel} />}
+          {section === 'tools' && <ToolsPanel copy={copy} model={viewModel} onRefresh={refresh} />}
           {section === 'projects' && <ProjectsPanel copy={copy} model={viewModel} />}
           {section === 'health' && <HealthPanel copy={copy} model={viewModel} health={health} />}
           {section === 'settings' && <SettingsPanel copy={copy} model={viewModel} />}
@@ -2221,41 +2279,298 @@ function SearchPanel({ copy }: { copy: Copy }) {
   )
 }
 
-function ToolsPanel({ copy, model }: { copy: Copy; model: ViewModel }) {
-  if (!model.tools.length) {
-    return (
-      <Panel title={copy.toolReadiness}>
-        <EmptyState text={copy.noData} />
-      </Panel>
-    )
+function ToolsPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; onRefresh: () => Promise<void> }) {
+  const [toolsOverride, setToolsOverride] = useState<AnyRecord[] | null>(null)
+  const [summaryOverride, setSummaryOverride] = useState<AnyRecord | null>(null)
+  const [capabilitiesOverride, setCapabilitiesOverride] = useState<AnyRecord | null>(null)
+  const [query, setQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [selectedTool, setSelectedTool] = useState<AnyRecord | null>(null)
+  const [localPreview, setLocalPreview] = useState<AnyRecord | null>(null)
+  const [globalPreview, setGlobalPreview] = useState<AnyRecord | null>(null)
+  const [lastInstallFile, setLastInstallFile] = useState('')
+  const [busy, setBusy] = useState('')
+  const [error, setError] = useState('')
+
+  const tools = toolsOverride ?? model.tools
+  const summary = summaryOverride ?? model.toolSummary
+  const capabilities = capabilitiesOverride ?? asRecord(model.toolSummary.capabilities || model.status.capabilitySummary)
+
+  const filteredTools = tools.filter(tool => {
+    if (!toolMatchesStatusFilter(tool, statusFilter)) return false
+    const needle = query.trim().toLowerCase()
+    if (!needle) return true
+    return [
+      tool.name,
+      tool.kind,
+      tool.connectionStatus,
+      tool.runnerReason,
+      tool.action,
+      textOf(asRecord(tool.health).status),
+      textOf(asRecord(tool.capability).integrationMode)
+    ].map(value => textOf(value).toLowerCase()).join(' ').includes(needle)
+  })
+
+  const refreshTools = async (forceRefresh = false) => {
+    setBusy(forceRefresh ? 'tools-refresh' : 'tools-load')
+    setError('')
+    try {
+      const payload = await apiGet<AnyRecord>(`/api/tools${forceRefresh ? '?refresh=1' : ''}`)
+      setToolsOverride(asArray<AnyRecord>(payload.tools))
+      setSummaryOverride(asRecord(payload.summary))
+      setCapabilitiesOverride(asRecord(payload.capabilities || asRecord(payload.summary).capabilities))
+      await onRefresh()
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : String(nextError))
+    } finally {
+      setBusy('')
+    }
   }
 
+  const detectTools = async () => {
+    setBusy('detect')
+    setError('')
+    try {
+      const payload = await apiGet<AnyRecord>('/api/detect')
+      setToolsOverride(asArray<AnyRecord>(payload.tools))
+      setSummaryOverride(asRecord(payload.summary))
+      await onRefresh()
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : String(nextError))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const refreshCapabilities = async () => {
+    setBusy('capabilities')
+    setError('')
+    try {
+      const payload = await apiGet<AnyRecord>('/api/capabilities?refresh=1')
+      setCapabilitiesOverride(payload)
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : String(nextError))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const openToolModal = async (tool: AnyRecord) => {
+    setSelectedTool(tool)
+    setLocalPreview(null)
+    setGlobalPreview(null)
+    setLastInstallFile('')
+    setError('')
+    setBusy('preview')
+    const toolName = textOf(tool.name)
+    try {
+      const [localResult, globalResult] = await Promise.all([
+        apiGet<AnyRecord>(`/api/install/preview?tool=${encodeURIComponent(toolName)}&scope=local`).catch(() => null),
+        apiGet<AnyRecord>(`/api/install/preview?tool=${encodeURIComponent(toolName)}&scope=global`).catch(() => null)
+      ])
+      setLocalPreview(localResult)
+      setGlobalPreview(globalResult)
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const applyToolRules = async (scope: 'local' | 'global') => {
+    if (!selectedTool) return
+    const toolName = textOf(selectedTool.name)
+    setBusy(`install:${scope}`)
+    setError('')
+    setLastInstallFile('')
+    try {
+      const result = await apiPost<AnyRecord>('/api/install/apply', { tool: toolName, scope })
+      await openToolModal(selectedTool)
+      setLastInstallFile(textOf(result.file, '-'))
+      await onRefresh()
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : String(nextError))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const activeSummary = summary.total ? summary : {
+    total: tools.length,
+    detected: tools.filter(tool => boolOf(tool.installed || tool.connected)).length,
+    configured: tools.filter(tool => boolOf(tool.configured)).length,
+    runnable: tools.filter(tool => boolOf(tool.runnable)).length,
+    missing: tools.filter(tool => !boolOf(tool.installed)).length
+  }
+  const runs = asRecord(activeSummary.runs)
+  const selectedCapability = asRecord(selectedTool?.capability)
+  const selectedConfig = asRecord(selectedTool?.config)
+  const selectedHealth = asRecord(selectedTool?.health)
+
   return (
-    <div className="tool-grid">
-      {model.tools.map(tool => {
-        const capability = asRecord(tool.capability)
-        const runner = asRecord(tool.runner)
-        const health = asRecord(tool.health)
-        return (
-          <section className="tool-card" key={textOf(tool.name)}>
-            <div className="tool-card-header">
-              <div>
-                <h3>{textOf(tool.name, '-')}</h3>
-                <p>{textOf(tool.kind, '-')}</p>
+    <div className="stack">
+      <div className="dashboard-grid">
+        <MetricCard label={copy.toolReadiness} value={`${formatNumber(activeSummary.runnable)}/${formatNumber(activeSummary.total || tools.length)}`} tone="success" />
+        <MetricCard label={copy.installed} value={formatNumber(activeSummary.detected)} />
+        <MetricCard label={copy.configured} value={formatNumber(activeSummary.configured)} />
+        <MetricCard label={copy.missing} value={formatNumber(activeSummary.missing)} tone="warning" />
+        <MetricCard label={copy.successRate} value={formatPercent(runs.successRate)} />
+        <MetricCard label={copy.activeDispatches} value={formatNumber(activeSummary.activeDispatches)} />
+      </div>
+
+      <Panel title={copy.toolReadiness}>
+        <div className="section-actions">
+          <button className="btn ghost" type="button" disabled={Boolean(busy)} onClick={() => void refreshTools(true)}>
+            {busy === 'tools-refresh' ? copy.running : copy.refreshTools}
+          </button>
+          <button className="btn ghost" type="button" disabled={Boolean(busy)} onClick={() => void detectTools()}>
+            {busy === 'detect' ? copy.running : copy.detectTools}
+          </button>
+          <button className="btn ghost" type="button" disabled={Boolean(busy)} onClick={() => void refreshCapabilities()}>
+            {busy === 'capabilities' ? copy.running : copy.refreshCapabilities}
+          </button>
+        </div>
+        <div className="form-grid tool-filter-grid">
+          <label className="field span-2">
+            <span>{copy.searchText}</span>
+            <input value={query} onChange={event => setQuery(event.target.value)} placeholder={copy.searchPlaceholder} />
+          </label>
+          <label className="field">
+            <span>{copy.status}</span>
+            <select value={statusFilter} onChange={event => setStatusFilter(event.target.value)}>
+              <option value="all">{copy.toolFilterAll}</option>
+              <option value="ready">{copy.toolFilterReady}</option>
+              <option value="connected">{copy.toolFilterConnected}</option>
+              <option value="runnable">{copy.toolFilterRunnable}</option>
+              <option value="needs">{copy.toolFilterNeeds}</option>
+              <option value="missing">{copy.toolFilterMissing}</option>
+            </select>
+          </label>
+          <div className="form-actions">
+            <button className="btn ghost" type="button" onClick={() => { setQuery(''); setStatusFilter('all') }}>
+              {copy.clear}
+            </button>
+          </div>
+        </div>
+        <div className="property-grid settings-grid tool-capability-summary">
+          <Property label={copy.directCli} value={formatNumber(capabilities.directCliProfiles)} />
+          <Property label={copy.autoDispatchLabel} value={formatNumber(capabilities.autoDispatch)} />
+          <Property label={copy.sharedState} value={formatNumber(capabilities.sharedState)} />
+          <Property label={copy.capabilitySummary} value={formatNumber(capabilities.total)} />
+        </div>
+        {error ? <div className="inline-error">{error}</div> : null}
+      </Panel>
+
+      <div className="tool-grid">
+        {filteredTools.length ? filteredTools.map(tool => {
+          const capability = asRecord(tool.capability)
+          const config = asRecord(tool.config)
+          const health = asRecord(tool.health)
+          const metrics = asRecord(tool.metrics)
+          const performance = asRecord(tool.performance)
+          return (
+            <section className="tool-card" key={textOf(tool.name)}>
+              <div className="tool-card-header">
+                <div>
+                  <h3>{textOf(tool.name, '-')}</h3>
+                  <p>{textOf(tool.kind, '-')}</p>
+                </div>
+                <StatusBadge status={getToolStatus(tool)} />
               </div>
-              <StatusBadge status={textOf(health.status || tool.connectionStatus, 'missing')} />
+              <div className="property-grid">
+                <Property label={copy.mode} value={textOf(capability.integrationMode, '-')} />
+                <Property label={copy.installed} value={formatBool(boolOf(tool.installed), copy)} />
+                <Property label={copy.configured} value={formatBool(boolOf(tool.configured), copy)} />
+                <Property label={copy.runnable} value={formatBool(boolOf(tool.runnable || capability.autoDispatch), copy)} />
+                <Property label={copy.successRate} value={formatPercent(performance.successRate)} />
+                <Property label={copy.totalRuns} value={formatNumber(metrics.totalRuns)} />
+                <Property label={copy.avgRuntime} value={formatDurationMs(performance.avgDurationMs)} />
+                <Property label={copy.lastRun} value={formatDate(textOf(performance.lastRunAt))} />
+              </div>
+              <div className="tool-card-detail">
+                <span>{textOf(config.action || tool.action || tool.runnerReason || asArray<string>(health.reasons)[0], '-')}</span>
+              </div>
+              <div className="tool-card-footer">
+                <button className="btn small ghost" type="button" onClick={() => void openToolModal(tool)}>
+                  {copy.manageConfig}
+                </button>
+              </div>
+            </section>
+          )
+        }) : <EmptyState text={tools.length ? copy.noMatches : copy.noData} />}
+      </div>
+
+      {selectedTool ? (
+        <Modal title={`${copy.manageConfig}: ${textOf(selectedTool.name, '-')}`} onClose={() => setSelectedTool(null)}>
+          <div className="stack">
+            <div className="workflow-action-summary">
+              <StatusBadge status={getToolStatus(selectedTool)} />
+              <strong>{textOf(selectedTool.name, '-')}</strong>
+              <span>{textOf(selectedTool.kind, '-')}</span>
             </div>
             <div className="property-grid">
-              <Property label={copy.mode} value={textOf(capability.integrationMode, '-')} />
-              <Property label={copy.installed} value={formatBool(boolOf(tool.installed), copy)} />
-              <Property label={copy.configured} value={formatBool(boolOf(tool.configured), copy)} />
-              <Property label={copy.runnable} value={formatBool(boolOf(tool.runnable || capability.autoDispatch), copy)} />
-              <Property label={copy.capability} value={asArray<string>(capability.capabilities).join(', ') || textOf(runner.reason, '-')} />
+              <Property label={copy.mode} value={textOf(selectedCapability.integrationMode, '-')} />
+              <Property label={copy.runner} value={textOf(selectedTool.runnerProfile || selectedConfig.runnerCommandKind, '-')} />
+              <Property label={copy.command} value={textOf(selectedTool.runnerCommand || selectedConfig.runnerCommand, '-')} />
+              <Property label={copy.path} value={textOf(selectedTool.dir || selectedConfig.instructionFile, '-')} />
+              <Property label={copy.capability} value={asArray<string>(selectedCapability.capabilities).join(', ') || '-'} />
+              <Property label={copy.healthReasons} value={asArray<string>(selectedHealth.reasons).join(' · ') || '-'} />
             </div>
-          </section>
-        )
-      })}
+            {lastInstallFile ? <div className="notice"><span>{copy.changed}: {lastInstallFile}</span></div> : null}
+            {error ? <div className="inline-error">{error}</div> : null}
+            <div className="tool-preview-grid">
+              <ToolPreviewCard
+                busy={busy}
+                copy={copy}
+                disabled={!localPreview}
+                label={copy.localTarget}
+                onApply={() => void applyToolRules('local')}
+                preview={localPreview}
+                primaryLabel={copy.installLocal}
+              />
+              <ToolPreviewCard
+                busy={busy}
+                copy={copy}
+                disabled={!globalPreview}
+                label={copy.globalTarget}
+                onApply={() => void applyToolRules('global')}
+                preview={globalPreview}
+                primaryLabel={copy.installGlobal}
+              />
+            </div>
+          </div>
+        </Modal>
+      ) : null}
     </div>
+  )
+}
+
+function ToolPreviewCard({
+  busy,
+  copy,
+  disabled,
+  label,
+  onApply,
+  preview,
+  primaryLabel
+}: {
+  busy: string
+  copy: Copy
+  disabled: boolean
+  label: string
+  onApply: () => void
+  preview: AnyRecord | null
+  primaryLabel: string
+}) {
+  return (
+    <section className="tool-preview-card">
+      <div className="tool-preview-header">
+        <strong>{label}</strong>
+        <button className="btn small" type="button" disabled={disabled || Boolean(busy)} onClick={onApply}>
+          {busy.startsWith('install') ? copy.running : primaryLabel}
+        </button>
+      </div>
+      <p>{preview ? textOf(preview.file, '-') : copy.previewUnavailable}</p>
+      <pre className="text-snapshot small">{preview ? textOf(preview.snippet, '-') : copy.previewUnavailable}</pre>
+    </section>
   )
 }
 
@@ -2503,6 +2818,39 @@ function formatNumber(value: unknown): string {
 
 function formatBool(value: boolean, copy: Copy): string {
   return value ? copy.yes : copy.no
+}
+
+function formatPercent(value: unknown): string {
+  if (value === undefined || value === null || value === '') return '-'
+  const nextValue = Number(value)
+  if (!Number.isFinite(nextValue)) return '-'
+  return `${Math.round(nextValue * 100)}%`
+}
+
+function formatDurationMs(value: unknown): string {
+  const nextValue = Number(value)
+  if (!Number.isFinite(nextValue) || nextValue <= 0) return '-'
+  if (nextValue < 1000) return `${Math.round(nextValue)} ms`
+  if (nextValue < 60000) return `${Math.round(nextValue / 1000)} s`
+  const minutes = Math.floor(nextValue / 60000)
+  const seconds = Math.round((nextValue % 60000) / 1000)
+  return `${minutes}m ${seconds}s`
+}
+
+function getToolStatus(tool: AnyRecord): string {
+  const health = asRecord(tool.health)
+  return textOf(health.status || tool.connectionStatus || (tool.installed ? 'installed' : 'missing'), 'missing')
+}
+
+function toolMatchesStatusFilter(tool: AnyRecord, filter: string): boolean {
+  const status = getToolStatus(tool)
+  if (filter === 'all') return true
+  if (filter === 'ready') return status.startsWith('ready')
+  if (filter === 'connected') return boolOf(tool.connected) || textOf(tool.connectionStatus).startsWith('connected')
+  if (filter === 'runnable') return boolOf(tool.runnable || asRecord(tool.capability).autoDispatch)
+  if (filter === 'missing') return !boolOf(tool.installed) || status.includes('missing')
+  if (filter === 'needs') return status.includes('needs') || status.includes('unconfigured') || (boolOf(tool.installed) && !boolOf(tool.configured))
+  return true
 }
 
 function uniqueSorted(values: string[]): string[] {

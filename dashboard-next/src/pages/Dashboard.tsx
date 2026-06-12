@@ -124,6 +124,9 @@ const labels = {
     recentTasks: '最近任务',
     recentRadio: '最近消息',
     toolReadiness: '工具状态',
+    toolInventory: '工具清单',
+    toolName: '工具',
+    toolDetail: '详情',
     recentFailures: '最近失败',
     status: '状态',
     project: '项目',
@@ -368,6 +371,9 @@ const labels = {
     recentTasks: 'Recent tasks',
     recentRadio: 'Recent radio',
     toolReadiness: 'Tool readiness',
+    toolInventory: 'Tool inventory',
+    toolName: 'Tool',
+    toolDetail: 'Detail',
     recentFailures: 'Recent failures',
     status: 'Status',
     project: 'Project',
@@ -598,6 +604,120 @@ const labels = {
   }
 }
 
+const toolIconAssetVersion = '20260606-app-icons-v2'
+
+const toolIconFiles: Record<string, string> = {
+  gemini: '/assets/tool-icons/gemini.png',
+  'antigravity-gemini': '/assets/tool-icons/gemini.png',
+  claude: '/assets/tool-icons/claude.png',
+  'claude-desktop': '/assets/tool-icons/claude-desktop.png',
+  chatgpt: '/assets/tool-icons/chatgpt.png',
+  cursor: '/assets/tool-icons/cursor.png',
+  vscode: '/assets/tool-icons/vscode.png',
+  codex: '/assets/tool-icons/codex.png',
+  'codex-app': '/assets/tool-icons/codex-app.png',
+  windsurf: '/assets/tool-icons/windsurf.png',
+  aider: '/assets/tool-icons/aider.png',
+  marvis: '/assets/tool-icons/marvis-app.png',
+  qclaw: '/assets/tool-icons/qclaw-app.png',
+  openclaw: '/assets/tool-icons/qclaw-app.png',
+  'cherry-studio': '/assets/tool-icons/cherry-studio.png',
+  ollama: '/assets/tool-icons/ollama.png',
+  'cc-switch': '/assets/tool-icons/ccswitch-app.png',
+  ccswitch: '/assets/tool-icons/ccswitch.png',
+  antigravity: '/assets/tool-icons/antigravity.png',
+  'antigravity-cockpit': '/assets/tool-icons/antigravity-cockpit.png'
+}
+
+const toolKinds: Record<string, string> = {
+  gemini: 'cli-config',
+  'antigravity-gemini': 'extension-state',
+  claude: 'cli-config',
+  'claude-desktop': 'app-state',
+  chatgpt: 'app-state',
+  cursor: 'editor-state',
+  vscode: 'editor-state',
+  codex: 'cli-config',
+  'codex-app': 'app-state',
+  windsurf: 'editor-state',
+  aider: 'cli-config',
+  marvis: 'app-state',
+  qclaw: 'app-state',
+  openclaw: 'app-state',
+  'cherry-studio': 'app-state',
+  ollama: 'local-model-runtime',
+  'cc-switch': 'app-state',
+  ccswitch: 'app-state',
+  antigravity: 'cli-config',
+  'antigravity-cockpit': 'app-state'
+}
+
+const toolKindBadges: Record<Language, Record<string, string>> = {
+  zh: {
+    'cli-config': '命令行',
+    'app-state': '应用',
+    'editor-state': '编辑器',
+    'extension-state': '扩展',
+    'skill-config': '技能',
+    'local-model-runtime': '运行环境'
+  },
+  en: {
+    'cli-config': 'CLI',
+    'app-state': 'App',
+    'editor-state': 'Editor',
+    'extension-state': 'Extension',
+    'skill-config': 'Skill',
+    'local-model-runtime': 'Runtime'
+  }
+}
+
+const toolDisplayNames: Record<Language, Record<string, string>> = {
+  zh: {
+    gemini: 'Gemini',
+    'antigravity-gemini': 'Antigravity Gemini',
+    claude: 'Claude',
+    'claude-desktop': 'Claude Desktop',
+    chatgpt: 'ChatGPT',
+    cursor: 'Cursor',
+    vscode: 'VS Code',
+    codex: 'Codex',
+    'codex-app': 'Codex App',
+    windsurf: 'Windsurf',
+    aider: 'Aider',
+    marvis: 'Marvis',
+    qclaw: 'QClaw',
+    openclaw: 'OpenClaw',
+    'cherry-studio': 'Cherry Studio',
+    ollama: 'Ollama',
+    'cc-switch': 'CC-Switch',
+    ccswitch: 'CC-Switch',
+    antigravity: 'Antigravity',
+    'antigravity-cockpit': 'Antigravity Cockpit'
+  },
+  en: {
+    gemini: 'Gemini',
+    'antigravity-gemini': 'Antigravity Gemini',
+    claude: 'Claude',
+    'claude-desktop': 'Claude Desktop',
+    chatgpt: 'ChatGPT',
+    cursor: 'Cursor',
+    vscode: 'VS Code',
+    codex: 'Codex',
+    'codex-app': 'Codex App',
+    windsurf: 'Windsurf',
+    aider: 'Aider',
+    marvis: 'Marvis',
+    qclaw: 'QClaw',
+    openclaw: 'OpenClaw',
+    'cherry-studio': 'Cherry Studio',
+    ollama: 'Ollama',
+    'cc-switch': 'CC-Switch',
+    ccswitch: 'CC-Switch',
+    antigravity: 'Antigravity',
+    'antigravity-cockpit': 'Antigravity Cockpit'
+  }
+}
+
 export default function Dashboard({ section }: DashboardProps) {
   const { language, toggleLanguage } = useOutletContext<AppOutletContext>()
   const [data, setData] = useState<DashboardSnapshot | null>(null)
@@ -704,7 +824,7 @@ export default function Dashboard({ section }: DashboardProps) {
           {section === 'analytics' && <AnalyticsPanel copy={copy} model={viewModel} />}
           {section === 'backups' && <BackupsPanel copy={copy} model={viewModel} onRefresh={refresh} />}
           {section === 'search' && <SearchPanel copy={copy} />}
-          {section === 'tools' && <ToolsPanel copy={copy} model={viewModel} onRefresh={refresh} />}
+          {section === 'tools' && <ToolsPanel copy={copy} language={language} model={viewModel} onRefresh={refresh} />}
           {section === 'projects' && <ProjectsPanel copy={copy} model={viewModel} />}
           {section === 'health' && <HealthPanel copy={copy} model={viewModel} health={health} onRefresh={refresh} />}
           {section === 'settings' && <SettingsPanel copy={copy} model={viewModel} onRefresh={refresh} />}
@@ -2377,7 +2497,17 @@ function SearchPanel({ copy }: { copy: Copy }) {
   )
 }
 
-function ToolsPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; onRefresh: () => Promise<void> }) {
+function ToolsPanel({
+  copy,
+  language,
+  model,
+  onRefresh
+}: {
+  copy: Copy
+  language: Language
+  model: ViewModel
+  onRefresh: () => Promise<void>
+}) {
   const [toolsOverride, setToolsOverride] = useState<AnyRecord[] | null>(null)
   const [summaryOverride, setSummaryOverride] = useState<AnyRecord | null>(null)
   const [capabilitiesOverride, setCapabilitiesOverride] = useState<AnyRecord | null>(null)
@@ -2557,49 +2687,90 @@ function ToolsPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; 
         {error ? <div className="inline-error">{error}</div> : null}
       </Panel>
 
-      <div className="tool-grid">
-        {filteredTools.length ? filteredTools.map(tool => {
-          const capability = asRecord(tool.capability)
-          const config = asRecord(tool.config)
-          const health = asRecord(tool.health)
-          const metrics = asRecord(tool.metrics)
-          const performance = asRecord(tool.performance)
-          return (
-            <section className="tool-card" key={textOf(tool.name)}>
-              <div className="tool-card-header">
-                <div>
-                  <h3>{textOf(tool.name, '-')}</h3>
-                  <p>{textOf(tool.kind, '-')}</p>
-                </div>
-                <StatusBadge status={getToolStatus(tool)} />
-              </div>
-              <div className="property-grid">
-                <Property label={copy.mode} value={textOf(capability.integrationMode, '-')} />
-                <Property label={copy.installed} value={formatBool(boolOf(tool.installed), copy)} />
-                <Property label={copy.configured} value={formatBool(boolOf(tool.configured), copy)} />
-                <Property label={copy.runnable} value={formatBool(boolOf(tool.runnable || capability.autoDispatch), copy)} />
-                <Property label={copy.successRate} value={formatPercent(performance.successRate)} />
-                <Property label={copy.totalRuns} value={formatNumber(metrics.totalRuns)} />
-                <Property label={copy.avgRuntime} value={formatDurationMs(performance.avgDurationMs)} />
-                <Property label={copy.lastRun} value={formatDate(textOf(performance.lastRunAt))} />
-              </div>
-              <div className="tool-card-detail">
-                <span>{textOf(config.action || tool.action || tool.runnerReason || asArray<string>(health.reasons)[0], '-')}</span>
-              </div>
-              <div className="tool-card-footer">
-                <button className="btn small ghost" type="button" onClick={() => void openToolModal(tool)}>
-                  {copy.manageConfig}
-                </button>
-              </div>
-            </section>
-          )
-        }) : <EmptyState text={tools.length ? copy.noMatches : copy.noData} />}
-      </div>
+      <Panel title={copy.toolInventory}>
+        <div className="table-wrap tools-table-wrap">
+          {filteredTools.length ? (
+            <table className="tools-table">
+              <thead>
+                <tr>
+                  <th>{copy.toolName}</th>
+                  <th>{copy.status}</th>
+                  <th>{copy.mode}</th>
+                  <th>{copy.runnable}</th>
+                  <th>{copy.totalRuns}</th>
+                  <th>{copy.successRate}</th>
+                  <th>{copy.lastRun}</th>
+                  <th>{copy.toolDetail}</th>
+                  <th>{copy.manageConfig}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredTools.map(tool => {
+                  const capability = asRecord(tool.capability)
+                  const config = asRecord(tool.config)
+                  const health = asRecord(tool.health)
+                  const metrics = asRecord(tool.metrics)
+                  const performance = asRecord(tool.performance)
+                  const toolName = textOf(tool.name)
+                  const kind = textOf(tool.kind || toolKinds[toolName.toLowerCase()])
+                  const detail = textOf(config.action || tool.action || tool.runnerReason || asArray<string>(health.reasons)[0], '-')
+                  const command = textOf(tool.runnerCommand || config.runnerCommand || tool.runnerProfile || config.runnerCommandKind)
+                  return (
+                    <tr key={toolName}>
+                      <td>
+                        <div className="tool-cell">
+                          <ToolIcon name={toolName} kind={kind} size={34} />
+                          <div className="tool-cell-copy">
+                            <strong>{getToolDisplayName(toolName, language)}</strong>
+                            <span>{toolName}</span>
+                          </div>
+                        </div>
+                      </td>
+                      <td><StatusBadge status={getToolStatus(tool)} /></td>
+                      <td>
+                        <div className="tool-mode-cell">
+                          <span className={`tool-kind-badge ${getToolKindClass(kind)}`}>{getToolKindLabel(kind, language)}</span>
+                          <span>{textOf(capability.integrationMode, '-')}</span>
+                        </div>
+                      </td>
+                      <td>
+                        <div className="tool-flags">
+                          <ToolFlag label={copy.installed} value={boolOf(tool.installed || tool.connected)} />
+                          <ToolFlag label={copy.configured} value={boolOf(tool.configured)} />
+                          <ToolFlag label={copy.runnable} value={boolOf(tool.runnable || capability.autoDispatch)} />
+                        </div>
+                      </td>
+                      <td className="number-cell">
+                        <strong>{formatNumber(metrics.totalRuns)}</strong>
+                        <span>{formatDurationMs(performance.avgDurationMs)}</span>
+                      </td>
+                      <td>{formatPercent(performance.successRate)}</td>
+                      <td>{formatDate(textOf(performance.lastRunAt))}</td>
+                      <td>
+                        <div className="tool-detail-cell">
+                          <span>{detail}</span>
+                          {command ? <code>{command}</code> : null}
+                        </div>
+                      </td>
+                      <td>
+                        <button className="btn small ghost" type="button" onClick={() => void openToolModal(tool)}>
+                          {copy.manageConfig}
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          ) : <EmptyState text={tools.length ? copy.noMatches : copy.noData} />}
+        </div>
+      </Panel>
 
       {selectedTool ? (
         <Modal title={`${copy.manageConfig}: ${textOf(selectedTool.name, '-')}`} onClose={() => setSelectedTool(null)}>
           <div className="stack">
             <div className="workflow-action-summary">
+              <ToolIcon name={textOf(selectedTool.name)} kind={textOf(selectedTool.kind)} size={32} />
               <StatusBadge status={getToolStatus(selectedTool)} />
               <strong>{textOf(selectedTool.name, '-')}</strong>
               <span>{textOf(selectedTool.kind, '-')}</span>
@@ -2670,6 +2841,120 @@ function ToolPreviewCard({
       <pre className="text-snapshot small">{preview ? textOf(preview.snippet, '-') : copy.previewUnavailable}</pre>
     </section>
   )
+}
+
+function ToolIcon({ name, kind, size = 32 }: { name: string; kind?: string; size?: number }) {
+  const cleanName = name.toLowerCase().trim()
+  const [failed, setFailed] = useState(false)
+  const iconPath = toolIconFiles[cleanName]
+  const iconSrc = iconPath && !failed ? `${iconPath}?v=${toolIconAssetVersion}` : ''
+  const resolvedKind = kind || toolKinds[cleanName] || ''
+
+  return (
+    <span className="tool-icon-wrapper" style={{ width: size, height: size }}>
+      {!iconSrc ? (
+        <span className="tool-icon-fallback" style={{ background: getFallbackGradient(cleanName), fontSize: Math.round(size * 0.52) }}>
+          {getFallbackChar(cleanName)}
+        </span>
+      ) : null}
+      {iconSrc ? (
+        <img
+          src={iconSrc}
+          alt={name}
+          loading="lazy"
+          decoding="async"
+          onError={() => setFailed(true)}
+        />
+      ) : null}
+      {resolvedKind ? <ToolIconCornerBadge kind={resolvedKind} /> : null}
+    </span>
+  )
+}
+
+function ToolIconCornerBadge({ kind }: { kind: string }) {
+  if (kind === 'cli-config') {
+    return (
+      <span className="tool-icon-corner-badge cli" title="CLI">
+        <svg viewBox="0 0 10 10" aria-hidden="true">
+          <path d="M2.5 3.5l1.5 1.5-1.5 1.5M4.5 6.5h3" />
+        </svg>
+      </span>
+    )
+  }
+  if (kind === 'editor-state') {
+    return (
+      <span className="tool-icon-corner-badge editor" title="Editor">
+        <svg viewBox="0 0 10 10" aria-hidden="true">
+          <path d="M3 2.5l-2 2.5 2 2.5M7 2.5l2 2.5-2 2.5" />
+        </svg>
+      </span>
+    )
+  }
+  if (kind === 'extension-state') {
+    return (
+      <span className="tool-icon-corner-badge extension" title="Extension">
+        <svg viewBox="0 0 10 10" aria-hidden="true">
+          <path d="M5 2v6M2 5h6" />
+        </svg>
+      </span>
+    )
+  }
+  if (kind === 'app-state' || kind === 'local-model-runtime') {
+    return (
+      <span className="tool-icon-corner-badge app" title="App">
+        <svg viewBox="0 0 10 10" aria-hidden="true">
+          <rect x="2" y="2" width="6" height="4.5" rx="0.8" />
+          <path d="M3.5 6.5h3M5 6.3V8" />
+        </svg>
+      </span>
+    )
+  }
+  return null
+}
+
+function ToolFlag({ label, value }: { label: string; value: boolean }) {
+  return (
+    <span className={`tool-flag ${value ? 'on' : 'off'}`}>
+      <span aria-hidden="true" />
+      {label}
+    </span>
+  )
+}
+
+function getToolDisplayName(toolName: string, language: Language): string {
+  const cleanName = toolName.toLowerCase().trim()
+  return toolDisplayNames[language]?.[cleanName] || toolName || '-'
+}
+
+function getToolKindLabel(kind: string, language: Language): string {
+  const cleanKind = kind.toLowerCase().trim()
+  return toolKindBadges[language]?.[cleanKind] || kind || '-'
+}
+
+function getToolKindClass(kind: string): string {
+  return `kind-${kind.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'unknown'}`
+}
+
+function getFallbackChar(name: string): string {
+  return (name || '?').charAt(0).toUpperCase()
+}
+
+function getFallbackGradient(name: string): string {
+  let hash = 0
+  for (let index = 0; index < name.length; index += 1) {
+    hash = name.charCodeAt(index) + ((hash << 5) - hash)
+  }
+  const gradients = [
+    'linear-gradient(135deg, #388bfd, #bc8cff)',
+    'linear-gradient(135deg, #10a37f, #0e7f62)',
+    'linear-gradient(135deg, #ea7a50, #d9531e)',
+    'linear-gradient(135deg, #00a7c8, #4f7cff)',
+    'linear-gradient(135deg, #e5534b, #8f1f1f)',
+    'linear-gradient(135deg, #cf3d73, #7d2f99)',
+    'linear-gradient(135deg, #c98518, #8c4f12)',
+    'linear-gradient(135deg, #7b61ff, #d65db1)'
+  ]
+  return gradients[Math.abs(hash) % gradients.length]
 }
 
 function ProjectsPanel({ copy, model }: { copy: Copy; model: ViewModel }) {

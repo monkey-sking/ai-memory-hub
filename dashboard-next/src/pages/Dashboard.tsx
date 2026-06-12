@@ -1011,10 +1011,11 @@ function TasksPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; 
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
 
-  const projectOptions = useMemo(() => uniqueSorted([
-    ...model.tasks.map(task => textOf(task.project)).filter(Boolean),
-    ...model.visibleProjects.map(project => textOf(project.id || project.name)).filter(Boolean)
-  ]), [model.tasks, model.visibleProjects])
+  const projectOptions = useMemo(() => uniqueSorted(model.tasks.map(task => textOf(task.project)).filter(Boolean)), [model.tasks])
+  const formProjectOptions = useMemo(() => uniqueSorted([
+    ...model.visibleProjects.map(project => textOf(project.id || project.name || project.displayName)).filter(Boolean),
+    ...projectOptions
+  ]), [model.visibleProjects, projectOptions])
   const priorityOptions = useMemo(() => uniqueSorted(model.tasks.map(task => textOf(task.priority)).filter(Boolean)), [model.tasks])
   const cleanQuery = query.trim().toLowerCase()
   const filteredTasks = model.tasks.filter(task => {
@@ -1133,7 +1134,7 @@ function TasksPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; 
               <textarea value={newTask.handoff} onChange={event => setNewTask(value => ({ ...value, handoff: event.target.value }))} rows={3} />
             </label>
             <datalist id="task-project-options">
-              {projectOptions.map(project => <option value={project} key={project} />)}
+              {formProjectOptions.map(project => <option value={project} key={project} />)}
             </datalist>
             {error ? <div className="inline-error span-all">{error}</div> : null}
             <div className="form-actions span-all">
@@ -1299,10 +1300,11 @@ function RadioPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; 
   const senderOptions = useMemo(() => uniqueSorted(model.radio.map(message => textOf(message.from)).filter(Boolean)), [model.radio])
   const recipientOptions = useMemo(() => uniqueSorted(model.radio.map(message => textOf(message.to)).filter(Boolean)), [model.radio])
   const typeOptions = useMemo(() => uniqueSorted(model.radio.map(message => textOf(message.type)).filter(Boolean)), [model.radio])
-  const projectOptions = useMemo(() => uniqueSorted([
-    ...model.radio.map(message => textOf(message.project)).filter(Boolean),
-    ...model.visibleProjects.map(project => textOf(project.id || project.name)).filter(Boolean)
-  ]), [model.radio, model.visibleProjects])
+  const projectOptions = useMemo(() => uniqueSorted(model.radio.map(message => textOf(message.project)).filter(Boolean)), [model.radio])
+  const formProjectOptions = useMemo(() => uniqueSorted([
+    ...model.visibleProjects.map(project => textOf(project.id || project.name || project.displayName)).filter(Boolean),
+    ...projectOptions
+  ]), [model.visibleProjects, projectOptions])
   const cleanQuery = query.trim().toLowerCase()
   const filteredMessages = model.radio.filter(message => {
     if (fromFilter && textOf(message.from) !== fromFilter) return false
@@ -1447,7 +1449,7 @@ function RadioPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; 
               {recipientOptions.map(to => <option value={to} key={to} />)}
             </datalist>
             <datalist id="radio-project-options">
-              {projectOptions.map(project => <option value={project} key={project} />)}
+              {formProjectOptions.map(project => <option value={project} key={project} />)}
             </datalist>
             {error ? <div className="inline-error span-all">{error}</div> : null}
             <div className="form-actions span-all">
@@ -1585,11 +1587,12 @@ function WorkflowsPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewMod
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
 
-  const projectOptions = useMemo(() => uniqueSorted([
-    ...model.visibleProjects.map(project => textOf(project.id || project.name || project.displayName)),
-    ...workflows.map(workflow => textOf(workflow.project)),
-    ...model.tasks.map(task => textOf(task.project))
-  ]), [model.tasks, model.visibleProjects, workflows])
+  const projectOptions = useMemo(() => uniqueSorted(workflows.map(workflow => textOf(workflow.project)).filter(Boolean)), [workflows])
+  const formProjectOptions = useMemo(() => uniqueSorted([
+    ...model.visibleProjects.map(project => textOf(project.id || project.name || project.displayName)).filter(Boolean),
+    ...projectOptions,
+    ...model.tasks.map(task => textOf(task.project)).filter(Boolean)
+  ]), [model.tasks, model.visibleProjects, projectOptions])
 
   const normalizedQuery = query.trim().toLowerCase()
   const filteredWorkflows = workflows.filter(workflow => {
@@ -1605,7 +1608,7 @@ function WorkflowsPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewMod
 
   const defaultProject = projectFilter !== 'all'
     ? projectFilter
-    : projectOptions[0] || textOf(workflows[0]?.project, 'default')
+    : formProjectOptions[0] || textOf(workflows[0]?.project, 'default')
 
   const openWorkflowForm = (workflow?: AnyRecord) => {
     setError('')
@@ -1838,7 +1841,7 @@ function WorkflowsPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewMod
               <textarea value={form.risks} onChange={event => updateFormField('risks', event.target.value)} />
             </label>
             <datalist id="workflow-project-options">
-              {projectOptions.map(project => <option value={project} key={project} />)}
+              {formProjectOptions.map(project => <option value={project} key={project} />)}
             </datalist>
             {error ? <div className="inline-error span-all">{error}</div> : null}
             <div className="form-actions span-all">

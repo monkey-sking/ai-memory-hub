@@ -28,7 +28,7 @@ Each `project.upsert` event stores a normalized project record under `record`:
   },
   "aliases": [],
   "resources": {
-    "repo": "https://github.com/<owner>/ai-memory-hub",
+    "repo": "https://github.com/<owner>/<repo>",
     "docs": []
   },
   "createdAt": "2026-06-01T00:00:00Z",

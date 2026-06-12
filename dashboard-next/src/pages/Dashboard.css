@@ -532,6 +532,10 @@ td {
   gap: 14px;
 }
 
+.tool-grid .empty-state {
+  grid-column: 1 / -1;
+}
+
 .kanban-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -998,12 +1002,85 @@ td {
   padding: 16px;
 }
 
+.tool-filter-grid {
+  align-items: end;
+}
+
+.tool-capability-summary {
+  margin-top: 14px;
+}
+
 .tool-card-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 16px;
+}
+
+.tool-card-detail {
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid rgba(38, 52, 82, 0.62);
+  border-radius: 8px;
+  background: rgba(11, 16, 32, 0.45);
+}
+
+.tool-card-detail span {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.tool-card-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.tool-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.tool-preview-card {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(38, 52, 82, 0.78);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.026);
+}
+
+.tool-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.tool-preview-header strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-preview-card p {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .property-grid {
@@ -1150,7 +1227,8 @@ td {
   .search-control-grid,
   .task-form-grid,
   .dispatch-control-grid,
-  .task-meta-grid {
+  .task-meta-grid,
+  .tool-preview-grid {
     grid-template-columns: 1fr;
   }
 
@@ -1185,12 +1263,20 @@ td {
   }
 
   .workflow-actions .btn,
-  .workflow-badges {
+  .workflow-badges,
+  .tool-card-footer .btn,
+  .tool-preview-header .btn {
     width: 100%;
   }
 
-  .workflow-badges {
+  .workflow-badges,
+  .tool-preview-header {
     justify-content: flex-start;
+  }
+
+  .tool-preview-header {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .page-header h2 {

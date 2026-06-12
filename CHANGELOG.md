@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-06-11
+
+### Added
+
+#### Hermes Agent Integration
+- **Hermes Agent 支持** - 已验证适配：记忆写入（events.jsonl）、任务管理（task CLI）、Radio 通信（messages.jsonl）
+- **Hermes Agent 模板** - `templates/HERMES_AGENTS.md` 集成指南
+- **Cron 同步方案** - 30 分钟周期的 no_agent cron 自动同步
+- **config.example.json 更新** - 添加 Hermes 工具配置示例
+
+#### Documentation
+- README 添加 Hermes Agent 到已验证支持列表
+- 新增 Hermes Agent 集成模板文档
+
 ## [0.1.0] - 2026-06-09
 
 ### Added

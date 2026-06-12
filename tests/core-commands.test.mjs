@@ -1107,6 +1107,36 @@ test("install upgrades legacy adapter files and doctor reports skill layer statu
   });
 });
 
+test("capabilities command reports registry modes and safety policy", async () => {
+  await withHub(async (memoryDir) => {
+    const registry = parseJson(runCli(memoryDir, ["capabilities"]));
+    assert.equal(registry.version, 1);
+    assert.equal(registry.ok, true);
+    assert.ok(registry.summary.total > 0);
+    assert.ok(registry.summary.directCliProfiles >= 3);
+    assert.ok(registry.summary.gatewayRestCandidates >= 2);
+
+    const codex = registry.tools.find((tool) => tool.name === "codex");
+    assert.ok(codex);
+    assert.equal(codex.capability.directCli, true);
+    assert.equal(codex.permissions.canAutoDispatch, codex.capability.autoDispatch);
+    assert.deepEqual(codex.permissions.defaultGuardrails, ["no-push", "no-delete-files", "no-install-dependencies"]);
+
+    const qclaw = registry.tools.find((tool) => tool.name === "qclaw");
+    assert.ok(qclaw);
+    assert.equal(qclaw.capability.gatewayRest, true);
+    assert.equal(qclaw.permissions.canAutoDispatch, false);
+    assert.ok(["gateway-rest-candidate", "shared-state"].includes(qclaw.capability.integrationMode));
+
+    const status = parseJson(runCli(memoryDir, ["status"]));
+    assert.equal(status.capabilitySummary.total, registry.summary.total);
+
+    const filtered = parseJson(runCli(memoryDir, ["capabilities", "--tool", "qclaw"]));
+    assert.equal(filtered.tools.length, 1);
+    assert.equal(filtered.summary.gatewayRestCandidates, 1);
+  });
+});
+
 test("health reports missing instruction includes with resolved suggestions", async () => {
   await withHub(async (memoryDir) => {
     const knownDir = path.join(memoryDir, "known");

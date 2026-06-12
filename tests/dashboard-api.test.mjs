@@ -359,6 +359,19 @@ test("dashboard serves externalized virtual-scroll assets", async () => {
       assert.equal(dashboard.metrics.tasks.total, metrics.tasks.total);
       assert.equal(dashboard.metrics.relay.successRate, metrics.relay.successRate);
 
+      const capabilitiesRes = await fetch(`http://127.0.0.1:${port}/api/capabilities`);
+      assert.equal(capabilitiesRes.status, 200);
+      const capabilities = await capabilitiesRes.json();
+      assert.equal(capabilities.version, 1);
+      assert.ok(capabilities.summary.gatewayRestCandidates >= 2);
+      assert.ok(capabilities.tools.some((tool) => tool.name === "qclaw" && tool.capability.gatewayRest));
+
+      const toolsRes = await fetch(`http://127.0.0.1:${port}/api/tools?refresh=1`);
+      assert.equal(toolsRes.status, 200);
+      const toolsPayload = await toolsRes.json();
+      assert.equal(toolsPayload.capabilities.total, capabilities.summary.total);
+      assert.ok(toolsPayload.tools.some((tool) => tool.name === "codex" && tool.capability.directCli));
+
       const traversalRes = await fetch(`http://127.0.0.1:${port}/js/%2e%2e/%2e%2e/package.json`);
       assert.notEqual(traversalRes.status, 200);
       assert.doesNotMatch(await traversalRes.text(), /"name": "ai-memory-hub"/);

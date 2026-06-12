@@ -77,6 +77,12 @@
   color: var(--text-muted);
 }
 
+.btn.danger {
+  border-color: rgba(240, 113, 120, 0.42);
+  background: rgba(240, 113, 120, 0.1);
+  color: var(--danger);
+}
+
 .btn.small {
   min-height: 30px;
   padding: 0 10px;
@@ -454,7 +460,8 @@
 .status-badge.completed,
 .status-badge.connected-runnable,
 .status-badge.ready-automated,
-.status-badge.active {
+.status-badge.active,
+.status-badge.in_progress {
   border-color: rgba(99, 210, 151, 0.34);
   background: rgba(99, 210, 151, 0.12);
   color: var(--success);
@@ -462,7 +469,10 @@
 
 .status-badge.failed,
 .status-badge.blocked,
-.status-badge.missing {
+.status-badge.missing,
+.status-badge.cancelled,
+.status-badge.urgent,
+.status-badge.high {
   border-color: rgba(240, 113, 120, 0.34);
   background: rgba(240, 113, 120, 0.12);
   color: var(--danger);
@@ -471,7 +481,9 @@
 .status-badge.claimed,
 .status-badge.pending,
 .status-badge.retrying,
-.status-badge.needs-adapter {
+.status-badge.needs-adapter,
+.status-badge.planned,
+.status-badge.review {
   border-color: rgba(245, 184, 75, 0.34);
   background: rgba(245, 184, 75, 0.12);
   color: var(--warning);
@@ -651,6 +663,150 @@ td {
 
 .task-actions {
   flex-wrap: wrap;
+  row-gap: 8px;
+}
+
+.workflow-filter-grid {
+  margin-top: 14px;
+  align-items: end;
+}
+
+.workflow-stage-strip,
+.workflow-list {
+  display: grid;
+  gap: 12px;
+}
+
+.workflow-stage-strip {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.workflow-list {
+  margin-top: 14px;
+}
+
+.workflow-card {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(38, 52, 82, 0.78);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.026);
+}
+
+.workflow-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.workflow-title-block {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.workflow-title-block h4 {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 760;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workflow-title-block p,
+.workflow-text-block p,
+.workflow-linked > span,
+.workflow-action-summary span {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.workflow-badges {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.workflow-text-block {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+  padding: 10px;
+  border: 1px solid rgba(38, 52, 82, 0.62);
+  border-radius: 8px;
+  background: rgba(11, 16, 32, 0.45);
+}
+
+.workflow-text-block strong,
+.workflow-linked > span {
+  color: var(--text-subtle);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.workflow-text-block p {
+  white-space: pre-wrap;
+}
+
+.workflow-linked {
+  display: grid;
+  gap: 8px;
+}
+
+.workflow-details {
+  min-width: 0;
+}
+
+.workflow-details summary {
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.workflow-details .task-notes {
+  margin-top: 8px;
+}
+
+.workflow-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.workflow-action-summary {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid rgba(38, 52, 82, 0.64);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.workflow-action-summary strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .radio-stream {
@@ -999,7 +1155,9 @@ td {
   }
 
   .backup-row,
-  .search-result-header {
+  .search-result-header,
+  .workflow-card-header,
+  .workflow-action-summary {
     align-items: flex-start;
     flex-direction: column;
   }
@@ -1024,6 +1182,15 @@ td {
 
   .form-actions .btn {
     width: 100%;
+  }
+
+  .workflow-actions .btn,
+  .workflow-badges {
+    width: 100%;
+  }
+
+  .workflow-badges {
+    justify-content: flex-start;
   }
 
   .page-header h2 {

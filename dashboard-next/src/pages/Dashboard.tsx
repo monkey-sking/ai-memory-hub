@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import type { AnyRecord } from '../lib/api'
-import { apiGet, apiPost, asArray, asRecord, boolOf, numberOf, textOf } from '../lib/api'
+import { apiDelete, apiGet, apiPatch, apiPost, asArray, asRecord, boolOf, numberOf, textOf } from '../lib/api'
 import type { AppLanguage, AppOutletContext } from '../lib/i18n'
 import './Dashboard.css'
 
@@ -243,7 +243,36 @@ const labels = {
     unchanged: '未变化',
     bytes: '大小',
     path: '路径',
-    manual: '手动'
+    manual: '手动',
+    workflowTotal: '工作流总数',
+    workflowActive: '活跃工作流',
+    workflowReview: '待审核',
+    workflowBlocked: '阻塞工作流',
+    createWorkflow: '新建工作流',
+    editWorkflow: '编辑工作流',
+    deleteWorkflow: '删除工作流',
+    allStatuses: '全部状态',
+    planner: '规划者',
+    executor: '执行者',
+    reviewer: '审核者',
+    observer: '观察者',
+    workflowPlan: '计划',
+    workflowAcceptance: '验收标准',
+    workflowRisks: '风险',
+    workflowLogs: '工作流日志',
+    linkedItems: '关联项',
+    startWorkflow: '开始',
+    markReview: '提交审核',
+    markDone: '标记完成',
+    workflowResult: '执行结果',
+    workflowNote: '备注',
+    workflowSignal: '发送 Signal',
+    signalTo: '发送给',
+    actionText: '内容',
+    createdBy: '创建者',
+    noMatches: '没有匹配结果',
+    confirmDelete: '确认删除',
+    confirmDeleteWorkflow: '删除后会从工作流列表移除，请确认只删除当前工作流。'
   },
   en: {
     refresh: 'Refresh',
@@ -380,7 +409,36 @@ const labels = {
     unchanged: 'Unchanged',
     bytes: 'Bytes',
     path: 'Path',
-    manual: 'Manual'
+    manual: 'Manual',
+    workflowTotal: 'Total workflows',
+    workflowActive: 'Active workflows',
+    workflowReview: 'In review',
+    workflowBlocked: 'Blocked workflows',
+    createWorkflow: 'Create workflow',
+    editWorkflow: 'Edit workflow',
+    deleteWorkflow: 'Delete workflow',
+    allStatuses: 'All statuses',
+    planner: 'Planner',
+    executor: 'Executor',
+    reviewer: 'Reviewer',
+    observer: 'Observer',
+    workflowPlan: 'Plan',
+    workflowAcceptance: 'Acceptance',
+    workflowRisks: 'Risks',
+    workflowLogs: 'Workflow logs',
+    linkedItems: 'Linked items',
+    startWorkflow: 'Start',
+    markReview: 'Send to review',
+    markDone: 'Mark done',
+    workflowResult: 'Result',
+    workflowNote: 'Note',
+    workflowSignal: 'Send signal',
+    signalTo: 'Send to',
+    actionText: 'Text',
+    createdBy: 'Created by',
+    noMatches: 'No matches',
+    confirmDelete: 'Confirm delete',
+    confirmDeleteWorkflow: 'This removes the workflow from the list. Confirm that only this workflow should be deleted.'
   }
 }
 
@@ -486,7 +544,7 @@ export default function Dashboard({ section }: DashboardProps) {
           {section === 'tasks' && <TasksPanel copy={copy} model={viewModel} onRefresh={refresh} />}
           {section === 'radio' && <RadioPanel copy={copy} model={viewModel} onRefresh={refresh} />}
           {section === 'dispatch' && <DispatchPanel copy={copy} model={viewModel} onRefresh={refresh} />}
-          {section === 'workflows' && <WorkflowsPanel copy={copy} model={viewModel} />}
+          {section === 'workflows' && <WorkflowsPanel copy={copy} model={viewModel} onRefresh={refresh} />}
           {section === 'analytics' && <AnalyticsPanel copy={copy} model={viewModel} />}
           {section === 'backups' && <BackupsPanel copy={copy} model={viewModel} onRefresh={refresh} />}
           {section === 'search' && <SearchPanel copy={copy} />}
@@ -1212,22 +1270,557 @@ function DispatchPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewMode
   )
 }
 
-function WorkflowsPanel({ copy, model }: { copy: Copy; model: ViewModel }) {
+const workflowStatusOptions = ['open', 'planned', 'in_progress', 'review', 'blocked', 'done', 'cancelled']
+const workflowPriorityOptions = ['low', 'normal', 'high', 'urgent']
+
+interface WorkflowFormState {
+  id: string
+  title: string
+  by: string
+  project: string
+  priority: string
+  status: string
+  planner: string
+  executor: string
+  reviewer: string
+  observer: string
+  plan: string
+  acceptance: string
+  risks: string
+}
+
+type WorkflowEntryAction = 'result' | 'review' | 'note' | 'signal' | 'delete'
+
+interface WorkflowActionState {
+  action: WorkflowEntryAction
+  workflow: AnyRecord
+}
+
+function WorkflowsPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; onRefresh: () => Promise<void> }) {
+  const workflows = model.workflows
+  const [query, setQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [projectFilter, setProjectFilter] = useState('all')
+  const [formOpen, setFormOpen] = useState(false)
+  const [form, setForm] = useState<WorkflowFormState>(() => createWorkflowForm())
+  const [actionState, setActionState] = useState<WorkflowActionState | null>(null)
+  const [actionText, setActionText] = useState('')
+  const [signalTo, setSignalTo] = useState('')
+  const [busy, setBusy] = useState('')
+  const [error, setError] = useState('')
+
+  const projectOptions = useMemo(() => uniqueSorted([
+    ...model.visibleProjects.map(project => textOf(project.id || project.name || project.displayName)),
+    ...workflows.map(workflow => textOf(workflow.project)),
+    ...model.tasks.map(task => textOf(task.project))
+  ]), [model.tasks, model.visibleProjects, workflows])
+
+  const normalizedQuery = query.trim().toLowerCase()
+  const filteredWorkflows = workflows.filter(workflow => {
+    if (statusFilter !== 'all' && textOf(workflow.status, 'open') !== statusFilter) return false
+    if (projectFilter !== 'all' && textOf(workflow.project) !== projectFilter) return false
+    return !normalizedQuery || getWorkflowSearchText(workflow).includes(normalizedQuery)
+  })
+
+  const stageCounts = workflowStatusOptions.map(status => ({
+    status,
+    count: workflows.filter(workflow => textOf(workflow.status, 'open') === status).length
+  }))
+
+  const defaultProject = projectFilter !== 'all'
+    ? projectFilter
+    : projectOptions[0] || textOf(workflows[0]?.project, 'default')
+
+  const openWorkflowForm = (workflow?: AnyRecord) => {
+    setError('')
+    setForm(createWorkflowForm(workflow, defaultProject))
+    setFormOpen(true)
+  }
+
+  const updateFormField = (field: keyof WorkflowFormState, value: string) => {
+    setForm(current => ({ ...current, [field]: value }))
+  }
+
+  const saveWorkflow = async () => {
+    if (!form.title.trim()) {
+      setError(`${copy.workflowTitle} ${copy.missing}`)
+      return
+    }
+    setBusy('save')
+    setError('')
+    const body = {
+      title: form.title.trim(),
+      by: form.by.trim() || 'dashboard',
+      from: form.by.trim() || 'dashboard',
+      project: form.project.trim() || 'default',
+      priority: form.priority || 'normal',
+      status: form.status || 'open',
+      planner: form.planner,
+      executor: form.executor,
+      reviewer: form.reviewer,
+      observer: form.observer,
+      plan: form.plan,
+      acceptance: form.acceptance,
+      risks: form.risks
+    }
+    try {
+      if (form.id) {
+        await apiPatch<AnyRecord>(`/api/workflows/${encodeURIComponent(form.id)}`, body)
+      } else {
+        await apiPost<AnyRecord>('/api/workflows', body)
+      }
+      setFormOpen(false)
+      await onRefresh()
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : String(nextError))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const setWorkflowStatus = async (workflow: AnyRecord, status: string) => {
+    const id = textOf(workflow.id)
+    if (!id) return
+    setBusy(`status:${id}:${status}`)
+    setError('')
+    try {
+      await apiPost<AnyRecord>(`/api/workflows/${encodeURIComponent(id)}/status`, { status, by: 'dashboard' })
+      await onRefresh()
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : String(nextError))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const openWorkflowAction = (workflow: AnyRecord, action: WorkflowEntryAction) => {
+    setError('')
+    setActionText('')
+    setSignalTo(action === 'signal' ? getWorkflowRoleValues(workflow, 'reviewer')[0] || getWorkflowRoleValues(workflow, 'executor')[0] || 'all' : '')
+    setActionState({ workflow, action })
+  }
+
+  const submitWorkflowAction = async () => {
+    if (!actionState) return
+    const id = textOf(actionState.workflow.id)
+    if (!id) return
+    setBusy(`action:${id}:${actionState.action}`)
+    setError('')
+    try {
+      if (actionState.action === 'delete') {
+        await apiDelete<AnyRecord>(`/api/workflows/${encodeURIComponent(id)}`, { by: 'dashboard' })
+      } else if (actionState.action === 'signal') {
+        if (!signalTo.trim() || !actionText.trim()) {
+          setError(`${copy.signalTo} / ${copy.actionText} ${copy.missing}`)
+          return
+        }
+        await apiPost<AnyRecord>(`/api/workflows/${encodeURIComponent(id)}/signal`, {
+          to: signalTo.trim(),
+          text: actionText.trim(),
+          type: 'handoff',
+          by: 'dashboard'
+        })
+      } else {
+        if (!actionText.trim()) {
+          setError(`${copy.actionText} ${copy.missing}`)
+          return
+        }
+        await apiPost<AnyRecord>(`/api/workflows/${encodeURIComponent(id)}/${actionState.action}`, {
+          text: actionText.trim(),
+          role: actionState.action === 'review' ? 'reviewer' : actionState.action === 'result' ? 'executor' : '',
+          by: 'dashboard'
+        })
+      }
+      setActionState(null)
+      await onRefresh()
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : String(nextError))
+    } finally {
+      setBusy('')
+    }
+  }
+
   return (
-    <Panel title={copy.workflows}>
-      <DataTable
-        emptyText={copy.noData}
-        columns={[copy.status, copy.project, copy.workflowTitle, copy.role, copy.updated]}
-        rows={model.workflows.map(workflow => [
-          <StatusBadge status={textOf(workflow.status, 'open')} />,
-          textOf(workflow.project, '-'),
-          textOf(workflow.title, '-'),
-          summarizeRoles(workflow),
-          formatDate(textOf(workflow.updatedAt || workflow.createdAt))
-        ])}
-      />
-    </Panel>
+    <div className="stack">
+      <div className="dashboard-grid">
+        <MetricCard label={copy.workflowTotal} value={formatNumber(workflows.length)} />
+        <MetricCard label={copy.workflowActive} value={formatNumber(workflows.filter(workflow => ['open', 'planned', 'in_progress'].includes(textOf(workflow.status, 'open'))).length)} tone="success" />
+        <MetricCard label={copy.workflowReview} value={formatNumber(workflows.filter(workflow => textOf(workflow.status) === 'review').length)} tone="warning" />
+        <MetricCard label={copy.workflowBlocked} value={formatNumber(workflows.filter(workflow => textOf(workflow.status) === 'blocked').length)} />
+      </div>
+
+      <Panel title={copy.workflows}>
+        <div className="section-actions">
+          <button className="btn" type="button" onClick={() => openWorkflowForm()}>
+            {copy.createWorkflow}
+          </button>
+        </div>
+        <div className="workflow-stage-strip">
+          <button className={`chip button-chip ${statusFilter === 'all' ? 'active' : ''}`} type="button" onClick={() => setStatusFilter('all')}>
+            {copy.allStatuses} {formatNumber(workflows.length)}
+          </button>
+          {stageCounts.map(item => (
+            <button className={`chip button-chip ${statusFilter === item.status ? 'active' : ''}`} type="button" key={item.status} onClick={() => setStatusFilter(item.status)}>
+              {item.status} {formatNumber(item.count)}
+            </button>
+          ))}
+        </div>
+        <div className="form-grid workflow-filter-grid">
+          <label className="field span-2">
+            <span>{copy.searchText}</span>
+            <input value={query} onChange={event => setQuery(event.target.value)} placeholder={copy.searchPlaceholder} />
+          </label>
+          <label className="field">
+            <span>{copy.status}</span>
+            <select value={statusFilter} onChange={event => setStatusFilter(event.target.value)}>
+              <option value="all">{copy.allStatuses}</option>
+              {workflowStatusOptions.map(status => <option value={status} key={status}>{status}</option>)}
+            </select>
+          </label>
+          <label className="field">
+            <span>{copy.project}</span>
+            <select value={projectFilter} onChange={event => setProjectFilter(event.target.value)}>
+              <option value="all">{copy.allProjects}</option>
+              {projectOptions.map(project => <option value={project} key={project}>{project}</option>)}
+            </select>
+          </label>
+          <div className="form-actions">
+            <button className="btn ghost" type="button" onClick={() => { setQuery(''); setStatusFilter('all'); setProjectFilter('all') }}>
+              {copy.clear}
+            </button>
+          </div>
+        </div>
+        {error ? <div className="inline-error">{error}</div> : null}
+        <div className="workflow-list">
+          {filteredWorkflows.length ? filteredWorkflows.map(workflow => (
+            <WorkflowCard
+              busy={busy}
+              copy={copy}
+              key={textOf(workflow.id)}
+              workflow={workflow}
+              onAction={openWorkflowAction}
+              onEdit={openWorkflowForm}
+              onStatus={setWorkflowStatus}
+            />
+          )) : <EmptyState text={workflows.length ? copy.noMatches : copy.noData} />}
+        </div>
+      </Panel>
+
+      {formOpen ? (
+        <Modal title={form.id ? copy.editWorkflow : copy.createWorkflow} onClose={() => setFormOpen(false)}>
+          <div className="form-grid task-form-grid">
+            <label className="field span-2">
+              <span>{copy.workflowTitle}</span>
+              <input value={form.title} onChange={event => updateFormField('title', event.target.value)} />
+            </label>
+            <label className="field">
+              <span>{copy.createdBy}</span>
+              <input value={form.by} onChange={event => updateFormField('by', event.target.value)} />
+            </label>
+            <label className="field">
+              <span>{copy.project}</span>
+              <input value={form.project} onChange={event => updateFormField('project', event.target.value)} list="workflow-project-options" />
+            </label>
+            <label className="field">
+              <span>{copy.priority}</span>
+              <select value={form.priority} onChange={event => updateFormField('priority', event.target.value)}>
+                {workflowPriorityOptions.map(priority => <option value={priority} key={priority}>{priority}</option>)}
+              </select>
+            </label>
+            <label className="field">
+              <span>{copy.status}</span>
+              <select value={form.status} onChange={event => updateFormField('status', event.target.value)}>
+                {workflowStatusOptions.map(status => <option value={status} key={status}>{status}</option>)}
+              </select>
+            </label>
+            <label className="field">
+              <span>{copy.planner}</span>
+              <input value={form.planner} onChange={event => updateFormField('planner', event.target.value)} />
+            </label>
+            <label className="field">
+              <span>{copy.executor}</span>
+              <input value={form.executor} onChange={event => updateFormField('executor', event.target.value)} />
+            </label>
+            <label className="field">
+              <span>{copy.reviewer}</span>
+              <input value={form.reviewer} onChange={event => updateFormField('reviewer', event.target.value)} />
+            </label>
+            <label className="field">
+              <span>{copy.observer}</span>
+              <input value={form.observer} onChange={event => updateFormField('observer', event.target.value)} />
+            </label>
+            <label className="field span-2">
+              <span>{copy.workflowPlan}</span>
+              <textarea value={form.plan} onChange={event => updateFormField('plan', event.target.value)} />
+            </label>
+            <label className="field span-2">
+              <span>{copy.workflowAcceptance}</span>
+              <textarea value={form.acceptance} onChange={event => updateFormField('acceptance', event.target.value)} />
+            </label>
+            <label className="field span-all">
+              <span>{copy.workflowRisks}</span>
+              <textarea value={form.risks} onChange={event => updateFormField('risks', event.target.value)} />
+            </label>
+            <datalist id="workflow-project-options">
+              {projectOptions.map(project => <option value={project} key={project} />)}
+            </datalist>
+            {error ? <div className="inline-error span-all">{error}</div> : null}
+            <div className="form-actions span-all">
+              <button className="btn ghost" type="button" onClick={() => setFormOpen(false)}>
+                {copy.cancel}
+              </button>
+              <button className="btn" type="button" disabled={busy === 'save'} onClick={() => void saveWorkflow()}>
+                {busy === 'save' ? copy.running : copy.save}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
+
+      {actionState ? (
+        <Modal title={getWorkflowActionTitle(actionState.action, copy)} onClose={() => setActionState(null)}>
+          <div className="form-grid">
+            <div className="workflow-action-summary span-all">
+              <StatusBadge status={textOf(actionState.workflow.status, 'open')} />
+              <strong>{textOf(actionState.workflow.title, '-')}</strong>
+              <span>{textOf(actionState.workflow.project, '-')}</span>
+            </div>
+            {actionState.action === 'delete' ? (
+              <p className="task-description span-all">{copy.confirmDeleteWorkflow}</p>
+            ) : null}
+            {actionState.action === 'signal' ? (
+              <label className="field span-all">
+                <span>{copy.signalTo}</span>
+                <input value={signalTo} onChange={event => setSignalTo(event.target.value)} />
+              </label>
+            ) : null}
+            {actionState.action !== 'delete' ? (
+              <label className="field span-all">
+                <span>{copy.actionText}</span>
+                <textarea value={actionText} onChange={event => setActionText(event.target.value)} />
+              </label>
+            ) : null}
+            {error ? <div className="inline-error span-all">{error}</div> : null}
+            <div className="form-actions span-all">
+              <button className="btn ghost" type="button" onClick={() => setActionState(null)}>
+                {copy.cancel}
+              </button>
+              <button className={`btn ${actionState.action === 'delete' ? 'danger' : ''}`} type="button" disabled={Boolean(busy)} onClick={() => void submitWorkflowAction()}>
+                {busy ? copy.running : getWorkflowActionTitle(actionState.action, copy)}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
+    </div>
   )
+}
+
+function WorkflowCard({
+  busy,
+  copy,
+  workflow,
+  onAction,
+  onEdit,
+  onStatus
+}: {
+  busy: string
+  copy: Copy
+  workflow: AnyRecord
+  onAction: (workflow: AnyRecord, action: WorkflowEntryAction) => void
+  onEdit: (workflow: AnyRecord) => void
+  onStatus: (workflow: AnyRecord, status: string) => Promise<void>
+}) {
+  const status = textOf(workflow.status, 'open')
+  const priority = textOf(workflow.priority, 'normal')
+  const roles = [
+    [copy.planner, getWorkflowRoleValues(workflow, 'planner')],
+    [copy.executor, getWorkflowRoleValues(workflow, 'executor')],
+    [copy.reviewer, getWorkflowRoleValues(workflow, 'reviewer')],
+    [copy.observer, getWorkflowRoleValues(workflow, 'observer')]
+  ].filter(([, values]) => Array.isArray(values) && values.length > 0) as Array<[string, string[]]>
+  const logs = collectWorkflowLogs(workflow, copy).slice(0, 8)
+  const linkedItems = [
+    ...asArray<string>(workflow.linkedTasks).map(item => `task:${item}`),
+    ...asArray<string>(workflow.linkedRadio).map(item => `radio:${item}`)
+  ]
+  const canStart = !['in_progress', 'review', 'done', 'cancelled'].includes(status)
+  const canReview = !['review', 'done', 'cancelled'].includes(status)
+  const canDone = !['done', 'cancelled'].includes(status)
+  const disabled = Boolean(busy)
+
+  return (
+    <article className="workflow-card">
+      <header className="workflow-card-header">
+        <div className="workflow-title-block">
+          <h4>{textOf(workflow.title, '-')}</h4>
+          <p>
+            {copy.project}: {textOf(workflow.project, '-')} · {copy.priority}: {priority} · {copy.createdBy}: {textOf(workflow.createdBy, '-')}
+          </p>
+          <p>{copy.updated}: {formatDate(textOf(workflow.updatedAt || workflow.createdAt))}</p>
+        </div>
+        <div className="workflow-badges">
+          <StatusBadge status={status} />
+          <StatusBadge status={priority} />
+        </div>
+      </header>
+
+      {roles.length ? (
+        <div className="chip-list">
+          {roles.map(([label, values]) => <span className="chip" key={label}>{label}: {values.join(', ')}</span>)}
+        </div>
+      ) : null}
+
+      <WorkflowTextBlock label={copy.workflowPlan} value={workflow.plan} />
+      <WorkflowTextBlock label={copy.workflowAcceptance} value={workflow.acceptance} />
+      <WorkflowTextBlock label={copy.workflowRisks} value={workflow.risks} />
+
+      {linkedItems.length ? (
+        <div className="workflow-linked">
+          <span>{copy.linkedItems}</span>
+          <div className="chip-list">
+            {linkedItems.map(item => <span className="chip" key={item}>{item}</span>)}
+          </div>
+        </div>
+      ) : null}
+
+      <details className="workflow-details">
+        <summary>{copy.workflowLogs}</summary>
+        <div className="task-notes">
+          {logs.length ? logs.map((entry, indexValue) => (
+            <p key={`${entry.type}-${entry.ts}-${indexValue}`}>
+              <span>{[entry.type, entry.role, entry.by, formatDate(entry.ts)].filter(Boolean).join(' · ')}</span>
+              <span>{entry.text}</span>
+            </p>
+          )) : <span>{copy.noData}</span>}
+        </div>
+      </details>
+
+      <div className="workflow-actions">
+        {canStart ? (
+          <button className="btn small" type="button" disabled={disabled} onClick={() => void onStatus(workflow, 'in_progress')}>
+            {copy.startWorkflow}
+          </button>
+        ) : null}
+        {canReview ? (
+          <button className="btn small ghost" type="button" disabled={disabled} onClick={() => void onStatus(workflow, 'review')}>
+            {copy.markReview}
+          </button>
+        ) : null}
+        {canDone ? (
+          <button className="btn small" type="button" disabled={disabled} onClick={() => void onStatus(workflow, 'done')}>
+            {copy.markDone}
+          </button>
+        ) : null}
+        <button className="btn small ghost" type="button" disabled={disabled} onClick={() => onEdit(workflow)}>
+          {copy.editWorkflow}
+        </button>
+        <button className="btn small ghost" type="button" disabled={disabled} onClick={() => onAction(workflow, 'result')}>
+          {copy.workflowResult}
+        </button>
+        <button className="btn small ghost" type="button" disabled={disabled} onClick={() => onAction(workflow, 'review')}>
+          {copy.workflowReview}
+        </button>
+        <button className="btn small ghost" type="button" disabled={disabled} onClick={() => onAction(workflow, 'note')}>
+          {copy.workflowNote}
+        </button>
+        <button className="btn small ghost" type="button" disabled={disabled} onClick={() => onAction(workflow, 'signal')}>
+          {copy.workflowSignal}
+        </button>
+        <button className="btn small danger" type="button" disabled={disabled} onClick={() => onAction(workflow, 'delete')}>
+          {copy.deleteWorkflow}
+        </button>
+      </div>
+    </article>
+  )
+}
+
+function WorkflowTextBlock({ label, value }: { label: string; value: unknown }) {
+  const text = Array.isArray(value)
+    ? value.map(item => textOf(item)).filter(Boolean).join('\n')
+    : textOf(value).trim()
+  if (!text) return null
+  return (
+    <div className="workflow-text-block">
+      <strong>{label}</strong>
+      <p>{text}</p>
+    </div>
+  )
+}
+
+function createWorkflowForm(workflow?: AnyRecord, defaultProject = 'default'): WorkflowFormState {
+  return {
+    id: textOf(workflow?.id),
+    title: textOf(workflow?.title),
+    by: textOf(workflow?.createdBy, 'dashboard'),
+    project: textOf(workflow?.project, defaultProject),
+    priority: textOf(workflow?.priority, 'normal'),
+    status: textOf(workflow?.status, 'open'),
+    planner: getWorkflowRoleValues(workflow, 'planner').join(', '),
+    executor: getWorkflowRoleValues(workflow, 'executor').join(', '),
+    reviewer: getWorkflowRoleValues(workflow, 'reviewer').join(', '),
+    observer: getWorkflowRoleValues(workflow, 'observer').join(', '),
+    plan: textOf(workflow?.plan),
+    acceptance: textOf(workflow?.acceptance),
+    risks: Array.isArray(workflow?.risks)
+      ? workflow.risks.map(item => textOf(item)).filter(Boolean).join('\n')
+      : textOf(workflow?.risks)
+  }
+}
+
+function getWorkflowActionTitle(action: WorkflowEntryAction, copy: Copy): string {
+  if (action === 'result') return copy.workflowResult
+  if (action === 'review') return copy.workflowReview
+  if (action === 'note') return copy.workflowNote
+  if (action === 'signal') return copy.workflowSignal
+  return copy.confirmDelete
+}
+
+function getWorkflowRoleValues(workflow: AnyRecord | undefined, role: string): string[] {
+  const value = workflow?.[role]
+  if (Array.isArray(value)) {
+    return value.map(item => textOf(item).trim()).filter(Boolean)
+  }
+  return textOf(value)
+    .split(',')
+    .map(item => item.trim())
+    .filter(Boolean)
+}
+
+function getWorkflowSearchText(workflow: AnyRecord): string {
+  const logs = ['results', 'reviews', 'notes']
+    .flatMap(field => asArray<AnyRecord>(workflow[field]))
+    .map(item => [item.by, item.from, item.role, item.text].map(value => textOf(value)).filter(Boolean).join(' '))
+  return [
+    workflow.id,
+    workflow.title,
+    workflow.project,
+    workflow.status,
+    workflow.priority,
+    workflow.createdBy,
+    workflow.plan,
+    workflow.acceptance,
+    summarizeRoles(workflow),
+    ...asArray<string>(workflow.risks),
+    ...logs
+  ].map(value => textOf(value)).filter(Boolean).join(' ').toLowerCase()
+}
+
+function collectWorkflowLogs(workflow: AnyRecord, copy: Copy): Array<{ type: string; ts: string; by: string; role: string; text: string }> {
+  const normalizeEntries = (items: unknown, type: string) => asArray<AnyRecord>(items)
+    .map(item => ({
+      type,
+      ts: textOf(item.ts || item.createdAt || item.updatedAt),
+      by: textOf(item.by || item.from),
+      role: textOf(item.role),
+      text: textOf(item.text)
+    }))
+    .filter(item => item.text || item.by || item.role)
+  return [
+    ...normalizeEntries(workflow.results, copy.workflowResult),
+    ...normalizeEntries(workflow.reviews, copy.workflowReview),
+    ...normalizeEntries(workflow.notes, copy.workflowNote)
+  ].sort((left, right) => right.ts.localeCompare(left.ts))
 }
 
 function AnalyticsPanel({ copy, model }: { copy: Copy; model: ViewModel }) {

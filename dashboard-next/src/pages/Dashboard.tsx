@@ -301,7 +301,56 @@ const labels = {
     capabilitySummary: '能力摘要',
     directCli: '直接 CLI',
     sharedState: '共享状态',
-    autoDispatchLabel: '自动调度'
+    autoDispatchLabel: '自动调度',
+    snapshotLimit: '快照上限',
+    coreLimit: '核心记忆上限',
+    recentLimit: '近期记忆上限',
+    lockStaleMs: '锁超时',
+    languageSetting: '语言',
+    lightMode: '浅色',
+    darkMode: '深色',
+    saveSettings: '保存设置',
+    settingsSaved: '设置已保存',
+    pruneAfterSync: '同步后清理',
+    repairSuggestions: '修复建议',
+    healthScore: '健康分',
+    totalRecords: '记录总数',
+    duplicateRecords: '重复记录',
+    corruptedRecords: '损坏记录',
+    previewRepair: '预览修复',
+    applyRepair: '应用修复',
+    repairPlan: '修复计划',
+    applied: '已应用',
+    dryRun: '预览模式',
+    confirmRepair: '该操作会修改本地记忆索引数据。请确认已查看修复计划。',
+    duplicateGroups: '重复组',
+    superseded: '将标记重复',
+    settingsSyncSection: '同步与记忆',
+    settingsDashboardSection: '仪表盘偏好',
+    settingsBackupSection: '备份保留',
+    memoryDir: '记忆目录',
+    shortcuts: '快捷键',
+    refreshSettings: '重载设置',
+    invalidSettingsValue: '设置值必须是正整数',
+    healthStatus: '健康状态',
+    healthIssues: '健康问题',
+    duplicateRate: '重复率',
+    filesScanned: '扫描文件',
+    includesChecked: '检查引用',
+    duplicateExamples: '重复样例',
+    corruptedExamples: '损坏样例',
+    storageBreakdown: '存储明细',
+    healthRawReport: '原始健康报告',
+    noHealthIssues: '暂无健康问题',
+    noHealthExamples: '暂无样例',
+    refreshHealth: '刷新健康报告',
+    repairLimit: '修复上限',
+    totalActions: '总操作',
+    ledgerRecordsUpdated: '更新记录',
+    corruptedRecovered: '恢复损坏',
+    corruptedArchived: '归档损坏',
+    repairPreviewEmpty: '先点击预览修复生成计划',
+    confirmApply: '确认应用'
   },
   en: {
     refresh: 'Refresh',
@@ -496,7 +545,56 @@ const labels = {
     capabilitySummary: 'Capability summary',
     directCli: 'Direct CLI',
     sharedState: 'Shared state',
-    autoDispatchLabel: 'Auto dispatch'
+    autoDispatchLabel: 'Auto dispatch',
+    snapshotLimit: 'Snapshot limit',
+    coreLimit: 'Core limit',
+    recentLimit: 'Recent limit',
+    lockStaleMs: 'Lock timeout',
+    languageSetting: 'Language',
+    lightMode: 'Light',
+    darkMode: 'Dark',
+    saveSettings: 'Save settings',
+    settingsSaved: 'Settings saved',
+    pruneAfterSync: 'Prune after sync',
+    repairSuggestions: 'Repair suggestions',
+    healthScore: 'Health score',
+    totalRecords: 'Total records',
+    duplicateRecords: 'Duplicate records',
+    corruptedRecords: 'Corrupted records',
+    previewRepair: 'Preview repair',
+    applyRepair: 'Apply repair',
+    repairPlan: 'Repair plan',
+    applied: 'Applied',
+    dryRun: 'Dry run',
+    confirmRepair: 'This operation changes local memory index data. Confirm that you reviewed the repair plan.',
+    duplicateGroups: 'Duplicate groups',
+    superseded: 'To supersede',
+    settingsSyncSection: 'Sync and memory',
+    settingsDashboardSection: 'Dashboard preferences',
+    settingsBackupSection: 'Backup retention',
+    memoryDir: 'Memory directory',
+    shortcuts: 'Shortcuts',
+    refreshSettings: 'Reload settings',
+    invalidSettingsValue: 'Settings values must be positive integers',
+    healthStatus: 'Health status',
+    healthIssues: 'Health issues',
+    duplicateRate: 'Duplicate rate',
+    filesScanned: 'Files scanned',
+    includesChecked: 'Includes checked',
+    duplicateExamples: 'Duplicate examples',
+    corruptedExamples: 'Corrupted examples',
+    storageBreakdown: 'Storage breakdown',
+    healthRawReport: 'Raw health report',
+    noHealthIssues: 'No health issues',
+    noHealthExamples: 'No examples',
+    refreshHealth: 'Refresh health',
+    repairLimit: 'Repair limit',
+    totalActions: 'Total actions',
+    ledgerRecordsUpdated: 'Updated records',
+    corruptedRecovered: 'Recovered corrupted',
+    corruptedArchived: 'Archived corrupted',
+    repairPreviewEmpty: 'Preview repair first to generate a plan',
+    confirmApply: 'Confirm apply'
   }
 }
 
@@ -608,8 +706,8 @@ export default function Dashboard({ section }: DashboardProps) {
           {section === 'search' && <SearchPanel copy={copy} />}
           {section === 'tools' && <ToolsPanel copy={copy} model={viewModel} onRefresh={refresh} />}
           {section === 'projects' && <ProjectsPanel copy={copy} model={viewModel} />}
-          {section === 'health' && <HealthPanel copy={copy} model={viewModel} health={health} />}
-          {section === 'settings' && <SettingsPanel copy={copy} model={viewModel} />}
+          {section === 'health' && <HealthPanel copy={copy} model={viewModel} health={health} onRefresh={refresh} />}
+          {section === 'settings' && <SettingsPanel copy={copy} model={viewModel} onRefresh={refresh} />}
         </>
       )}
     </div>
@@ -2599,38 +2697,542 @@ function ProjectsPanel({ copy, model }: { copy: Copy; model: ViewModel }) {
   )
 }
 
-function HealthPanel({ copy, model, health }: { copy: Copy; model: ViewModel; health: AnyRecord | null }) {
-  const issues = asArray<AnyRecord>(health?.issues)
-  const recommendations = asArray<AnyRecord>(health?.recommendations || health?.actions)
+interface SettingsFormState {
+  snapshotLimit: string
+  coreLimit: string
+  recentLimit: string
+  lockStaleMs: string
+  autoRefresh: boolean
+  refreshIntervalMs: string
+  language: string
+  theme: string
+  notifications: boolean
+  shortcutsEnabled: boolean
+  daily: string
+  weekly: string
+  preSync: string
+  pruneAfterSync: boolean
+}
+
+function HealthPanel({
+  copy,
+  model,
+  health,
+  onRefresh
+}: {
+  copy: Copy
+  model: ViewModel
+  health: AnyRecord | null
+  onRefresh: () => Promise<void>
+}) {
+  const [localReport, setLocalReport] = useState<AnyRecord | null>(null)
+  const [repairPreview, setRepairPreview] = useState<AnyRecord | null>(null)
+  const [repairLimit, setRepairLimit] = useState('10')
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [busy, setBusy] = useState('')
+  const [error, setError] = useState('')
+
+  const report = localReport ?? health
+  const analysis = asRecord(report?.analysis)
+  const storage = asRecord(analysis.storage)
+  const issues = asArray<AnyRecord>(analysis.issues)
+  const suggestions = asArray<AnyRecord>(analysis.repairSuggestions)
+  const duplicateGroups = asArray<AnyRecord>(analysis.duplicateGroups)
+  const corruptedRecords = asArray<AnyRecord>(analysis.corruptedRecords)
+  const storageItems = asArray<AnyRecord>(storage.items)
+  const includeDiagnostics = asRecord(analysis.includeDiagnostics)
   const daemon = asRecord(model.status.daemon)
+  const index = asRecord(model.status.index)
+  const score = numberOf(analysis.score, 0)
+  const scoreTone = score >= 90 ? 'success' : score >= 70 ? 'warning' : 'default'
+  const hasRepairActions = getRepairTotalActions(repairPreview) > 0
+
+  const getLimit = () => {
+    const nextLimit = Number(repairLimit)
+    if (!Number.isInteger(nextLimit) || nextLimit <= 0) {
+      throw new Error(`${copy.repairLimit}: ${copy.invalidSettingsValue}`)
+    }
+    return nextLimit
+  }
+
+  const refreshHealth = async () => {
+    setBusy('refresh')
+    setError('')
+    try {
+      setLocalReport(await apiGet<AnyRecord>('/api/health'))
+      setRepairPreview(null)
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : String(nextError))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const previewRepair = async () => {
+    setBusy('preview')
+    setError('')
+    try {
+      setRepairPreview(await apiPost<AnyRecord>('/api/health/repair', { apply: false, limit: getLimit() }))
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : String(nextError))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const applyRepair = async () => {
+    setBusy('apply')
+    setError('')
+    try {
+      const result = await apiPost<AnyRecord>('/api/health/repair', { apply: true, limit: getLimit() })
+      setRepairPreview(result)
+      setConfirmOpen(false)
+      await refreshHealth()
+      await onRefresh()
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : String(nextError))
+    } finally {
+      setBusy('')
+    }
+  }
+
   return (
-    <div className="panel-grid two">
+    <div className="stack">
+      <div className="dashboard-grid">
+        <MetricCard label={copy.healthScore} value={formatNumber(score)} tone={scoreTone} />
+        <MetricCard label={copy.totalRecords} value={formatNumber(analysis.totalRecords)} />
+        <MetricCard label={copy.duplicateRecords} value={formatNumber(analysis.duplicateRecords)} tone={numberOf(analysis.duplicateRecords) ? 'warning' : 'default'} />
+        <MetricCard label={copy.corruptedRecords} value={formatNumber(analysis.corruptedRecordsCount)} tone={numberOf(analysis.corruptedRecordsCount) ? 'warning' : 'default'} />
+        <MetricCard label={copy.storageUsed} value={textOf(storage.totalDisplay, '-')} />
+        <MetricCard label={copy.healthStatus} value={textOf(analysis.status, '-')} tone={scoreTone} />
+      </div>
+
       <Panel title={copy.health}>
-        <div className="property-grid">
+        <div className="section-actions">
+          <label className="field compact-field">
+            <span>{copy.repairLimit}</span>
+            <input type="number" min="1" max="100" value={repairLimit} onChange={event => setRepairLimit(event.target.value)} />
+          </label>
+          <button className="btn ghost" type="button" disabled={Boolean(busy)} onClick={() => void refreshHealth()}>
+            {busy === 'refresh' ? copy.refreshing : copy.refreshHealth}
+          </button>
+          <button className="btn ghost" type="button" disabled={Boolean(busy)} onClick={() => void previewRepair()}>
+            {busy === 'preview' ? copy.running : copy.previewRepair}
+          </button>
+          <button className="btn" type="button" disabled={Boolean(busy) || !hasRepairActions} onClick={() => setConfirmOpen(true)}>
+            {copy.applyRepair}
+          </button>
+        </div>
+        {error ? <div className="inline-error">{error}</div> : null}
+        <div className="property-grid settings-grid">
           <Property label="Daemon" value={textOf(daemon.state, '-')} />
-          <Property label="Memory" value={formatNumber(asRecord(model.status.index).records)} />
+          <Property label="Memory" value={formatNumber(index.records)} />
           <Property label="Radio" value={formatNumber(model.status.radioMessages)} />
           <Property label="Backups" value={formatNumber(model.status.backups)} />
+          <Property label={copy.duplicateRate} value={textOf(analysis.duplicateRatePercent, '-')} />
+          <Property label={copy.generatedAt} value={formatDate(textOf(analysis.generatedAt))} />
+          <Property label={copy.filesScanned} value={formatNumber(includeDiagnostics.filesScanned)} />
+          <Property label={copy.includesChecked} value={formatNumber(includeDiagnostics.includesChecked)} />
         </div>
       </Panel>
-      <Panel title="Issues">
-        <IssueList items={issues.length ? issues : recommendations} emptyText={copy.noData} />
+
+      <Panel title={copy.repairPlan}>
+        {repairPreview ? <RepairPlanSummary copy={copy} result={repairPreview} /> : <EmptyState text={copy.repairPreviewEmpty} />}
+      </Panel>
+
+      <div className="panel-grid two">
+        <Panel title={copy.healthIssues}>
+          <HealthIssueRows copy={copy} issues={issues} />
+        </Panel>
+        <Panel title={copy.repairSuggestions}>
+          <HealthSuggestionRows copy={copy} suggestions={suggestions} />
+        </Panel>
+      </div>
+
+      <div className="panel-grid two">
+        <Panel title={copy.duplicateExamples}>
+          <DuplicateGroupRows copy={copy} groups={duplicateGroups} />
+        </Panel>
+        <Panel title={copy.corruptedExamples}>
+          <CorruptedRecordRows copy={copy} records={corruptedRecords} />
+        </Panel>
+      </div>
+
+      <div className="panel-grid two">
+        <Panel title={copy.storageBreakdown}>
+          <StorageRows copy={copy} items={storageItems} />
+        </Panel>
+        <Panel title={copy.healthRawReport}>
+          <details className="health-raw-details">
+            <summary>{copy.healthRawReport}</summary>
+            <pre className="text-snapshot small">{textOf(report?.report || report?.stdout, copy.noData)}</pre>
+          </details>
+        </Panel>
+      </div>
+
+      {confirmOpen ? (
+        <Modal title={copy.applyRepair} onClose={() => setConfirmOpen(false)}>
+          <div className="stack">
+            <p className="modal-copy">{copy.confirmRepair}</p>
+            <RepairPlanSummary copy={copy} result={repairPreview} />
+            {error ? <div className="inline-error">{error}</div> : null}
+            <div className="form-actions">
+              <button className="btn ghost" type="button" disabled={Boolean(busy)} onClick={() => setConfirmOpen(false)}>
+                {copy.cancel}
+              </button>
+              <button className="btn" type="button" disabled={busy === 'apply'} onClick={() => void applyRepair()}>
+                {busy === 'apply' ? copy.running : copy.confirmApply}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
+    </div>
+  )
+}
+
+function SettingsPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; onRefresh: () => Promise<void> }) {
+  const [form, setForm] = useState<SettingsFormState>(() => createSettingsForm(model.settings))
+  const [busy, setBusy] = useState('')
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
+
+  const dashboard = asRecord(model.settings.dashboard)
+  const sync = asRecord(model.settings.sync)
+  const backupPolicy = asRecord(model.settings.backupPolicy)
+
+  const updateForm = <K extends keyof SettingsFormState>(field: K, value: SettingsFormState[K]) => {
+    setForm(current => ({ ...current, [field]: value }))
+  }
+
+  const reloadSettings = async () => {
+    setBusy('reload')
+    setError('')
+    setSuccess('')
+    try {
+      setForm(createSettingsForm(await apiGet<AnyRecord>('/api/settings')))
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : String(nextError))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const saveSettings = async () => {
+    setBusy('save')
+    setError('')
+    setSuccess('')
+    try {
+      const payload = buildSettingsPayload(form, model.settings, copy)
+      const result = await apiPost<AnyRecord>('/api/settings', payload)
+      const nextSettings = asRecord(result.settings)
+      if (Object.keys(nextSettings).length) {
+        setForm(createSettingsForm(nextSettings))
+      }
+      setSuccess(copy.settingsSaved)
+      await onRefresh()
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : String(nextError))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  return (
+    <div className="stack">
+      <Panel title={copy.settingsPanel}>
+        <div className="property-grid settings-grid">
+          <Property label={copy.memoryDir} value={textOf(model.settings.memoryDir, '-')} />
+          <Property label={copy.theme} value={textOf(dashboard.theme, '-')} />
+          <Property label={copy.autoRefresh} value={formatBool(boolSetting(dashboard.autoRefresh, true), copy)} />
+          <Property label={copy.notifications} value={formatBool(boolSetting(dashboard.notifications, true), copy)} />
+          <Property label={copy.refreshInterval} value={`${formatNumber(dashboard.refreshIntervalMs)} ms`} />
+          <Property label={copy.snapshotLimit} value={formatNumber(sync.snapshotLimit)} />
+          <Property label={copy.backupPolicy} value={`${copy.daily} ${formatNumber(backupPolicy.daily)} / ${copy.weekly} ${formatNumber(backupPolicy.weekly)}`} />
+          <Property label={copy.pruneAfterSync} value={formatBool(boolSetting(backupPolicy.pruneAfterSync, false), copy)} />
+        </div>
+      </Panel>
+
+      <Panel title={copy.saveSettings}>
+        <div className="settings-form">
+          <section className="settings-section">
+            <h4>{copy.settingsSyncSection}</h4>
+            <div className="form-grid">
+              <label className="field">
+                <span>{copy.snapshotLimit}</span>
+                <input type="number" min="1" value={form.snapshotLimit} onChange={event => updateForm('snapshotLimit', event.target.value)} />
+              </label>
+              <label className="field">
+                <span>{copy.coreLimit}</span>
+                <input type="number" min="1" value={form.coreLimit} onChange={event => updateForm('coreLimit', event.target.value)} />
+              </label>
+              <label className="field">
+                <span>{copy.recentLimit}</span>
+                <input type="number" min="1" value={form.recentLimit} onChange={event => updateForm('recentLimit', event.target.value)} />
+              </label>
+              <label className="field">
+                <span>{copy.lockStaleMs}</span>
+                <input type="number" min="1" value={form.lockStaleMs} onChange={event => updateForm('lockStaleMs', event.target.value)} />
+              </label>
+            </div>
+          </section>
+
+          <section className="settings-section">
+            <h4>{copy.settingsDashboardSection}</h4>
+            <div className="form-grid">
+              <label className="field">
+                <span>{copy.refreshInterval}</span>
+                <input type="number" min="1000" max="60000" step="1000" value={form.refreshIntervalMs} onChange={event => updateForm('refreshIntervalMs', event.target.value)} />
+              </label>
+              <label className="field">
+                <span>{copy.languageSetting}</span>
+                <select value={form.language} onChange={event => updateForm('language', event.target.value)}>
+                  <option value="zh">中文</option>
+                  <option value="en">English</option>
+                </select>
+              </label>
+              <label className="field">
+                <span>{copy.theme}</span>
+                <select value={form.theme} onChange={event => updateForm('theme', event.target.value)}>
+                  <option value="dark">{copy.darkMode}</option>
+                  <option value="light">{copy.lightMode}</option>
+                </select>
+              </label>
+              <label className="field checkbox-field">
+                <input type="checkbox" checked={form.autoRefresh} onChange={event => updateForm('autoRefresh', event.target.checked)} />
+                <span>{copy.autoRefresh}</span>
+              </label>
+              <label className="field checkbox-field">
+                <input type="checkbox" checked={form.notifications} onChange={event => updateForm('notifications', event.target.checked)} />
+                <span>{copy.notifications}</span>
+              </label>
+              <label className="field checkbox-field">
+                <input type="checkbox" checked={form.shortcutsEnabled} onChange={event => updateForm('shortcutsEnabled', event.target.checked)} />
+                <span>{copy.shortcuts}</span>
+              </label>
+            </div>
+          </section>
+
+          <section className="settings-section">
+            <h4>{copy.settingsBackupSection}</h4>
+            <div className="form-grid">
+              <label className="field">
+                <span>{copy.daily}</span>
+                <input type="number" min="1" value={form.daily} onChange={event => updateForm('daily', event.target.value)} />
+              </label>
+              <label className="field">
+                <span>{copy.weekly}</span>
+                <input type="number" min="1" value={form.weekly} onChange={event => updateForm('weekly', event.target.value)} />
+              </label>
+              <label className="field">
+                <span>{copy.preSync}</span>
+                <input type="number" min="1" value={form.preSync} onChange={event => updateForm('preSync', event.target.value)} />
+              </label>
+              <label className="field checkbox-field">
+                <input type="checkbox" checked={form.pruneAfterSync} onChange={event => updateForm('pruneAfterSync', event.target.checked)} />
+                <span>{copy.pruneAfterSync}</span>
+              </label>
+            </div>
+          </section>
+        </div>
+        {error ? <div className="inline-error">{error}</div> : null}
+        {success ? <div className="notice success"><span>{success}</span></div> : null}
+        <div className="form-actions settings-actions">
+          <button className="btn ghost" type="button" disabled={Boolean(busy)} onClick={() => void reloadSettings()}>
+            {busy === 'reload' ? copy.refreshing : copy.refreshSettings}
+          </button>
+          <button className="btn" type="button" disabled={Boolean(busy)} onClick={() => void saveSettings()}>
+            {busy === 'save' ? copy.running : copy.saveSettings}
+          </button>
+        </div>
       </Panel>
     </div>
   )
 }
 
-function SettingsPanel({ copy, model }: { copy: Copy; model: ViewModel }) {
-  const dashboard = asRecord(model.settings.dashboard)
+function createSettingsForm(settings: AnyRecord): SettingsFormState {
+  const sync = asRecord(settings.sync)
+  const dashboard = asRecord(settings.dashboard)
+  const shortcuts = asRecord(dashboard.shortcuts)
+  const backupPolicy = asRecord(settings.backupPolicy)
+  return {
+    snapshotLimit: String(numberOf(sync.snapshotLimit, 120)),
+    coreLimit: String(numberOf(sync.coreLimit, 80)),
+    recentLimit: String(numberOf(sync.recentLimit, 40)),
+    lockStaleMs: String(numberOf(sync.lockStaleMs, 30000)),
+    autoRefresh: boolSetting(dashboard.autoRefresh, true),
+    refreshIntervalMs: String(numberOf(dashboard.refreshIntervalMs, 5000)),
+    language: ['zh', 'en'].includes(textOf(dashboard.language)) ? textOf(dashboard.language) : 'zh',
+    theme: ['dark', 'light'].includes(textOf(dashboard.theme)) ? textOf(dashboard.theme) : 'dark',
+    notifications: boolSetting(dashboard.notifications, true),
+    shortcutsEnabled: boolSetting(shortcuts.enabled, true),
+    daily: String(numberOf(backupPolicy.daily, 14)),
+    weekly: String(numberOf(backupPolicy.weekly, 8)),
+    preSync: String(numberOf(backupPolicy.preSync, 24)),
+    pruneAfterSync: boolSetting(backupPolicy.pruneAfterSync, true)
+  }
+}
+
+function buildSettingsPayload(form: SettingsFormState, currentSettings: AnyRecord, copy: Copy): AnyRecord {
+  const refreshIntervalMs = parsePositiveInteger(form.refreshIntervalMs, copy.refreshInterval, copy)
+  if (refreshIntervalMs < 1000 || refreshIntervalMs > 60000) {
+    throw new Error(`${copy.refreshInterval}: 1000-60000`)
+  }
+  const dashboard = asRecord(currentSettings.dashboard)
+  const shortcuts = asRecord(dashboard.shortcuts)
+  return {
+    sync: {
+      snapshotLimit: parsePositiveInteger(form.snapshotLimit, copy.snapshotLimit, copy),
+      coreLimit: parsePositiveInteger(form.coreLimit, copy.coreLimit, copy),
+      recentLimit: parsePositiveInteger(form.recentLimit, copy.recentLimit, copy),
+      lockStaleMs: parsePositiveInteger(form.lockStaleMs, copy.lockStaleMs, copy)
+    },
+    dashboard: {
+      autoRefresh: form.autoRefresh,
+      refreshIntervalMs,
+      language: form.language,
+      theme: form.theme,
+      notifications: form.notifications,
+      shortcuts: {
+        ...shortcuts,
+        enabled: form.shortcutsEnabled
+      }
+    },
+    backupPolicy: {
+      daily: parsePositiveInteger(form.daily, copy.daily, copy),
+      weekly: parsePositiveInteger(form.weekly, copy.weekly, copy),
+      preSync: parsePositiveInteger(form.preSync, copy.preSync, copy),
+      pruneAfterSync: form.pruneAfterSync
+    }
+  }
+}
+
+function parsePositiveInteger(value: string, label: string, copy: Copy): number {
+  const nextValue = Number(value)
+  if (!Number.isInteger(nextValue) || nextValue <= 0) {
+    throw new Error(`${label}: ${copy.invalidSettingsValue}`)
+  }
+  return nextValue
+}
+
+function boolSetting(value: unknown, fallback: boolean): boolean {
+  return value === undefined || value === null ? fallback : Boolean(value)
+}
+
+function RepairPlanSummary({ copy, result }: { copy: Copy; result: AnyRecord | null }) {
+  const plan = asRecord(result?.plan)
+  const applied = asRecord(result?.applied)
+  const duplicates = asArray<AnyRecord>(plan.duplicates)
   return (
-    <Panel title={copy.settingsPanel}>
+    <div className="stack">
       <div className="property-grid settings-grid">
-        <Property label={copy.theme} value={textOf(dashboard.theme, '-')} />
-        <Property label={copy.autoRefresh} value={formatBool(boolOf(dashboard.autoRefresh), copy)} />
-        <Property label={copy.notifications} value={formatBool(boolOf(dashboard.notifications), copy)} />
-        <Property label={copy.refreshInterval} value={`${formatNumber(dashboard.refreshIntervalMs)} ms`} />
+        <Property label={copy.mode} value={boolOf(result?.apply) ? copy.applied : copy.dryRun} />
+        <Property label={copy.totalActions} value={formatNumber(plan.totalActions)} />
+        <Property label={copy.duplicateGroups} value={formatNumber(plan.duplicateGroups)} />
+        <Property label={copy.superseded} value={formatNumber(plan.duplicateRecordsToSupersede)} />
+        <Property label={copy.ledgerRecordsUpdated} value={formatNumber(applied.ledgerRecordsUpdated)} />
+        <Property label={copy.corruptedRecovered} value={formatNumber(applied.corruptedRecovered)} />
+        <Property label={copy.corruptedArchived} value={formatNumber(applied.corruptedArchived)} />
+        <Property label={copy.duplicateRecords} value={formatNumber(applied.duplicateSuperseded)} />
       </div>
-    </Panel>
+      {duplicates.length ? (
+        <div className="repair-plan-list">
+          {duplicates.slice(0, 8).map((item, indexValue) => (
+            <div className="health-example" key={`${textOf(item.example || item.id)}-${indexValue}`}>
+              <strong>{textOf(item.example || item.key, '-')}</strong>
+              <span>{formatNumber(item.count)} / {formatNumber(asArray(item.records).length)}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function getRepairTotalActions(result: AnyRecord | null): number {
+  return numberOf(asRecord(result?.plan).totalActions)
+}
+
+function HealthIssueRows({ copy, issues }: { copy: Copy; issues: AnyRecord[] }) {
+  if (!issues.length) return <EmptyState text={copy.noHealthIssues} />
+  return (
+    <div className="stack">
+      {issues.map((issue, indexValue) => {
+        const action = asRecord(issue.action)
+        return (
+          <div className={`health-issue-row level-${textOf(issue.level, 'low')}`} key={`${textOf(issue.title)}-${indexValue}`}>
+            <div>
+              <div className="health-row-title">
+                <StatusBadge status={textOf(issue.level, 'low')} />
+                <strong>{textOf(issue.title, '-')}</strong>
+              </div>
+              <p>{textOf(issue.detail, '-')}</p>
+              {action.command || action.endpoint ? <code className="health-command">{textOf(action.command || action.endpoint)}</code> : null}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function HealthSuggestionRows({ copy, suggestions }: { copy: Copy; suggestions: AnyRecord[] }) {
+  if (!suggestions.length) return <EmptyState text={copy.noHealthIssues} />
+  return (
+    <div className="stack">
+      {suggestions.map((suggestion, indexValue) => (
+        <div className="health-action-row" key={`${textOf(suggestion.id || suggestion.label)}-${indexValue}`}>
+          <strong>{textOf(suggestion.label || suggestion.id, copy.repairSuggestions)}</strong>
+          <p>{textOf(suggestion.detail || suggestion.command || suggestion.endpoint, '-')}</p>
+          {suggestion.command || suggestion.endpoint ? <code className="health-command">{textOf(suggestion.command || suggestion.endpoint)}</code> : null}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function DuplicateGroupRows({ copy, groups }: { copy: Copy; groups: AnyRecord[] }) {
+  if (!groups.length) return <EmptyState text={copy.noHealthExamples} />
+  return (
+    <div className="stack">
+      {groups.map((group, indexValue) => (
+        <div className="health-example" key={`${textOf(group.example)}-${indexValue}`}>
+          <div className="health-row-title">
+            <strong>{formatNumber(group.count)}x</strong>
+            <span>{textOf(group.example, '-')}</span>
+          </div>
+          <p>{asArray<AnyRecord>(group.records).map(record => textOf(record.pointer || record.id)).filter(Boolean).join(' | ')}</p>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function CorruptedRecordRows({ copy, records }: { copy: Copy; records: AnyRecord[] }) {
+  if (!records.length) return <EmptyState text={copy.noHealthExamples} />
+  return (
+    <div className="stack">
+      {records.map((record, indexValue) => (
+        <div className="health-example" key={`${textOf(record.pointer)}-${indexValue}`}>
+          <strong>{textOf(record.pointer, '-')}</strong>
+          <p>{textOf(record.text, '-')}</p>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function StorageRows({ copy, items }: { copy: Copy; items: AnyRecord[] }) {
+  if (!items.length) return <EmptyState text={copy.noData} />
+  return (
+    <div className="health-storage-list">
+      {items.map(item => (
+        <div className="health-storage-row" key={textOf(item.label)}>
+          <span>{textOf(item.label, '-')}</span>
+          <strong>{textOf(item.display || item.bytes, '-')}</strong>
+        </div>
+      ))}
+    </div>
   )
 }
 
@@ -2761,20 +3363,6 @@ function ToolList({ copy, tools }: { copy: Copy; tools: AnyRecord[] }) {
         <div className="compact-row" key={textOf(tool.name)}>
           <StatusBadge status={textOf(tool.connectionStatus, 'missing')} />
           <span className="truncate">{textOf(tool.name, '-')}</span>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function IssueList({ items, emptyText }: { items: AnyRecord[]; emptyText: string }) {
-  if (!items.length) return <EmptyState text={emptyText} />
-  return (
-    <div className="stack">
-      {items.slice(0, 8).map((item, indexValue) => (
-        <div className="message-row" key={`${textOf(item.id || item.title)}-${indexValue}`}>
-          <strong>{textOf(item.title || item.command || item.action, 'Issue')}</strong>
-          <p>{textOf(item.description || item.message || item.reason || item.text, '-')}</p>
         </div>
       ))}
     </div>

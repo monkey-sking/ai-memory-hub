@@ -237,6 +237,27 @@ const labels = {
     backupFiles: '备份文件',
     restoreSummary: '恢复摘要',
     backupPolicy: '备份策略',
+    githubBackup: 'GitHub 数据备份',
+    githubEnabled: '启用 GitHub 备份',
+    githubRemote: '远端仓库',
+    githubRepoDir: '本地仓库目录',
+    githubBranch: '分支',
+    githubLastCommit: '最近提交',
+    githubLastError: '最近错误',
+    githubPlaintext: '明文敏感上传',
+    githubSchedule: '计划任务',
+    githubNextRun: '下次运行',
+    githubDryRun: '预览上传风险',
+    githubLocalRun: '创建本地完整备份',
+    githubSave: '保存 GitHub 配置',
+    githubAllowPlaintext: '允许明文敏感上传',
+    githubWarning: '上传备份可能包含用户私有数据。上传前请确认远端仓库、访问权限、保留策略和恢复需要。',
+    githubWouldBlock: '明文上传将被阻断',
+    githubNoRemote: '未配置远端时只会创建本地备份',
+    warnings: '提醒',
+    files: '文件',
+    issues: '风险项',
+    upload: '上传',
     daily: '每日',
     weekly: '每周',
     preSync: '同步前',
@@ -484,6 +505,27 @@ const labels = {
     backupFiles: 'Backup files',
     restoreSummary: 'Restore summary',
     backupPolicy: 'Backup policy',
+    githubBackup: 'GitHub data backup',
+    githubEnabled: 'Enable GitHub backup',
+    githubRemote: 'Remote repository',
+    githubRepoDir: 'Local repo directory',
+    githubBranch: 'Branch',
+    githubLastCommit: 'Last commit',
+    githubLastError: 'Last error',
+    githubPlaintext: 'Plaintext sensitive upload',
+    githubSchedule: 'Schedule',
+    githubNextRun: 'Next run',
+    githubDryRun: 'Preview upload risk',
+    githubLocalRun: 'Create local full backup',
+    githubSave: 'Save GitHub config',
+    githubAllowPlaintext: 'Allow plaintext sensitive upload',
+    githubWarning: 'Backup uploads can include private user data. Verify the remote, access controls, retention policy, and recovery need before uploading.',
+    githubWouldBlock: 'Plaintext upload would be blocked',
+    githubNoRemote: 'Without a remote, only local backup is created',
+    warnings: 'Warnings',
+    files: 'Files',
+    issues: 'Issues',
+    upload: 'Upload',
     daily: 'Daily',
     weekly: 'Weekly',
     preSync: 'Pre-sync',
@@ -2162,6 +2204,16 @@ function AnalyticsPanel({ copy, model }: { copy: Copy; model: ViewModel }) {
   )
 }
 
+function createGitHubBackupForm(status: AnyRecord) {
+  return {
+    enabled: boolOf(status.enabled),
+    remoteUrl: textOf(status.remoteUrl),
+    repoDir: textOf(status.repoDir),
+    branch: textOf(status.branch, 'main'),
+    allowPlaintextSensitive: boolOf(status.allowPlaintextSensitive)
+  }
+}
+
 function BackupsPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; onRefresh: () => Promise<void> }) {
   const [backups, setBackups] = useState<AnyRecord>(model.backups)
   const [selectedName, setSelectedName] = useState('')
@@ -2169,10 +2221,28 @@ function BackupsPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel
   const [restorePlan, setRestorePlan] = useState<AnyRecord | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [reason, setReason] = useState('dashboard-manual')
+  const [githubStatus, setGithubStatus] = useState<AnyRecord>({})
+  const [githubForm, setGithubForm] = useState(() => createGitHubBackupForm({}))
+  const [githubResult, setGithubResult] = useState<AnyRecord | null>(null)
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
 
   const backupList = asArray<AnyRecord>(backups.backups)
+
+  const loadGitHubStatus = useCallback(async () => {
+    setBusy('github:load')
+    setError('')
+    try {
+      const result = await apiGet<AnyRecord>('/api/backups/github/status')
+      const status = asRecord(result.github)
+      setGithubStatus(status)
+      setGithubForm(createGitHubBackupForm(status))
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : String(nextError))
+    } finally {
+      setBusy('')
+    }
+  }, [])
 
   const loadBackups = useCallback(async () => {
     setBusy('load')
@@ -2189,6 +2259,10 @@ function BackupsPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel
       setBusy('')
     }
   }, [selectedName])
+
+  useEffect(() => {
+    void loadGitHubStatus()
+  }, [loadGitHubStatus])
 
   const activeBackupName = selectedName || textOf(backupList[0]?.name)
 
@@ -2240,10 +2314,56 @@ function BackupsPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel
     }
   }
 
+  const saveGitHubConfig = async () => {
+    setBusy('github:save')
+    setError('')
+    setGithubResult(null)
+    try {
+      const result = await apiPost<AnyRecord>('/api/backups/github/configure', githubForm)
+      const status = asRecord(result.status || result.github)
+      setGithubStatus(status)
+      setGithubForm(createGitHubBackupForm(status))
+      setGithubResult(result)
+      await onRefresh()
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : String(nextError))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const runGitHubBackup = async (mode: 'dry-run' | 'local') => {
+    setBusy(`github:${mode}`)
+    setError('')
+    setGithubResult(null)
+    try {
+      const result = await apiPost<AnyRecord>('/api/backups/github/run', {
+        dryRun: mode === 'dry-run',
+        push: false,
+        reason: mode === 'dry-run' ? 'dashboard-preview' : 'dashboard-local',
+        repoDir: githubForm.repoDir,
+        remoteUrl: githubForm.remoteUrl,
+        branch: githubForm.branch
+      })
+      setGithubResult(result)
+      await loadGitHubStatus()
+      await onRefresh()
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : String(nextError))
+    } finally {
+      setBusy('')
+    }
+  }
+
   const policy = asRecord(backups.policy)
   const retention = asRecord(backups.retention)
   const selectedFiles = asArray<AnyRecord>(detail?.files)
   const summary = asRecord(restorePlan?.summary)
+  const githubRepo = asRecord(githubStatus.repo)
+  const githubSchedule = asRecord(githubStatus.schedule)
+  const githubScan = asRecord(githubResult?.scan)
+  const githubIssues = asArray<AnyRecord>(githubScan.issues)
+  const githubWarnings = asArray<string>(githubResult?.warnings)
 
   return (
     <div className="stack">
@@ -2269,6 +2389,83 @@ function BackupsPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel
           <Property label={copy.pruneCandidates} value={textOf(retention.pruneDisplay, '-')} />
         </div>
         {error ? <div className="inline-error">{error}</div> : null}
+      </Panel>
+      <Panel title={copy.githubBackup}>
+        <div className="notice">
+          <strong>{copy.githubWarning}</strong>
+          <span>{githubForm.remoteUrl ? textOf(githubForm.remoteUrl) : copy.githubNoRemote}</span>
+        </div>
+        <div className="form-grid github-backup-grid">
+          <label className="field">
+            <span>{copy.githubEnabled}</span>
+            <select value={githubForm.enabled ? 'yes' : 'no'} onChange={event => setGithubForm({ ...githubForm, enabled: event.target.value === 'yes' })}>
+              <option value="yes">{copy.yes}</option>
+              <option value="no">{copy.no}</option>
+            </select>
+          </label>
+          <label className="field">
+            <span>{copy.githubRemote}</span>
+            <input value={githubForm.remoteUrl} onChange={event => setGithubForm({ ...githubForm, remoteUrl: event.target.value })} placeholder="https://github.com/<owner>/<repo>.git" />
+          </label>
+          <label className="field">
+            <span>{copy.githubRepoDir}</span>
+            <input value={githubForm.repoDir} onChange={event => setGithubForm({ ...githubForm, repoDir: event.target.value })} />
+          </label>
+          <label className="field">
+            <span>{copy.githubBranch}</span>
+            <input value={githubForm.branch} onChange={event => setGithubForm({ ...githubForm, branch: event.target.value })} />
+          </label>
+          <label className="field">
+            <span>{copy.githubPlaintext}</span>
+            <select value={githubForm.allowPlaintextSensitive ? 'yes' : 'no'} onChange={event => setGithubForm({ ...githubForm, allowPlaintextSensitive: event.target.value === 'yes' })}>
+              <option value="no">{copy.no}</option>
+              <option value="yes">{copy.yes}</option>
+            </select>
+          </label>
+          <div className="form-actions span-all">
+            <button className="btn ghost" type="button" disabled={Boolean(busy)} onClick={() => void loadGitHubStatus()}>
+              {busy === 'github:load' ? copy.refreshing : copy.refresh}
+            </button>
+            <button className="btn ghost" type="button" disabled={Boolean(busy)} onClick={() => void saveGitHubConfig()}>
+              {busy === 'github:save' ? copy.running : copy.githubSave}
+            </button>
+            <button className="btn ghost" type="button" disabled={Boolean(busy)} onClick={() => void runGitHubBackup('dry-run')}>
+              {busy === 'github:dry-run' ? copy.running : copy.githubDryRun}
+            </button>
+            <button className="btn" type="button" disabled={Boolean(busy)} onClick={() => void runGitHubBackup('local')}>
+              {busy === 'github:local' ? copy.running : copy.githubLocalRun}
+            </button>
+          </div>
+        </div>
+        <div className="property-grid settings-grid">
+          <Property label={copy.status} value={formatBool(boolOf(githubStatus.enabled), copy)} />
+          <Property label={copy.githubPlaintext} value={formatBool(boolOf(githubStatus.allowPlaintextSensitive), copy)} />
+          <Property label={copy.githubLastCommit} value={textOf(githubStatus.lastCommit, '-')} />
+          <Property label={copy.githubLastError} value={textOf(githubStatus.lastError, '-')} />
+          <Property label={copy.githubRepoDir} value={textOf(githubStatus.repoDir, '-')} />
+          <Property label={copy.githubRemote} value={textOf(githubStatus.remoteUrl || githubRepo.remoteUrl, '-')} />
+          <Property label={copy.githubBranch} value={textOf(githubRepo.currentBranch || githubStatus.branch, '-')} />
+          <Property label={copy.changed} value={formatNumber(asArray(githubRepo.changes).length)} />
+          <Property label={copy.githubSchedule} value={formatBool(boolOf(githubSchedule.installed), copy)} />
+          <Property label={copy.githubNextRun} value={textOf(githubSchedule.nextRunTime, '-')} />
+        </div>
+        {githubResult ? (
+          <div className="stack">
+            {boolOf(githubResult.wouldBlockPush) ? <div className="notice error"><strong>{copy.githubWouldBlock}</strong></div> : null}
+            {githubWarnings.length ? (
+              <div className="notice">
+                <strong>{copy.warnings}</strong>
+                {githubWarnings.map((warning, indexValue) => <span key={`${warning}-${indexValue}`}>{warning}</span>)}
+              </div>
+            ) : null}
+            <div className="property-grid settings-grid">
+              <Property label={copy.dryRun} value={formatBool(boolOf(githubResult.dryRun), copy)} />
+              <Property label={copy.upload} value={formatBool(boolOf(githubResult.wouldPush || githubResult.push), copy)} />
+              <Property label={copy.files} value={formatNumber(asArray(githubResult.files).length)} />
+              <Property label={copy.issues} value={formatNumber(githubIssues.length)} />
+            </div>
+          </div>
+        ) : null}
       </Panel>
       <div className="panel-grid two">
         <Panel title={copy.backupSets}>

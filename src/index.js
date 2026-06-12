@@ -4886,6 +4886,30 @@ function appCommand(argv) {
       if (req.method === "GET" && url.pathname === "/api/backups") {
         return sendJson(res, getDashboardBackups(config));
       }
+      if (req.method === "GET" && url.pathname === "/api/backups/github/status") {
+        return sendJson(res, { ok: true, github: getGitHubBackupStatus(loadConfig()) });
+      }
+      if (req.method === "POST" && url.pathname === "/api/backups/github/configure") {
+        const body = await readRequestJson(req);
+        const result = configureGitHubBackup(loadConfig(), buildDashboardGitHubBackupConfigureArgv(body));
+        broadcastDashboardUpdate("backup:github-configure");
+        return sendJson(res, {
+          ...result,
+          status: getGitHubBackupStatus(loadConfig())
+        });
+      }
+      if (req.method === "POST" && url.pathname === "/api/backups/github/run") {
+        const body = await readRequestJson(req);
+        const runConfig = loadConfig();
+        const result = withHubLock(
+          runConfig.memoryDir,
+          "github-backup",
+          () => runGitHubBackup(runConfig, buildDashboardGitHubBackupRunArgv(body)),
+          runConfig.sync.lockStaleMs
+        );
+        broadcastDashboardUpdate("backup:github-run");
+        return sendJson(res, result);
+      }
       if (req.method === "GET" && url.pathname === "/api/backups/detail") {
         return sendJson(res, getBackupDetail(config.memoryDir, url.searchParams.get("name") || ""));
       }
@@ -6019,6 +6043,61 @@ function getDashboardBackups(config) {
     ? { ...loadConfig(), memoryDir: config }
     : config;
   return getBackupSummary(effectiveConfig.memoryDir, { limit: 100, ...getBackupRetentionConfig(effectiveConfig) });
+}
+
+function buildDashboardGitHubBackupRunArgv(body = {}) {
+  const argv = [];
+  if (body.dryRun === true) {
+    argv.push("--dry-run");
+  }
+  if (body.push !== true) {
+    argv.push("--no-push");
+  }
+  for (const [field, option] of [
+    ["reason", "--reason"],
+    ["remoteUrl", "--remote-url"],
+    ["repoDir", "--repo-dir"],
+    ["branch", "--branch"]
+  ]) {
+    if (body[field] !== undefined) {
+      argv.push(option, String(body[field] ?? ""));
+    }
+  }
+  return argv;
+}
+
+function buildDashboardGitHubBackupConfigureArgv(body = {}) {
+  const argv = [];
+  if (body.enabled === true) {
+    argv.push("--enabled");
+  } else if (body.enabled === false) {
+    argv.push("--disabled");
+  }
+  if (body.allowPlaintextSensitive === true) {
+    argv.push("--allow-plaintext-sensitive");
+  } else if (body.allowPlaintextSensitive === false) {
+    argv.push("--block-plaintext-sensitive");
+  }
+  if (body.scheduleEnabled === true) {
+    argv.push("--schedule-enabled");
+  } else if (body.scheduleEnabled === false) {
+    argv.push("--schedule-disabled");
+  }
+  for (const [field, option] of [
+    ["remoteUrl", "--remote-url"],
+    ["repoDir", "--repo-dir"],
+    ["branch", "--branch"],
+    ["include", "--include"],
+    ["exclude", "--exclude"],
+    ["time", "--time"],
+    ["taskName", "--task-name"]
+  ]) {
+    if (body[field] !== undefined) {
+      const value = Array.isArray(body[field]) ? body[field].join(",") : String(body[field] ?? "");
+      argv.push(option, value);
+    }
+  }
+  return argv;
 }
 
 function getDashboardSearch(memoryDir, { query = "", type = "all", tag = "", range = "all", sort = "relevance", limit = 50 } = {}) {
@@ -12387,13 +12466,13 @@ function configureGitHubBackup(config, argv = []) {
   if (hasFlag(argv, "--disabled") || hasFlag(argv, "--disable")) {
     nextGithub.enabled = false;
   }
-  if (getOption(argv, "--remote-url")) {
+  if (hasOption(argv, "--remote-url")) {
     nextGithub.remoteUrl = getOption(argv, "--remote-url");
   }
-  if (getOption(argv, "--repo-dir")) {
+  if (hasOption(argv, "--repo-dir") && getOption(argv, "--repo-dir")) {
     nextGithub.repoDir = resolveConfiguredPath(getOption(argv, "--repo-dir"));
   }
-  if (getOption(argv, "--branch")) {
+  if (hasOption(argv, "--branch") && getOption(argv, "--branch")) {
     nextGithub.branch = getOption(argv, "--branch");
   }
   if (hasFlag(argv, "--allow-plaintext-sensitive")) {
@@ -13694,6 +13773,10 @@ function getOption(argv, name) {
   }
   const value = argv[index + 1] || "";
   return value.startsWith("--") ? "" : value;
+}
+
+function hasOption(argv, name) {
+  return argv.indexOf(name) !== -1;
 }
 
 function hasFlag(argv, name) {

@@ -22,6 +22,15 @@ async function withHub(fn) {
   }
 }
 
+async function withTempDir(prefix, fn) {
+  const dir = await fs.mkdtemp(path.join(repoRoot, prefix));
+  try {
+    await fn(dir);
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+}
+
 function runCli(memoryDir, args) {
   return spawnSync(process.execPath, [cliPath, ...args], {
     cwd: repoRoot,
@@ -945,6 +954,71 @@ test("dashboard search and backup APIs expose cross-hub data", async () => {
       assert.equal(prune.apply, false);
       assert.ok(Array.isArray(prune.candidates));
       assert.equal(prune.backups.count, createdBackup.backups.count);
+
+      await withTempDir(".tmp-amh-dashboard-github-", async (repoDir) => {
+        const githubStatusRes = await fetch(`http://127.0.0.1:${port}/api/backups/github/status`);
+        assert.equal(githubStatusRes.status, 200);
+        const githubStatus = await githubStatusRes.json();
+        assert.equal(githubStatus.ok, true);
+        assert.equal(githubStatus.github.allowPlaintextSensitive, false);
+
+        const remoteUrl = "https://github.com/<owner>/<repo>.git";
+        const configureRes = await fetch(`http://127.0.0.1:${port}/api/backups/github/configure`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            enabled: true,
+            remoteUrl,
+            repoDir,
+            branch: "dashboard",
+            allowPlaintextSensitive: false
+          })
+        });
+        if (configureRes.status !== 200) {
+          assert.fail(await configureRes.text());
+        }
+        const configured = await configureRes.json();
+        assert.equal(configured.github.enabled, true);
+        assert.equal(configured.status.remoteUrl, remoteUrl);
+        assert.equal(configured.status.repoDir, path.resolve(repoDir));
+        assert.equal(configured.status.branch, "dashboard");
+
+        const fakeToken = "ghp_" + "C".repeat(32);
+        await fs.writeFile(path.join(memoryDir, "MEMORY.md"), `dashboard backup token ${fakeToken}\n`, "utf8");
+        const dryRunRes = await fetch(`http://127.0.0.1:${port}/api/backups/github/run`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            dryRun: true,
+            push: true,
+            remoteUrl,
+            repoDir,
+            branch: "dashboard",
+            reason: "dashboard-github-preview"
+          })
+        });
+        if (dryRunRes.status !== 200) {
+          assert.fail(await dryRunRes.text());
+        }
+        const dryRun = await dryRunRes.json();
+        assert.equal(dryRun.ok, true);
+        assert.equal(dryRun.dryRun, true);
+        assert.equal(dryRun.wouldPush, true);
+        assert.equal(dryRun.wouldBlockPush, true);
+        assert.ok(dryRun.warnings.some((warning) => /Data security reminder/.test(warning)));
+        assert.ok(dryRun.scan.issues.some((issue) => issue.kind === "github-token"));
+
+        const clearRemoteRes = await fetch(`http://127.0.0.1:${port}/api/backups/github/configure`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ remoteUrl: "" })
+        });
+        if (clearRemoteRes.status !== 200) {
+          assert.fail(await clearRemoteRes.text());
+        }
+        const cleared = await clearRemoteRes.json();
+        assert.equal(cleared.status.remoteUrl, "");
+      });
     } finally {
       await stopServer(child);
     }

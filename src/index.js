@@ -4380,7 +4380,7 @@ function backupCommand(argv) {
     return;
   }
   if (action !== "create") {
-    throw new Error("Usage: ai-memory-hub backup [--reason manual] | ai-memory-hub backup status | ai-memory-hub backup run [--no-push] | ai-memory-hub backup configure [--enabled] [--remote-url <url>] [--repo-dir <dir>] | ai-memory-hub backup schedule <status|install|uninstall> | ai-memory-hub backup list [--limit N] | ai-memory-hub backup prune [--daily 7] [--weekly 4] [--pre-sync 20] [--apply]");
+    throw new Error("Usage: ai-memory-hub backup [--reason manual] | ai-memory-hub backup status | ai-memory-hub backup run [--no-push] | ai-memory-hub backup configure [--enabled] [--remote-url <url>] [--repo-dir <dir>] [--allow-plaintext-sensitive] | ai-memory-hub backup schedule <status|install|uninstall> | ai-memory-hub backup list [--limit N] | ai-memory-hub backup prune [--daily 7] [--weekly 4] [--pre-sync 20] [--apply]");
   }
   const reason = getOption(argv, "--reason") || positionalArgs(argv).join(" ").trim() || "manual";
   const backup = withHubLock(config.memoryDir, "backup", () => backupHub(config.memoryDir, reason), config.sync.lockStaleMs);
@@ -6836,6 +6836,7 @@ function defaultConfig(memoryDir) {
         remoteUrl: DEFAULT_GITHUB_BACKUP_REMOTE,
         repoDir: DEFAULT_GITHUB_BACKUP_REPO_DIR,
         branch: "main",
+        allowPlaintextSensitive: false,
         include: getDefaultGitHubBackupInclude(memoryDir),
         exclude: [],
         schedule: {
@@ -12357,6 +12358,7 @@ function getGitHubBackupConfig(config = loadConfig()) {
     remoteUrl: String(raw.remoteUrl || "").trim(),
     repoDir: resolveConfiguredPath(raw.repoDir || defaults.repoDir),
     branch: String(raw.branch || "main").trim() || "main",
+    allowPlaintextSensitive: raw.allowPlaintextSensitive === true,
     include: normalizeBackupPatternList(raw.include, defaults.include),
     exclude: normalizeBackupPatternList(raw.exclude, []),
     schedule: {
@@ -12394,6 +12396,12 @@ function configureGitHubBackup(config, argv = []) {
   if (getOption(argv, "--branch")) {
     nextGithub.branch = getOption(argv, "--branch");
   }
+  if (hasFlag(argv, "--allow-plaintext-sensitive")) {
+    nextGithub.allowPlaintextSensitive = true;
+  }
+  if (hasFlag(argv, "--block-plaintext-sensitive")) {
+    nextGithub.allowPlaintextSensitive = false;
+  }
   if (getOption(argv, "--include")) {
     nextGithub.include = normalizeBackupPatternList(getOption(argv, "--include").split(","), nextGithub.include);
   }
@@ -12421,9 +12429,14 @@ function configureGitHubBackup(config, argv = []) {
     }
   };
   writeJson(configPath, next);
+  const warnings = [];
+  if (nextGithub.allowPlaintextSensitive) {
+    warnings.push("Data security reminder: plaintext GitHub backup uploads can include private user data. Use only with an approved private remote, restricted access, and an understood retention policy.");
+  }
   return {
     ok: true,
-    github: getGitHubBackupConfig(loadConfig())
+    github: getGitHubBackupConfig(loadConfig()),
+    warnings
   };
 }
 
@@ -12439,6 +12452,7 @@ function getGitHubBackupStatus(config = loadConfig()) {
     remoteUrl: github.remoteUrl,
     repoDir,
     branch: github.branch,
+    allowPlaintextSensitive: github.allowPlaintextSensitive,
     include: github.include,
     exclude: github.exclude,
     lastRunAt: github.lastRunAt,
@@ -12480,16 +12494,20 @@ function runGitHubBackup(config, argv = []) {
     repoDir: getOption(argv, "--repo-dir") ? resolveConfiguredPath(getOption(argv, "--repo-dir")) : configuredGithub.repoDir,
     branch: getOption(argv, "--branch") || configuredGithub.branch
   };
-  const push = !hasFlag(argv, "--no-push") && !hasFlag(argv, "--dry-run");
   const dryRun = hasFlag(argv, "--dry-run");
+  const noPush = hasFlag(argv, "--no-push");
+  const wouldPush = Boolean(github.remoteUrl) && !noPush;
+  const push = wouldPush && !dryRun;
   const reason = getOption(argv, "--reason") || "github-backup";
 
   try {
     assertSafeGitHubBackupRepoDir(config.memoryDir, github.repoDir);
     const files = getGitHubBackupExportFiles(config.memoryDir, github);
     const scan = scanBackupFilesForSecrets(files);
-    if (scan.issues.length > 0) {
-      const message = `GitHub backup blocked by sensitive content scan: ${scan.issues.map((issue) => `${issue.file}:${issue.line}:${issue.kind}`).join(", ")}`;
+    const warnings = getGitHubBackupUploadWarnings(github, scan, { wouldPush, push, dryRun });
+    const plaintextPushBlocked = scan.issues.length > 0 && push && !github.allowPlaintextSensitive;
+    if (plaintextPushBlocked) {
+      const message = `GitHub backup push blocked by sensitive content scan: ${scan.issues.map((issue) => `${issue.file}:${issue.line}:${issue.kind}`).join(", ")}. Use --no-push for a complete local backup, or configure --allow-plaintext-sensitive only when the remote is approved for plaintext private data. ${warnings.join(" ")}`.trim();
       if (!dryRun) {
         updateGitHubBackupState(config, { lastRunAt: startedAt.toISOString(), lastError: message });
       }
@@ -12501,6 +12519,10 @@ function runGitHubBackup(config, argv = []) {
         ok: true,
         dryRun: true,
         push: false,
+        wouldPush,
+        wouldBlockPush: scan.issues.length > 0 && wouldPush && !github.allowPlaintextSensitive,
+        allowPlaintextSensitive: github.allowPlaintextSensitive,
+        warnings,
         repoDir: github.repoDir,
         remoteUrl: github.remoteUrl,
         branch: github.branch,
@@ -12553,6 +12575,10 @@ function runGitHubBackup(config, argv = []) {
       committed,
       pushed,
       push,
+      wouldPush,
+      wouldBlockPush: false,
+      allowPlaintextSensitive: github.allowPlaintextSensitive,
+      warnings,
       commit,
       repoDir: github.repoDir,
       remoteUrl: github.remoteUrl,
@@ -12571,6 +12597,21 @@ function runGitHubBackup(config, argv = []) {
     }
     throw error;
   }
+}
+
+function getGitHubBackupUploadWarnings(github, scan, { wouldPush = false } = {}) {
+  const warnings = [];
+  if (wouldPush) {
+    warnings.push("Data security reminder: this backup upload may send private user data to the configured remote. Verify the remote owner, access controls, retention policy, and recovery need before uploading.");
+    if (scan.issues.length > 0) {
+      warnings.push(github.allowPlaintextSensitive
+        ? "Sensitive-looking content was detected and plaintext upload is explicitly allowed; proceed only if this remote is approved for private backup data."
+        : "Sensitive-looking content was detected; plaintext upload is blocked by default.");
+    }
+  } else if (scan.issues.length > 0) {
+    warnings.push("Local backup contains private user data; protect the backup directory and use remote upload only after confirming data security.");
+  }
+  return warnings;
 }
 
 function githubBackupScheduleCommand(config, argv = []) {

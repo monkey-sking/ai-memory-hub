@@ -17,6 +17,7 @@
       "remoteUrl": "https://github.com/<owner>/<private-backup-repo>.git",
       "repoDir": "%USERPROFILE%\\.ai-memory-github-backup",
       "branch": "main",
+      "allowPlaintextSensitive": false,
       "include": [
         "MEMORY.md",
         "BOOTSTRAP.md",

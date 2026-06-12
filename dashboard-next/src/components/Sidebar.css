@@ -81,7 +81,7 @@
 
 .sidebar-nav a {
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr);
+  grid-template-columns: 30px minmax(0, 1fr);
   align-items: center;
   min-height: 40px;
   gap: 10px;
@@ -105,8 +105,8 @@
 
 .nav-icon {
   display: grid;
-  width: 34px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   place-items: center;
   border-radius: 7px;
   background: rgba(255, 255, 255, 0.04);
@@ -125,7 +125,7 @@
 }
 
 .sidebar.collapsed .sidebar-nav a {
-  grid-template-columns: 34px;
+  grid-template-columns: 30px;
   justify-content: center;
   padding-inline: 8px;
 }
@@ -192,7 +192,7 @@
 
   .sidebar-nav a,
   .sidebar.collapsed .sidebar-nav a {
-    grid-template-columns: 30px;
+    grid-template-columns: 28px;
     flex: 0 0 auto;
     width: 42px;
     min-height: 40px;

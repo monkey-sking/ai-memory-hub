@@ -13,6 +13,9 @@ export type DashboardSection =
   | 'radio'
   | 'dispatch'
   | 'workflows'
+  | 'analytics'
+  | 'backups'
+  | 'search'
   | 'tools'
   | 'projects'
   | 'health'
@@ -34,6 +37,7 @@ interface DashboardSnapshot {
   projects?: AnyRecord
   dispatch?: AnyRecord
   tools?: AnyRecord
+  backups?: AnyRecord
   settings?: AnyRecord
 }
 
@@ -45,6 +49,9 @@ const titles: Record<Language, Record<DashboardSection, string>> = {
     radio: 'Agent Radio',
     dispatch: '调度',
     workflows: '工作流',
+    analytics: '分析',
+    backups: '备份',
+    search: '搜索',
     tools: '工具',
     projects: '项目',
     health: '健康',
@@ -57,6 +64,9 @@ const titles: Record<Language, Record<DashboardSection, string>> = {
     radio: 'Agent Radio',
     dispatch: 'Dispatch',
     workflows: 'Workflows',
+    analytics: 'Analytics',
+    backups: 'Backups',
+    search: 'Search',
     tools: 'Tools',
     projects: 'Projects',
     health: 'Health',
@@ -72,6 +82,9 @@ const subtitles: Record<Language, Record<DashboardSection, string>> = {
     radio: '跨工具消息与审核请求',
     dispatch: '自动派发、重试和运行记录',
     workflows: 'Planner / Executor / Reviewer 协作链路',
+    analytics: '记忆、任务、Radio 和 Relay 的趋势概览',
+    backups: '备份集、文件浏览和恢复预览',
+    search: '跨记忆、任务、Radio、工作流的全局检索',
     tools: '工具接入、能力注册表和运行状态',
     projects: '项目注册表与可见项目',
     health: '记忆、存储和运行健康检查',
@@ -84,6 +97,9 @@ const subtitles: Record<Language, Record<DashboardSection, string>> = {
     radio: 'Cross-tool messages and review requests',
     dispatch: 'Automation dispatch, retries, and run records',
     workflows: 'Planner / executor / reviewer coordination',
+    analytics: 'Memory, tasks, radio, and relay analytics',
+    backups: 'Backup sets, file browser, and restore preview',
+    search: 'Global search across memory, tasks, radio, and workflows',
     tools: 'Tool connectivity, capabilities, and runner health',
     projects: 'Project registry and visible projects',
     health: 'Memory, storage, and runtime diagnostics',
@@ -180,7 +196,54 @@ const labels = {
     notes: '备注',
     review: '审核',
     clear: '清空',
-    cancel: '取消'
+    cancel: '取消',
+    analyticsOverview: '分析概览',
+    tasksByStatus: '任务状态分布',
+    radioByType: 'Radio 类型分布',
+    relayByState: 'Relay 状态分布',
+    toolAutomation: '工具自动化',
+    missing: '缺失',
+    backupStorage: '备份存储',
+    topProjects: '项目排行',
+    globalSearch: '全局搜索',
+    searchPlaceholder: '搜索记忆、任务、Radio 或工作流',
+    resultCount: '结果数',
+    elapsed: '耗时',
+    range: '时间范围',
+    sort: '排序',
+    relevance: '相关性',
+    newest: '最新',
+    oldest: '最早',
+    allRanges: '全部时间',
+    last24h: '24 小时',
+    last7d: '7 天',
+    last30d: '30 天',
+    last90d: '90 天',
+    facets: '筛选维度',
+    tags: '标签',
+    results: '结果',
+    score: '分数',
+    backupSets: '备份集',
+    storageUsed: '存储占用',
+    retained: '保留',
+    pruneCandidates: '可清理',
+    createBackup: '创建备份',
+    backupReason: '备份原因',
+    inspectBackup: '查看文件',
+    previewRestore: '恢复预览',
+    backupFiles: '备份文件',
+    restoreSummary: '恢复摘要',
+    backupPolicy: '备份策略',
+    daily: '每日',
+    weekly: '每周',
+    preSync: '同步前',
+    changed: '变化',
+    different: '不同',
+    missingCurrent: '当前缺失',
+    unchanged: '未变化',
+    bytes: '大小',
+    path: '路径',
+    manual: '手动'
   },
   en: {
     refresh: 'Refresh',
@@ -270,7 +333,54 @@ const labels = {
     notes: 'Notes',
     review: 'Review',
     clear: 'Clear',
-    cancel: 'Cancel'
+    cancel: 'Cancel',
+    analyticsOverview: 'Analytics overview',
+    tasksByStatus: 'Tasks by status',
+    radioByType: 'Radio by type',
+    relayByState: 'Relay by state',
+    toolAutomation: 'Tool automation',
+    missing: 'Missing',
+    backupStorage: 'Backup storage',
+    topProjects: 'Top projects',
+    globalSearch: 'Global search',
+    searchPlaceholder: 'Search memories, tasks, radio, or workflows',
+    resultCount: 'Results',
+    elapsed: 'Elapsed',
+    range: 'Range',
+    sort: 'Sort',
+    relevance: 'Relevance',
+    newest: 'Newest',
+    oldest: 'Oldest',
+    allRanges: 'All time',
+    last24h: '24 hours',
+    last7d: '7 days',
+    last30d: '30 days',
+    last90d: '90 days',
+    facets: 'Facets',
+    tags: 'Tags',
+    results: 'Results',
+    score: 'Score',
+    backupSets: 'Backup sets',
+    storageUsed: 'Storage used',
+    retained: 'Retained',
+    pruneCandidates: 'Prune candidates',
+    createBackup: 'Create backup',
+    backupReason: 'Backup reason',
+    inspectBackup: 'Inspect files',
+    previewRestore: 'Restore preview',
+    backupFiles: 'Backup files',
+    restoreSummary: 'Restore summary',
+    backupPolicy: 'Backup policy',
+    daily: 'Daily',
+    weekly: 'Weekly',
+    preSync: 'Pre-sync',
+    changed: 'Changed',
+    different: 'Different',
+    missingCurrent: 'Missing current',
+    unchanged: 'Unchanged',
+    bytes: 'Bytes',
+    path: 'Path',
+    manual: 'Manual'
   }
 }
 
@@ -377,6 +487,9 @@ export default function Dashboard({ section }: DashboardProps) {
           {section === 'radio' && <RadioPanel copy={copy} model={viewModel} onRefresh={refresh} />}
           {section === 'dispatch' && <DispatchPanel copy={copy} model={viewModel} onRefresh={refresh} />}
           {section === 'workflows' && <WorkflowsPanel copy={copy} model={viewModel} />}
+          {section === 'analytics' && <AnalyticsPanel copy={copy} model={viewModel} />}
+          {section === 'backups' && <BackupsPanel copy={copy} model={viewModel} onRefresh={refresh} />}
+          {section === 'search' && <SearchPanel copy={copy} />}
           {section === 'tools' && <ToolsPanel copy={copy} model={viewModel} />}
           {section === 'projects' && <ProjectsPanel copy={copy} model={viewModel} />}
           {section === 'health' && <HealthPanel copy={copy} model={viewModel} health={health} />}
@@ -405,6 +518,7 @@ function buildViewModel(data: DashboardSnapshot | null) {
   const projects = asRecord(data?.projects)
   const dispatch = asRecord(data?.dispatch)
   const tools = asRecord(data?.tools)
+  const backups = asRecord(data?.backups)
   const settings = asRecord(data?.settings)
 
   return {
@@ -421,6 +535,7 @@ function buildViewModel(data: DashboardSnapshot | null) {
     relay: asArray<AnyRecord>(dispatch.relay),
     tools: asArray<AnyRecord>(tools.tools),
     toolSummary: asRecord(tools.summary),
+    backups,
     settings
   }
 }
@@ -1115,6 +1230,404 @@ function WorkflowsPanel({ copy, model }: { copy: Copy; model: ViewModel }) {
   )
 }
 
+function AnalyticsPanel({ copy, model }: { copy: Copy; model: ViewModel }) {
+  const statusTasks = asRecord(model.status.tasks)
+  const relayStatus = asRecord(model.status.relay)
+  const toolSummary = asRecord(model.status.toolSummary)
+  const backupRetention = asRecord(model.backups.retention)
+  const taskStatus = countValues(model.tasks.map(task => textOf(task.status, 'open')))
+  const radioTypes = countValues(model.radio.map(message => textOf(message.type, 'note')))
+  const projectCounts = countValues([
+    ...model.tasks.map(task => textOf(task.project)),
+    ...model.radio.map(message => textOf(message.project)),
+    ...model.workflows.map(workflow => textOf(workflow.project))
+  ], 10)
+  const relayCounts = ['pending', 'dispatched', 'acked', 'progress', 'retrying', 'failed', 'completed', 'abandoned']
+    .map(key => ({ key, count: numberOf(relayStatus[key]) }))
+    .filter(item => item.count > 0)
+
+  return (
+    <div className="stack">
+      <div className="dashboard-grid">
+        <MetricCard label={copy.totalTasks} value={formatNumber(statusTasks.total)} />
+        <MetricCard label={copy.activeTasks} value={formatNumber(statusTasks.active)} tone="success" />
+        <MetricCard label={copy.relayRate} value={textOf(asRecord(model.metrics.relay).successRate, '0%')} tone="warning" />
+        <MetricCard label={copy.backupSets} value={formatNumber(model.backups.count ?? model.status.backups)} />
+        <MetricCard label={copy.storageUsed} value={textOf(model.backups.totalDisplay, '-')} />
+        <MetricCard label={copy.toolsReady} value={formatNumber(toolSummary.runnable)} />
+      </div>
+      <div className="panel-grid two">
+        <Panel title={copy.tasksByStatus}>
+          <BarList items={taskStatus} emptyText={copy.noData} />
+        </Panel>
+        <Panel title={copy.radioByType}>
+          <BarList items={radioTypes} emptyText={copy.noData} />
+        </Panel>
+        <Panel title={copy.relayByState}>
+          <BarList items={relayCounts} emptyText={copy.noData} />
+        </Panel>
+        <Panel title={copy.topProjects}>
+          <BarList items={projectCounts} emptyText={copy.noData} />
+        </Panel>
+        <Panel title={copy.toolAutomation}>
+          <div className="property-grid">
+            <Property label={copy.installed} value={formatNumber(toolSummary.detected)} />
+            <Property label={copy.configured} value={formatNumber(toolSummary.configured)} />
+            <Property label={copy.runnable} value={formatNumber(toolSummary.runnable)} />
+            <Property label={copy.missing} value={formatNumber(toolSummary.missing)} />
+          </div>
+        </Panel>
+        <Panel title={copy.backupStorage}>
+          <div className="property-grid">
+            <Property label={copy.retained} value={formatNumber(backupRetention.keep)} />
+            <Property label={copy.pruneCandidates} value={formatNumber(backupRetention.prune)} />
+            <Property label={copy.storageUsed} value={textOf(model.backups.totalDisplay, '-')} />
+            <Property label={copy.backupSets} value={formatNumber(model.backups.count ?? model.status.backups)} />
+          </div>
+        </Panel>
+      </div>
+    </div>
+  )
+}
+
+function BackupsPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; onRefresh: () => Promise<void> }) {
+  const [backups, setBackups] = useState<AnyRecord>(model.backups)
+  const [selectedName, setSelectedName] = useState('')
+  const [detail, setDetail] = useState<AnyRecord | null>(null)
+  const [restorePlan, setRestorePlan] = useState<AnyRecord | null>(null)
+  const [createOpen, setCreateOpen] = useState(false)
+  const [reason, setReason] = useState('dashboard-manual')
+  const [busy, setBusy] = useState('')
+  const [error, setError] = useState('')
+
+  const backupList = asArray<AnyRecord>(backups.backups)
+
+  const loadBackups = useCallback(async () => {
+    setBusy('load')
+    setError('')
+    try {
+      const nextBackups = await apiGet<AnyRecord>('/api/backups')
+      setBackups(nextBackups)
+      if (!selectedName) {
+        setSelectedName(textOf(asArray<AnyRecord>(nextBackups.backups)[0]?.name))
+      }
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : String(nextError))
+    } finally {
+      setBusy('')
+    }
+  }, [selectedName])
+
+  const activeBackupName = selectedName || textOf(backupList[0]?.name)
+
+  const createBackup = async () => {
+    const nextReason = reason.trim() || 'dashboard-manual'
+    setBusy('create')
+    setError('')
+    try {
+      const result = await apiPost<AnyRecord>('/api/backups/create', { reason: nextReason })
+      setBackups(asRecord(result.backups))
+      setReason(nextReason)
+      setCreateOpen(false)
+      await onRefresh()
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : String(nextError))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const inspectBackup = async (name: string) => {
+    if (!name) return
+    setSelectedName(name)
+    setBusy(`detail:${name}`)
+    setError('')
+    try {
+      const nextDetail = await apiGet<AnyRecord>(`/api/backups/detail?name=${encodeURIComponent(name)}`)
+      setDetail(nextDetail)
+      setRestorePlan(asRecord(nextDetail.restore))
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : String(nextError))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const previewRestore = async (name: string) => {
+    if (!name) return
+    setSelectedName(name)
+    setBusy(`restore:${name}`)
+    setError('')
+    try {
+      const result = await apiPost<AnyRecord>('/api/backups/restore', { name, apply: false })
+      setRestorePlan(asRecord(result.plan))
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : String(nextError))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const policy = asRecord(backups.policy)
+  const retention = asRecord(backups.retention)
+  const selectedFiles = asArray<AnyRecord>(detail?.files)
+  const summary = asRecord(restorePlan?.summary)
+
+  return (
+    <div className="stack">
+      <div className="dashboard-grid">
+        <MetricCard label={copy.backupSets} value={formatNumber(backups.count ?? model.status.backups)} />
+        <MetricCard label={copy.storageUsed} value={textOf(backups.totalDisplay, '-')} />
+        <MetricCard label={copy.retained} value={formatNumber(retention.keep)} tone="success" />
+        <MetricCard label={copy.pruneCandidates} value={formatNumber(retention.prune)} tone="warning" />
+      </div>
+      <Panel title={copy.backupPolicy}>
+        <div className="section-actions">
+          <button className="btn ghost" type="button" onClick={() => void loadBackups()} disabled={Boolean(busy)}>
+            {busy === 'load' ? copy.running : copy.refresh}
+          </button>
+          <button className="btn" type="button" onClick={() => { setError(''); setCreateOpen(true) }}>
+            {copy.createBackup}
+          </button>
+        </div>
+        <div className="property-grid settings-grid">
+          <Property label={copy.daily} value={formatNumber(policy.daily)} />
+          <Property label={copy.weekly} value={formatNumber(policy.weekly)} />
+          <Property label={copy.preSync} value={formatNumber(policy.preSync)} />
+          <Property label={copy.pruneCandidates} value={textOf(retention.pruneDisplay, '-')} />
+        </div>
+        {error ? <div className="inline-error">{error}</div> : null}
+      </Panel>
+      <div className="panel-grid two">
+        <Panel title={copy.backupSets}>
+          <div className="backup-list">
+            {backupList.length ? backupList.map(backup => {
+              const name = textOf(backup.name)
+              const active = name === selectedName
+              return (
+                <article className={`backup-row ${active ? 'active' : ''}`} key={name}>
+                  <div>
+                    <strong>{name || '-'}</strong>
+                    <p>{[formatDate(textOf(backup.createdAt)), textOf(backup.reason), textOf(backup.display)].filter(Boolean).join(' · ')}</p>
+                    <p>{asArray<string>(backup.files).slice(0, 6).join(', ')}</p>
+                  </div>
+                  <div className="backup-row-actions">
+                    <StatusBadge status={textOf(backup.retention, 'keep')} />
+                    <button className="btn small ghost" type="button" disabled={busy === `detail:${name}`} onClick={() => void inspectBackup(name)}>
+                      {copy.inspectBackup}
+                    </button>
+                    <button className="btn small ghost" type="button" disabled={busy === `restore:${name}`} onClick={() => void previewRestore(name)}>
+                      {copy.previewRestore}
+                    </button>
+                  </div>
+                </article>
+              )
+            }) : <EmptyState text={copy.noData} />}
+          </div>
+        </Panel>
+      <Panel title={copy.restoreSummary}>
+          {restorePlan ? (
+            <div className="property-grid">
+              <Property label={copy.changed} value={formatNumber(summary.changed)} />
+              <Property label={copy.different} value={formatNumber(summary.different)} />
+              <Property label={copy.missingCurrent} value={formatNumber(summary.missingCurrent)} />
+              <Property label={copy.unchanged} value={formatNumber(summary.unchanged)} />
+              <Property label={copy.bytes} value={textOf(summary.display, '-')} />
+              <Property label={copy.title} value={textOf(restorePlan.name, '-')} />
+            </div>
+          ) : (
+            <EmptyState text={activeBackupName ? copy.previewRestore : copy.noData} />
+          )}
+        </Panel>
+      </div>
+      <Panel title={copy.backupFiles}>
+        <DataTable
+          emptyText={copy.noData}
+          columns={[copy.status, copy.path, copy.type, copy.bytes]}
+          rows={selectedFiles.map(file => [
+            <StatusBadge status={textOf(file.status, 'file')} />,
+            textOf(file.name, '-'),
+            textOf(file.kind, '-'),
+            textOf(file.display, '-')
+          ])}
+        />
+      </Panel>
+      {createOpen ? (
+        <Modal title={copy.createBackup} onClose={() => setCreateOpen(false)}>
+          <div className="form-grid">
+            <label className="field span-all">
+              <span>{copy.backupReason}</span>
+              <input value={reason} onChange={event => setReason(event.target.value)} />
+            </label>
+            {error ? <div className="inline-error span-all">{error}</div> : null}
+            <div className="form-actions span-all">
+              <button className="btn ghost" type="button" onClick={() => setCreateOpen(false)}>
+                {copy.cancel}
+              </button>
+              <button className="btn" type="button" disabled={busy === 'create'} onClick={() => void createBackup()}>
+                {busy === 'create' ? copy.running : copy.createBackup}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
+    </div>
+  )
+}
+
+function SearchPanel({ copy }: { copy: Copy }) {
+  const [query, setQuery] = useState('')
+  const [type, setType] = useState('all')
+  const [range, setRange] = useState('all')
+  const [sort, setSort] = useState('relevance')
+  const [tag, setTag] = useState('')
+  const [payload, setPayload] = useState<AnyRecord | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  const runSearch = useCallback(async (overrides: Partial<{ query: string; type: string; range: string; sort: string; tag: string }> = {}) => {
+    const nextQuery = overrides.query ?? query
+    const nextType = overrides.type ?? type
+    const nextRange = overrides.range ?? range
+    const nextSort = overrides.sort ?? sort
+    const nextTag = overrides.tag ?? tag
+    setLoading(true)
+    setError('')
+    try {
+      const params = new URLSearchParams({ q: nextQuery, type: nextType, range: nextRange, sort: nextSort, tag: nextTag, limit: '80' })
+      setPayload(await apiGet<AnyRecord>(`/api/search?${params.toString()}`))
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : String(nextError))
+    } finally {
+      setLoading(false)
+    }
+  }, [query, range, sort, tag, type])
+
+  useEffect(() => {
+    let active = true
+    void apiGet<AnyRecord>('/api/search?limit=0')
+      .then(nextPayload => {
+        if (active) setPayload(nextPayload)
+      })
+      .catch(nextError => {
+        if (active) setError(nextError instanceof Error ? nextError.message : String(nextError))
+      })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const facets = asRecord(payload?.facets)
+  const types = asArray<AnyRecord>(facets.types)
+  const tags = asArray<AnyRecord>(facets.tags)
+  const projects = asArray<AnyRecord>(facets.projects)
+  const results = asArray<AnyRecord>(payload?.results)
+
+  return (
+    <div className="stack">
+      <Panel title={copy.globalSearch}>
+        <div className="form-grid search-control-grid">
+          <label className="field span-2">
+            <span>{copy.searchText}</span>
+            <input value={query} onChange={event => setQuery(event.target.value)} placeholder={copy.searchPlaceholder} />
+          </label>
+          <label className="field">
+            <span>{copy.type}</span>
+            <select value={type} onChange={event => setType(event.target.value)}>
+              <option value="all">{copy.allTypes}</option>
+              <option value="memory">memory</option>
+              <option value="task">task</option>
+              <option value="radio">radio</option>
+              <option value="workflow">workflow</option>
+            </select>
+          </label>
+          <label className="field">
+            <span>{copy.range}</span>
+            <select value={range} onChange={event => setRange(event.target.value)}>
+              <option value="all">{copy.allRanges}</option>
+              <option value="24h">{copy.last24h}</option>
+              <option value="7d">{copy.last7d}</option>
+              <option value="30d">{copy.last30d}</option>
+              <option value="90d">{copy.last90d}</option>
+            </select>
+          </label>
+          <label className="field">
+            <span>{copy.sort}</span>
+            <select value={sort} onChange={event => setSort(event.target.value)}>
+              <option value="relevance">{copy.relevance}</option>
+              <option value="newest">{copy.newest}</option>
+              <option value="oldest">{copy.oldest}</option>
+            </select>
+          </label>
+          <div className="form-actions">
+            <button className="btn ghost" type="button" onClick={() => { setQuery(''); setType('all'); setRange('all'); setSort('relevance'); setTag('') }}>
+              {copy.clear}
+            </button>
+            <button className="btn" type="button" onClick={() => void runSearch()} disabled={loading}>
+              {loading ? copy.running : copy.globalSearch}
+            </button>
+          </div>
+        </div>
+        {error ? <div className="inline-error">{error}</div> : null}
+      </Panel>
+      <div className="dashboard-grid">
+        <MetricCard label={copy.resultCount} value={formatNumber(payload?.count)} />
+        <MetricCard label={copy.elapsed} value={`${formatNumber(payload?.elapsedMs)} ms`} />
+        <MetricCard label={copy.type} value={type} />
+        <MetricCard label={copy.tags} value={tag || '-'} />
+      </div>
+      <div className="panel-grid two">
+        <Panel title={copy.facets}>
+          <div className="facet-group">
+            <h4>{copy.type}</h4>
+            <div className="chip-list">
+              {types.map(item => <button className="chip button-chip" type="button" key={textOf(item.key)} onClick={() => setType(textOf(item.key, 'all'))}>{textOf(item.label || item.key)} {formatNumber(item.count)}</button>)}
+            </div>
+          </div>
+          <div className="facet-group">
+            <h4>{copy.tags}</h4>
+            <div className="chip-list">
+              {tags.length ? tags.slice(0, 24).map(item => (
+                <button className={`chip button-chip ${tag === textOf(item.key) ? 'active' : ''}`} type="button" key={textOf(item.key)} onClick={() => setTag(textOf(item.key))}>
+                  {textOf(item.key)} {formatNumber(item.count)}
+                </button>
+              )) : <EmptyState text={copy.noData} />}
+            </div>
+          </div>
+          <div className="facet-group">
+            <h4>{copy.project}</h4>
+            <div className="chip-list">
+              {projects.length ? projects.slice(0, 16).map(item => <span className="chip" key={textOf(item.key)}>{textOf(item.key)} {formatNumber(item.count)}</span>) : <EmptyState text={copy.noData} />}
+            </div>
+          </div>
+        </Panel>
+        <Panel title={copy.results}>
+          <div className="search-results">
+            {results.length ? results.map((result, indexValue) => {
+              const meta = asRecord(result.meta)
+              return (
+                <article className="search-result-card" key={`${textOf(result.kind)}-${textOf(meta.id)}-${indexValue}`}>
+                  <div className="search-result-header">
+                    <StatusBadge status={textOf(result.kind, 'result')} />
+                    <strong>{textOf(result.title, '-')}</strong>
+                    <span>{formatDate(textOf(result.ts))}</span>
+                  </div>
+                  <p>{textOf(result.preview || result.text, '-')}</p>
+                  <div className="chip-list">
+                    {textOf(meta.project) ? <span className="chip">{textOf(meta.project)}</span> : null}
+                    {asArray<string>(result.tags).slice(0, 6).map(item => <span className="chip" key={item}>{item}</span>)}
+                    <span className="chip">{copy.score}: {formatNumber(result.score)}</span>
+                  </div>
+                </article>
+              )
+            }) : <EmptyState text={copy.noData} />}
+          </div>
+        </Panel>
+      </div>
+    </div>
+  )
+}
+
 function ToolsPanel({ copy, model }: { copy: Copy; model: ViewModel }) {
   if (!model.tools.length) {
     return (
@@ -1277,6 +1790,27 @@ function DataTable({ columns, rows, emptyText }: { columns: string[]; rows: Reac
   )
 }
 
+function BarList({ items, emptyText }: { items: Array<{ key: string; count: number }>; emptyText: string }) {
+  const visibleItems = items.filter(item => item.key && item.count > 0)
+  const maxValue = Math.max(1, ...visibleItems.map(item => item.count))
+  if (!visibleItems.length) return <EmptyState text={emptyText} />
+  return (
+    <div className="bar-list">
+      {visibleItems.map(item => (
+        <div className="bar-row" key={item.key}>
+          <div className="bar-row-label">
+            <span>{item.key}</span>
+            <strong>{formatNumber(item.count)}</strong>
+          </div>
+          <div className="bar-track">
+            <span style={{ width: `${Math.max(4, Math.round((item.count / maxValue) * 100))}%` }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function TaskList({ copy, tasks }: { copy: Copy; tasks: AnyRecord[] }) {
   if (!tasks.length) return <EmptyState text={copy.noData} />
   return (
@@ -1381,4 +1915,16 @@ function formatBool(value: boolean, copy: Copy): string {
 function uniqueSorted(values: string[]): string[] {
   return Array.from(new Set(values.map(value => value.trim()).filter(Boolean)))
     .sort((left, right) => left.localeCompare(right))
+}
+
+function countValues(values: string[], limit = 8): Array<{ key: string; count: number }> {
+  const counts = new Map<string, number>()
+  values
+    .map(value => value.trim())
+    .filter(Boolean)
+    .forEach(value => counts.set(value, (counts.get(value) || 0) + 1))
+  return Array.from(counts.entries())
+    .map(([key, count]) => ({ key, count }))
+    .sort((left, right) => right.count - left.count || left.key.localeCompare(right.key))
+    .slice(0, limit)
 }

@@ -16,6 +16,9 @@ function App() {
           <Route path="radio" element={<Dashboard section="radio" />} />
           <Route path="dispatch" element={<Dashboard section="dispatch" />} />
           <Route path="workflows" element={<Dashboard section="workflows" />} />
+          <Route path="analytics" element={<Dashboard section="analytics" />} />
+          <Route path="backups" element={<Dashboard section="backups" />} />
+          <Route path="search" element={<Dashboard section="search" />} />
           <Route path="tools" element={<Dashboard section="tools" />} />
           <Route path="projects" element={<Dashboard section="projects" />} />
           <Route path="health" element={<Dashboard section="health" />} />

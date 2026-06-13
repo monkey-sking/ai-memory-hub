@@ -79,10 +79,19 @@ test("dashboard project read model lives outside the CLI entrypoint", async () =
   assert.match(index, /from\s+["']\.\/dashboard\/projects\.js["']/);
   assert.match(index, /createDashboardProjectsApi\(/);
   assert.match(index, /dashboardProjects\.getDashboardProjects/);
+  assert.match(index, /dashboardProjects\.createDashboardProject/);
+  assert.match(index, /dashboardProjects\.updateDashboardProject/);
+  assert.match(index, /dashboardProjects\.archiveDashboardProject/);
   assert.doesNotMatch(index, /function\s+getDashboardProjects\(/);
+  assert.doesNotMatch(index, /function\s+createDashboardProject\(/);
+  assert.doesNotMatch(index, /function\s+updateDashboardProject\(/);
+  assert.doesNotMatch(index, /function\s+archiveDashboardProject\(/);
 
   assert.match(projectsModule, /export\s+function\s+createDashboardProjectsApi/);
   assert.match(projectsModule, /function\s+getDashboardProjects\(/);
+  assert.match(projectsModule, /function\s+createDashboardProject\(/);
+  assert.match(projectsModule, /function\s+updateDashboardProject\(/);
+  assert.match(projectsModule, /function\s+archiveDashboardProject\(/);
   assert.match(projectsModule, /readProjects\(memoryDir\)/);
   assert.match(projectsModule, /readTasks\(memoryDir\)/);
   assert.match(projectsModule, /readRadioMessages\(memoryDir\)/);

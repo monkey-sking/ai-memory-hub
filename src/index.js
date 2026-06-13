@@ -91,14 +91,21 @@ const dashboardWorkflows = createDashboardWorkflowsApi({
 });
 
 const dashboardProjects = createDashboardProjectsApi({
+  createProject,
   filterProjects,
+  findProjectIndex,
+  isPlainObject,
   isHiddenProjectId,
+  normalizeProjectStatus,
+  parseProjectListOption,
   projectStatuses: PROJECT_STATUSES,
   projectVisibleStatuses: PROJECT_VISIBLE_STATUSES,
   readProjects,
   readRadioMessages,
   readTasks,
   readWorkflows,
+  updateProject,
+  writeProjects,
   uniqueStringList
 });
 
@@ -5087,7 +5094,7 @@ function appCommand(argv) {
         }
         let project;
         withHubLock(config.memoryDir, "project-create", () => {
-          project = createDashboardProject(config.memoryDir, body);
+          project = dashboardProjects.createDashboardProject(config.memoryDir, body);
         }, config.sync.lockStaleMs);
         broadcastDashboardUpdate("project:create");
         return sendJson(res, { ok: true, project, projects: dashboardProjects.getDashboardProjects(config.memoryDir), status: getStatusObject() });
@@ -5106,7 +5113,7 @@ function appCommand(argv) {
           const body = await readRequestJson(req);
           let project;
           withHubLock(config.memoryDir, "project-update", () => {
-            project = updateDashboardProject(config.memoryDir, projectId, body);
+            project = dashboardProjects.updateDashboardProject(config.memoryDir, projectId, body);
           }, config.sync.lockStaleMs);
           broadcastDashboardUpdate("project:update");
           return sendJson(res, { ok: true, project, projects: dashboardProjects.getDashboardProjects(config.memoryDir), status: getStatusObject() });
@@ -5115,7 +5122,7 @@ function appCommand(argv) {
           const body = await readRequestJson(req);
           let project;
           withHubLock(config.memoryDir, "project-archive", () => {
-            project = archiveDashboardProject(config.memoryDir, projectId, body);
+            project = dashboardProjects.archiveDashboardProject(config.memoryDir, projectId, body);
           }, config.sync.lockStaleMs);
           broadcastDashboardUpdate("project:archive");
           return sendJson(res, { ok: true, project, projects: dashboardProjects.getDashboardProjects(config.memoryDir), status: getStatusObject() });
@@ -5633,76 +5640,6 @@ function getDashboardSnapshot(memoryDir) {
     backups: dashboardBackups.getDashboardBackups(memoryDir),
     settings: dashboardSettings.getDashboardSettings()
   };
-}
-
-function createDashboardProject(memoryDir, body) {
-  const projects = readProjects(memoryDir);
-  if (findProjectIndex(projects, body.id) !== -1) {
-    throw new Error(`Project already exists: ${body.id}`);
-  }
-  const project = createProject({
-    id: body.id,
-    name: body.name,
-    displayName: body.displayName || body.display_name || body.name,
-    status: body.status || "active",
-    type: body.type || "",
-    description: body.description || "",
-    metadata: isPlainObject(body.metadata) ? body.metadata : {},
-    aliases: Array.isArray(body.aliases) ? body.aliases : parseProjectListOption(body.aliases),
-    resources: isPlainObject(body.resources) ? body.resources : {}
-  });
-  projects.push(project);
-  writeProjects(memoryDir, projects);
-  return project;
-}
-
-function updateDashboardProject(memoryDir, id, body) {
-  if (!isPlainObject(body)) {
-    throw new Error("project update body must be an object");
-  }
-  const patch = {};
-  for (const key of ["name", "displayName", "type", "description"]) {
-    if (Object.prototype.hasOwnProperty.call(body, key)) {
-      patch[key] = String(body[key] || "").trim();
-    }
-  }
-  if (Object.prototype.hasOwnProperty.call(body, "status")) {
-    patch.status = normalizeProjectStatus(body.status);
-  }
-  if (Object.prototype.hasOwnProperty.call(body, "metadata")) {
-    if (!isPlainObject(body.metadata)) {
-      throw new Error("metadata must be an object");
-    }
-    patch.metadata = body.metadata;
-  }
-  if (Object.prototype.hasOwnProperty.call(body, "aliases")) {
-    patch.aliases = Array.isArray(body.aliases) ? uniqueStringList(body.aliases) : parseProjectListOption(body.aliases);
-  }
-  if (Object.prototype.hasOwnProperty.call(body, "resources")) {
-    if (!isPlainObject(body.resources)) {
-      throw new Error("resources must be an object");
-    }
-    patch.resources = body.resources;
-  }
-  if (Object.keys(patch).length === 0) {
-    throw new Error("project update requires at least one editable field");
-  }
-  return updateProject(memoryDir, id, (current) => ({
-    ...current,
-    ...patch,
-    metadata: patch.metadata ? { ...(current.metadata || {}), ...patch.metadata } : current.metadata,
-    resources: patch.resources ? { ...(current.resources || {}), ...patch.resources } : current.resources
-  }));
-}
-
-function archiveDashboardProject(memoryDir, id, body = {}) {
-  const now = new Date().toISOString();
-  return updateProject(memoryDir, id, (current) => ({
-    ...current,
-    status: "archived",
-    archivedAt: now,
-    archivedBy: body.by || body.from || "dashboard"
-  }));
 }
 
 function createDashboardWorkflow(memoryDir, body) {

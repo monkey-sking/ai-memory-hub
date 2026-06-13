@@ -9,6 +9,7 @@ import { spawnSync, execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { createDashboardMemoryApi } from "./dashboard/memory.js";
 import { createDashboardRadioApi } from "./dashboard/radio.js";
+import { createDashboardTasksApi } from "./dashboard/tasks.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -89,6 +90,10 @@ const dashboardMemory = createDashboardMemoryApi({
 
 const dashboardRadio = createDashboardRadioApi({
   readRadioMessages
+});
+
+const dashboardTasks = createDashboardTasksApi({
+  readTasks
 });
 
 const RUNNER_PROFILES = {
@@ -4993,7 +4998,7 @@ function appCommand(argv) {
       }
       if (req.method === "GET" && url.pathname === "/api/tasks") {
         const status = url.searchParams.get("status") || "all";
-        return sendJson(res, getDashboardTasks(config.memoryDir, status));
+        return sendJson(res, dashboardTasks.getDashboardTasks(config.memoryDir, status));
       }
       if (req.method === "GET" && url.pathname === "/api/workflows") {
         return sendJson(res, getDashboardWorkflows(config.memoryDir));
@@ -5575,7 +5580,7 @@ function getDashboardSnapshot(memoryDir) {
     status: getStatusObject(),
     memory: dashboardMemory.getDashboardMemory(memoryDir),
     radio: dashboardRadio.getDashboardRadio(memoryDir),
-    tasks: getDashboardTasks(memoryDir),
+    tasks: dashboardTasks.getDashboardTasks(memoryDir),
     workflows: getDashboardWorkflows(memoryDir),
     projects: getDashboardProjects(memoryDir),
     dispatch: getDashboardDispatch(memoryDir),
@@ -5583,15 +5588,6 @@ function getDashboardSnapshot(memoryDir) {
     tools: getDashboardTools(memoryDir),
     backups: getDashboardBackups(memoryDir),
     settings: getDashboardSettings()
-  };
-}
-
-function getDashboardTasks(memoryDir, status = "all") {
-  return {
-    tasks: readTasks(memoryDir)
-      .filter((task) => status === "all" ? true : status === "active" ? !["done", "cancelled"].includes(task.status) : task.status === status)
-      .sort((a, b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")))
-      .slice(0, 200)
   };
 }
 

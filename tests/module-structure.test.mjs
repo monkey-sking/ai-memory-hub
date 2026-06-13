@@ -57,17 +57,37 @@ test("dashboard task read model lives outside the CLI entrypoint", async () => {
   assert.match(tasksModule, /\.slice\(0,\s*200\)/);
 });
 
-test("dashboard workflow read model lives outside the CLI entrypoint", async () => {
+test("dashboard workflow API lives outside the CLI entrypoint", async () => {
   const index = await readRepoFile("src/index.js");
   const workflowsModule = await readRepoFile("src/dashboard/workflows.js");
 
   assert.match(index, /from\s+["']\.\/dashboard\/workflows\.js["']/);
   assert.match(index, /createDashboardWorkflowsApi\(/);
   assert.match(index, /dashboardWorkflows\.getDashboardWorkflows/);
+  assert.match(index, /dashboardWorkflows\.createDashboardWorkflow/);
+  assert.match(index, /dashboardWorkflows\.updateDashboardWorkflow/);
+  assert.match(index, /dashboardWorkflows\.deleteDashboardWorkflow/);
+  assert.match(index, /dashboardWorkflows\.setDashboardWorkflowStatus/);
+  assert.match(index, /dashboardWorkflows\.appendDashboardWorkflowEntry/);
+  assert.match(index, /dashboardWorkflows\.signalDashboardWorkflow/);
   assert.doesNotMatch(index, /function\s+getDashboardWorkflows\(/);
+  assert.doesNotMatch(index, /function\s+createDashboardWorkflow\(/);
+  assert.doesNotMatch(index, /function\s+updateDashboardWorkflow\(/);
+  assert.doesNotMatch(index, /function\s+deleteDashboardWorkflow\(/);
+  assert.doesNotMatch(index, /function\s+setDashboardWorkflowStatus\(/);
+  assert.doesNotMatch(index, /function\s+appendDashboardWorkflowEntry\(/);
+  assert.doesNotMatch(index, /function\s+signalDashboardWorkflow\(/);
+  assert.doesNotMatch(index, /function\s+normalizeDashboardList\(/);
 
   assert.match(workflowsModule, /export\s+function\s+createDashboardWorkflowsApi/);
   assert.match(workflowsModule, /function\s+getDashboardWorkflows\(/);
+  assert.match(workflowsModule, /function\s+createDashboardWorkflow\(/);
+  assert.match(workflowsModule, /function\s+updateDashboardWorkflow\(/);
+  assert.match(workflowsModule, /function\s+deleteDashboardWorkflow\(/);
+  assert.match(workflowsModule, /function\s+setDashboardWorkflowStatus\(/);
+  assert.match(workflowsModule, /function\s+appendDashboardWorkflowEntry\(/);
+  assert.match(workflowsModule, /function\s+signalDashboardWorkflow\(/);
+  assert.match(workflowsModule, /function\s+normalizeDashboardList\(/);
   assert.match(workflowsModule, /readWorkflows\(memoryDir\)/);
   assert.match(workflowsModule, /\.slice\(0,\s*100\)/);
 });

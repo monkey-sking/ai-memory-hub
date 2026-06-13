@@ -139,3 +139,18 @@ test("dashboard settings API lives outside the CLI entrypoint", async () => {
   assert.match(settingsModule, /function\s+normalizeDashboardShortcuts\(/);
   assert.match(settingsModule, /DEFAULT_DASHBOARD_SHORTCUT_BINDINGS/);
 });
+
+test("dashboard backups read model lives outside the CLI entrypoint", async () => {
+  const index = await readRepoFile("src/index.js");
+  const backupsModule = await readRepoFile("src/dashboard/backups.js");
+
+  assert.match(index, /from\s+["']\.\/dashboard\/backups\.js["']/);
+  assert.match(index, /createDashboardBackupsApi\(/);
+  assert.match(index, /dashboardBackups\.getDashboardBackups/);
+  assert.doesNotMatch(index, /function\s+getDashboardBackups\(/);
+
+  assert.match(backupsModule, /export\s+function\s+createDashboardBackupsApi/);
+  assert.match(backupsModule, /function\s+getDashboardBackups\(/);
+  assert.match(backupsModule, /getBackupSummary\(effectiveConfig\.memoryDir/);
+  assert.match(backupsModule, /getBackupRetentionConfig\(effectiveConfig\)/);
+});

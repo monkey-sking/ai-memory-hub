@@ -7,6 +7,7 @@ import crypto from "node:crypto";
 import http from "node:http";
 import { spawnSync, execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { createDashboardBackupsApi } from "./dashboard/backups.js";
 import { createDashboardDispatchApi } from "./dashboard/dispatch.js";
 import { createDashboardMemoryApi } from "./dashboard/memory.js";
 import { createDashboardMetricsApi } from "./dashboard/metrics.js";
@@ -117,6 +118,12 @@ const dashboardSettings = createDashboardSettingsApi({
   loadConfig,
   readJsonSafe,
   writeJson
+});
+
+const dashboardBackups = createDashboardBackupsApi({
+  getBackupRetentionConfig,
+  getBackupSummary,
+  loadConfig
 });
 
 const RUNNER_PROFILES = {
@@ -5168,7 +5175,7 @@ function appCommand(argv) {
         }));
       }
       if (req.method === "GET" && url.pathname === "/api/backups") {
-        return sendJson(res, getDashboardBackups(config));
+        return sendJson(res, dashboardBackups.getDashboardBackups(config));
       }
       if (req.method === "GET" && url.pathname === "/api/backups/github/status") {
         return sendJson(res, { ok: true, github: getGitHubBackupStatus(loadConfig()) });
@@ -5202,7 +5209,7 @@ function appCommand(argv) {
         const reason = String(body.reason || "dashboard-manual").trim() || "dashboard-manual";
         const backup = withHubLock(config.memoryDir, "backup", () => backupHub(config.memoryDir, reason), config.sync.lockStaleMs);
         broadcastDashboardUpdate("backup:create");
-        return sendJson(res, { ok: true, backup, backups: getDashboardBackups(config) });
+        return sendJson(res, { ok: true, backup, backups: dashboardBackups.getDashboardBackups(config) });
       }
       if (req.method === "POST" && url.pathname === "/api/backups/prune") {
         const body = await readRequestJson(req);
@@ -5217,7 +5224,7 @@ function appCommand(argv) {
         if (apply) {
           broadcastDashboardUpdate("backup:prune");
         }
-        return sendJson(res, { ok: true, ...result, backups: getDashboardBackups(config) });
+        return sendJson(res, { ok: true, ...result, backups: dashboardBackups.getDashboardBackups(config) });
       }
       if (req.method === "POST" && url.pathname === "/api/backups/restore") {
         const body = await readRequestJson(req);
@@ -5231,7 +5238,7 @@ function appCommand(argv) {
         if (apply) {
           broadcastDashboardUpdate("backup:restore");
         }
-        return sendJson(res, { ok: true, ...result, backups: getDashboardBackups(config) });
+        return sendJson(res, { ok: true, ...result, backups: dashboardBackups.getDashboardBackups(config) });
       }
       if (req.method === "GET" && url.pathname === "/api/search") {
         return sendJson(res, getDashboardSearch(config.memoryDir, {
@@ -5609,7 +5616,7 @@ function getDashboardSnapshot(memoryDir) {
     dispatch: dashboardDispatch.getDashboardDispatch(memoryDir),
     metrics: dashboardMetrics.calculateMetrics(memoryDir),
     tools: getDashboardTools(memoryDir),
-    backups: getDashboardBackups(memoryDir),
+    backups: dashboardBackups.getDashboardBackups(memoryDir),
     settings: dashboardSettings.getDashboardSettings()
   };
 }
@@ -6260,13 +6267,6 @@ function countToolsByKind(tools) {
     counts[kind] = (counts[kind] || 0) + 1;
     return counts;
   }, {});
-}
-
-function getDashboardBackups(config) {
-  const effectiveConfig = typeof config === "string"
-    ? { ...loadConfig(), memoryDir: config }
-    : config;
-  return getBackupSummary(effectiveConfig.memoryDir, { limit: 100, ...getBackupRetentionConfig(effectiveConfig) });
 }
 
 function buildDashboardGitHubBackupRunArgv(body = {}) {

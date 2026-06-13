@@ -121,6 +121,31 @@ test("dashboard dispatch read model lives outside the CLI entrypoint", async () 
   assert.match(dispatchModule, /readLatestRelayStatusByThread\(memoryDir\)/);
 });
 
+test("dashboard tools and capabilities API lives outside the CLI entrypoint", async () => {
+  const index = await readRepoFile("src/index.js");
+  const toolsModule = await readRepoFile("src/dashboard/tools.js");
+
+  assert.match(index, /from\s+["']\.\/dashboard\/tools\.js["']/);
+  assert.match(index, /createDashboardToolsApi\(/);
+  assert.match(index, /dashboardTools\.getDashboardTools/);
+  assert.match(index, /dashboardTools\.buildCapabilityRegistry/);
+  assert.match(index, /dashboardTools\.summarizeToolConnections/);
+  assert.match(index, /dashboardTools\.getDashboardDetection/);
+  assert.doesNotMatch(index, /function\s+getDashboardTools\(/);
+  assert.doesNotMatch(index, /function\s+buildCapabilityRegistry\(/);
+  assert.doesNotMatch(index, /function\s+buildToolCapabilityEntry\(/);
+  assert.doesNotMatch(index, /function\s+summarizeToolConnections\(/);
+
+  assert.match(toolsModule, /export\s+function\s+createDashboardToolsApi/);
+  assert.match(toolsModule, /function\s+getDashboardTools\(/);
+  assert.match(toolsModule, /function\s+buildCapabilityRegistry\(/);
+  assert.match(toolsModule, /function\s+buildToolCapabilityEntry\(/);
+  assert.match(toolsModule, /function\s+summarizeToolConnections\(/);
+  assert.match(toolsModule, /function\s+buildToolMetricsByName\(/);
+  assert.match(toolsModule, /readDispatchRuns\(memoryDir\)/);
+  assert.match(toolsModule, /refreshDetectedTools\(memoryDir\)/);
+});
+
 test("dashboard settings API lives outside the CLI entrypoint", async () => {
   const index = await readRepoFile("src/index.js");
   const settingsModule = await readRepoFile("src/dashboard/settings.js");

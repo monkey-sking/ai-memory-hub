@@ -7,6 +7,7 @@ import crypto from "node:crypto";
 import http from "node:http";
 import { spawnSync, execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { createDashboardDispatchApi } from "./dashboard/dispatch.js";
 import { createDashboardMemoryApi } from "./dashboard/memory.js";
 import { createDashboardMetricsApi } from "./dashboard/metrics.js";
 import { createDashboardProjectsApi } from "./dashboard/projects.js";
@@ -121,6 +122,11 @@ const dashboardMetrics = createDashboardMetricsApi({
   readRelayStatus,
   readTasks,
   readWorkflows
+});
+
+const dashboardDispatch = createDashboardDispatchApi({
+  readDispatchLog,
+  readLatestRelayStatusByThread
 });
 
 const RUNNER_PROFILES = {
@@ -5155,7 +5161,7 @@ function appCommand(argv) {
         }
       }
       if (req.method === "GET" && url.pathname === "/api/dispatch") {
-        return sendJson(res, getDashboardDispatch(config.memoryDir));
+        return sendJson(res, dashboardDispatch.getDashboardDispatch(config.memoryDir));
       }
       if (req.method === "GET" && url.pathname === "/api/detect") {
         const tools = refreshDetectedTools(config.memoryDir);
@@ -5610,7 +5616,7 @@ function getDashboardSnapshot(memoryDir) {
     tasks: dashboardTasks.getDashboardTasks(memoryDir),
     workflows: dashboardWorkflows.getDashboardWorkflows(memoryDir),
     projects: dashboardProjects.getDashboardProjects(memoryDir),
-    dispatch: getDashboardDispatch(memoryDir),
+    dispatch: dashboardDispatch.getDashboardDispatch(memoryDir),
     metrics: dashboardMetrics.calculateMetrics(memoryDir),
     tools: getDashboardTools(memoryDir),
     backups: getDashboardBackups(memoryDir),
@@ -5878,16 +5884,6 @@ function normalizeDashboardList(value) {
     .split(/\r?\n|,/)
     .map((item) => item.trim())
     .filter(Boolean);
-}
-
-function getDashboardDispatch(memoryDir) {
-  const relay = Object.values(readLatestRelayStatusByThread(memoryDir))
-    .sort((a, b) => String(b.ts || "").localeCompare(String(a.ts || "")))
-    .slice(0, 100);
-  return {
-    logs: readDispatchLog(memoryDir).slice(-100).reverse(),
-    relay
-  };
 }
 
 function getDashboardTools(memoryDir, { refresh = false } = {}) {

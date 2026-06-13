@@ -105,3 +105,18 @@ test("dashboard metrics read model lives outside the CLI entrypoint", async () =
   assert.match(metricsModule, /readLatestRelayStatusByThread\(memoryDir\)/);
   assert.match(metricsModule, /readDispatchQueue\(memoryDir\)/);
 });
+
+test("dashboard dispatch read model lives outside the CLI entrypoint", async () => {
+  const index = await readRepoFile("src/index.js");
+  const dispatchModule = await readRepoFile("src/dashboard/dispatch.js");
+
+  assert.match(index, /from\s+["']\.\/dashboard\/dispatch\.js["']/);
+  assert.match(index, /createDashboardDispatchApi\(/);
+  assert.match(index, /dashboardDispatch\.getDashboardDispatch/);
+  assert.doesNotMatch(index, /function\s+getDashboardDispatch\(/);
+
+  assert.match(dispatchModule, /export\s+function\s+createDashboardDispatchApi/);
+  assert.match(dispatchModule, /function\s+getDashboardDispatch\(/);
+  assert.match(dispatchModule, /readDispatchLog\(memoryDir\)\.slice\(-100\)\.reverse\(\)/);
+  assert.match(dispatchModule, /readLatestRelayStatusByThread\(memoryDir\)/);
+});

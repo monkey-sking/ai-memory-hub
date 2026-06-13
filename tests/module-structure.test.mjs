@@ -154,3 +154,21 @@ test("dashboard backups read model lives outside the CLI entrypoint", async () =
   assert.match(backupsModule, /getBackupSummary\(effectiveConfig\.memoryDir/);
   assert.match(backupsModule, /getBackupRetentionConfig\(effectiveConfig\)/);
 });
+
+test("dashboard search API lives outside the CLI entrypoint", async () => {
+  const index = await readRepoFile("src/index.js");
+  const searchModule = await readRepoFile("src/dashboard/search.js");
+
+  assert.match(index, /from\s+["']\.\/dashboard\/search\.js["']/);
+  assert.match(index, /createDashboardSearchApi\(/);
+  assert.match(index, /dashboardSearch\.getDashboardSearch/);
+  assert.doesNotMatch(index, /function\s+getDashboardSearch\(/);
+  assert.doesNotMatch(index, /function\s+buildDashboardSearchCorpus\(/);
+  assert.doesNotMatch(index, /function\s+makeDashboardSearchPreview\(/);
+
+  assert.match(searchModule, /export\s+function\s+createDashboardSearchApi/);
+  assert.match(searchModule, /function\s+getDashboardSearch\(/);
+  assert.match(searchModule, /function\s+buildDashboardSearchCorpus\(/);
+  assert.match(searchModule, /function\s+makeDashboardSearchPreview\(/);
+  assert.match(searchModule, /buildMemoryIndex\(readLedger\(memoryDir\)/);
+});

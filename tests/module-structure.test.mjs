@@ -140,17 +140,35 @@ test("dashboard settings API lives outside the CLI entrypoint", async () => {
   assert.match(settingsModule, /DEFAULT_DASHBOARD_SHORTCUT_BINDINGS/);
 });
 
-test("dashboard backups read model lives outside the CLI entrypoint", async () => {
+test("dashboard backups API lives outside the CLI entrypoint", async () => {
   const index = await readRepoFile("src/index.js");
   const backupsModule = await readRepoFile("src/dashboard/backups.js");
 
   assert.match(index, /from\s+["']\.\/dashboard\/backups\.js["']/);
   assert.match(index, /createDashboardBackupsApi\(/);
   assert.match(index, /dashboardBackups\.getDashboardBackups/);
+  assert.match(index, /dashboardBackups\.getDashboardGitHubBackupStatus/);
+  assert.match(index, /dashboardBackups\.configureDashboardGitHubBackup/);
+  assert.match(index, /dashboardBackups\.runDashboardGitHubBackup/);
+  assert.match(index, /dashboardBackups\.getDashboardBackupDetail/);
+  assert.match(index, /dashboardBackups\.createDashboardBackup/);
+  assert.match(index, /dashboardBackups\.pruneDashboardBackups/);
+  assert.match(index, /dashboardBackups\.restoreDashboardBackup/);
   assert.doesNotMatch(index, /function\s+getDashboardBackups\(/);
+  assert.doesNotMatch(index, /function\s+buildDashboardGitHubBackupRunArgv\(/);
+  assert.doesNotMatch(index, /function\s+buildDashboardGitHubBackupConfigureArgv\(/);
 
   assert.match(backupsModule, /export\s+function\s+createDashboardBackupsApi/);
   assert.match(backupsModule, /function\s+getDashboardBackups\(/);
+  assert.match(backupsModule, /function\s+getDashboardGitHubBackupStatus\(/);
+  assert.match(backupsModule, /function\s+configureDashboardGitHubBackup\(/);
+  assert.match(backupsModule, /function\s+runDashboardGitHubBackup\(/);
+  assert.match(backupsModule, /function\s+getDashboardBackupDetail\(/);
+  assert.match(backupsModule, /function\s+createDashboardBackup\(/);
+  assert.match(backupsModule, /function\s+pruneDashboardBackups\(/);
+  assert.match(backupsModule, /function\s+restoreDashboardBackup\(/);
+  assert.match(backupsModule, /function\s+buildDashboardGitHubBackupRunArgv\(/);
+  assert.match(backupsModule, /function\s+buildDashboardGitHubBackupConfigureArgv\(/);
   assert.match(backupsModule, /getBackupSummary\(effectiveConfig\.memoryDir/);
   assert.match(backupsModule, /getBackupRetentionConfig\(effectiveConfig\)/);
 });

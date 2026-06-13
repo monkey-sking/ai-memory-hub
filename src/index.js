@@ -8,6 +8,7 @@ import http from "node:http";
 import { spawnSync, execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { createDashboardMemoryApi } from "./dashboard/memory.js";
+import { createDashboardRadioApi } from "./dashboard/radio.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -84,6 +85,10 @@ const dashboardMemory = createDashboardMemoryApi({
   readEvents,
   readLedger,
   readTextIfExists
+});
+
+const dashboardRadio = createDashboardRadioApi({
+  readRadioMessages
 });
 
 const RUNNER_PROFILES = {
@@ -4984,7 +4989,7 @@ function appCommand(argv) {
         return sendJson(res, { ok: true, event, status: getStatusObject() });
       }
       if (req.method === "GET" && url.pathname === "/api/radio") {
-        return sendJson(res, getDashboardRadio(config.memoryDir));
+        return sendJson(res, dashboardRadio.getDashboardRadio(config.memoryDir));
       }
       if (req.method === "GET" && url.pathname === "/api/tasks") {
         const status = url.searchParams.get("status") || "all";
@@ -5569,7 +5574,7 @@ function getDashboardSnapshot(memoryDir) {
     ts: new Date().toISOString(),
     status: getStatusObject(),
     memory: dashboardMemory.getDashboardMemory(memoryDir),
-    radio: getDashboardRadio(memoryDir),
+    radio: dashboardRadio.getDashboardRadio(memoryDir),
     tasks: getDashboardTasks(memoryDir),
     workflows: getDashboardWorkflows(memoryDir),
     projects: getDashboardProjects(memoryDir),
@@ -5578,12 +5583,6 @@ function getDashboardSnapshot(memoryDir) {
     tools: getDashboardTools(memoryDir),
     backups: getDashboardBackups(memoryDir),
     settings: getDashboardSettings()
-  };
-}
-
-function getDashboardRadio(memoryDir) {
-  return {
-    messages: readRadioMessages(memoryDir).slice(-50)
   };
 }
 

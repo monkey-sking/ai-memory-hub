@@ -27,3 +27,17 @@ test("dashboard memory API lives outside the CLI entrypoint", async () => {
   assert.match(memoryModule, /function\s+formatDashboardMemoryRecord\(/);
   assert.match(memoryModule, /function\s+createMemorySupersedeEvent\(/);
 });
+
+test("dashboard radio read model lives outside the CLI entrypoint", async () => {
+  const index = await readRepoFile("src/index.js");
+  const radioModule = await readRepoFile("src/dashboard/radio.js");
+
+  assert.match(index, /from\s+["']\.\/dashboard\/radio\.js["']/);
+  assert.match(index, /createDashboardRadioApi\(/);
+  assert.match(index, /dashboardRadio\.getDashboardRadio/);
+  assert.doesNotMatch(index, /function\s+getDashboardRadio\(/);
+
+  assert.match(radioModule, /export\s+function\s+createDashboardRadioApi/);
+  assert.match(radioModule, /function\s+getDashboardRadio\(/);
+  assert.match(radioModule, /readRadioMessages\(memoryDir\)\.slice\(-50\)/);
+});

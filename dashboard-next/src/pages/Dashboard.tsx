@@ -1,25 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import type { AnyRecord } from '../lib/api'
 import { apiDelete, apiGet, apiPatch, apiPost, asArray, asRecord, boolOf, numberOf, textOf } from '../lib/api'
 import type { AppLanguage, AppOutletContext } from '../lib/i18n'
+import { dashboardLabels, dashboardSubtitles, dashboardTitles } from '../lib/dashboardCopy'
+import type { DashboardCopy, DashboardSection } from '../lib/dashboardCopy'
+import { toolDisplayNames, toolIconAssetVersion, toolIconFiles, toolKindBadges, toolKinds } from '../lib/toolMetadata'
 import './Dashboard.css'
-
-export type DashboardSection =
-  | 'overview'
-  | 'memory'
-  | 'tasks'
-  | 'radio'
-  | 'dispatch'
-  | 'workflows'
-  | 'analytics'
-  | 'backups'
-  | 'search'
-  | 'tools'
-  | 'projects'
-  | 'health'
-  | 'settings'
 
 type Language = AppLanguage
 
@@ -41,723 +29,10 @@ interface DashboardSnapshot {
   settings?: AnyRecord
 }
 
-const titles: Record<Language, Record<DashboardSection, string>> = {
-  zh: {
-    overview: '概览',
-    memory: '共享记忆',
-    tasks: '任务',
-    radio: 'Agent Radio',
-    dispatch: '调度',
-    workflows: '工作流',
-    analytics: '分析',
-    backups: '备份',
-    search: '搜索',
-    tools: '工具',
-    projects: '项目',
-    health: '健康',
-    settings: '设置'
-  },
-  en: {
-    overview: 'Overview',
-    memory: 'Memory',
-    tasks: 'Tasks',
-    radio: 'Agent Radio',
-    dispatch: 'Dispatch',
-    workflows: 'Workflows',
-    analytics: 'Analytics',
-    backups: 'Backups',
-    search: 'Search',
-    tools: 'Tools',
-    projects: 'Projects',
-    health: 'Health',
-    settings: 'Settings'
-  }
-}
-
-const subtitles: Record<Language, Record<DashboardSection, string>> = {
-  zh: {
-    overview: '本地多 Agent 协作状态',
-    memory: 'MEMORY.md 快照与待同步事件',
-    tasks: '共享任务队列和执行状态',
-    radio: '跨工具消息与审核请求',
-    dispatch: '自动派发、重试和运行记录',
-    workflows: 'Planner / Executor / Reviewer 协作链路',
-    analytics: '记忆、任务、Radio 和 Relay 的趋势概览',
-    backups: '备份集、文件浏览和恢复预览',
-    search: '跨记忆、任务、Radio、工作流的全局检索',
-    tools: '工具接入、能力注册表和运行状态',
-    projects: '项目注册表与可见项目',
-    health: '记忆、存储和运行健康检查',
-    settings: 'Dashboard 运行偏好'
-  },
-  en: {
-    overview: 'Local multi-agent collaboration status',
-    memory: 'MEMORY.md snapshot and pending events',
-    tasks: 'Shared task queue and execution state',
-    radio: 'Cross-tool messages and review requests',
-    dispatch: 'Automation dispatch, retries, and run records',
-    workflows: 'Planner / executor / reviewer coordination',
-    analytics: 'Memory, tasks, radio, and relay analytics',
-    backups: 'Backup sets, file browser, and restore preview',
-    search: 'Global search across memory, tasks, radio, and workflows',
-    tools: 'Tool connectivity, capabilities, and runner health',
-    projects: 'Project registry and visible projects',
-    health: 'Memory, storage, and runtime diagnostics',
-    settings: 'Dashboard runtime preferences'
-  }
-}
-
-const labels = {
-  zh: {
-    refresh: '刷新',
-    refreshing: '刷新中',
-    language: 'English',
-    connectionError: '无法连接本地 hub',
-    noData: '暂无数据',
-    totalTasks: '任务总数',
-    activeTasks: '活跃任务',
-    workflows: '工作流',
-    relayRate: 'Relay 成功率',
-    toolsReady: '可自动执行工具',
-    memoryRecords: '记忆记录',
-    pendingEvents: '待同步事件',
-    recentTasks: '最近任务',
-    recentRadio: '最近消息',
-    toolReadiness: '工具状态',
-    toolInventory: '工具清单',
-    toolName: '工具',
-    toolDetail: '详情',
-    recentFailures: '最近失败',
-    status: '状态',
-    project: '项目',
-    owner: '负责人',
-    title: '标题',
-    updated: '更新时间',
-    from: '来自',
-    to: '发往',
-    type: '类型',
-    message: '内容',
-    workflowTitle: '工作流',
-    role: '角色',
-    mode: '模式',
-    health: '健康',
-    installed: '已安装',
-    runnable: '可执行',
-    configured: '已配置',
-    capability: '能力',
-    visibleProjects: '可见项目',
-    unregisteredProjects: '未注册引用',
-    theme: '主题',
-    autoRefresh: '自动刷新',
-    notifications: '通知',
-    refreshInterval: '刷新间隔',
-    memorySnapshot: '记忆快照',
-    profile: '用户配置',
-    dispatchThreads: 'Relay 线程',
-    dispatchLogs: '运行日志',
-    settingsPanel: '运行偏好',
-    yes: '是',
-    no: '否',
-    syncInbox: '同步 Inbox',
-    rebuildSnapshot: '重建快照',
-    running: '执行中',
-    recordMemory: '记录记忆',
-    memoryText: '记忆内容',
-    kind: '类型',
-    source: '来源',
-    save: '保存',
-    addTask: '新增任务',
-    description: '描述',
-    handoff: '交接',
-    priority: '优先级',
-    allProjects: '全部项目',
-    allPriorities: '全部优先级',
-    open: '待处理',
-    active: '进行中',
-    completed: '已完成',
-    claim: '认领',
-    start: '开始',
-    block: '阻塞',
-    unblock: '解除阻塞',
-    complete: '完成',
-    reopen: '重开',
-    approve: '通过',
-    reject: '拒绝',
-    addNote: '添加备注',
-    notePlaceholder: '备注或状态原因',
-    broadcastMessage: '发送 Radio',
-    searchText: '搜索文本',
-    allSenders: '全部发送方',
-    allRecipients: '全部接收方',
-    allTypes: '全部类型',
-    promoteToMemory: '提升为记忆',
-    triggerDispatch: '立即触发调度',
-    forceDispatch: '强制执行',
-    limit: '数量',
-    created: '创建时间',
-    assignee: '执行人',
-    notes: '备注',
-    review: '审核',
-    clear: '清空',
-    cancel: '取消',
-    analyticsOverview: '分析概览',
-    tasksByStatus: '任务状态分布',
-    radioByType: 'Radio 类型分布',
-    relayByState: 'Relay 状态分布',
-    toolAutomation: '工具自动化',
-    missing: '缺失',
-    backupStorage: '备份存储',
-    topProjects: '项目排行',
-    globalSearch: '全局搜索',
-    searchPlaceholder: '搜索记忆、任务、Radio 或工作流',
-    resultCount: '结果数',
-    elapsed: '耗时',
-    range: '时间范围',
-    sort: '排序',
-    relevance: '相关性',
-    newest: '最新',
-    oldest: '最早',
-    allRanges: '全部时间',
-    last24h: '24 小时',
-    last7d: '7 天',
-    last30d: '30 天',
-    last90d: '90 天',
-    facets: '筛选维度',
-    tags: '标签',
-    results: '结果',
-    score: '分数',
-    backupSets: '备份集',
-    storageUsed: '存储占用',
-    retained: '保留',
-    pruneCandidates: '可清理',
-    createBackup: '创建备份',
-    backupReason: '备份原因',
-    inspectBackup: '查看文件',
-    previewRestore: '恢复预览',
-    backupFiles: '备份文件',
-    restoreSummary: '恢复摘要',
-    backupPolicy: '备份策略',
-    githubBackup: 'GitHub 数据备份',
-    githubEnabled: '启用 GitHub 备份',
-    githubRemote: '远端仓库',
-    githubRepoDir: '本地仓库目录',
-    githubBranch: '分支',
-    githubLastCommit: '最近提交',
-    githubLastError: '最近错误',
-    githubPlaintext: '明文敏感上传',
-    githubSchedule: '计划任务',
-    githubNextRun: '下次运行',
-    githubDryRun: '预览上传风险',
-    githubLocalRun: '创建本地完整备份',
-    githubSave: '保存 GitHub 配置',
-    githubAllowPlaintext: '允许明文敏感上传',
-    githubWarning: '上传备份可能包含用户私有数据。上传前请确认远端仓库、访问权限、保留策略和恢复需要。',
-    githubWouldBlock: '明文上传将被阻断',
-    githubNoRemote: '未配置远端时只会创建本地备份',
-    warnings: '提醒',
-    files: '文件',
-    issues: '风险项',
-    upload: '上传',
-    daily: '每日',
-    weekly: '每周',
-    preSync: '同步前',
-    changed: '变化',
-    different: '不同',
-    missingCurrent: '当前缺失',
-    unchanged: '未变化',
-    bytes: '大小',
-    path: '路径',
-    manual: '手动',
-    workflowTotal: '工作流总数',
-    workflowActive: '活跃工作流',
-    workflowReview: '待审核',
-    workflowBlocked: '阻塞工作流',
-    createWorkflow: '新建工作流',
-    editWorkflow: '编辑工作流',
-    deleteWorkflow: '删除工作流',
-    allStatuses: '全部状态',
-    planner: '规划者',
-    executor: '执行者',
-    reviewer: '审核者',
-    observer: '观察者',
-    workflowPlan: '计划',
-    workflowAcceptance: '验收标准',
-    workflowRisks: '风险',
-    workflowLogs: '工作流日志',
-    linkedItems: '关联项',
-    startWorkflow: '开始',
-    markReview: '提交审核',
-    markDone: '标记完成',
-    workflowResult: '执行结果',
-    workflowNote: '备注',
-    workflowSignal: '发送 Signal',
-    signalTo: '发送给',
-    actionText: '内容',
-    createdBy: '创建者',
-    noMatches: '没有匹配结果',
-    confirmDelete: '确认删除',
-    confirmDeleteWorkflow: '删除后会从工作流列表移除，请确认只删除当前工作流。',
-    refreshTools: '刷新工具',
-    detectTools: '重新检测',
-    refreshCapabilities: '刷新能力',
-    manageConfig: '管理配置',
-    installLocal: '写入本项目',
-    installGlobal: '写入全局',
-    localTarget: '本项目目标',
-    globalTarget: '全局目标',
-    rulePreview: '规则预览',
-    previewUnavailable: '无可用预览',
-    generatedAt: '生成时间',
-    successRate: '成功率',
-    avgRuntime: '平均耗时',
-    lastRun: '最后运行',
-    activeDispatches: '活跃调度',
-    totalRuns: '运行次数',
-    runner: 'Runner',
-    command: '命令',
-    healthReasons: '健康原因',
-    toolFilterAll: '全部工具',
-    toolFilterReady: '已就绪',
-    toolFilterConnected: '已连接',
-    toolFilterRunnable: '可运行',
-    toolFilterMissing: '缺失',
-    toolFilterNeeds: '需配置',
-    capabilitySummary: '能力摘要',
-    directCli: '直接 CLI',
-    sharedState: '共享状态',
-    autoDispatchLabel: '自动调度',
-    snapshotLimit: '快照上限',
-    coreLimit: '核心记忆上限',
-    recentLimit: '近期记忆上限',
-    lockStaleMs: '锁超时',
-    languageSetting: '语言',
-    lightMode: '浅色',
-    darkMode: '深色',
-    saveSettings: '保存设置',
-    settingsSaved: '设置已保存',
-    pruneAfterSync: '同步后清理',
-    repairSuggestions: '修复建议',
-    healthScore: '健康分',
-    totalRecords: '记录总数',
-    duplicateRecords: '重复记录',
-    corruptedRecords: '损坏记录',
-    previewRepair: '预览修复',
-    applyRepair: '应用修复',
-    repairPlan: '修复计划',
-    applied: '已应用',
-    dryRun: '预览模式',
-    confirmRepair: '该操作会修改本地记忆索引数据。请确认已查看修复计划。',
-    duplicateGroups: '重复组',
-    superseded: '将标记重复',
-    settingsSyncSection: '同步与记忆',
-    settingsDashboardSection: '仪表盘偏好',
-    settingsBackupSection: '备份保留',
-    memoryDir: '记忆目录',
-    shortcuts: '快捷键',
-    refreshSettings: '重载设置',
-    invalidSettingsValue: '设置值必须是正整数',
-    healthStatus: '健康状态',
-    healthIssues: '健康问题',
-    duplicateRate: '重复率',
-    filesScanned: '扫描文件',
-    includesChecked: '检查引用',
-    duplicateExamples: '重复样例',
-    corruptedExamples: '损坏样例',
-    storageBreakdown: '存储明细',
-    healthRawReport: '原始健康报告',
-    noHealthIssues: '暂无健康问题',
-    noHealthExamples: '暂无样例',
-    refreshHealth: '刷新健康报告',
-    repairLimit: '修复上限',
-    totalActions: '总操作',
-    ledgerRecordsUpdated: '更新记录',
-    corruptedRecovered: '恢复损坏',
-    corruptedArchived: '归档损坏',
-    repairPreviewEmpty: '先点击预览修复生成计划',
-    confirmApply: '确认应用'
-  },
-  en: {
-    refresh: 'Refresh',
-    refreshing: 'Refreshing',
-    language: '中文',
-    connectionError: 'Local hub is unreachable',
-    noData: 'No data',
-    totalTasks: 'Total tasks',
-    activeTasks: 'Active tasks',
-    workflows: 'Workflows',
-    relayRate: 'Relay success',
-    toolsReady: 'Automated tools',
-    memoryRecords: 'Memory records',
-    pendingEvents: 'Pending events',
-    recentTasks: 'Recent tasks',
-    recentRadio: 'Recent radio',
-    toolReadiness: 'Tool readiness',
-    toolInventory: 'Tool inventory',
-    toolName: 'Tool',
-    toolDetail: 'Detail',
-    recentFailures: 'Recent failures',
-    status: 'Status',
-    project: 'Project',
-    owner: 'Owner',
-    title: 'Title',
-    updated: 'Updated',
-    from: 'From',
-    to: 'To',
-    type: 'Type',
-    message: 'Message',
-    workflowTitle: 'Workflow',
-    role: 'Role',
-    mode: 'Mode',
-    health: 'Health',
-    installed: 'Installed',
-    runnable: 'Runnable',
-    configured: 'Configured',
-    capability: 'Capability',
-    visibleProjects: 'Visible projects',
-    unregisteredProjects: 'Unregistered refs',
-    theme: 'Theme',
-    autoRefresh: 'Auto refresh',
-    notifications: 'Notifications',
-    refreshInterval: 'Refresh interval',
-    memorySnapshot: 'Memory snapshot',
-    profile: 'Profile',
-    dispatchThreads: 'Relay threads',
-    dispatchLogs: 'Run logs',
-    settingsPanel: 'Runtime preferences',
-    yes: 'Yes',
-    no: 'No',
-    syncInbox: 'Sync Inbox',
-    rebuildSnapshot: 'Rebuild Snapshot',
-    running: 'Running',
-    recordMemory: 'Record memory',
-    memoryText: 'Memory text',
-    kind: 'Kind',
-    source: 'Source',
-    save: 'Save',
-    addTask: 'Add task',
-    description: 'Description',
-    handoff: 'Handoff',
-    priority: 'Priority',
-    allProjects: 'All projects',
-    allPriorities: 'All priorities',
-    open: 'Open',
-    active: 'Active',
-    completed: 'Completed',
-    claim: 'Claim',
-    start: 'Start',
-    block: 'Block',
-    unblock: 'Unblock',
-    complete: 'Complete',
-    reopen: 'Reopen',
-    approve: 'Approve',
-    reject: 'Reject',
-    addNote: 'Add note',
-    notePlaceholder: 'Note or status reason',
-    broadcastMessage: 'Send radio',
-    searchText: 'Search text',
-    allSenders: 'All senders',
-    allRecipients: 'All recipients',
-    allTypes: 'All types',
-    promoteToMemory: 'Promote to memory',
-    triggerDispatch: 'Trigger dispatch',
-    forceDispatch: 'Force run',
-    limit: 'Limit',
-    created: 'Created',
-    assignee: 'Assignee',
-    notes: 'Notes',
-    review: 'Review',
-    clear: 'Clear',
-    cancel: 'Cancel',
-    analyticsOverview: 'Analytics overview',
-    tasksByStatus: 'Tasks by status',
-    radioByType: 'Radio by type',
-    relayByState: 'Relay by state',
-    toolAutomation: 'Tool automation',
-    missing: 'Missing',
-    backupStorage: 'Backup storage',
-    topProjects: 'Top projects',
-    globalSearch: 'Global search',
-    searchPlaceholder: 'Search memories, tasks, radio, or workflows',
-    resultCount: 'Results',
-    elapsed: 'Elapsed',
-    range: 'Range',
-    sort: 'Sort',
-    relevance: 'Relevance',
-    newest: 'Newest',
-    oldest: 'Oldest',
-    allRanges: 'All time',
-    last24h: '24 hours',
-    last7d: '7 days',
-    last30d: '30 days',
-    last90d: '90 days',
-    facets: 'Facets',
-    tags: 'Tags',
-    results: 'Results',
-    score: 'Score',
-    backupSets: 'Backup sets',
-    storageUsed: 'Storage used',
-    retained: 'Retained',
-    pruneCandidates: 'Prune candidates',
-    createBackup: 'Create backup',
-    backupReason: 'Backup reason',
-    inspectBackup: 'Inspect files',
-    previewRestore: 'Restore preview',
-    backupFiles: 'Backup files',
-    restoreSummary: 'Restore summary',
-    backupPolicy: 'Backup policy',
-    githubBackup: 'GitHub data backup',
-    githubEnabled: 'Enable GitHub backup',
-    githubRemote: 'Remote repository',
-    githubRepoDir: 'Local repo directory',
-    githubBranch: 'Branch',
-    githubLastCommit: 'Last commit',
-    githubLastError: 'Last error',
-    githubPlaintext: 'Plaintext sensitive upload',
-    githubSchedule: 'Schedule',
-    githubNextRun: 'Next run',
-    githubDryRun: 'Preview upload risk',
-    githubLocalRun: 'Create local full backup',
-    githubSave: 'Save GitHub config',
-    githubAllowPlaintext: 'Allow plaintext sensitive upload',
-    githubWarning: 'Backup uploads can include private user data. Verify the remote, access controls, retention policy, and recovery need before uploading.',
-    githubWouldBlock: 'Plaintext upload would be blocked',
-    githubNoRemote: 'Without a remote, only local backup is created',
-    warnings: 'Warnings',
-    files: 'Files',
-    issues: 'Issues',
-    upload: 'Upload',
-    daily: 'Daily',
-    weekly: 'Weekly',
-    preSync: 'Pre-sync',
-    changed: 'Changed',
-    different: 'Different',
-    missingCurrent: 'Missing current',
-    unchanged: 'Unchanged',
-    bytes: 'Bytes',
-    path: 'Path',
-    manual: 'Manual',
-    workflowTotal: 'Total workflows',
-    workflowActive: 'Active workflows',
-    workflowReview: 'In review',
-    workflowBlocked: 'Blocked workflows',
-    createWorkflow: 'Create workflow',
-    editWorkflow: 'Edit workflow',
-    deleteWorkflow: 'Delete workflow',
-    allStatuses: 'All statuses',
-    planner: 'Planner',
-    executor: 'Executor',
-    reviewer: 'Reviewer',
-    observer: 'Observer',
-    workflowPlan: 'Plan',
-    workflowAcceptance: 'Acceptance',
-    workflowRisks: 'Risks',
-    workflowLogs: 'Workflow logs',
-    linkedItems: 'Linked items',
-    startWorkflow: 'Start',
-    markReview: 'Send to review',
-    markDone: 'Mark done',
-    workflowResult: 'Result',
-    workflowNote: 'Note',
-    workflowSignal: 'Send signal',
-    signalTo: 'Send to',
-    actionText: 'Text',
-    createdBy: 'Created by',
-    noMatches: 'No matches',
-    confirmDelete: 'Confirm delete',
-    confirmDeleteWorkflow: 'This removes the workflow from the list. Confirm that only this workflow should be deleted.',
-    refreshTools: 'Refresh tools',
-    detectTools: 'Detect again',
-    refreshCapabilities: 'Refresh capabilities',
-    manageConfig: 'Manage config',
-    installLocal: 'Write project',
-    installGlobal: 'Write global',
-    localTarget: 'Project target',
-    globalTarget: 'Global target',
-    rulePreview: 'Rule preview',
-    previewUnavailable: 'No preview available',
-    generatedAt: 'Generated at',
-    successRate: 'Success rate',
-    avgRuntime: 'Avg runtime',
-    lastRun: 'Last run',
-    activeDispatches: 'Active dispatches',
-    totalRuns: 'Runs',
-    runner: 'Runner',
-    command: 'Command',
-    healthReasons: 'Health reasons',
-    toolFilterAll: 'All tools',
-    toolFilterReady: 'Ready',
-    toolFilterConnected: 'Connected',
-    toolFilterRunnable: 'Runnable',
-    toolFilterMissing: 'Missing',
-    toolFilterNeeds: 'Needs config',
-    capabilitySummary: 'Capability summary',
-    directCli: 'Direct CLI',
-    sharedState: 'Shared state',
-    autoDispatchLabel: 'Auto dispatch',
-    snapshotLimit: 'Snapshot limit',
-    coreLimit: 'Core limit',
-    recentLimit: 'Recent limit',
-    lockStaleMs: 'Lock timeout',
-    languageSetting: 'Language',
-    lightMode: 'Light',
-    darkMode: 'Dark',
-    saveSettings: 'Save settings',
-    settingsSaved: 'Settings saved',
-    pruneAfterSync: 'Prune after sync',
-    repairSuggestions: 'Repair suggestions',
-    healthScore: 'Health score',
-    totalRecords: 'Total records',
-    duplicateRecords: 'Duplicate records',
-    corruptedRecords: 'Corrupted records',
-    previewRepair: 'Preview repair',
-    applyRepair: 'Apply repair',
-    repairPlan: 'Repair plan',
-    applied: 'Applied',
-    dryRun: 'Dry run',
-    confirmRepair: 'This operation changes local memory index data. Confirm that you reviewed the repair plan.',
-    duplicateGroups: 'Duplicate groups',
-    superseded: 'To supersede',
-    settingsSyncSection: 'Sync and memory',
-    settingsDashboardSection: 'Dashboard preferences',
-    settingsBackupSection: 'Backup retention',
-    memoryDir: 'Memory directory',
-    shortcuts: 'Shortcuts',
-    refreshSettings: 'Reload settings',
-    invalidSettingsValue: 'Settings values must be positive integers',
-    healthStatus: 'Health status',
-    healthIssues: 'Health issues',
-    duplicateRate: 'Duplicate rate',
-    filesScanned: 'Files scanned',
-    includesChecked: 'Includes checked',
-    duplicateExamples: 'Duplicate examples',
-    corruptedExamples: 'Corrupted examples',
-    storageBreakdown: 'Storage breakdown',
-    healthRawReport: 'Raw health report',
-    noHealthIssues: 'No health issues',
-    noHealthExamples: 'No examples',
-    refreshHealth: 'Refresh health',
-    repairLimit: 'Repair limit',
-    totalActions: 'Total actions',
-    ledgerRecordsUpdated: 'Updated records',
-    corruptedRecovered: 'Recovered corrupted',
-    corruptedArchived: 'Archived corrupted',
-    repairPreviewEmpty: 'Preview repair first to generate a plan',
-    confirmApply: 'Confirm apply'
-  }
-}
-
-const toolIconAssetVersion = '20260606-app-icons-v2'
-
-const toolIconFiles: Record<string, string> = {
-  gemini: '/assets/tool-icons/gemini.png',
-  'antigravity-gemini': '/assets/tool-icons/gemini.png',
-  claude: '/assets/tool-icons/claude.png',
-  'claude-desktop': '/assets/tool-icons/claude-desktop.png',
-  chatgpt: '/assets/tool-icons/chatgpt.png',
-  cursor: '/assets/tool-icons/cursor.png',
-  vscode: '/assets/tool-icons/vscode.png',
-  codex: '/assets/tool-icons/codex.png',
-  'codex-app': '/assets/tool-icons/codex-app.png',
-  windsurf: '/assets/tool-icons/windsurf.png',
-  aider: '/assets/tool-icons/aider.png',
-  marvis: '/assets/tool-icons/marvis-app.png',
-  qclaw: '/assets/tool-icons/qclaw-app.png',
-  openclaw: '/assets/tool-icons/qclaw-app.png',
-  'cherry-studio': '/assets/tool-icons/cherry-studio.png',
-  ollama: '/assets/tool-icons/ollama.png',
-  'cc-switch': '/assets/tool-icons/ccswitch-app.png',
-  ccswitch: '/assets/tool-icons/ccswitch.png',
-  antigravity: '/assets/tool-icons/antigravity.png',
-  'antigravity-cockpit': '/assets/tool-icons/antigravity-cockpit.png'
-}
-
-const toolKinds: Record<string, string> = {
-  gemini: 'cli-config',
-  'antigravity-gemini': 'extension-state',
-  claude: 'cli-config',
-  'claude-desktop': 'app-state',
-  chatgpt: 'app-state',
-  cursor: 'editor-state',
-  vscode: 'editor-state',
-  codex: 'cli-config',
-  'codex-app': 'app-state',
-  windsurf: 'editor-state',
-  aider: 'cli-config',
-  marvis: 'app-state',
-  qclaw: 'app-state',
-  openclaw: 'app-state',
-  'cherry-studio': 'app-state',
-  ollama: 'local-model-runtime',
-  'cc-switch': 'app-state',
-  ccswitch: 'app-state',
-  antigravity: 'cli-config',
-  'antigravity-cockpit': 'app-state'
-}
-
-const toolKindBadges: Record<Language, Record<string, string>> = {
-  zh: {
-    'cli-config': '命令行',
-    'app-state': '应用',
-    'editor-state': '编辑器',
-    'extension-state': '扩展',
-    'skill-config': '技能',
-    'local-model-runtime': '运行环境'
-  },
-  en: {
-    'cli-config': 'CLI',
-    'app-state': 'App',
-    'editor-state': 'Editor',
-    'extension-state': 'Extension',
-    'skill-config': 'Skill',
-    'local-model-runtime': 'Runtime'
-  }
-}
-
-const toolDisplayNames: Record<Language, Record<string, string>> = {
-  zh: {
-    gemini: 'Gemini',
-    'antigravity-gemini': 'Antigravity Gemini',
-    claude: 'Claude',
-    'claude-desktop': 'Claude Desktop',
-    chatgpt: 'ChatGPT',
-    cursor: 'Cursor',
-    vscode: 'VS Code',
-    codex: 'Codex',
-    'codex-app': 'Codex App',
-    windsurf: 'Windsurf',
-    aider: 'Aider',
-    marvis: 'Marvis',
-    qclaw: 'QClaw',
-    openclaw: 'OpenClaw',
-    'cherry-studio': 'Cherry Studio',
-    ollama: 'Ollama',
-    'cc-switch': 'CC-Switch',
-    ccswitch: 'CC-Switch',
-    antigravity: 'Antigravity',
-    'antigravity-cockpit': 'Antigravity Cockpit'
-  },
-  en: {
-    gemini: 'Gemini',
-    'antigravity-gemini': 'Antigravity Gemini',
-    claude: 'Claude',
-    'claude-desktop': 'Claude Desktop',
-    chatgpt: 'ChatGPT',
-    cursor: 'Cursor',
-    vscode: 'VS Code',
-    codex: 'Codex',
-    'codex-app': 'Codex App',
-    windsurf: 'Windsurf',
-    aider: 'Aider',
-    marvis: 'Marvis',
-    qclaw: 'QClaw',
-    openclaw: 'OpenClaw',
-    'cherry-studio': 'Cherry Studio',
-    ollama: 'Ollama',
-    'cc-switch': 'CC-Switch',
-    ccswitch: 'CC-Switch',
-    antigravity: 'Antigravity',
-    'antigravity-cockpit': 'Antigravity Cockpit'
-  }
+type ToastMessage = {
+  id: string
+  tone: 'success' | 'error'
+  message: string
 }
 
 export default function Dashboard({ section }: DashboardProps) {
@@ -767,8 +42,19 @@ export default function Dashboard({ section }: DashboardProps) {
   const [loading, setLoading] = useState(true)
   const [busyAction, setBusyAction] = useState('')
   const [error, setError] = useState('')
+  const [toasts, setToasts] = useState<ToastMessage[]>([])
 
-  const copy = labels[language]
+  const copy = dashboardLabels[language]
+  const showToast = useCallback((message: string, tone: ToastMessage['tone'] = 'success') => {
+    const id = `toast-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    setToasts(value => [...value.slice(-3), { id, tone, message }])
+    window.setTimeout(() => {
+      setToasts(value => value.filter(toast => toast.id !== id))
+    }, 4200)
+  }, [])
+  const dismissToast = useCallback((id: string) => {
+    setToasts(value => value.filter(toast => toast.id !== id))
+  }, [])
   const refresh = useCallback(async () => {
     setLoading(true)
     setError('')
@@ -789,12 +75,15 @@ export default function Dashboard({ section }: DashboardProps) {
     try {
       await apiPost<AnyRecord>(path, {})
       await refresh()
+      showToast(`${copy.actionSucceeded}: ${action}`)
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : String(nextError))
+      const message = nextError instanceof Error ? nextError.message : String(nextError)
+      setError(message)
+      showToast(`${copy.actionFailed}: ${message}`, 'error')
     } finally {
       setBusyAction('')
     }
-  }, [refresh])
+  }, [copy.actionFailed, copy.actionSucceeded, refresh, showToast])
 
   useEffect(() => {
     let active = true
@@ -825,8 +114,8 @@ export default function Dashboard({ section }: DashboardProps) {
       <header className="page-header">
         <div className="page-title-group">
           <p className="eyebrow">AI Memory Hub</p>
-          <h2>{titles[language][section]}</h2>
-          <p className="page-subtitle">{subtitles[language][section]}</p>
+          <h2>{dashboardTitles[language][section]}</h2>
+          <p className="page-subtitle">{dashboardSubtitles[language][section]}</p>
         </div>
         <div className="header-actions">
           <button className="btn ghost" type="button" onClick={() => void runHubAction('/api/pull', 'pull')} disabled={loading || Boolean(busyAction)}>
@@ -872,6 +161,7 @@ export default function Dashboard({ section }: DashboardProps) {
           {section === 'settings' && <SettingsPanel copy={copy} model={viewModel} onRefresh={refresh} />}
         </>
       )}
+      <ToastStack toasts={toasts} onDismiss={dismissToast} />
     </div>
   )
 }
@@ -917,7 +207,7 @@ function buildViewModel(data: DashboardSnapshot | null) {
 }
 
 type ViewModel = ReturnType<typeof buildViewModel>
-type Copy = typeof labels.zh
+type Copy = DashboardCopy
 
 function Overview({ copy, model }: { copy: Copy; model: ViewModel }) {
   const statusTasks = asRecord(model.status.tasks)
@@ -1060,9 +350,12 @@ function TasksPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; 
   ]), [model.visibleProjects, projectOptions])
   const priorityOptions = useMemo(() => uniqueSorted(model.tasks.map(task => textOf(task.priority)).filter(Boolean)), [model.tasks])
   const cleanQuery = query.trim().toLowerCase()
+  const activeProjectFilter = projectOptions.includes(projectFilter) ? projectFilter : ''
+  const activePriorityFilter = priorityOptions.includes(priorityFilter) ? priorityFilter : ''
+
   const filteredTasks = model.tasks.filter(task => {
-    if (projectFilter && textOf(task.project) !== projectFilter) return false
-    if (priorityFilter && textOf(task.priority) !== priorityFilter) return false
+    if (activeProjectFilter && textOf(task.project) !== activeProjectFilter) return false
+    if (activePriorityFilter && textOf(task.priority) !== activePriorityFilter) return false
     if (!cleanQuery) return true
     return [
       task.title,
@@ -1122,20 +415,8 @@ function TasksPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; 
             <span>{copy.searchText}</span>
             <input value={query} onChange={event => setQuery(event.target.value)} />
           </label>
-          <label className="field">
-            <span>{copy.project}</span>
-            <select value={projectFilter} onChange={event => setProjectFilter(event.target.value)}>
-              <option value="">{copy.allProjects}</option>
-              {projectOptions.map(project => <option value={project} key={project}>{project}</option>)}
-            </select>
-          </label>
-          <label className="field">
-            <span>{copy.priority}</span>
-            <select value={priorityFilter} onChange={event => setPriorityFilter(event.target.value)}>
-              <option value="">{copy.allPriorities}</option>
-              {priorityOptions.map(priority => <option value={priority} key={priority}>{priority}</option>)}
-            </select>
-          </label>
+          <FilterSelect label={copy.project} value={activeProjectFilter} onChange={setProjectFilter} allLabel={copy.allProjects} options={projectOptions} />
+          <FilterSelect label={copy.priority} value={activePriorityFilter} onChange={setPriorityFilter} allLabel={copy.allPriorities} options={priorityOptions} />
           <button className="btn ghost" type="button" onClick={() => { setQuery(''); setProjectFilter(''); setPriorityFilter('') }}>
             {copy.clear}
           </button>
@@ -1195,6 +476,12 @@ function TasksPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; 
 }
 
 type TaskMutator = (action: string, path: string, body: AnyRecord) => Promise<boolean>
+type TaskMenuAction = {
+  key: string
+  label: string
+  disabled?: boolean
+  onSelect: () => void
+}
 
 function TaskColumn({ title, count, tasks, copy, busy, onMutate }: {
   title: string
@@ -1246,6 +533,32 @@ function TaskCard({ task, copy, busy, onMutate }: { task: AnyRecord; copy: Copy;
       note: note.trim()
     })
     setNote('')
+  }
+
+  const secondaryActions: TaskMenuAction[] = [
+    {
+      key: 'note',
+      label: copy.addNote,
+      disabled: isBusy || !note.trim(),
+      onSelect: () => void setStatus(status)
+    }
+  ]
+
+  if (status !== 'cancelled') {
+    secondaryActions.push(
+      {
+        key: 'approved',
+        label: copy.approve,
+        disabled: isBusy,
+        onSelect: () => void review('approved')
+      },
+      {
+        key: 'rejected',
+        label: copy.reject,
+        disabled: isBusy,
+        onSelect: () => void review('rejected')
+      }
+    )
   }
 
   return (
@@ -1311,21 +624,68 @@ function TaskCard({ task, copy, busy, onMutate }: { task: AnyRecord; copy: Copy;
             {copy.reopen}
           </button>
         ) : null}
-        <button className="btn small ghost" type="button" disabled={isBusy || !note.trim()} onClick={() => void setStatus(status)}>
-          {copy.addNote}
-        </button>
-        {status !== 'cancelled' ? (
-          <>
-            <button className="btn small ghost" type="button" disabled={isBusy} onClick={() => void review('approved')}>
-              {copy.approve}
-            </button>
-            <button className="btn small ghost" type="button" disabled={isBusy} onClick={() => void review('rejected')}>
-              {copy.reject}
-            </button>
-          </>
-        ) : null}
+        <TaskActionMenu label={copy.moreActions} actions={secondaryActions} />
       </div>
     </article>
+  )
+}
+
+function TaskActionMenu({ label, actions }: { label: string; actions: TaskMenuAction[] }) {
+  const [open, setOpen] = useState(false)
+  const menuId = useId()
+  const menuRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+
+    const onPointerDown = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setOpen(false)
+      }
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false)
+    }
+
+    window.addEventListener('mousedown', onPointerDown)
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.removeEventListener('mousedown', onPointerDown)
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [open])
+
+  return (
+    <div className="task-action-menu" ref={menuRef}>
+      <button
+        className="btn small ghost"
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={menuId}
+        onClick={() => setOpen(value => !value)}
+      >
+        {label}
+      </button>
+      {open ? (
+        <div className="task-action-menu-items" id={menuId} role="menu">
+          {actions.map(action => (
+            <button
+              key={action.key}
+              type="button"
+              role="menuitem"
+              disabled={action.disabled}
+              onClick={() => {
+                setOpen(false)
+                action.onSelect()
+              }}
+            >
+              {action.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
   )
 }
 
@@ -1348,11 +708,16 @@ function RadioPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; 
     ...projectOptions
   ]), [model.visibleProjects, projectOptions])
   const cleanQuery = query.trim().toLowerCase()
+  const activeFromFilter = senderOptions.includes(fromFilter) ? fromFilter : ''
+  const activeToFilter = recipientOptions.includes(toFilter) ? toFilter : ''
+  const activeTypeFilter = typeOptions.includes(typeFilter) ? typeFilter : ''
+  const activeProjectFilter = projectOptions.includes(projectFilter) ? projectFilter : ''
+
   const filteredMessages = model.radio.filter(message => {
-    if (fromFilter && textOf(message.from) !== fromFilter) return false
-    if (toFilter && textOf(message.to) !== toFilter) return false
-    if (typeFilter && textOf(message.type) !== typeFilter) return false
-    if (projectFilter && textOf(message.project) !== projectFilter) return false
+    if (activeFromFilter && textOf(message.from) !== activeFromFilter) return false
+    if (activeToFilter && textOf(message.to) !== activeToFilter) return false
+    if (activeTypeFilter && textOf(message.type) !== activeTypeFilter) return false
+    if (activeProjectFilter && textOf(message.project) !== activeProjectFilter) return false
     if (!cleanQuery) return true
     return [message.text, message.thread, message.project, message.from, message.to, message.type]
       .some(value => textOf(value).toLowerCase().includes(cleanQuery))
@@ -1402,34 +767,10 @@ function RadioPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; 
             <span>{copy.searchText}</span>
             <input value={query} onChange={event => setQuery(event.target.value)} />
           </label>
-          <label className="field">
-            <span>{copy.from}</span>
-            <select value={fromFilter} onChange={event => setFromFilter(event.target.value)}>
-              <option value="">{copy.allSenders}</option>
-              {senderOptions.map(sender => <option value={sender} key={sender}>{sender}</option>)}
-            </select>
-          </label>
-          <label className="field">
-            <span>{copy.to}</span>
-            <select value={toFilter} onChange={event => setToFilter(event.target.value)}>
-              <option value="">{copy.allRecipients}</option>
-              {recipientOptions.map(recipient => <option value={recipient} key={recipient}>{recipient}</option>)}
-            </select>
-          </label>
-          <label className="field">
-            <span>{copy.type}</span>
-            <select value={typeFilter} onChange={event => setTypeFilter(event.target.value)}>
-              <option value="">{copy.allTypes}</option>
-              {typeOptions.map(type => <option value={type} key={type}>{type}</option>)}
-            </select>
-          </label>
-          <label className="field">
-            <span>{copy.project}</span>
-            <select value={projectFilter} onChange={event => setProjectFilter(event.target.value)}>
-              <option value="">{copy.allProjects}</option>
-              {projectOptions.map(project => <option value={project} key={project}>{project}</option>)}
-            </select>
-          </label>
+          <FilterSelect label={copy.from} value={activeFromFilter} onChange={setFromFilter} allLabel={copy.allSenders} options={senderOptions} />
+          <FilterSelect label={copy.to} value={activeToFilter} onChange={setToFilter} allLabel={copy.allRecipients} options={recipientOptions} />
+          <FilterSelect label={copy.type} value={activeTypeFilter} onChange={setTypeFilter} allLabel={copy.allTypes} options={typeOptions} />
+          <FilterSelect label={copy.project} value={activeProjectFilter} onChange={setProjectFilter} allLabel={copy.allProjects} options={projectOptions} />
           <button className="btn ghost" type="button" onClick={() => { setQuery(''); setFromFilter(''); setToFilter(''); setTypeFilter(''); setProjectFilter('') }}>
             {copy.clear}
           </button>
@@ -2261,7 +1602,10 @@ function BackupsPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel
   }, [selectedName])
 
   useEffect(() => {
-    void loadGitHubStatus()
+    const timer = window.setTimeout(() => {
+      void loadGitHubStatus()
+    }, 0)
+    return () => window.clearTimeout(timer)
   }, [loadGitHubStatus])
 
   const activeBackupName = selectedName || textOf(backupList[0]?.name)
@@ -3730,20 +3074,117 @@ function MetricCard({ label, value, tone = 'default' }: { label: string; value: 
   )
 }
 
+function FilterSelect({ label, value, onChange, allLabel, options }: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  allLabel: string
+  options: string[]
+}) {
+  if (!options.length) return null
+
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <select value={value} onChange={event => onChange(event.target.value)}>
+        <option value="">{allLabel}</option>
+        {options.map(option => <option value={option} key={option}>{option}</option>)}
+      </select>
+    </label>
+  )
+}
+
+function ToastStack({ toasts, onDismiss }: { toasts: ToastMessage[]; onDismiss: (id: string) => void }) {
+  if (!toasts.length) return null
+
+  return (
+    <div className="toast-stack" aria-live="polite" aria-atomic="false">
+      {toasts.map(toast => (
+        <div className={`toast ${toast.tone}`} key={toast.id}>
+          <span>{toast.message}</span>
+          <button type="button" onClick={() => onDismiss(toast.id)} aria-label="Close notification">
+            x
+          </button>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+const focusableSelectors = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])'
+].join(', ')
+
+function getModalFocusableElements(panel: HTMLElement): HTMLElement[] {
+  return Array.from(panel.querySelectorAll<HTMLElement>(focusableSelectors))
+    .filter(element => element.offsetParent !== null || element === document.activeElement)
+}
+
+function trapModalFocus(event: KeyboardEvent, panel: HTMLElement) {
+  if (event.key !== 'Tab') return
+
+  const focusable = getModalFocusableElements(panel)
+  if (!focusable.length) {
+    event.preventDefault()
+    panel.focus()
+    return
+  }
+
+  const first = focusable[0]
+  const last = focusable[focusable.length - 1]
+
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault()
+    last.focus()
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault()
+    first.focus()
+  }
+}
+
 function Modal({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {
+  const panelRef = useRef<HTMLElement | null>(null)
+  const titleId = useId()
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
+      if (event.key === 'Escape') {
+        onClose()
+        return
+      }
+      if (event.key === 'Tab' && panelRef.current) {
+        trapModalFocus(event, panelRef.current)
+      }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [onClose])
 
+  useEffect(() => {
+    const panel = panelRef.current
+    if (!panel) return
+    const first = getModalFocusableElements(panel)[0]
+    ;(first || panel).focus()
+  }, [])
+
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
-      <section className="modal-panel" role="dialog" aria-modal="true" aria-label={title} onMouseDown={event => event.stopPropagation()}>
+      <section
+        ref={panelRef}
+        className="modal-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        onMouseDown={event => event.stopPropagation()}
+      >
         <header className="modal-header">
-          <h3>{title}</h3>
+          <h3 id={titleId}>{title}</h3>
           <button className="btn small ghost" type="button" onClick={onClose} aria-label={`Close ${title}`}>
             x
           </button>

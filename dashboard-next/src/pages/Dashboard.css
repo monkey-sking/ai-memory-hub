@@ -111,6 +111,49 @@
   background: rgba(99, 210, 151, 0.1);
 }
 
+.toast-stack {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 70;
+  display: grid;
+  width: min(360px, calc(100vw - 36px));
+  gap: 10px;
+}
+
+.toast {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #10172a;
+  box-shadow: var(--shadow);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.toast.success {
+  border-color: rgba(99, 210, 151, 0.42);
+}
+
+.toast.error {
+  border-color: rgba(240, 113, 120, 0.46);
+}
+
+.toast button {
+  min-width: 28px;
+  min-height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
 .dashboard-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -684,6 +727,49 @@ td {
   align-items: flex-start;
   flex-wrap: wrap;
   row-gap: 8px;
+}
+
+.task-action-menu {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.task-action-menu-items {
+  position: absolute;
+  right: 0;
+  z-index: 20;
+  display: grid;
+  min-width: 148px;
+  margin-top: 6px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #10172a;
+  box-shadow: var(--shadow);
+}
+
+.task-action-menu-items button {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.task-action-menu-items button:hover:not(:disabled),
+.task-action-menu-items button:focus-visible {
+  background: rgba(96, 210, 189, 0.1);
+  outline: none;
+}
+
+.task-action-menu-items button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .workflow-filter-grid {

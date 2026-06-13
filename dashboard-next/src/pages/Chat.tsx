@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import type { AnyRecord } from '../lib/api'
-import { apiPost, asRecord, textOf } from '../lib/api'
+import { apiGet, apiPost, asArray, asRecord, textOf } from '../lib/api'
 import type { AppLanguage, AppOutletContext } from '../lib/i18n'
 import './Chat.css'
 
@@ -10,6 +10,11 @@ interface Message {
   role: 'user' | 'system'
   content: string
   timestamp: Date
+}
+
+interface ToolOption {
+  name: string
+  label: string
 }
 
 const chatLabels: Record<AppLanguage, {
@@ -21,6 +26,7 @@ const chatLabels: Record<AppLanguage, {
   sending: string
   to: string
   project: string
+  toolsUnavailable: string
 }> = {
   zh: {
     title: '对话',
@@ -30,7 +36,8 @@ const chatLabels: Record<AppLanguage, {
     send: '发送',
     sending: '发送中',
     to: '发往',
-    project: '项目'
+    project: '项目',
+    toolsUnavailable: '暂无可选工具'
   },
   en: {
     title: 'Chat',
@@ -40,18 +47,62 @@ const chatLabels: Record<AppLanguage, {
     send: 'Send',
     sending: 'Sending',
     to: 'To',
-    project: 'Project'
+    project: 'Project',
+    toolsUnavailable: 'No tools available'
   }
+}
+
+function formatToolOptions(payload: AnyRecord): ToolOption[] {
+  return asArray<AnyRecord>(payload.tools)
+    .map(tool => {
+      const name = textOf(tool.name).trim()
+      const label = textOf(tool.displayName || tool.label || tool.name).trim()
+      return name ? { name, label: label || name } : null
+    })
+    .filter((tool): tool is ToolOption => Boolean(tool))
+}
+
+function formatRadioReceipt(message: AnyRecord, fallbackTo: string): string {
+  const id = textOf(message.id, 'sent')
+  const recipient = textOf(message.to, fallbackTo || 'all')
+  const messageText = textOf(message.text).trim()
+  const returnedText = textOf(message.reply || message.response || message.result || messageText).trim()
+
+  return returnedText ? `radio:${id} -> ${recipient}\n${returnedText}` : `radio:${id} -> ${recipient}`
 }
 
 export default function Chat() {
   const { language, toggleLanguage } = useOutletContext<AppOutletContext>()
   const copy = chatLabels[language]
   const [messages, setMessages] = useState<Message[]>([])
-  const [to, setTo] = useState('claude')
+  const [tools, setTools] = useState<ToolOption[]>([])
+  const [toolError, setToolError] = useState('')
+  const [to, setTo] = useState('all')
   const [project, setProject] = useState('ai-memory-hub')
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    let active = true
+
+    apiGet<AnyRecord>('/api/tools?refresh=1')
+      .then(payload => {
+        if (!active) return
+        const nextTools = formatToolOptions(payload)
+        setTools(nextTools)
+        setToolError('')
+        setTo(current => current === 'all' && nextTools[0] ? nextTools[0].name : current)
+      })
+      .catch(error => {
+        if (!active) return
+        setTools([])
+        setToolError(error instanceof Error ? error.message : String(error))
+      })
+
+    return () => {
+      active = false
+    }
+  }, [])
 
   const handleSend = async () => {
     const content = input.trim()
@@ -79,7 +130,7 @@ export default function Chat() {
       setMessages(prev => [...prev, {
         id: crypto.randomUUID(),
         role: 'system',
-        content: `radio:${textOf(message.id, 'sent')} -> ${to}`,
+        content: formatRadioReceipt(message, to),
         timestamp: new Date()
       }])
     } catch (error) {
@@ -108,19 +159,23 @@ export default function Chat() {
 
       <section className="chat-shell">
         <div className="chat-toolbar">
-          <label>
-            <span>{copy.to}</span>
-            <select value={to} onChange={event => setTo(event.target.value)}>
-              <option value="claude">claude</option>
-              <option value="codex">codex</option>
-              <option value="gemini">gemini</option>
-              <option value="marvis">marvis</option>
-              <option value="openclaw">openclaw</option>
-            </select>
-          </label>
-          <label>
+          {tools.length ? (
+            <label htmlFor="chat-to">
+              <span>{copy.to}</span>
+              <select id="chat-to" value={to} onChange={event => setTo(event.target.value)}>
+                {tools.map(tool => (
+                  <option key={tool.name} value={tool.name}>{tool.label}</option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <div className="chat-tool-empty" role={toolError ? 'alert' : 'status'}>
+              {toolError || copy.toolsUnavailable}
+            </div>
+          )}
+          <label htmlFor="chat-project">
             <span>{copy.project}</span>
-            <input value={project} onChange={event => setProject(event.target.value)} />
+            <input id="chat-project" value={project} onChange={event => setProject(event.target.value)} />
           </label>
         </div>
 

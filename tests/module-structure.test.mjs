@@ -56,3 +56,18 @@ test("dashboard task read model lives outside the CLI entrypoint", async () => {
   assert.match(tasksModule, /readTasks\(memoryDir\)/);
   assert.match(tasksModule, /\.slice\(0,\s*200\)/);
 });
+
+test("dashboard workflow read model lives outside the CLI entrypoint", async () => {
+  const index = await readRepoFile("src/index.js");
+  const workflowsModule = await readRepoFile("src/dashboard/workflows.js");
+
+  assert.match(index, /from\s+["']\.\/dashboard\/workflows\.js["']/);
+  assert.match(index, /createDashboardWorkflowsApi\(/);
+  assert.match(index, /dashboardWorkflows\.getDashboardWorkflows/);
+  assert.doesNotMatch(index, /function\s+getDashboardWorkflows\(/);
+
+  assert.match(workflowsModule, /export\s+function\s+createDashboardWorkflowsApi/);
+  assert.match(workflowsModule, /function\s+getDashboardWorkflows\(/);
+  assert.match(workflowsModule, /readWorkflows\(memoryDir\)/);
+  assert.match(workflowsModule, /\.slice\(0,\s*100\)/);
+});

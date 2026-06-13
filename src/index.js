@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { createDashboardMemoryApi } from "./dashboard/memory.js";
 import { createDashboardRadioApi } from "./dashboard/radio.js";
 import { createDashboardTasksApi } from "./dashboard/tasks.js";
+import { createDashboardWorkflowsApi } from "./dashboard/workflows.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -94,6 +95,10 @@ const dashboardRadio = createDashboardRadioApi({
 
 const dashboardTasks = createDashboardTasksApi({
   readTasks
+});
+
+const dashboardWorkflows = createDashboardWorkflowsApi({
+  readWorkflows
 });
 
 const RUNNER_PROFILES = {
@@ -5001,7 +5006,7 @@ function appCommand(argv) {
         return sendJson(res, dashboardTasks.getDashboardTasks(config.memoryDir, status));
       }
       if (req.method === "GET" && url.pathname === "/api/workflows") {
-        return sendJson(res, getDashboardWorkflows(config.memoryDir));
+        return sendJson(res, dashboardWorkflows.getDashboardWorkflows(config.memoryDir));
       }
       if (req.method === "GET" && url.pathname === "/api/projects") {
         return sendJson(res, getDashboardProjects(config.memoryDir, {
@@ -5581,21 +5586,13 @@ function getDashboardSnapshot(memoryDir) {
     memory: dashboardMemory.getDashboardMemory(memoryDir),
     radio: dashboardRadio.getDashboardRadio(memoryDir),
     tasks: dashboardTasks.getDashboardTasks(memoryDir),
-    workflows: getDashboardWorkflows(memoryDir),
+    workflows: dashboardWorkflows.getDashboardWorkflows(memoryDir),
     projects: getDashboardProjects(memoryDir),
     dispatch: getDashboardDispatch(memoryDir),
     metrics: calculateMetrics(memoryDir),
     tools: getDashboardTools(memoryDir),
     backups: getDashboardBackups(memoryDir),
     settings: getDashboardSettings()
-  };
-}
-
-function getDashboardWorkflows(memoryDir) {
-  return {
-    workflows: readWorkflows(memoryDir)
-      .sort((a, b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")))
-      .slice(0, 100)
   };
 }
 

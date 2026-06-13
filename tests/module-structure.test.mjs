@@ -120,3 +120,22 @@ test("dashboard dispatch read model lives outside the CLI entrypoint", async () 
   assert.match(dispatchModule, /readDispatchLog\(memoryDir\)\.slice\(-100\)\.reverse\(\)/);
   assert.match(dispatchModule, /readLatestRelayStatusByThread\(memoryDir\)/);
 });
+
+test("dashboard settings API lives outside the CLI entrypoint", async () => {
+  const index = await readRepoFile("src/index.js");
+  const settingsModule = await readRepoFile("src/dashboard/settings.js");
+
+  assert.match(index, /from\s+["']\.\/dashboard\/settings\.js["']/);
+  assert.match(index, /createDashboardSettingsApi\(/);
+  assert.match(index, /dashboardSettings\.getDashboardSettings/);
+  assert.match(index, /dashboardSettings\.updateDashboardSettings/);
+  assert.doesNotMatch(index, /function\s+getDashboardSettings\(/);
+  assert.doesNotMatch(index, /function\s+updateDashboardSettings\(/);
+  assert.doesNotMatch(index, /function\s+normalizeDashboardShortcuts\(/);
+
+  assert.match(settingsModule, /export\s+function\s+createDashboardSettingsApi/);
+  assert.match(settingsModule, /function\s+getDashboardSettings\(/);
+  assert.match(settingsModule, /function\s+updateDashboardSettings\(/);
+  assert.match(settingsModule, /function\s+normalizeDashboardShortcuts\(/);
+  assert.match(settingsModule, /DEFAULT_DASHBOARD_SHORTCUT_BINDINGS/);
+});

@@ -44,6 +44,7 @@ const DEFAULT_TASK_SPEC_FILES = [
 ];
 const RESEARCH_REPORTS_DIR = "research-reports";
 const DISPATCH_RUNS_DIR = "dispatch-runs";
+const DEFAULT_DISPATCH_WORKTREE_DIR = ".ai-worktrees";
 const DAEMON_PID_FILE = "daemon.pid";
 const DAEMON_STATUS_FILE = "daemon-status.json";
 const DAEMON_DEFAULT_TOOLS = ["codex", "gemini", "claude"];
@@ -670,7 +671,9 @@ function connectSendCommand(argv, defaultType) {
       force: hasFlag(argv, "--force"),
       to,
       project,
-      limit: Number(getOption(argv, "--limit") || 5)
+      limit: Number(getOption(argv, "--limit") || 5),
+      isolateWorktree: hasFlag(argv, "--isolate-worktree"),
+      worktreeRoot: getOption(argv, "--worktree-root") || ""
     })
     : null;
 
@@ -2046,10 +2049,12 @@ function dispatchCommand(argv) {
   const project = getOption(argv, "--project") || "";
   const limit = Number(getOption(argv, "--limit") || 10);
   const respectRecipeDependencies = hasFlag(argv, "--respect-recipe-dependencies");
+  const isolateWorktree = hasFlag(argv, "--isolate-worktree");
+  const worktreeRoot = getOption(argv, "--worktree-root") || "";
   const config = loadConfig();
   ensureHub(config.memoryDir);
 
-  const results = executeDispatch(config.memoryDir, { run, force, to, project, limit, respectRecipeDependencies });
+  const results = executeDispatch(config.memoryDir, { run, force, to, project, limit, respectRecipeDependencies, isolateWorktree, worktreeRoot });
   if (results.length === 0) {
     console.log(JSON.stringify({ run, jobs: [], message: "No undispatched radio messages or active tasks matched." }, null, 2));
     return;
@@ -2158,6 +2163,7 @@ function dispatchStatusCommand(argv) {
     .sort((a, b) => String(a.startedAt || "").localeCompare(String(b.startedAt || "")));
   const states = all.map((entry) => entry.state).filter(Boolean);
   const latestRun = runHistory.at(-1) || null;
+  const latestWorktree = latestRun?.worktree || latest.worktree || source?.worktree || null;
   const summary = {
     threadKey: latest.threadKey || "",
     thread: latest.thread || "",
@@ -2179,7 +2185,9 @@ function dispatchStatusCommand(argv) {
     latestRunId: latestRun?.runId || "",
     latestRunStatus: latestRun?.status || "",
     latestRunExitCode: latestRun?.exitCode ?? null,
+    latestRunVerificationResult: latestRun?.verificationResult || "",
     latestRunFinishedAt: latestRun?.finishedAt || "",
+    latestWorktree,
     firstTs: all[0]?.ts || "",
     latestTs: latest.ts || "",
     timelineLength: all.length,
@@ -2447,10 +2455,12 @@ function dispatchRetryCommand(argv) {
   const project = getOption(argv, "--project") || "";
   const limit = Number(getOption(argv, "--limit") || 10);
   const respectRecipeDependencies = hasFlag(argv, "--respect-recipe-dependencies");
+  const isolateWorktree = hasFlag(argv, "--isolate-worktree");
+  const worktreeRoot = getOption(argv, "--worktree-root") || "";
   const config = loadConfig();
   ensureHub(config.memoryDir);
 
-  const results = executeDispatchRetry(config.memoryDir, { run, to, project, limit, respectRecipeDependencies });
+  const results = executeDispatchRetry(config.memoryDir, { run, to, project, limit, respectRecipeDependencies, isolateWorktree, worktreeRoot });
   if (results.length === 0) {
     console.log(JSON.stringify({ run, jobs: [], message: "No failed relay jobs are eligible for retry." }, null, 2));
     return;
@@ -2462,7 +2472,16 @@ function dispatchRetryCommand(argv) {
   }, null, 2));
 }
 
-function executeDispatch(memoryDir, { run = false, force = false, to = "", project = "", limit = 10, respectRecipeDependencies = false }) {
+function executeDispatch(memoryDir, {
+  run = false,
+  force = false,
+  to = "",
+  project = "",
+  limit = 10,
+  respectRecipeDependencies = false,
+  isolateWorktree = false,
+  worktreeRoot = ""
+}) {
   const jobs = buildDispatchJobs(memoryDir, { to, project, limit, force, respectRecipeDependencies });
   const results = [];
   const relayState = readLatestRelayStatusBySource(memoryDir);
@@ -2540,7 +2559,7 @@ function executeDispatch(memoryDir, { run = false, force = false, to = "", proje
       sessionId: "",
       lastError: ""
     });
-    const result = runDispatchJob(memoryDir, job, runner);
+    const result = runDispatchJob(memoryDir, job, runner, { isolateWorktree, worktreeRoot });
     if (result.exitCode === 0) {
       appendRelayStatus(memoryDir, job, {
         state: "acked",
@@ -2550,7 +2569,8 @@ function executeDispatch(memoryDir, { run = false, force = false, to = "", proje
         lastError: "",
         sessionId: result.sessionId || "",
         ackTimeout: DEFAULT_DISPATCH_ACK_TIMEOUT_MS,
-        nextRetryAt: ""
+        nextRetryAt: "",
+        worktree: result.worktree || null
       });
       updateDispatchSourceState(memoryDir, job, {
         deliveryState: "acked",
@@ -2560,7 +2580,8 @@ function executeDispatch(memoryDir, { run = false, force = false, to = "", proje
         maxRetries,
         nextRetryAt: "",
         sessionId: result.sessionId || "",
-        lastError: ""
+        lastError: "",
+        worktree: result.worktree || null
       });
     }
     const finalState = result.exitCode === 0 ? "completed" : getRelayFailureState(attempt, maxRetries);
@@ -2574,7 +2595,8 @@ function executeDispatch(memoryDir, { run = false, force = false, to = "", proje
       lastError,
       sessionId: result.sessionId || "",
       ackTimeout: DEFAULT_DISPATCH_ACK_TIMEOUT_MS,
-      nextRetryAt
+      nextRetryAt,
+      worktree: result.worktree || null
     });
     updateDispatchSourceState(memoryDir, job, {
       deliveryState: finalState,
@@ -2584,7 +2606,8 @@ function executeDispatch(memoryDir, { run = false, force = false, to = "", proje
       maxRetries,
       nextRetryAt,
       sessionId: result.sessionId || "",
-      lastError
+      lastError,
+      worktree: result.worktree || null
     });
     const responseMessage = appendDispatchResponseMessage(memoryDir, job, { ...result, relayState: finalState });
     const statusMessage = appendDispatchStatusMessage(memoryDir, job, { ...result, relayState: finalState });
@@ -2607,7 +2630,15 @@ function executeDispatch(memoryDir, { run = false, force = false, to = "", proje
   return results;
 }
 
-function executeDispatchRetry(memoryDir, { run = false, to = "", project = "", limit = 10, respectRecipeDependencies = false }) {
+function executeDispatchRetry(memoryDir, {
+  run = false,
+  to = "",
+  project = "",
+  limit = 10,
+  respectRecipeDependencies = false,
+  isolateWorktree = false,
+  worktreeRoot = ""
+}) {
   const timeoutResults = run
     ? markTimedOutRelayStatuses(memoryDir, { to, project })
     : [];
@@ -2684,7 +2715,7 @@ function executeDispatchRetry(memoryDir, { run = false, to = "", project = "", l
       sessionId: "",
       lastError: ""
     });
-    const result = runDispatchJob(memoryDir, job, runner);
+    const result = runDispatchJob(memoryDir, job, runner, { isolateWorktree, worktreeRoot });
     if (result.exitCode === 0) {
       appendRelayStatus(memoryDir, job, {
         state: "acked",
@@ -2694,7 +2725,8 @@ function executeDispatchRetry(memoryDir, { run = false, to = "", project = "", l
         lastError: "",
         sessionId: result.sessionId || "",
         ackTimeout: DEFAULT_DISPATCH_ACK_TIMEOUT_MS,
-        nextRetryAt: ""
+        nextRetryAt: "",
+        worktree: result.worktree || null
       });
       updateDispatchSourceState(memoryDir, job, {
         deliveryState: "acked",
@@ -2704,7 +2736,8 @@ function executeDispatchRetry(memoryDir, { run = false, to = "", project = "", l
         maxRetries,
         nextRetryAt: "",
         sessionId: result.sessionId || "",
-        lastError: ""
+        lastError: "",
+        worktree: result.worktree || null
       });
     }
     const finalState = result.exitCode === 0
@@ -2720,7 +2753,8 @@ function executeDispatchRetry(memoryDir, { run = false, to = "", project = "", l
       lastError,
       sessionId: result.sessionId || "",
       ackTimeout: DEFAULT_DISPATCH_ACK_TIMEOUT_MS,
-      nextRetryAt
+      nextRetryAt,
+      worktree: result.worktree || null
     });
     updateDispatchSourceState(memoryDir, job, {
       deliveryState: finalState,
@@ -2730,7 +2764,8 @@ function executeDispatchRetry(memoryDir, { run = false, to = "", project = "", l
       maxRetries,
       nextRetryAt,
       sessionId: result.sessionId || "",
-      lastError
+      lastError,
+      worktree: result.worktree || null
     });
     const responseMessage = appendDispatchResponseMessage(memoryDir, job, { ...result, relayState: finalState });
     const statusMessage = appendDispatchStatusMessage(memoryDir, job, { ...result, relayState: finalState });
@@ -2775,6 +2810,7 @@ function markTimedOutRelayStatuses(memoryDir, { to = "", project = "", now = Dat
     const nextRetryAt = state === ASYNC_CALL_STATES.FAILED
       ? computeNextRetryAt(attempt, maxRetries)
       : "";
+    const worktree = normalizeDispatchWorktreeMetadata(entry.worktree);
     const result = {
       ...job,
       runnable: true,
@@ -2784,7 +2820,8 @@ function markTimedOutRelayStatuses(memoryDir, { to = "", project = "", now = Dat
       stderr: "",
       error: lastError,
       sessionId: entry.sessionId || "",
-      relayState: state
+      relayState: state,
+      worktree
     };
 
     appendRelayStatus(memoryDir, job, {
@@ -2795,7 +2832,8 @@ function markTimedOutRelayStatuses(memoryDir, { to = "", project = "", now = Dat
       lastError,
       sessionId: entry.sessionId || "",
       ackTimeout: timeoutMs,
-      nextRetryAt
+      nextRetryAt,
+      worktree
     });
     updateDispatchSourceState(memoryDir, job, {
       deliveryState: state,
@@ -2805,7 +2843,8 @@ function markTimedOutRelayStatuses(memoryDir, { to = "", project = "", now = Dat
       maxRetries,
       nextRetryAt,
       sessionId: entry.sessionId || "",
-      lastError
+      lastError,
+      worktree
     });
 
     const statusMessage = appendDispatchStatusMessage(memoryDir, job, result);
@@ -2914,6 +2953,7 @@ function applyDispatchOutcome(memoryDir, job, result, relayState, { responseMess
       responseRadioId: responseMessage?.id || task.responseRadioId || "",
       statusRadioId: statusMessage?.id || task.statusRadioId || "",
       dispatchReportPath: reportPath || task.dispatchReportPath || "",
+      worktree: result.worktree || task.worktree || null,
       notes
     };
   });
@@ -2929,6 +2969,7 @@ function applyDispatchOutcome(memoryDir, job, result, relayState, { responseMess
     responseRadioId: responseMessage?.id || updatedTask.responseRadioId || "",
     statusRadioId: statusMessage?.id || updatedTask.statusRadioId || "",
     dispatchReportPath: reportPath || updatedTask.dispatchReportPath || "",
+    worktree: result.worktree || updatedTask.worktree || null,
     noteText: outcomeNoteText ? `Linked task ${updatedTask.id}: ${outcomeNoteText}` : ""
   });
   return updatedTask;
@@ -2970,6 +3011,7 @@ function syncLinkedWorkflowDeliveryState(memoryDir, task, patch = {}) {
         responseRadioId: patch.responseRadioId || current.responseRadioId || "",
         statusRadioId: patch.statusRadioId || current.statusRadioId || "",
         dispatchReportPath: patch.dispatchReportPath || current.dispatchReportPath || "",
+        worktree: patch.worktree || current.worktree || null,
         notes
       };
     });
@@ -3083,7 +3125,8 @@ function updateDispatchSourceState(memoryDir, job, patch) {
     progressPercent: patch.progressPercent ?? null,
     progressStatus: patch.progressStatus || "",
     progressAt: patch.progressAt || "",
-    progressBy: patch.progressBy || ""
+    progressBy: patch.progressBy || "",
+    worktree: patch.worktree || null
   };
   if (job.kind === "radio") {
     updateRadioMessage(memoryDir, job.refId, statePatch);
@@ -3430,6 +3473,133 @@ function isSharedStateOnlyTool(tool) {
   return Boolean(profile?.sharedStateOnly);
 }
 
+function prepareDispatchWorktree(job, { root = "" } = {}) {
+  const repoRoot = resolveGitRepositoryRoot(process.cwd());
+  const base = runGitCommand(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
+  const branch = buildDispatchWorktreeBranch(job);
+  const worktreeRoot = resolveDispatchWorktreeRoot(repoRoot, root);
+  const worktreePath = path.join(worktreeRoot, buildDispatchWorktreeSlug(job));
+  assertSafeDispatchWorktreeRoot(repoRoot, worktreeRoot);
+  ensureSafeChildPath(worktreePath, worktreeRoot);
+  ensureDir(worktreeRoot);
+
+  const exists = fs.existsSync(worktreePath);
+  if (!exists) {
+    const branchRef = `refs/heads/${branch}`;
+    const branchExists = runGitCommand(repoRoot, ["rev-parse", "--verify", branchRef], { allowFailure: true }).ok;
+    const args = branchExists
+      ? ["worktree", "add", worktreePath, branch]
+      : ["worktree", "add", "-b", branch, worktreePath, base];
+    runGitCommand(repoRoot, args);
+  } else {
+    const validation = runGitCommand(worktreePath, ["rev-parse", "--show-toplevel"], { allowFailure: true });
+    if (!validation.ok) {
+      throw new Error(`Dispatch worktree path already exists but is not a git worktree: ${worktreePath}`);
+    }
+  }
+
+  const head = runGitCommand(worktreePath, ["rev-parse", "HEAD"], { allowFailure: true }).stdout.trim() || base;
+  return {
+    enabled: true,
+    repoRoot,
+    root: worktreeRoot,
+    path: worktreePath,
+    branch,
+    base,
+    head,
+    reused: exists,
+    createdAt: new Date().toISOString()
+  };
+}
+
+function collectDispatchWorktreeReviewMetadata(worktree) {
+  if (!worktree?.enabled || !worktree.path) {
+    return worktree || null;
+  }
+  const head = runGitCommand(worktree.path, ["rev-parse", "HEAD"], { allowFailure: true }).stdout.trim() || worktree.head || "";
+  const status = runGitCommand(worktree.path, ["status", "--short"], { allowFailure: true }).stdout.trim();
+  const diffStat = runGitCommand(worktree.path, ["diff", "--stat"], { allowFailure: true }).stdout.trim();
+  return {
+    ...worktree,
+    head,
+    diffStatus: status,
+    diffStat,
+    hasChanges: Boolean(status || diffStat)
+  };
+}
+
+function normalizeDispatchWorktreeMetadata(worktree) {
+  if (!isPlainObject(worktree)) {
+    return null;
+  }
+  return {
+    enabled: Boolean(worktree.enabled),
+    repoRoot: worktree.repoRoot || "",
+    root: worktree.root || "",
+    path: worktree.path || "",
+    branch: worktree.branch || "",
+    base: worktree.base || "",
+    head: worktree.head || "",
+    reused: Boolean(worktree.reused),
+    createdAt: worktree.createdAt || "",
+    diffStatus: worktree.diffStatus || "",
+    diffStat: worktree.diffStat || "",
+    hasChanges: Boolean(worktree.hasChanges)
+  };
+}
+
+function resolveGitRepositoryRoot(startDir) {
+  const result = runGitCommand(startDir, ["rev-parse", "--show-toplevel"]);
+  const root = result.stdout.trim();
+  if (!root) {
+    throw new Error("Unable to resolve git repository root for isolated dispatch worktree.");
+  }
+  return path.resolve(root);
+}
+
+function resolveDispatchWorktreeRoot(repoRoot, rootOption = "") {
+  const raw = String(rootOption || DEFAULT_DISPATCH_WORKTREE_DIR).trim();
+  return path.resolve(repoRoot, raw);
+}
+
+function assertSafeDispatchWorktreeRoot(repoRoot, worktreeRoot) {
+  const resolvedRoot = path.resolve(worktreeRoot);
+  if (resolvedRoot === path.parse(resolvedRoot).root) {
+    throw new Error("Dispatch worktree root cannot be a filesystem root.");
+  }
+  const gitDir = path.join(path.resolve(repoRoot), ".git");
+  if (resolvedRoot === gitDir || isPathInsideDirectory(resolvedRoot, gitDir)) {
+    throw new Error("Dispatch worktree root cannot be inside the repository .git directory.");
+  }
+}
+
+function buildDispatchWorktreeBranch(job) {
+  return [
+    "amh",
+    safeGitPathSegment(job.tool, "tool"),
+    safeGitPathSegment(job.project, "default"),
+    safeGitPathSegment(job.refId || job.id, "dispatch")
+  ].join("/");
+}
+
+function buildDispatchWorktreeSlug(job) {
+  return [
+    safeGitPathSegment(job.tool, "tool"),
+    safeGitPathSegment(job.project, "default"),
+    safeGitPathSegment(job.kind, "job"),
+    safeGitPathSegment(job.refId || job.id, "dispatch")
+  ].join("-");
+}
+
+function safeGitPathSegment(value, fallback) {
+  const safe = String(value || "")
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+  return safe || fallback;
+}
+
 function resolveRunnerCommand(profile) {
   const candidates = profile.commandCandidates || [profile.command].filter(Boolean);
   const allPaths = [];
@@ -3458,25 +3628,33 @@ function resolveRunnerCommand(profile) {
   };
 }
 
-function runDispatchJob(memoryDir, job, runner) {
+function runDispatchJob(memoryDir, job, runner, options = {}) {
+  const initialWorktree = options.isolateWorktree
+    ? prepareDispatchWorktree(job, { root: options.worktreeRoot })
+    : null;
+  const jobWithWorktree = initialWorktree ? { ...job, worktree: initialWorktree } : job;
   const prompt = runner.compactPrompt
-    ? renderCompactDispatchPrompt(memoryDir, job)
-    : renderDispatchPrompt(memoryDir, job);
-  const args = buildRunnerArgs(memoryDir, job, runner, prompt);
+    ? renderCompactDispatchPrompt(memoryDir, jobWithWorktree)
+    : renderDispatchPrompt(memoryDir, jobWithWorktree);
+  const args = buildRunnerArgs(memoryDir, jobWithWorktree, runner, prompt);
   const input = runner.promptMode === "stdin" ? prompt : "";
   const runId = createDispatchRunId(job);
+  const cwd = initialWorktree?.path || process.cwd();
   const startedAtMs = Date.now();
   const startedAt = new Date(startedAtMs).toISOString();
   const invocation = buildRunnerInvocation(runner, args);
-  const completed = invokeRunnerCommand(runner, args, input, DEFAULT_DISPATCH_RUN_TIMEOUT_MS);
+  const completed = invokeRunnerCommand(runner, args, input, DEFAULT_DISPATCH_RUN_TIMEOUT_MS, cwd);
   const finishedAtMs = Date.now();
   const finishedAt = new Date(finishedAtMs).toISOString();
-  const parsed = parseRunnerOutput(memoryDir, job, runner, completed.stdout);
+  const parsed = parseRunnerOutput(memoryDir, jobWithWorktree, runner, completed.stdout);
   const normalizedStderr = normalizeRunnerStderr(job.tool, completed.stderr);
   const stdoutLogPath = writeDispatchRunLog(memoryDir, runId, "stdout", completed.stdout);
   const stderrLogPath = writeDispatchRunLog(memoryDir, runId, "stderr", completed.stderr);
   const runStatus = getDispatchRunStatus(completed);
   const verificationResult = getDispatchRunVerificationResult(runStatus, completed.status);
+  const worktree = initialWorktree
+    ? collectDispatchWorktreeReviewMetadata(initialWorktree)
+    : null;
   const errorSummary = summarizeText(completed.error?.message || normalizedStderr.stderr || "", 220);
   const runRecord = {
     runId,
@@ -3489,7 +3667,7 @@ function runDispatchJob(memoryDir, job, runner) {
     command: invocation.command,
     commandArgs: invocation.args,
     commandLine: invocation.commandLine,
-    cwd: process.cwd(),
+    cwd,
     startedAt,
     finishedAt,
     durationMs: Math.max(0, finishedAtMs - startedAtMs),
@@ -3501,7 +3679,8 @@ function runDispatchJob(memoryDir, job, runner) {
     stderrLogPath,
     stdoutBytes: Buffer.byteLength(String(completed.stdout || ""), "utf8"),
     stderrBytes: Buffer.byteLength(String(completed.stderr || ""), "utf8"),
-    verificationResult
+    verificationResult,
+    ...(worktree ? { worktree } : {})
   };
   appendDispatchRunRecord(memoryDir, runRecord);
   return {
@@ -3524,7 +3703,8 @@ function runDispatchJob(memoryDir, job, runner) {
     stdoutLogPath,
     stderrLogPath,
     runRecordPath: path.join("state", "dispatch-runs.jsonl").replace(/\\/g, "/"),
-    verificationResult
+    verificationResult,
+    ...(worktree ? { worktree } : {})
   };
 }
 
@@ -3540,13 +3720,13 @@ function buildRunnerInvocation(runner, args = []) {
   };
 }
 
-function invokeRunnerCommand(runner, args = [], input = "", timeoutMs = DEFAULT_DISPATCH_RUN_TIMEOUT_MS) {
+function invokeRunnerCommand(runner, args = [], input = "", timeoutMs = DEFAULT_DISPATCH_RUN_TIMEOUT_MS, cwd = process.cwd()) {
   const invocation = buildRunnerInvocation(runner, args);
   const useCmdLauncher = invocation.usesShell;
   const command = useCmdLauncher ? invocation.commandLine : runner.command;
   const commandArgs = useCmdLauncher ? [] : args;
   return spawnSync(command, commandArgs, {
-    cwd: process.cwd(),
+    cwd,
     encoding: "utf8",
     timeout: timeoutMs,
     windowsHide: true,
@@ -3655,6 +3835,27 @@ function getDispatchThreadKey(job) {
   return `${job.tool || "unknown"}:${job.project || "default"}:${job.thread || job.refId || job.id || ""}`;
 }
 
+function renderDispatchWorktree(worktree) {
+  if (!worktree?.enabled) {
+    return [];
+  }
+  const lines = [
+    `- Worktree path: ${worktree.path || ""}`,
+    `- Branch: ${worktree.branch || ""}`,
+    `- Base commit: ${worktree.base || ""}`,
+    `- Current head: ${worktree.head || ""}`,
+    `- Reused existing worktree: ${worktree.reused ? "yes" : "no"}`
+  ];
+  if (worktree.diffStatus) {
+    lines.push(`- Diff status: ${worktree.diffStatus}`);
+  }
+  if (worktree.diffStat) {
+    lines.push(`- Diff stat: ${worktree.diffStat}`);
+  }
+  lines.push("- Keep this worktree and branch for review; do not delete, merge, or push it unless explicitly authorized.");
+  return lines;
+}
+
 function renderDispatchQualityGate(job) {
   const gate = normalizeQualityGate(job?.qualityGate || {});
   const lines = [];
@@ -3712,6 +3913,7 @@ function escapeForWindowsCmd(value) {
 
 function renderDispatchPrompt(memoryDir, job) {
   const qualityGateLines = renderDispatchQualityGate(job);
+  const worktreeLines = renderDispatchWorktree(job.worktree);
   return [
     `__AI_MEMORY_THREAD__: ${getDispatchThreadKey(job)}`,
     `Dispatch target: ${job.tool}`,
@@ -3732,6 +3934,11 @@ function renderDispatchPrompt(memoryDir, job) {
       ...qualityGateLines,
       ""
     ] : []),
+    ...(worktreeLines.length > 0 ? [
+      "Execution isolation:",
+      ...worktreeLines,
+      ""
+    ] : []),
     "Autonomous safety rules:",
     "- Follow the user's current guardrails, project instructions, and repository policy.",
     "- Do not run git push, delete files, run destructive cleanup, install dependencies, or change system configuration unless this dispatch payload explicitly authorizes it.",
@@ -3745,10 +3952,12 @@ function renderDispatchPrompt(memoryDir, job) {
 
 function renderCompactDispatchPrompt(memoryDir, job) {
   const qualityGateLines = renderDispatchQualityGate(job);
+  const worktreeLines = renderDispatchWorktree(job.worktree);
   const parts = [
     `Payload: ${job.text}`,
     "Instruction: Do this AI Memory Hub dispatch payload directly; keep the response compact; do not ask what to work on.",
     qualityGateLines.length > 0 ? `Quality gate: ${qualityGateLines.join("; ")}` : "",
+    worktreeLines.length > 0 ? `Execution isolation: ${worktreeLines.join("; ")}` : "",
     "Safety: Do not run git push, delete files, run destructive cleanup, install dependencies, or change system configuration unless explicitly authorized in the payload. If you cannot proceed, say exactly what configuration or input is missing.",
     `AMH metadata: thread=${getDispatchThreadKey(job)} project=${job.project || "(none)"} ref=${job.refId}`
   ];
@@ -3974,6 +4183,7 @@ function appendRelayStatus(memoryDir, job, patch = {}) {
     progressAt: patch.progressAt || "",
     progressBy: patch.progressBy || "",
     nextRetryAt: patch.nextRetryAt || "",
+    worktree: patch.worktree || null,
     project: job.project || "",
     tool: job.tool || "",
     thread: job.thread || ""
@@ -4415,7 +4625,7 @@ function daemonCommand(argv) {
     return daemonStatusCommand(argv.slice(1));
   }
   if (action) {
-    throw new Error("Usage: ai-memory-hub daemon [status] [--interval-ms <ms>] [--project <name[,name]>] [--limit <n>] [--force]");
+    throw new Error("Usage: ai-memory-hub daemon [status] [--interval-ms <ms>] [--project <name[,name]>] [--limit <n>] [--force] [--isolate-worktree] [--worktree-root <dir>]");
   }
 
   const config = loadConfig();
@@ -4425,6 +4635,8 @@ function daemonCommand(argv) {
   const projects = getOption(argv, "--project");
   const projectList = projects ? projects.split(",") : [];
   const force = hasFlag(argv, "--force");
+  const isolateWorktree = hasFlag(argv, "--isolate-worktree");
+  const worktreeRoot = getOption(argv, "--worktree-root") || "";
   const startedAt = new Date().toISOString();
   const currentStatus = buildDaemonStatus(config.memoryDir);
   if (currentStatus.running && !force) {
@@ -4440,6 +4652,8 @@ function daemonCommand(argv) {
     intervalMs,
     limit,
     projects: projectList,
+    isolateWorktree,
+    worktreeRoot,
     cycle: 0,
     lastCycleStartedAt: "",
     lastCycleFinishedAt: "",
@@ -4498,7 +4712,9 @@ function daemonCommand(argv) {
               to: tool,
               project,
               limit,
-              respectRecipeDependencies: true
+              respectRecipeDependencies: true,
+              isolateWorktree,
+              worktreeRoot
             });
             const timeoutResults = retryResults.filter((result) => result.timeout);
             const retriedResults = retryResults.filter((result) => !result.timeout);
@@ -4514,7 +4730,9 @@ function daemonCommand(argv) {
               to: tool,
               project,
               limit,
-              respectRecipeDependencies: true
+              respectRecipeDependencies: true,
+              isolateWorktree,
+              worktreeRoot
             });
 
             if (results.length > 0) {
@@ -4545,6 +4763,8 @@ function daemonCommand(argv) {
       intervalMs,
       limit,
       projects: projectList,
+      isolateWorktree,
+      worktreeRoot,
       cycle: iteration,
       lastCycleStartedAt: cycleStartedAt,
       lastCycleFinishedAt: cycleFinishedAt,
@@ -5173,7 +5393,9 @@ function appCommand(argv) {
           force: Boolean(body.force),
           to: body.to || "",
           project: body.project || "",
-          limit: Number(body.limit || 10)
+          limit: Number(body.limit || 10),
+          isolateWorktree: Boolean(body.isolateWorktree),
+          worktreeRoot: body.worktreeRoot || ""
         });
         broadcastDashboardUpdate("dispatch:run");
         return sendJson(res, { ok: true, results, status: getStatusObject() });
@@ -6860,6 +7082,7 @@ Examples:
   ${APP_NAME} project add my-app --name "My App" --status active --type tool
   ${APP_NAME} dispatch --project ai-memory-hub
   ${APP_NAME} dispatch --to codex --run
+  ${APP_NAME} dispatch --to codex --run --isolate-worktree
   ${APP_NAME} dispatch status --thread <thread-id> --project ai-memory-hub
   ${APP_NAME} dispatch status --recent 10 --project ai-memory-hub
   ${APP_NAME} dispatch status --recent --state failed --to claude
@@ -6877,6 +7100,7 @@ Examples:
   ${APP_NAME} backup run --no-push
   ${APP_NAME} watch --interval-ms 30000
   ${APP_NAME} daemon status
+  ${APP_NAME} daemon --project ai-memory-hub --isolate-worktree
   ${APP_NAME} daemon --project ai-memory-hub --interval-ms 10000
   ${APP_NAME} app --port 38787
   ${APP_NAME} install --tool codex
@@ -8828,6 +9052,7 @@ function normalizeWorkflow(workflow) {
     responseRadioId: workflow.responseRadioId || "",
     statusRadioId: workflow.statusRadioId || "",
     dispatchReportPath: workflow.dispatchReportPath || "",
+    worktree: normalizeDispatchWorktreeMetadata(workflow.worktree),
     notes: Array.isArray(workflow.notes) ? workflow.notes : []
   };
   if (isPlainObject(workflow.recipe)) {
@@ -8914,6 +9139,7 @@ function normalizeTask(task) {
     responseRadioId: task.responseRadioId || "",
     statusRadioId: task.statusRadioId || "",
     dispatchReportPath: task.dispatchReportPath || "",
+    worktree: normalizeDispatchWorktreeMetadata(task.worktree),
     notes: Array.isArray(task.notes) ? task.notes.map((note) => ({
       ts: note.ts || note.createdAt || now,
       by: note.by || note.source || "unknown",
@@ -13014,13 +13240,21 @@ function ensureSafeChildPath(target, root) {
 }
 
 function runGitCommand(repoDir, args, options = {}) {
-  return runProcess("git", ["-C", repoDir, ...args], options);
+  const git = resolveGitProcessCommand();
+  return runProcess(git.command, ["-C", repoDir, ...args], {
+    ...options,
+    shell: git.usesShell
+  });
 }
 
 function runProcess(command, args, options = {}) {
-  const result = spawnSync(command, args, {
+  const useWindowsShellLauncher = process.platform === "win32" && options.shell;
+  const spawnCommand = useWindowsShellLauncher ? buildWindowsCmdLine(command, args) : command;
+  const spawnArgs = useWindowsShellLauncher ? [] : args;
+  const result = spawnSync(spawnCommand, spawnArgs, {
     encoding: "utf8",
-    windowsHide: true
+    windowsHide: true,
+    shell: Boolean(options.shell)
   });
   const output = {
     ok: result.status === 0,
@@ -13033,6 +13267,16 @@ function runProcess(command, args, options = {}) {
     throw new Error(`${command} failed (${output.exitCode}): ${output.stderr || output.stdout || result.error?.message || ""}`.trim());
   }
   return output;
+}
+
+function resolveGitProcessCommand() {
+  const override = String(process.env.AI_MEMORY_HUB_GIT_COMMAND || "").trim();
+  const command = override || resolveCommandPaths("git")
+    .find((file) => classifyCommandPath(file) !== "powershell-shim") || "git";
+  return {
+    command,
+    usesShell: shouldUseShellForCommand(command)
+  };
 }
 
 function buildGitHubBackupScheduledTaskCommand(memoryDir) {
@@ -13590,6 +13834,7 @@ function normalizeRadioMessage(message) {
     progressStatus: message.progressStatus || "",
     progressAt: message.progressAt || "",
     progressBy: message.progressBy || "",
+    worktree: normalizeDispatchWorktreeMetadata(message.worktree),
     promoted: Boolean(message.promoted),
     promotedAt: message.promotedAt || ""
   };

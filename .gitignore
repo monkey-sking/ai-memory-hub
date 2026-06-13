@@ -11,6 +11,8 @@ tmp/
 # committed or uploaded with this repository.
 .ai-memory/
 **/.ai-memory/
+.ai-worktrees/
+**/.ai-worktrees/
 C*UsersAdministrator.ai-memoryinboxevents.jsonl
 **/C*UsersAdministrator.ai-memoryinboxevents.jsonl
 

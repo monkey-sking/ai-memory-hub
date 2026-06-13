@@ -34,7 +34,7 @@ LLM proxy or a replacement for each tool's native account, model, and billing.
 | Control plane | Product-managed orchestration | Local files and CLI commands |
 | AI providers | Likely integrated into the platform | Each tool keeps its own model provider and credentials |
 | State model | Centralized service state | Local append-only JSONL files plus derived indexes |
-| Execution isolation | Dedicated worker workspaces | Planned optional Git worktrees; current main tree by default |
+| Execution isolation | Dedicated worker workspaces | Optional Git worktrees with `--isolate-worktree`; current main tree remains the default |
 | Approval UX | Built-in review and approval surfaces | CLI/dashboard today; Feishu/mobile approval is a planned task |
 | Remote execution | Remote nodes or managed runners | Local runners today; remote nodes remain a design target |
 | Memory | Execution oriented | Durable memory plus task/workflow/radio context |
@@ -82,14 +82,14 @@ Status: mostly implemented.
 
 ### 2. Isolated Workspaces
 
-Status: planned.
+Status: implemented as an explicit dispatch/daemon option.
 
-Add optional Git worktree allocation per task:
+Optional Git worktree allocation per task:
 
-- Create deterministic worktree paths, for example `.ai-worktrees/<task-id>/`.
-- Create task branches such as `ai-work/<task-id>`.
-- Record worktree path, branch, base commit, and current head in task or dispatch
-  state.
+- Create deterministic worktree paths under `.ai-worktrees/` by default.
+- Create task branches such as `amh/<tool>/<project>/<ref>`.
+- Record worktree path, branch, base commit, current head, dirty status, and
+  diff stat in task, relay, and dispatch run state.
 - Require explicit review before merging back to the main working tree.
 - Never delete worktrees automatically without user approval.
 

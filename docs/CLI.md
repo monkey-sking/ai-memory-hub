@@ -870,12 +870,21 @@ ai-memory-hub dispatch --run --to claude --project ai-memory-hub --limit 1
 - `--limit <n>` - Maximum jobs
 - `--respect-recipe-dependencies` - Hold recipe step tasks until their
   `recipeStep.dependsOn` tasks are done or completed
+- `--isolate-worktree` - Run each executed job in its own Git worktree and
+  branch instead of the current working tree
+- `--worktree-root <dir>` - Directory for isolated worktrees (default:
+  `.ai-worktrees` under the repository root)
 
 Direct dispatch only runs radio messages addressed to a concrete tool such as `codex`, `gemini`, or `claude`, plus assigned tasks. Radio broadcasts addressed to `all` stay in shared state for tools to poll or reply to, but the daemon does not fan them out into automatic CLI execution. This keeps coordination notes from being retried as stale work.
 
 Every runner prompt includes autonomous safety rules: follow the current user/project guardrails, do not run `git push`, delete files, run destructive cleanup, install dependencies, or change system configuration unless the dispatch payload explicitly authorizes it. If the source task or workflow has a `qualityGate`, the prompt also includes its review requirement, max repair attempts, stop conditions, allowed/forbidden actions, and verification commands. Local commits are allowed only when user/project rules allow them and verification has passed.
 
-Each executed runner also writes a structured run record to `state/dispatch-runs.jsonl` and raw output logs under `dispatch-runs/`. The record includes `runId`, source task/radio/workflow, command metadata, `cwd`, start/end time, duration, exit code, stdout/stderr log paths, status, error summary, and verification result.
+When `--isolate-worktree` is enabled, AMH creates or reuses a deterministic
+branch such as `amh/<tool>/<project>/<ref>` and runs the tool from the matching
+worktree path. The prompt tells the runner to keep that branch and worktree for
+review; AMH does not merge, delete, or push it automatically.
+
+Each executed runner also writes a structured run record to `state/dispatch-runs.jsonl` and raw output logs under `dispatch-runs/`. The record includes `runId`, source task/radio/workflow, command metadata, `cwd`, start/end time, duration, exit code, stdout/stderr log paths, status, error summary, verification result, and when enabled, worktree metadata including path, branch, base/head commits, dirty status, and diff stat.
 
 Successful task dispatches are marked `done` and receive a task note with the response summary. If the task is linked from a workflow, the workflow delivery fields are aggregated from its linked tasks, including progress percent/status and response/status radio IDs. Failed or timed-out dispatches keep the task open, write a diagnostic note, and surface the failing state on linked workflows.
 
@@ -889,7 +898,7 @@ ai-memory-hub dispatch status --ref-id <task-radio-or-workflow-id>
 ai-memory-hub dispatch status --thread-key claude:ai-memory-hub:<ref>
 ```
 
-Single-source lookups resolve task, radio, and workflow relay sources. Workflow status results include linked tasks in `related.tasks`, so a workflow-level status check shows the current source plus the work items driving its delivery state. Status output also includes `summary.latestRunId`, latest run status/exit metadata, and `runHistory` entries pointing to the raw output log files.
+Single-source lookups resolve task, radio, and workflow relay sources. Workflow status results include linked tasks in `related.tasks`, so a workflow-level status check shows the current source plus the work items driving its delivery state. Status output also includes `summary.latestRunId`, latest run status/exit metadata, `summary.latestWorktree`, and `runHistory` entries pointing to the raw output log files.
 
 ### `dispatch progress`
 
@@ -920,7 +929,8 @@ ai-memory-hub dispatch retry --run --project ai-memory-hub
 ```
 
 Use `--respect-recipe-dependencies` to apply the same recipe step dependency
-filter that the daemon uses.
+filter that the daemon uses. Use `--isolate-worktree` and `--worktree-root` on
+retry runs when failed repair attempts should continue in isolated workspaces.
 
 Timed-out entries use `progressAt` first, then `dispatchedAt`, `deliveryUpdatedAt`, `ts`, or `updatedAt` as the fallback timeout base. Timeout failures become visible in `dispatch status`, `metrics`, task notes, and the dashboard dispatch panel.
 
@@ -1277,6 +1287,9 @@ ai-memory-hub daemon status
 - `--project <name[,name]>` - Optional project filter list
 - `--limit <n>` - Maximum jobs per tool/project per cycle (default: 10)
 - `--force` - Start even when local daemon metadata says a daemon is already running
+- `--isolate-worktree` - Run daemon-dispatched jobs in per-job Git worktrees
+- `--worktree-root <dir>` - Directory for daemon worktrees (default:
+  `.ai-worktrees` under the repository root)
 
 The daemon writes runtime metadata to:
 - `state/daemon.pid`

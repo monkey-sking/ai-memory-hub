@@ -7,6 +7,7 @@ import crypto from "node:crypto";
 import http from "node:http";
 import { spawnSync, execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { createDashboardMemoryApi } from "./dashboard/memory.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -69,6 +70,21 @@ const DEFAULT_DASHBOARD_TAB_BINDINGS = Object.freeze({
 });
 
 let toolDetectionCache = null;
+
+const dashboardMemory = createDashboardMemoryApi({
+  appendJsonl,
+  buildMemoryIndex,
+  createId,
+  getMemoryIdentityKeys,
+  getMemoryPrimaryKey,
+  isPlainObject,
+  loadConfig,
+  normalizeMemoryMetadata,
+  normalizeSupersedeToken,
+  readEvents,
+  readLedger,
+  readTextIfExists
+});
 
 const RUNNER_PROFILES = {
   codex: {
@@ -4950,7 +4966,7 @@ function appCommand(argv) {
         return sendJson(res, getStatusObject());
       }
       if (req.method === "GET" && url.pathname === "/api/memory") {
-        return sendJson(res, getDashboardMemory(config.memoryDir));
+        return sendJson(res, dashboardMemory.getDashboardMemory(config.memoryDir));
       }
       if (req.method === "POST" && url.pathname === "/api/memory/supersede") {
         const body = await readRequestJson(req);
@@ -4962,7 +4978,7 @@ function appCommand(argv) {
         }
         let event;
         withHubLock(config.memoryDir, "memory-supersede", () => {
-          event = createMemorySupersedeEvent(config.memoryDir, body);
+          event = dashboardMemory.createMemorySupersedeEvent(config.memoryDir, body);
         }, config.sync.lockStaleMs);
         broadcastDashboardUpdate("memory:supersede");
         return sendJson(res, { ok: true, event, status: getStatusObject() });
@@ -5552,7 +5568,7 @@ function getDashboardSnapshot(memoryDir) {
     type: "snapshot",
     ts: new Date().toISOString(),
     status: getStatusObject(),
-    memory: getDashboardMemory(memoryDir),
+    memory: dashboardMemory.getDashboardMemory(memoryDir),
     radio: getDashboardRadio(memoryDir),
     tasks: getDashboardTasks(memoryDir),
     workflows: getDashboardWorkflows(memoryDir),
@@ -5563,93 +5579,6 @@ function getDashboardSnapshot(memoryDir) {
     backups: getDashboardBackups(memoryDir),
     settings: getDashboardSettings()
   };
-}
-
-function getDashboardMemory(memoryDir) {
-  const config = { ...loadConfig(), memoryDir };
-  const index = buildMemoryIndex(readLedger(memoryDir), config);
-  return {
-    memory: readTextIfExists(path.join(memoryDir, "MEMORY.md")),
-    profile: readTextIfExists(path.join(memoryDir, "profile.md")),
-    pending: readEvents(path.join(memoryDir, "inbox", "events.jsonl")),
-    records: index.records
-      .filter((record) => !record.superseded)
-      .sort((a, b) => String(b.ts || b.indexedAt || "").localeCompare(String(a.ts || a.indexedAt || "")))
-      .slice(0, 200)
-      .map(formatDashboardMemoryRecord)
-  };
-}
-
-function formatDashboardMemoryRecord(record) {
-  return {
-    id: record.id || "",
-    localEventId: record.localEventId || "",
-    ts: record.ts || "",
-    indexedAt: record.indexedAt || "",
-    source: record.source || "unknown",
-    text: record.text || "",
-    kind: record.kind || record.metadata?.kind || "note",
-    project: record.project || record.metadata?.project || "",
-    tags: record.tags || record.metadata?.tags || [],
-    scope: record.scope || record.metadata?.scope || "",
-    layer: record.layer || "",
-    importance: record.importance || 0,
-    superseded: Boolean(record.superseded),
-    supersededBy: record.supersededBy || record.metadata?.supersededBy || [],
-    metadata: {
-      kind: record.kind || record.metadata?.kind || "note",
-      project: record.project || record.metadata?.project || "",
-      scope: record.scope || record.metadata?.scope || "",
-      supersedes: record.metadata?.supersedes || record.supersedes || "",
-      refs: record.refs || record.metadata?.refs || {}
-    }
-  };
-}
-
-function createMemorySupersedeEvent(memoryDir, body) {
-  const targetId = normalizeSupersedeToken(body.id);
-  const config = { ...loadConfig(), memoryDir };
-  const index = buildMemoryIndex(readLedger(memoryDir), config);
-  const target = index.records.find((record) => getMemoryIdentityKeys(record).includes(targetId));
-  if (!target) {
-    throw new Error("memory record not found");
-  }
-
-  const text = String(body.text || "").trim();
-  if (!text) {
-    throw new Error("text is required");
-  }
-  const supersedes = getMemoryPrimaryKey(target) || targetId;
-  const bodyRefs = isPlainObject(body.refs) ? body.refs : {};
-  const metadata = normalizeMemoryMetadata({
-    kind: body.kind || target.kind || target.metadata?.kind || "note",
-    project: body.project || target.project || target.metadata?.project || "",
-    tags: body.tags || target.tags || target.metadata?.tags || [],
-    scope: body.scope || target.scope || target.metadata?.scope || "",
-    confidence: body.confidence ?? target.confidence ?? target.metadata?.confidence,
-    refs: {
-      ...(target.refs || target.metadata?.refs || {}),
-      ...bodyRefs,
-      sourceId: target.localEventId || target.id || supersedes
-    },
-    supersedes,
-    lifecycle: {
-      ...(target.metadata?.lifecycle || {}),
-      action: "supersede",
-      supersedes
-    }
-  }, target);
-  metadata.supersedes = supersedes;
-
-  const event = {
-    id: `supersede-${createId(`${supersedes}:${text}`)}`,
-    ts: new Date().toISOString(),
-    source: body.source || "dashboard",
-    text,
-    metadata
-  };
-  appendJsonl(path.join(memoryDir, "inbox", "events.jsonl"), event);
-  return event;
 }
 
 function getDashboardRadio(memoryDir) {

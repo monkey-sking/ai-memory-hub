@@ -1253,3 +1253,73 @@ test("dashboard websocket sends initial and pushed snapshots", async () => {
     assert.deepEqual(stderr, []);
   });
 });
+
+test("dashboard memory supersede appends an inbox event without mutating ledger", async () => {
+  await withHub(async (memoryDir) => {
+    await appendJsonl(path.join(memoryDir, "inbox", "events.jsonl"), {
+      id: "memory-original",
+      ts: "2026-01-01T00:00:00.000Z",
+      source: "test",
+      text: "Original dashboard memory that should be corrected.",
+      metadata: { kind: "workflow", project: "sample-project" }
+    });
+    const sync = runCli(memoryDir, ["sync"]);
+    assert.equal(sync.status, 0, sync.stderr || sync.stdout);
+
+    const beforeLedger = await readJsonl(path.join(memoryDir, "memories", "ledger.jsonl"));
+    assert.equal(beforeLedger.length, 1);
+    assert.equal(beforeLedger[0].localEventId, "memory-original");
+
+    const port = await getFreePort();
+    const child = spawn(process.execPath, [cliPath, "app", "--port", String(port)], {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        AI_MEMORY_DIR: memoryDir
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true
+    });
+    const stderr = [];
+    child.stderr.on("data", (chunk) => stderr.push(String(chunk)));
+    try {
+      await waitForServer(port, child);
+      const memoryRes = await fetch(`http://127.0.0.1:${port}/api/memory`);
+      assert.equal(memoryRes.status, 200);
+      const memoryPayload = await memoryRes.json();
+      assert.ok(Array.isArray(memoryPayload.records));
+      assert.ok(memoryPayload.records.some((record) => record.localEventId === "memory-original"));
+
+      const res = await fetch(`http://127.0.0.1:${port}/api/memory/supersede`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: "memory-original",
+          text: "Corrected dashboard memory safe for future agents.",
+          kind: "workflow",
+          project: "sample-project",
+          source: "dashboard-next"
+        })
+      });
+      if (res.status !== 200) {
+        assert.fail(await res.text());
+      }
+      const payload = await res.json();
+      assert.equal(payload.ok, true);
+      assert.equal(payload.event.metadata.supersedes, "memory-original");
+      assert.equal(payload.event.metadata.kind, "workflow");
+      assert.equal(payload.event.metadata.project, "sample-project");
+
+      const inbox = await readJsonl(path.join(memoryDir, "inbox", "events.jsonl"));
+      assert.equal(inbox.length, 1);
+      assert.equal(inbox[0].metadata.supersedes, "memory-original");
+      assert.match(inbox[0].id, /^supersede-/);
+
+      const afterLedger = await readJsonl(path.join(memoryDir, "memories", "ledger.jsonl"));
+      assert.deepEqual(afterLedger, beforeLedger);
+    } finally {
+      await stopServer(child);
+    }
+    assert.deepEqual(stderr, []);
+  });
+});

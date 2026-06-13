@@ -98,3 +98,39 @@ test("Dashboard exposes a toast notification stack for async actions", async () 
   assert.match(css, /\.toast-stack/);
   assert.match(css, /\.toast\./);
 });
+
+test("Memory panel supersedes records instead of editing the ledger directly", async () => {
+  const dashboard = await readSource("pages/Dashboard.tsx");
+  const copyModule = await readSource("lib/dashboardCopy.ts");
+
+  assert.match(dashboard, /const\s+memoryRecords\s*=\s*asArray<AnyRecord>\(model\.memory\.records\)/);
+  assert.match(dashboard, /supersedeMemory/);
+  assert.match(dashboard, /\/api\/memory\/supersede/);
+  assert.match(dashboard, /metadata\.supersedes/);
+  assert.match(dashboard, /copy\.supersedeMemory/);
+  assert.match(copyModule, /supersedeMemory/);
+});
+
+test("Radio messages can open compose as a threaded reply", async () => {
+  const dashboard = await readSource("pages/Dashboard.tsx");
+  const copyModule = await readSource("lib/dashboardCopy.ts");
+
+  assert.match(dashboard, /replyTo:/);
+  assert.match(dashboard, /startReply/);
+  assert.match(dashboard, /replyTo:\s*textOf\(message\.id\)/);
+  assert.match(dashboard, /thread:\s*textOf\(message\.thread\s*\|\|\s*message\.id\)/);
+  assert.match(dashboard, /copy\.reply/);
+  assert.match(copyModule, /reply:/);
+});
+
+test("Task menu includes a low-frequency radio request shortcut", async () => {
+  const dashboard = await readSource("pages/Dashboard.tsx");
+  const copyModule = await readSource("lib/dashboardCopy.ts");
+
+  assert.match(dashboard, /key:\s*['"]radio-request['"]/);
+  assert.match(dashboard, /\/api\/radio\/send/);
+  assert.match(dashboard, /thread:\s*id/);
+  assert.match(dashboard, /replyTo:\s*id/);
+  assert.match(dashboard, /copy\.sendRadioRequest/);
+  assert.match(copyModule, /sendRadioRequest/);
+});

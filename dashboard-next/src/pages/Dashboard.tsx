@@ -255,10 +255,13 @@ function Overview({ copy, model }: { copy: Copy; model: ViewModel }) {
 
 function MemoryPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; onRefresh: () => Promise<void> }) {
   const pending = asArray<AnyRecord>(model.memory.pending)
+  const memoryRecords = asArray<AnyRecord>(model.memory.records)
   const [text, setText] = useState('')
   const [kind, setKind] = useState('note')
   const [source, setSource] = useState('dashboard-next')
   const [recordOpen, setRecordOpen] = useState(false)
+  const [supersedeTarget, setSupersedeTarget] = useState<AnyRecord | null>(null)
+  const [supersedeText, setSupersedeText] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -272,6 +275,39 @@ function MemoryPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel;
       setText('')
       await onRefresh()
       setRecordOpen(false)
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : String(nextError))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const openSupersede = (record: AnyRecord) => {
+    setError('')
+    setSupersedeTarget(record)
+    setSupersedeText(textOf(record.text))
+  }
+
+  const supersedeMemory = async () => {
+    const target = asRecord(supersedeTarget)
+    const metadata = asRecord(target.metadata)
+    const nextText = supersedeText.trim()
+    const targetId = textOf(target.localEventId || target.id)
+    if (!targetId || !nextText || saving) return
+    setSaving(true)
+    setError('')
+    try {
+      await apiPost<AnyRecord>('/api/memory/supersede', {
+        id: targetId,
+        text: nextText,
+        kind: textOf(target.kind || metadata.kind, 'note'),
+        project: textOf(target.project || metadata.project),
+        source,
+        supersedes: textOf(metadata.supersedes)
+      })
+      setSupersedeTarget(null)
+      setSupersedeText('')
+      await onRefresh()
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : String(nextError))
     } finally {
@@ -297,6 +333,34 @@ function MemoryPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel;
           <pre className="text-snapshot small">{textOf(model.memory.profile, copy.noData)}</pre>
         </Panel>
       </div>
+      <Panel title={copy.memoryRecords} className="span-2">
+        {memoryRecords.length ? (
+          <div className="memory-record-list">
+            {memoryRecords.slice(0, 12).map(record => {
+              const metadata = asRecord(record.metadata)
+              const recordId = textOf(record.localEventId || record.id)
+              return (
+                <article className="memory-record-card" key={recordId || textOf(record.ts)}>
+                  <div className="memory-record-header">
+                    <div className="message-meta">
+                      <StatusBadge status={textOf(record.kind || metadata.kind, 'note')} />
+                      <span>{textOf(record.source, '-')} · {formatDate(textOf(record.ts || record.indexedAt))}</span>
+                    </div>
+                    <button className="btn small ghost" type="button" onClick={() => openSupersede(record)}>
+                      {copy.supersedeMemory}
+                    </button>
+                  </div>
+                  <p>{textOf(record.text, '-')}</p>
+                  <div className="radio-card-footer">
+                    {record.project || metadata.project ? <span className="chip">{textOf(record.project || metadata.project)}</span> : null}
+                    {metadata.supersedes ? <span className="chip">{textOf(metadata.supersedes)}</span> : null}
+                  </div>
+                </article>
+              )
+            })}
+          </div>
+        ) : <EmptyState text={copy.noData} />}
+      </Panel>
       {recordOpen ? (
         <Modal title={copy.recordMemory} onClose={() => setRecordOpen(false)}>
           <div className="form-grid">
@@ -325,6 +389,30 @@ function MemoryPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel;
               </button>
               <button className="btn" type="button" onClick={() => void submitMemory()} disabled={saving || !text.trim()}>
                 {saving ? copy.running : copy.save}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
+      {supersedeTarget ? (
+        <Modal title={copy.supersedeMemory} onClose={() => setSupersedeTarget(null)}>
+          <div className="form-grid">
+            <label className="field span-all">
+              <span>{copy.memoryText}</span>
+              <textarea value={supersedeText} onChange={event => setSupersedeText(event.target.value)} rows={6} />
+            </label>
+            <label className="field">
+              <span>{copy.source}</span>
+              <input value={source} onChange={event => setSource(event.target.value)} />
+            </label>
+            <Property label="id" value={textOf(supersedeTarget.localEventId || supersedeTarget.id, '-')} />
+            {error ? <div className="inline-error span-all">{error}</div> : null}
+            <div className="form-actions span-all">
+              <button className="btn ghost" type="button" onClick={() => setSupersedeTarget(null)}>
+                {copy.cancel}
+              </button>
+              <button className="btn" type="button" onClick={() => void supersedeMemory()} disabled={saving || !supersedeText.trim()}>
+                {saving ? copy.running : copy.supersedeMemory}
               </button>
             </div>
           </div>
@@ -535,12 +623,33 @@ function TaskCard({ task, copy, busy, onMutate }: { task: AnyRecord; copy: Copy;
     setNote('')
   }
 
+  const sendRadioRequest = async () => {
+    const taskTitle = textOf(task.title, id)
+    const message = note.trim() || `Task request: ${taskTitle}`
+    const succeeded = await onMutate(`${actionBase}radio-request`, '/api/radio/send', {
+      from: 'dashboard-next',
+      to: textOf(task.assignee, 'all') || 'all',
+      type: 'request',
+      project: textOf(task.project),
+      thread: id,
+      replyTo: id,
+      text: message
+    })
+    if (succeeded) setNote('')
+  }
+
   const secondaryActions: TaskMenuAction[] = [
     {
       key: 'note',
       label: copy.addNote,
       disabled: isBusy || !note.trim(),
       onSelect: () => void setStatus(status)
+    },
+    {
+      key: 'radio-request',
+      label: copy.sendRadioRequest,
+      disabled: isBusy,
+      onSelect: () => void sendRadioRequest()
     }
   ]
 
@@ -690,7 +799,7 @@ function TaskActionMenu({ label, actions }: { label: string; actions: TaskMenuAc
 }
 
 function RadioPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; onRefresh: () => Promise<void> }) {
-  const [form, setForm] = useState({ text: '', from: 'dashboard-next', to: 'all', type: 'note', project: 'ai-memory-hub' })
+  const [form, setForm] = useState({ text: '', from: 'dashboard-next', to: 'all', type: 'note', project: 'ai-memory-hub', thread: '', replyTo: '' })
   const [query, setQuery] = useState('')
   const [fromFilter, setFromFilter] = useState('')
   const [toFilter, setToFilter] = useState('')
@@ -730,7 +839,7 @@ function RadioPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; 
     setError('')
     try {
       await apiPost<AnyRecord>('/api/radio/send', { ...form, text })
-      setForm(value => ({ ...value, text: '' }))
+      setForm(value => ({ ...value, text: '', thread: '', replyTo: '' }))
       setComposeOpen(false)
       await onRefresh()
     } catch (nextError) {
@@ -752,6 +861,20 @@ function RadioPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; 
     } finally {
       setBusy('')
     }
+  }
+
+  const startReply = (message: AnyRecord) => {
+    setError('')
+    setForm(value => ({
+      ...value,
+      text: '',
+      to: textOf(message.from, 'all'),
+      type: 'reply',
+      project: textOf(message.project, value.project),
+      thread: textOf(message.thread || message.id),
+      replyTo: textOf(message.id)
+    }))
+    setComposeOpen(true)
   }
 
   return (
@@ -790,6 +913,9 @@ function RadioPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; 
               <div className="radio-card-footer">
                 <span className="chip">{textOf(message.project, '-')}</span>
                 {message.thread ? <span className="chip">{textOf(message.thread)}</span> : null}
+                <button className="btn small ghost" type="button" onClick={() => startReply(message)}>
+                  {copy.reply}
+                </button>
                 <button className="btn small ghost" type="button" disabled={busy === `promote:${textOf(message.id)}`} onClick={() => void promote(textOf(message.id))}>
                   {copy.promoteToMemory}
                 </button>
@@ -817,6 +943,7 @@ function RadioPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; 
               <span>{copy.type}</span>
               <select value={form.type} onChange={event => setForm(value => ({ ...value, type: event.target.value }))}>
                 <option value="note">note</option>
+                <option value="reply">reply</option>
                 <option value="review">review</option>
                 <option value="handoff">handoff</option>
                 <option value="risk">risk</option>
@@ -828,6 +955,12 @@ function RadioPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; 
               <span>{copy.project}</span>
               <input value={form.project} onChange={event => setForm(value => ({ ...value, project: event.target.value }))} list="radio-project-options" />
             </label>
+            {form.thread || form.replyTo ? (
+              <div className="property-grid span-all">
+                <Property label={copy.thread} value={form.thread || '-'} />
+                <Property label={copy.replyTo} value={form.replyTo || '-'} />
+              </div>
+            ) : null}
             <datalist id="radio-recipient-options">
               {recipientOptions.map(to => <option value={to} key={to} />)}
             </datalist>

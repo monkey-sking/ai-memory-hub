@@ -42,7 +42,7 @@ async function createFakeCodexRunner(memoryDir) {
     "const args = process.argv.slice(2);",
     'if (args.includes("--version")) { console.log("fake-codex 1.0.0"); process.exit(0); }',
     'if (args.includes("--help")) { console.log("fake codex help"); process.exit(0); }',
-    "console.log(JSON.stringify({ args, stdin: input }));"
+    "console.log(JSON.stringify({ args, stdin: input, cwd: process.cwd() }));"
   ].join("\n"), "utf8");
 
   if (process.platform === "win32") {
@@ -53,6 +53,73 @@ async function createFakeCodexRunner(memoryDir) {
     );
   } else {
     const runnerPath = path.join(binDir, "codex");
+    await fs.writeFile(
+      runnerPath,
+      `#!/bin/sh\nexec "${process.execPath}" "${runnerScript}" "$@"\n`,
+      "utf8"
+    );
+    await fs.chmod(runnerPath, 0o755);
+  }
+
+  return binDir;
+}
+
+async function createFakeGitRunner(memoryDir) {
+  const binDir = path.join(memoryDir, "fake-git-bin");
+  await fs.mkdir(binDir, { recursive: true });
+  const runnerScript = path.join(binDir, "fake-git.mjs");
+  await fs.writeFile(runnerScript, [
+    'import fs from "node:fs";',
+    'import path from "node:path";',
+    "let args = process.argv.slice(2);",
+    "let cwd = process.cwd();",
+    'if (args[0] === "-C") { cwd = args[1]; args = args.slice(2); }',
+    'const repoRoot = process.env.FAKE_GIT_REPO_ROOT || cwd;',
+    'const logFile = process.env.FAKE_GIT_LOG || "";',
+    "function log(record) {",
+    "  if (!logFile) return;",
+    "  fs.mkdirSync(path.dirname(logFile), { recursive: true });",
+    "  fs.appendFileSync(logFile, `${JSON.stringify(record)}\\n`, 'utf8');",
+    "}",
+    "if (args[0] === 'rev-parse' && args[1] === '--show-toplevel') {",
+    "  if (process.env.FAKE_GIT_REJECT_PLAIN_WORKTREE === '1' && cwd.includes('plain-existing')) {",
+    "    console.error('not a git worktree');",
+    "    process.exit(1);",
+    "  }",
+    "  console.log(repoRoot);",
+    "  process.exit(0);",
+    "}",
+    "if (args[0] === 'rev-parse' && args[1] === '--abbrev-ref' && args[2] === 'HEAD') { console.log('main'); process.exit(0); }",
+    "if (args[0] === 'rev-parse' && args[1] === 'HEAD') { console.log('0123456789abcdef0123456789abcdef01234567'); process.exit(0); }",
+    "if (args[0] === 'rev-parse' && args[1] === '--verify') { process.exit(1); }",
+    "if (args[0] === 'worktree' && args[1] === 'add') {",
+    "  const rest = args.slice(2);",
+    "  let branch = '';",
+    "  const positional = [];",
+    "  for (let i = 0; i < rest.length; i++) {",
+    "    if (rest[i] === '-b') { branch = rest[++i] || ''; continue; }",
+    "    positional.push(rest[i]);",
+    "  }",
+    "  const worktreePath = positional[0];",
+    "  const base = positional[1] || '';",
+    "  fs.mkdirSync(worktreePath, { recursive: true });",
+    "  fs.writeFileSync(path.join(worktreePath, '.fake-worktree.json'), JSON.stringify({ branch, base }, null, 2), 'utf8');",
+    "  log({ command: 'worktree add', cwd, branch, worktreePath, base });",
+    "  console.log(`Preparing worktree ${worktreePath}`);",
+    "  process.exit(0);",
+    "}",
+    "console.error(`unsupported fake git command: ${args.join(' ')}`);",
+    "process.exit(2);"
+  ].join("\n"), "utf8");
+
+  if (process.platform === "win32") {
+    await fs.writeFile(
+      path.join(binDir, "git.cmd"),
+      `@echo off\r\n"${process.execPath}" "${runnerScript}" %*\r\n`,
+      "utf8"
+    );
+  } else {
+    const runnerPath = path.join(binDir, "git");
     await fs.writeFile(
       runnerPath,
       `#!/bin/sh\nexec "${process.execPath}" "${runnerScript}" "$@"\n`,
@@ -97,9 +164,9 @@ async function createFakeClaudeRunner(memoryDir) {
   return binDir;
 }
 
-function prependPathEnv(dir) {
+function prependPathEnv(...dirs) {
   const current = process.env.Path || process.env.PATH || "";
-  const value = `${dir}${path.delimiter}${current}`;
+  const value = `${dirs.flat().filter(Boolean).join(path.delimiter)}${path.delimiter}${current}`;
   return {
     PATH: value,
     Path: value
@@ -323,6 +390,75 @@ test("dispatch retry --run marks stale dispatched relay as failed", async () => 
     assert.equal(tasks[0].status, "claimed");
     assert.equal(tasks[0].deliveryState, "failed");
     assert.match(tasks[0].notes.at(-1).text, /Dispatch failed/);
+  });
+});
+
+test("dispatch timeout preserves worktree metadata for review", async () => {
+  await withHub(async (memoryDir) => {
+    const staleTs = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    const worktree = {
+      enabled: true,
+      repoRoot: repoRoot,
+      root: path.join(repoRoot, ".ai-worktrees"),
+      path: path.join(repoRoot, ".ai-worktrees", "codex-test-project-task-timeout-worktree"),
+      branch: "amh/codex/test-project/task-timeout-worktree",
+      base: "base123",
+      head: "head123",
+      reused: false,
+      createdAt: staleTs,
+      diffStatus: "M src/index.js",
+      diffStat: "src/index.js | 2 +",
+      hasChanges: true
+    };
+    await appendJsonl(path.join(memoryDir, "tasks", "tasks.jsonl"), {
+      id: "task-timeout-worktree",
+      createdAt: staleTs,
+      updatedAt: staleTs,
+      completedAt: "",
+      createdBy: "test",
+      assignee: "codex",
+      status: "claimed",
+      priority: "normal",
+      project: "test-project",
+      title: "Timed out isolated dispatch",
+      description: "",
+      handoff: "",
+      worktree,
+      notes: []
+    });
+    await appendJsonl(path.join(memoryDir, "state", "relay-status.jsonl"), {
+      id: "relay-timeout-worktree",
+      ts: staleTs,
+      threadKey: "codex:test-project:task-timeout-worktree",
+      sourceKind: "task",
+      sourceId: "task-timeout-worktree",
+      dispatchId: "task:task-timeout-worktree",
+      state: "dispatched",
+      attempt: 1,
+      maxRetries: 3,
+      dispatchedAt: staleTs,
+      ackTimeout: 1,
+      project: "test-project",
+      tool: "codex",
+      thread: "task-timeout-worktree",
+      worktree
+    });
+
+    const result = runCli(memoryDir, ["dispatch", "retry", "--run", "--to", "codex", "--project", "test-project"]);
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.results[0].timeout, true);
+    assert.deepEqual(payload.results[0].worktree, worktree);
+
+    const relay = await readJsonl(path.join(memoryDir, "state", "relay-status.jsonl"));
+    assert.deepEqual(relay.at(-1).worktree, worktree);
+
+    const tasks = await readJsonl(path.join(memoryDir, "tasks", "tasks.jsonl"));
+    assert.deepEqual(tasks[0].worktree, worktree);
+
+    const status = runCli(memoryDir, ["dispatch", "status", "--ref-id", "task-timeout-worktree", "--project", "test-project"]);
+    assert.equal(status.status, 0, status.stderr || status.stdout);
+    assert.deepEqual(JSON.parse(status.stdout).summary.latestWorktree, worktree);
   });
 });
 
@@ -650,6 +786,213 @@ test("dispatch launches resolved runner shim with prompt on stdin", async () => 
     assert.equal(statusPayload.summary.latestRunExitCode, 0);
     assert.equal(statusPayload.runHistory.length, 1);
     assert.equal(statusPayload.runHistory[0].stdoutLogPath, runs[0].stdoutLogPath);
+  });
+});
+
+test("dispatch can isolate runner work in a git worktree and expose review metadata", async () => {
+  await withHub(async (memoryDir) => {
+    const codexBinDir = await createFakeCodexRunner(memoryDir);
+    const gitBinDir = await createFakeGitRunner(memoryDir);
+    const fakeGitLog = path.join(memoryDir, "fake-git.log");
+    const worktreeRoot = path.join(memoryDir, "isolated worktrees");
+    const now = new Date().toISOString();
+    await appendJsonl(path.join(memoryDir, "tasks", "tasks.jsonl"), {
+      id: "task-isolated",
+      createdAt: now,
+      updatedAt: now,
+      completedAt: "",
+      createdBy: "test",
+      assignee: "codex",
+      status: "claimed",
+      priority: "normal",
+      project: "test-project",
+      title: "Verify isolated dispatch worktree",
+      description: "",
+      handoff: "Run this task away from the main working tree.",
+      notes: []
+    });
+
+    const result = runCli(
+      memoryDir,
+      [
+        "dispatch",
+        "--run",
+        "--to",
+        "codex",
+        "--project",
+        "test-project",
+        "--limit",
+        "1",
+        "--isolate-worktree",
+        "--worktree-root",
+        worktreeRoot
+      ],
+      {
+        ...prependPathEnv(codexBinDir, gitBinDir),
+        FAKE_GIT_REPO_ROOT: repoRoot,
+        FAKE_GIT_LOG: fakeGitLog
+      }
+    );
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.results.length, 1);
+    const dispatchResult = payload.results[0];
+    assert.equal(dispatchResult.exitCode, 0, JSON.stringify(dispatchResult, null, 2));
+    assert.equal(dispatchResult.worktree.enabled, true);
+    assert.equal(path.resolve(dispatchResult.worktree.root), path.resolve(worktreeRoot));
+    assert.match(dispatchResult.worktree.path, /[\\/]isolated worktrees[\\/]/);
+    assert.match(dispatchResult.worktree.branch, /^amh\/codex\/test-project\/task-isolated/);
+    assert.equal(dispatchResult.worktree.base, "0123456789abcdef0123456789abcdef01234567");
+    assert.equal(dispatchResult.worktree.head, "0123456789abcdef0123456789abcdef01234567");
+    assert.equal(dispatchResult.worktree.reused, false);
+
+    const stdout = JSON.parse(dispatchResult.stdout);
+    assert.equal(path.resolve(stdout.cwd), path.resolve(dispatchResult.worktree.path));
+    assert.match(stdout.stdin, /Execution isolation:/);
+    assert.match(stdout.stdin, /Worktree path:/);
+    assert.match(stdout.stdin, /Branch:/);
+
+    const gitLog = await readJsonl(fakeGitLog);
+    assert.equal(gitLog.length, 1);
+    assert.equal(path.resolve(gitLog[0].worktreePath), path.resolve(dispatchResult.worktree.path));
+    assert.equal(gitLog[0].branch, dispatchResult.worktree.branch);
+
+    const runs = await readJsonl(path.join(memoryDir, "state", "dispatch-runs.jsonl"));
+    assert.equal(runs.length, 1);
+    assert.equal(path.resolve(runs[0].cwd), path.resolve(dispatchResult.worktree.path));
+    assert.deepEqual(runs[0].worktree, dispatchResult.worktree);
+
+    const relay = await readJsonl(path.join(memoryDir, "state", "relay-status.jsonl"));
+    assert.deepEqual(relay.at(-1).worktree, dispatchResult.worktree);
+
+    const tasks = await readJsonl(path.join(memoryDir, "tasks", "tasks.jsonl"));
+    assert.deepEqual(tasks[0].worktree, dispatchResult.worktree);
+
+    const status = runCli(memoryDir, ["dispatch", "status", "--ref-id", "task-isolated", "--project", "test-project"]);
+    assert.equal(status.status, 0, status.stderr || status.stdout);
+    const statusPayload = JSON.parse(status.stdout);
+    assert.deepEqual(statusPayload.summary.latestWorktree, dispatchResult.worktree);
+    assert.deepEqual(statusPayload.runHistory[0].worktree, dispatchResult.worktree);
+  });
+});
+
+test("dispatch refuses to reuse an existing non-git worktree directory", async () => {
+  await withHub(async (memoryDir) => {
+    const codexBinDir = await createFakeCodexRunner(memoryDir);
+    const gitBinDir = await createFakeGitRunner(memoryDir);
+    const worktreeRoot = path.join(memoryDir, "plain-existing-root");
+    const existingPath = path.join(worktreeRoot, "codex-test-project-task-task-existing-plain");
+    await fs.mkdir(existingPath, { recursive: true });
+    const now = new Date().toISOString();
+    await appendJsonl(path.join(memoryDir, "tasks", "tasks.jsonl"), {
+      id: "task-existing-plain",
+      createdAt: now,
+      updatedAt: now,
+      completedAt: "",
+      createdBy: "test",
+      assignee: "codex",
+      status: "claimed",
+      priority: "normal",
+      project: "test-project",
+      title: "Reject plain worktree path",
+      description: "",
+      handoff: "",
+      notes: []
+    });
+
+    const result = runCli(
+      memoryDir,
+      [
+        "dispatch",
+        "--run",
+        "--to",
+        "codex",
+        "--project",
+        "test-project",
+        "--limit",
+        "1",
+        "--isolate-worktree",
+        "--worktree-root",
+        worktreeRoot
+      ],
+      {
+        ...prependPathEnv(codexBinDir, gitBinDir),
+        FAKE_GIT_REPO_ROOT: repoRoot,
+        FAKE_GIT_REJECT_PLAIN_WORKTREE: "1"
+      }
+    );
+
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /already exists but is not a git worktree/);
+  });
+});
+
+test("dispatch rejects unsafe worktree roots", async () => {
+  await withHub(async (memoryDir) => {
+    const codexBinDir = await createFakeCodexRunner(memoryDir);
+    const gitBinDir = await createFakeGitRunner(memoryDir);
+    const now = new Date().toISOString();
+    await appendJsonl(path.join(memoryDir, "tasks", "tasks.jsonl"), {
+      id: "task-unsafe-root",
+      createdAt: now,
+      updatedAt: now,
+      completedAt: "",
+      createdBy: "test",
+      assignee: "codex",
+      status: "claimed",
+      priority: "normal",
+      project: "test-project",
+      title: "Reject unsafe worktree root",
+      description: "",
+      handoff: "",
+      notes: []
+    });
+
+    const baseEnv = {
+      ...prependPathEnv(codexBinDir, gitBinDir),
+      FAKE_GIT_REPO_ROOT: repoRoot
+    };
+    const filesystemRoot = path.parse(repoRoot).root;
+    const rootResult = runCli(
+      memoryDir,
+      [
+        "dispatch",
+        "--run",
+        "--to",
+        "codex",
+        "--project",
+        "test-project",
+        "--limit",
+        "1",
+        "--isolate-worktree",
+        "--worktree-root",
+        filesystemRoot
+      ],
+      baseEnv
+    );
+    assert.notEqual(rootResult.status, 0);
+    assert.match(rootResult.stderr, /worktree root cannot be a filesystem root/);
+
+    const gitDirResult = runCli(
+      memoryDir,
+      [
+        "dispatch",
+        "--run",
+        "--to",
+        "codex",
+        "--project",
+        "test-project",
+        "--limit",
+        "1",
+        "--force",
+        "--isolate-worktree",
+        "--worktree-root",
+        path.join(repoRoot, ".git", "amh-worktrees")
+      ],
+      baseEnv
+    );
+    assert.notEqual(gitDirResult.status, 0);
+    assert.match(gitDirResult.stderr, /worktree root cannot be inside the repository \.git directory/);
   });
 });
 

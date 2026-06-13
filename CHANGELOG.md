@@ -71,6 +71,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Optional dispatch and daemon Git worktree isolation via `--isolate-worktree`
+  and `--worktree-root`, with branch/worktree/base/head/diff metadata exposed
+  in task state, relay status, dispatch run records, and `dispatch status`.
+
 ### Planned
 - Dashboard Web UI for workflow and task visualization
 - Chrome DevTools Protocol bridge for non-CLI tools

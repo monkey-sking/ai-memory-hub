@@ -8,6 +8,7 @@ import http from "node:http";
 import { spawnSync, execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { createDashboardMemoryApi } from "./dashboard/memory.js";
+import { createDashboardProjectsApi } from "./dashboard/projects.js";
 import { createDashboardRadioApi } from "./dashboard/radio.js";
 import { createDashboardTasksApi } from "./dashboard/tasks.js";
 import { createDashboardWorkflowsApi } from "./dashboard/workflows.js";
@@ -99,6 +100,18 @@ const dashboardTasks = createDashboardTasksApi({
 
 const dashboardWorkflows = createDashboardWorkflowsApi({
   readWorkflows
+});
+
+const dashboardProjects = createDashboardProjectsApi({
+  filterProjects,
+  isHiddenProjectId,
+  projectStatuses: PROJECT_STATUSES,
+  projectVisibleStatuses: PROJECT_VISIBLE_STATUSES,
+  readProjects,
+  readRadioMessages,
+  readTasks,
+  readWorkflows,
+  uniqueStringList
 });
 
 const RUNNER_PROFILES = {
@@ -5009,7 +5022,7 @@ function appCommand(argv) {
         return sendJson(res, dashboardWorkflows.getDashboardWorkflows(config.memoryDir));
       }
       if (req.method === "GET" && url.pathname === "/api/projects") {
-        return sendJson(res, getDashboardProjects(config.memoryDir, {
+        return sendJson(res, dashboardProjects.getDashboardProjects(config.memoryDir, {
           status: url.searchParams.get("status") || "all",
           includeHidden: url.searchParams.get("includeHidden") === "1"
         }));
@@ -5027,7 +5040,7 @@ function appCommand(argv) {
           project = createDashboardProject(config.memoryDir, body);
         }, config.sync.lockStaleMs);
         broadcastDashboardUpdate("project:create");
-        return sendJson(res, { ok: true, project, projects: getDashboardProjects(config.memoryDir), status: getStatusObject() });
+        return sendJson(res, { ok: true, project, projects: dashboardProjects.getDashboardProjects(config.memoryDir), status: getStatusObject() });
       }
       const projectApiMatch = url.pathname.match(/^\/api\/projects\/([^/]+)$/);
       if (projectApiMatch) {
@@ -5046,7 +5059,7 @@ function appCommand(argv) {
             project = updateDashboardProject(config.memoryDir, projectId, body);
           }, config.sync.lockStaleMs);
           broadcastDashboardUpdate("project:update");
-          return sendJson(res, { ok: true, project, projects: getDashboardProjects(config.memoryDir), status: getStatusObject() });
+          return sendJson(res, { ok: true, project, projects: dashboardProjects.getDashboardProjects(config.memoryDir), status: getStatusObject() });
         }
         if (req.method === "DELETE") {
           const body = await readRequestJson(req);
@@ -5055,7 +5068,7 @@ function appCommand(argv) {
             project = archiveDashboardProject(config.memoryDir, projectId, body);
           }, config.sync.lockStaleMs);
           broadcastDashboardUpdate("project:archive");
-          return sendJson(res, { ok: true, project, projects: getDashboardProjects(config.memoryDir), status: getStatusObject() });
+          return sendJson(res, { ok: true, project, projects: dashboardProjects.getDashboardProjects(config.memoryDir), status: getStatusObject() });
         }
       }
       if (req.method === "POST" && url.pathname === "/api/workflows") {
@@ -5587,34 +5600,12 @@ function getDashboardSnapshot(memoryDir) {
     radio: dashboardRadio.getDashboardRadio(memoryDir),
     tasks: dashboardTasks.getDashboardTasks(memoryDir),
     workflows: dashboardWorkflows.getDashboardWorkflows(memoryDir),
-    projects: getDashboardProjects(memoryDir),
+    projects: dashboardProjects.getDashboardProjects(memoryDir),
     dispatch: getDashboardDispatch(memoryDir),
     metrics: calculateMetrics(memoryDir),
     tools: getDashboardTools(memoryDir),
     backups: getDashboardBackups(memoryDir),
     settings: getDashboardSettings()
-  };
-}
-
-function getDashboardProjects(memoryDir, { status = "all", includeHidden = false } = {}) {
-  const projects = filterProjects(readProjects(memoryDir), { status, includeHidden });
-  const visibleProjects = filterProjects(projects, { status: "visible" });
-  const registryIds = new Set(projects.map((project) => project.id));
-  const registryAliases = new Set(projects.flatMap((project) => [project.name, project.displayName, ...(project.aliases || [])].map((value) => String(value || "").toLowerCase())));
-  const referenced = [
-    ...readTasks(memoryDir).map((item) => item.project),
-    ...readRadioMessages(memoryDir).map((item) => item.project),
-    ...readWorkflows(memoryDir).map((item) => item.project)
-  ].map((item) => String(item || "").trim()).filter(Boolean);
-  const unregisteredProjects = uniqueStringList(referenced)
-    .filter((project) => !registryIds.has(project) && !registryAliases.has(project.toLowerCase()) && !isHiddenProjectId(project))
-    .sort((a, b) => a.localeCompare(b, "zh-Hans"));
-  return {
-    projects,
-    visibleProjects,
-    unregisteredProjects,
-    statuses: PROJECT_STATUSES,
-    visibleStatuses: PROJECT_VISIBLE_STATUSES
   };
 }
 

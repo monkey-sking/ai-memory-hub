@@ -88,3 +88,20 @@ test("dashboard project read model lives outside the CLI entrypoint", async () =
   assert.match(projectsModule, /readRadioMessages\(memoryDir\)/);
   assert.match(projectsModule, /readWorkflows\(memoryDir\)/);
 });
+
+test("dashboard metrics read model lives outside the CLI entrypoint", async () => {
+  const index = await readRepoFile("src/index.js");
+  const metricsModule = await readRepoFile("src/dashboard/metrics.js");
+
+  assert.match(index, /from\s+["']\.\/dashboard\/metrics\.js["']/);
+  assert.match(index, /createDashboardMetricsApi\(/);
+  assert.match(index, /dashboardMetrics\.calculateMetrics/);
+  assert.doesNotMatch(index, /function\s+calculateMetrics\(/);
+  assert.doesNotMatch(index, /function\s+formatDuration\(/);
+
+  assert.match(metricsModule, /export\s+function\s+createDashboardMetricsApi/);
+  assert.match(metricsModule, /function\s+calculateMetrics\(/);
+  assert.match(metricsModule, /function\s+formatDuration\(/);
+  assert.match(metricsModule, /readLatestRelayStatusByThread\(memoryDir\)/);
+  assert.match(metricsModule, /readDispatchQueue\(memoryDir\)/);
+});

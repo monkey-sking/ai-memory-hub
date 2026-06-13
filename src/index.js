@@ -8,6 +8,7 @@ import http from "node:http";
 import { spawnSync, execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { createDashboardMemoryApi } from "./dashboard/memory.js";
+import { createDashboardMetricsApi } from "./dashboard/metrics.js";
 import { createDashboardProjectsApi } from "./dashboard/projects.js";
 import { createDashboardRadioApi } from "./dashboard/radio.js";
 import { createDashboardTasksApi } from "./dashboard/tasks.js";
@@ -112,6 +113,14 @@ const dashboardProjects = createDashboardProjectsApi({
   readTasks,
   readWorkflows,
   uniqueStringList
+});
+
+const dashboardMetrics = createDashboardMetricsApi({
+  readDispatchQueue,
+  readLatestRelayStatusByThread,
+  readRelayStatus,
+  readTasks,
+  readWorkflows
 });
 
 const RUNNER_PROFILES = {
@@ -1760,7 +1769,7 @@ function metricsCommand(argv) {
   const config = loadConfig();
   ensureHub(config.memoryDir);
 
-  const metrics = calculateMetrics(config.memoryDir);
+  const metrics = dashboardMetrics.calculateMetrics(config.memoryDir);
   console.log(JSON.stringify(metrics, null, 2));
 }
 
@@ -4988,7 +4997,7 @@ function appCommand(argv) {
         return sendJson(res, getDashboardSnapshot(config.memoryDir));
       }
       if (req.method === "GET" && url.pathname === "/api/metrics") {
-        return sendJson(res, calculateMetrics(config.memoryDir));
+        return sendJson(res, dashboardMetrics.calculateMetrics(config.memoryDir));
       }
       if (req.method === "GET" && url.pathname === "/api/status") {
         return sendJson(res, getStatusObject());
@@ -5602,7 +5611,7 @@ function getDashboardSnapshot(memoryDir) {
     workflows: dashboardWorkflows.getDashboardWorkflows(memoryDir),
     projects: dashboardProjects.getDashboardProjects(memoryDir),
     dispatch: getDashboardDispatch(memoryDir),
-    metrics: calculateMetrics(memoryDir),
+    metrics: dashboardMetrics.calculateMetrics(memoryDir),
     tools: getDashboardTools(memoryDir),
     backups: getDashboardBackups(memoryDir),
     settings: getDashboardSettings()
@@ -10302,138 +10311,6 @@ function resolveInside(root, target) {
     throw new Error(`Path escapes project root: ${target}`);
   }
   return resolved;
-}
-
-// Metrics Functions
-function calculateMetrics(memoryDir) {
-  const tasks = readTasks(memoryDir);
-  const workflows = readWorkflows(memoryDir);
-  const relayEvents = readRelayStatus(memoryDir);
-  const relayStatus = Object.values(readLatestRelayStatusByThread(memoryDir));
-  const dispatchQueue = readDispatchQueue(memoryDir);
-
-  // Task metrics
-  const tasksByStatus = tasks.reduce((acc, task) => {
-    acc[task.status] = (acc[task.status] || 0) + 1;
-    return acc;
-  }, {});
-
-  const tasksByTool = tasks.reduce((acc, task) => {
-    if (task.assignee) {
-      acc[task.assignee] = (acc[task.assignee] || 0) + 1;
-    }
-    return acc;
-  }, {});
-
-  const completedTasks = tasks.filter((t) => t.status === "done" && t.completedAt && t.createdAt);
-  const taskDurations = completedTasks.map((t) => {
-    const start = new Date(t.createdAt).getTime();
-    const end = new Date(t.completedAt).getTime();
-    return end - start;
-  });
-
-  const avgTaskDuration = taskDurations.length > 0
-    ? taskDurations.reduce((sum, d) => sum + d, 0) / taskDurations.length
-    : 0;
-
-  // Workflow metrics
-  const workflowsByStatus = workflows.reduce((acc, wf) => {
-    acc[wf.status] = (acc[wf.status] || 0) + 1;
-    return acc;
-  }, {});
-
-  const completedWorkflows = workflows.filter((w) => w.status === "done" && w.completedAt && w.createdAt);
-  const workflowDurations = completedWorkflows.map((w) => {
-    const start = new Date(w.createdAt).getTime();
-    const end = new Date(w.completedAt).getTime();
-    return end - start;
-  });
-
-  const avgWorkflowDuration = workflowDurations.length > 0
-    ? workflowDurations.reduce((sum, d) => sum + d, 0) / workflowDurations.length
-    : 0;
-
-  // Relay metrics
-  const relayByStatus = relayStatus.reduce((acc, relay) => {
-    const status = relay.state || relay.deliveryState || "unknown";
-    acc[status] = (acc[status] || 0) + 1;
-    return acc;
-  }, {});
-
-  const completedRelays = relayStatus.filter((r) => (r.state || r.deliveryState) === "completed");
-  const failedRelays = relayStatus.filter((r) => ["failed", "abandoned"].includes(r.state || r.deliveryState));
-  const progressRelays = relayStatus.filter((r) => (r.state || r.deliveryState) === "progress");
-
-  const relaySuccessRate = relayStatus.length > 0
-    ? ((completedRelays.length / relayStatus.length) * 100).toFixed(2)
-    : 0;
-
-  // Queue metrics
-  const queueByStatus = dispatchQueue.reduce((acc, entry) => {
-    acc[entry.status] = (acc[entry.status] || 0) + 1;
-    return acc;
-  }, {});
-
-  const queuedEntries = dispatchQueue.filter((e) => e.status === "queued");
-  const runningEntries = dispatchQueue.filter((e) => e.status === "running");
-  const failedQueueEntries = dispatchQueue.filter((e) => e.status === "failed");
-
-  // Recent failures
-  const recentFailures = [
-    ...failedRelays.slice(-5).map((r) => ({
-      type: "relay",
-      id: r.dispatchId || r.sourceId || r.id,
-      error: r.lastError,
-      time: r.ts || r.deliveryUpdatedAt
-    })),
-    ...failedQueueEntries.slice(-5).map((q) => ({
-      type: "queue",
-      id: q.id,
-      error: q.lastError,
-      time: q.lastAttemptAt
-    }))
-  ].sort((a, b) => (b.time || "").localeCompare(a.time || "")).slice(0, 10);
-
-  return {
-    tasks: {
-      total: tasks.length,
-      byStatus: tasksByStatus,
-      byTool: tasksByTool,
-      avgDurationMs: Math.round(avgTaskDuration),
-      avgDurationHuman: formatDuration(avgTaskDuration)
-    },
-    workflows: {
-      total: workflows.length,
-      byStatus: workflowsByStatus,
-      avgDurationMs: Math.round(avgWorkflowDuration),
-      avgDurationHuman: formatDuration(avgWorkflowDuration)
-    },
-    relay: {
-      total: relayStatus.length,
-      eventsTotal: relayEvents.length,
-      byStatus: relayByStatus,
-      completed: completedRelays.length,
-      failed: failedRelays.length,
-      progress: progressRelays.length,
-      successRate: `${relaySuccessRate}%`
-    },
-    queue: {
-      total: dispatchQueue.length,
-      byStatus: queueByStatus,
-      queued: queuedEntries.length,
-      running: runningEntries.length,
-      failed: failedQueueEntries.length
-    },
-    recentFailures
-  };
-}
-
-function formatDuration(ms) {
-  if (ms < 1000) return `${ms}ms`;
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
-  if (ms < 3600000) return `${(ms / 60000).toFixed(1)}m`;
-  if (ms < 86400000) return `${(ms / 3600000).toFixed(1)}h`;
-  return `${(ms / 86400000).toFixed(1)}d`;
 }
 
 function normalizePriority(priority) {

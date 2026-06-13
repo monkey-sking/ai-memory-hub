@@ -172,3 +172,20 @@ test("dashboard search API lives outside the CLI entrypoint", async () => {
   assert.match(searchModule, /function\s+makeDashboardSearchPreview\(/);
   assert.match(searchModule, /buildMemoryIndex\(readLedger\(memoryDir\)/);
 });
+
+test("dashboard health API lives outside the CLI entrypoint", async () => {
+  const index = await readRepoFile("src/index.js");
+  const healthModule = await readRepoFile("src/dashboard/health.js");
+
+  assert.match(index, /from\s+["']\.\/dashboard\/health\.js["']/);
+  assert.match(index, /createDashboardHealthApi\(/);
+  assert.match(index, /dashboardHealth\.buildMemoryHealthDiagnostic/);
+  assert.match(index, /dashboardHealth\.formatHealthAnalysisForDashboard/);
+  assert.doesNotMatch(index, /function\s+buildMemoryHealthDiagnostic\(/);
+  assert.doesNotMatch(index, /function\s+formatHealthAnalysisForDashboard\(/);
+
+  assert.match(healthModule, /export\s+function\s+createDashboardHealthApi/);
+  assert.match(healthModule, /function\s+buildMemoryHealthDiagnostic\(/);
+  assert.match(healthModule, /function\s+formatHealthAnalysisForDashboard\(/);
+  assert.match(healthModule, /renderMemoryHealthReport\(config,\s*index/);
+});

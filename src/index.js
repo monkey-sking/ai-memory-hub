@@ -123,9 +123,17 @@ const dashboardSettings = createDashboardSettingsApi({
 });
 
 const dashboardBackups = createDashboardBackupsApi({
+  backupHub,
+  configureGitHubBackup,
+  getBackupDetail,
   getBackupRetentionConfig,
   getBackupSummary,
-  loadConfig
+  getGitHubBackupStatus,
+  loadConfig,
+  pruneBackups,
+  restoreBackup,
+  runGitHubBackup,
+  withHubLock
 });
 
 const dashboardSearch = createDashboardSearchApi({
@@ -5195,67 +5203,44 @@ function appCommand(argv) {
         return sendJson(res, dashboardBackups.getDashboardBackups(config));
       }
       if (req.method === "GET" && url.pathname === "/api/backups/github/status") {
-        return sendJson(res, { ok: true, github: getGitHubBackupStatus(loadConfig()) });
+        return sendJson(res, dashboardBackups.getDashboardGitHubBackupStatus());
       }
       if (req.method === "POST" && url.pathname === "/api/backups/github/configure") {
         const body = await readRequestJson(req);
-        const result = configureGitHubBackup(loadConfig(), buildDashboardGitHubBackupConfigureArgv(body));
+        const result = dashboardBackups.configureDashboardGitHubBackup(body);
         broadcastDashboardUpdate("backup:github-configure");
-        return sendJson(res, {
-          ...result,
-          status: getGitHubBackupStatus(loadConfig())
-        });
+        return sendJson(res, result);
       }
       if (req.method === "POST" && url.pathname === "/api/backups/github/run") {
         const body = await readRequestJson(req);
-        const runConfig = loadConfig();
-        const result = withHubLock(
-          runConfig.memoryDir,
-          "github-backup",
-          () => runGitHubBackup(runConfig, buildDashboardGitHubBackupRunArgv(body)),
-          runConfig.sync.lockStaleMs
-        );
+        const result = dashboardBackups.runDashboardGitHubBackup(body);
         broadcastDashboardUpdate("backup:github-run");
         return sendJson(res, result);
       }
       if (req.method === "GET" && url.pathname === "/api/backups/detail") {
-        return sendJson(res, getBackupDetail(config.memoryDir, url.searchParams.get("name") || ""));
+        return sendJson(res, dashboardBackups.getDashboardBackupDetail(config, url.searchParams.get("name") || ""));
       }
       if (req.method === "POST" && url.pathname === "/api/backups/create") {
         const body = await readRequestJson(req);
-        const reason = String(body.reason || "dashboard-manual").trim() || "dashboard-manual";
-        const backup = withHubLock(config.memoryDir, "backup", () => backupHub(config.memoryDir, reason), config.sync.lockStaleMs);
+        const result = dashboardBackups.createDashboardBackup(config, body);
         broadcastDashboardUpdate("backup:create");
-        return sendJson(res, { ok: true, backup, backups: dashboardBackups.getDashboardBackups(config) });
+        return sendJson(res, result);
       }
       if (req.method === "POST" && url.pathname === "/api/backups/prune") {
         const body = await readRequestJson(req);
-        const retention = getBackupRetentionConfig(config);
-        const daily = Number.isInteger(Number(body.daily)) && Number(body.daily) > 0 ? Number(body.daily) : retention.daily;
-        const weekly = Number.isInteger(Number(body.weekly)) && Number(body.weekly) > 0 ? Number(body.weekly) : retention.weekly;
-        const preSync = Number.isInteger(Number(body.preSync)) && Number(body.preSync) > 0 ? Number(body.preSync) : retention.preSync;
-        const apply = Boolean(body.apply);
-        const result = apply
-          ? withHubLock(config.memoryDir, "backup-prune", () => pruneBackups(config.memoryDir, { apply, daily, weekly, preSync }), config.sync.lockStaleMs)
-          : pruneBackups(config.memoryDir, { apply, daily, weekly, preSync });
-        if (apply) {
+        const result = dashboardBackups.pruneDashboardBackups(config, body);
+        if (Boolean(body.apply)) {
           broadcastDashboardUpdate("backup:prune");
         }
-        return sendJson(res, { ok: true, ...result, backups: dashboardBackups.getDashboardBackups(config) });
+        return sendJson(res, result);
       }
       if (req.method === "POST" && url.pathname === "/api/backups/restore") {
         const body = await readRequestJson(req);
-        const apply = Boolean(body.apply);
-        const result = apply
-          ? withHubLock(config.memoryDir, "backup-restore", () => restoreBackup(config.memoryDir, body.name, {
-            apply,
-            confirm: body.confirm
-          }), config.sync.lockStaleMs)
-          : restoreBackup(config.memoryDir, body.name, { apply: false });
-        if (apply) {
+        const result = dashboardBackups.restoreDashboardBackup(config, body);
+        if (Boolean(body.apply)) {
           broadcastDashboardUpdate("backup:restore");
         }
-        return sendJson(res, { ok: true, ...result, backups: dashboardBackups.getDashboardBackups(config) });
+        return sendJson(res, result);
       }
       if (req.method === "GET" && url.pathname === "/api/search") {
         return sendJson(res, dashboardSearch.getDashboardSearch(config.memoryDir, {
@@ -6284,61 +6269,6 @@ function countToolsByKind(tools) {
     counts[kind] = (counts[kind] || 0) + 1;
     return counts;
   }, {});
-}
-
-function buildDashboardGitHubBackupRunArgv(body = {}) {
-  const argv = [];
-  if (body.dryRun === true) {
-    argv.push("--dry-run");
-  }
-  if (body.push !== true) {
-    argv.push("--no-push");
-  }
-  for (const [field, option] of [
-    ["reason", "--reason"],
-    ["remoteUrl", "--remote-url"],
-    ["repoDir", "--repo-dir"],
-    ["branch", "--branch"]
-  ]) {
-    if (body[field] !== undefined) {
-      argv.push(option, String(body[field] ?? ""));
-    }
-  }
-  return argv;
-}
-
-function buildDashboardGitHubBackupConfigureArgv(body = {}) {
-  const argv = [];
-  if (body.enabled === true) {
-    argv.push("--enabled");
-  } else if (body.enabled === false) {
-    argv.push("--disabled");
-  }
-  if (body.allowPlaintextSensitive === true) {
-    argv.push("--allow-plaintext-sensitive");
-  } else if (body.allowPlaintextSensitive === false) {
-    argv.push("--block-plaintext-sensitive");
-  }
-  if (body.scheduleEnabled === true) {
-    argv.push("--schedule-enabled");
-  } else if (body.scheduleEnabled === false) {
-    argv.push("--schedule-disabled");
-  }
-  for (const [field, option] of [
-    ["remoteUrl", "--remote-url"],
-    ["repoDir", "--repo-dir"],
-    ["branch", "--branch"],
-    ["include", "--include"],
-    ["exclude", "--exclude"],
-    ["time", "--time"],
-    ["taskName", "--task-name"]
-  ]) {
-    if (body[field] !== undefined) {
-      const value = Array.isArray(body[field]) ? body[field].join(",") : String(body[field] ?? "");
-      argv.push(option, value);
-    }
-  }
-  return argv;
 }
 
 function createDashboardRealtime(memoryDir) {

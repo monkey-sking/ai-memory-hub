@@ -65,6 +65,17 @@
   text-transform: uppercase;
 }
 
+.chat-tool-empty {
+  display: grid;
+  min-height: 38px;
+  align-content: center;
+  padding: 0 10px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--text-subtle);
+  font-size: 13px;
+}
+
 .chat-toolbar input,
 .chat-toolbar select,
 .chat-input input {
@@ -121,6 +132,7 @@
   overflow-wrap: anywhere;
   font-size: 14px;
   line-height: 1.55;
+  white-space: pre-wrap;
 }
 
 .message time {

@@ -41,3 +41,18 @@ test("dashboard radio read model lives outside the CLI entrypoint", async () => 
   assert.match(radioModule, /function\s+getDashboardRadio\(/);
   assert.match(radioModule, /readRadioMessages\(memoryDir\)\.slice\(-50\)/);
 });
+
+test("dashboard task read model lives outside the CLI entrypoint", async () => {
+  const index = await readRepoFile("src/index.js");
+  const tasksModule = await readRepoFile("src/dashboard/tasks.js");
+
+  assert.match(index, /from\s+["']\.\/dashboard\/tasks\.js["']/);
+  assert.match(index, /createDashboardTasksApi\(/);
+  assert.match(index, /dashboardTasks\.getDashboardTasks/);
+  assert.doesNotMatch(index, /function\s+getDashboardTasks\(/);
+
+  assert.match(tasksModule, /export\s+function\s+createDashboardTasksApi/);
+  assert.match(tasksModule, /function\s+getDashboardTasks\(/);
+  assert.match(tasksModule, /readTasks\(memoryDir\)/);
+  assert.match(tasksModule, /\.slice\(0,\s*200\)/);
+});

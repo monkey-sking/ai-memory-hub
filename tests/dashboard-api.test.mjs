@@ -266,93 +266,32 @@ test("dashboard serves externalized virtual-scroll assets", async () => {
       const res = await fetch(`http://127.0.0.1:${port}/`);
       assert.equal(res.status, 200);
       const html = await res.text();
-      assert.match(html, /<link rel="stylesheet" href="\/css\/dashboard\.css">/);
-      assert.match(html, /<script src="\/js\/dashboard\.js"><\/script>\s*<\/body>/);
-      assert.match(html, /id="tab-backups"/);
-      assert.match(html, /id="backupReason"/);
-      assert.match(html, /id="settingAutoRefresh"/);
-      assert.match(html, /id="settingNotifications"/);
-      assert.match(html, /id="settingShortcutsEnabled"/);
-      assert.match(html, /id="shortcutFocusSearch"/);
-      assert.match(html, /id="refreshStatus"/);
-      assert.match(html, /id="dashboardLoading"/);
-      assert.match(html, /id="toastStack"/);
-      assert.match(html, /id="shortcutHelp"/);
-      assert.match(html, /id="shortcutHelpGrid"/);
-      assert.match(html, /class="sidebar-nav"/);
-      assert.match(html, /class="nav-icon"/);
-      assert.match(html, /class="nav-label" data-i18n="overviewNav"/);
-      assert.match(html, /data-i18n="taskExecutionPanel"/);
-      assert.match(html, /id="executionStatusBars"/);
-      assert.match(html, /id="executionActiveList"/);
-      assert.match(html, /id="sidebarToggle" class="btn small sidebar-toggle"/);
-      assert.match(html, /onclick="toggleSidebar\(\)"/);
-      assert.match(html, /id="tab-dashboard"[\s\S]*class="panel compatibility-panel"[\s\S]*id="tab-memory"/);
-      assert.match(html, /data-i18n="integrationRulePreview"/);
-      assert.match(html, /data-i18n="installWorkspaceRules"/);
-      assert.match(html, /data-i18n="installGlobalRules"/);
-      assert.doesNotMatch(html, /<script>\s*\/\/\s*Global tool icon/);
+      const scriptMatch = html.match(/<script type="module" crossorigin src="([^"]+\.js)"><\/script>/);
+      const cssMatch = html.match(/<link rel="stylesheet" crossorigin href="([^"]+\.css)">/);
+      assert.ok(scriptMatch, "dashboard HTML should load the Vite JS bundle");
+      assert.ok(cssMatch, "dashboard HTML should load the Vite CSS bundle");
+      assert.match(html, /<div id="root"><\/div>/);
+      assert.match(html, /href="\/favicon\.svg"/);
 
-      const cssRes = await fetch(`http://127.0.0.1:${port}/css/dashboard.css`);
+      const cssRes = await fetch(`http://127.0.0.1:${port}${cssMatch[1]}`);
       assert.equal(cssRes.status, 200);
       assert.match(cssRes.headers.get("content-type") || "", /text\/css/);
       const dashboardCss = await cssRes.text();
-      assert.match(dashboardCss, /--bg-main/);
-      assert.match(dashboardCss, /body\[data-theme="light"\]/);
-      assert.match(dashboardCss, /\.backup-row/);
-      assert.match(dashboardCss, /\.toast-stack/);
-      assert.match(dashboardCss, /\.shortcut-grid/);
-      assert.match(dashboardCss, /\.loading-banner/);
-      assert.match(dashboardCss, /\.refresh-status/);
-      assert.match(dashboardCss, /\.endpoint-errors-title-row/);
-      assert.match(dashboardCss, /--sidebar-collapsed-width/);
-      assert.match(dashboardCss, /body\.sidebar-collapsed #sidebar/);
-      assert.match(dashboardCss, /body\.sidebar-collapsed \.container/);
-      assert.match(dashboardCss, /body\.sidebar-collapsed \.nav-label/);
-      assert.doesNotMatch(dashboardCss, /(^|\n)\s*aside\s*\{/);
-      assert.match(dashboardCss, /\.compatibility-grid/);
-      assert.match(dashboardCss, /\.compatibility-pre/);
-      assert.match(dashboardCss, /\.tool-card-copy/);
-      assert.match(dashboardCss, /\.modal-tool-snippet/);
-      assert.match(dashboardCss, /\.task-execution-grid/);
-      assert.match(dashboardCss, /\.execution-bar-fill/);
-      assert.match(dashboardCss, /max-width:\s*640px/);
+      assert.ok(dashboardCss.length > 1000);
 
-      const jsRes = await fetch(`http://127.0.0.1:${port}/js/dashboard.js`);
+      const jsRes = await fetch(`http://127.0.0.1:${port}${scriptMatch[1]}`);
       assert.equal(jsRes.status, 200);
       assert.match(jsRes.headers.get("content-type") || "", /application\/javascript/);
       const dashboardScript = await jsRes.text();
-      assert.match(dashboardScript, /function renderVirtualList/);
-      assert.match(dashboardScript, /new Chart\(el/);
-      assert.match(dashboardScript, /memoryGrowthChart/);
-      assert.match(dashboardScript, /function renderHealthReport/);
-      assert.match(dashboardScript, /function runHealthAction/);
-      assert.match(dashboardScript, /function renderBackupsPanel/);
-      assert.match(dashboardScript, /function showToast/);
-      assert.match(dashboardScript, /function formatApiError/);
-      assert.match(dashboardScript, /function renderLoadingState/);
-      assert.match(dashboardScript, /function renderLoadingPlaceholders/);
-      assert.match(dashboardScript, /function handleGlobalShortcuts/);
-      assert.match(dashboardScript, /function normalizeShortcutBinding/);
-      assert.match(dashboardScript, /function renderShortcutHelp/);
-      assert.match(dashboardScript, /function applySettingsDraft/);
-      assert.match(dashboardScript, /function applyTheme/);
-      assert.match(dashboardScript, /function renderTaskExecutionPanel/);
-      assert.match(dashboardScript, /api\('\/api\/metrics'/);
-      assert.match(dashboardScript, /hub_sidebar_collapsed/);
-      assert.match(dashboardScript, /function applySidebarMode/);
-      assert.match(dashboardScript, /function updateSidebarToggleButton/);
-      assert.match(dashboardScript, /document\.body\.classList\.toggle\('sidebar-collapsed'/);
-      assert.match(dashboardScript, /toolNotDetected/);
-      assert.match(dashboardScript, /installWorkspaceRules/);
-      assert.match(dashboardScript, /rulesWritten/);
-      assert.match(dashboardScript, /t\('toolConnected'\)/);
-      assert.match(dashboardScript, /api\('\/api\/backups'/);
-      assert.match(dashboardScript, /new URLSearchParams/);
-      assert.match(dashboardScript, /api\(`\/api\/search\?\$\{params\.toString\(\)\}`\)/);
-      assert.match(dashboardScript, /api\(action\.endpoint/);
-      assert.match(dashboardScript, /settingNotifications/);
-      assert.doesNotMatch(dashboardScript, /echarts\.init/);
+      assert.ok(dashboardScript.length > 1000);
+
+      const faviconRes = await fetch(`http://127.0.0.1:${port}/favicon.svg`);
+      assert.equal(faviconRes.status, 200);
+      assert.match(faviconRes.headers.get("content-type") || "", /image\/svg\+xml/);
+
+      const iconRes = await fetch(`http://127.0.0.1:${port}/assets/tool-icons/codex.png`);
+      assert.equal(iconRes.status, 200);
+      assert.match(iconRes.headers.get("content-type") || "", /image\/png/);
 
       const metricsRes = await fetch(`http://127.0.0.1:${port}/api/metrics`);
       assert.equal(metricsRes.status, 200);
@@ -381,7 +320,7 @@ test("dashboard serves externalized virtual-scroll assets", async () => {
       assert.equal(toolsPayload.capabilities.total, capabilities.summary.total);
       assert.ok(toolsPayload.tools.some((tool) => tool.name === "codex" && tool.capability.directCli));
 
-      const traversalRes = await fetch(`http://127.0.0.1:${port}/js/%2e%2e/%2e%2e/package.json`);
+      const traversalRes = await fetch(`http://127.0.0.1:${port}/assets/%2e%2e/%2e%2e/package.json`);
       assert.notEqual(traversalRes.status, 200);
       assert.doesNotMatch(await traversalRes.text(), /"name": "ai-memory-hub"/);
     } finally {
@@ -390,42 +329,23 @@ test("dashboard serves externalized virtual-scroll assets", async () => {
     assert.deepEqual(stderr, []);
   });
 
-  const dashboardJs = await fs.readFile(path.join(repoRoot, "public", "js", "dashboard.js"), "utf8");
-  assert.match(dashboardJs, /function renderVirtualList/);
-  assert.match(dashboardJs, /renderMarkdownVirtual\('memorySubTab-md'/);
-  assert.match(dashboardJs, /renderVirtualList\('radioFeed'/);
-  assert.match(dashboardJs, /renderVirtualList\('col-open'/);
-  assert.match(dashboardJs, /renderVirtualList\('col-active'/);
-  assert.match(dashboardJs, /renderVirtualList\('col-completed'/);
-  assert.match(dashboardJs, /loading="lazy"/);
-  assert.match(dashboardJs, /function loadChartJs/);
-  assert.match(dashboardJs, /new Chart\(el/);
-  assert.match(dashboardJs, /memoryGrowthChart/);
-  assert.match(dashboardJs, /taskCompletionChart/);
-  assert.match(dashboardJs, /radioActivityChart/);
-  assert.match(dashboardJs, /function renderHealthReport/);
-  assert.match(dashboardJs, /function runHealthAction/);
-  assert.match(dashboardJs, /function renderBackupsPanel/);
-  assert.match(dashboardJs, /function showToast/);
-  assert.match(dashboardJs, /function formatApiError/);
-  assert.match(dashboardJs, /function renderLoadingState/);
-  assert.match(dashboardJs, /function renderLoadingPlaceholders/);
-  assert.match(dashboardJs, /function handleGlobalShortcuts/);
-  assert.match(dashboardJs, /function normalizeShortcutBinding/);
-  assert.match(dashboardJs, /function renderShortcutHelp/);
-  assert.match(dashboardJs, /function applySettingsDraft/);
-  assert.match(dashboardJs, /function applyTheme/);
-  assert.match(dashboardJs, /function renderTaskExecutionPanel/);
-  assert.match(dashboardJs, /api\('\/api\/metrics'/);
-  assert.match(dashboardJs, /hub_sidebar_collapsed/);
-  assert.match(dashboardJs, /function applySidebarMode/);
-  assert.match(dashboardJs, /function updateSidebarToggleButton/);
-  assert.match(dashboardJs, /document\.body\.classList\.toggle\('sidebar-collapsed'/);
-  assert.match(dashboardJs, /api\('\/api\/backups'/);
-  assert.match(dashboardJs, /new URLSearchParams/);
-  assert.match(dashboardJs, /api\(`\/api\/search\?\$\{params\.toString\(\)\}`\)/);
-  assert.match(dashboardJs, /api\(action\.endpoint/);
-  assert.doesNotMatch(dashboardJs, /echarts\.init/);
+  const dashboardSource = await fs.readFile(path.join(repoRoot, "dashboard-next", "src", "pages", "Dashboard.tsx"), "utf8");
+  const dashboardCss = await fs.readFile(path.join(repoRoot, "dashboard-next", "src", "pages", "Dashboard.css"), "utf8");
+  assert.match(dashboardSource, /function TasksPanel/);
+  assert.match(dashboardSource, /function WorkflowsPanel/);
+  assert.match(dashboardSource, /function ProjectsPanel/);
+  assert.match(dashboardSource, /function ToastStack/);
+  assert.match(dashboardSource, /function Modal/);
+  assert.match(dashboardSource, /apiGet<DashboardSnapshot>\('\/api\/dashboard'\)/);
+  assert.match(dashboardSource, /'\/api\/task\/status'/);
+  assert.match(dashboardSource, /'\/api\/task\/review'/);
+  assert.match(dashboardSource, /apiGet<AnyRecord>\('\/api\/health'\)/);
+  assert.match(dashboardSource, /toolIconFiles/);
+  assert.match(dashboardCss, /\.kanban-grid/);
+  assert.match(dashboardCss, /\.kanban-grid-4/);
+  assert.match(dashboardCss, /\.toast-stack/);
+  assert.match(dashboardCss, /\.workflow-card/);
+  assert.match(dashboardCss, /\.tool-card/);
 });
 
 test("dashboard task APIs hide cancelled tasks by default", async () => {
@@ -594,21 +514,16 @@ test("dashboard settings API persists editable runtime preferences", async () =>
 });
 
 test("dashboard workflow API supports CRUD actions and UI hooks", async () => {
-  const dashboardHtml = await fs.readFile(path.join(repoRoot, "templates", "dashboard-v2.html"), "utf8");
-  assert.match(dashboardHtml, /id="workflowEditor"/);
-  assert.match(dashboardHtml, /onclick="showWorkflowForm\(\)"/);
-  assert.match(dashboardHtml, /onclick="saveWorkflow\(\)"/);
-  assert.match(dashboardHtml, /onclick="cancelWorkflowEdit\(\)"/);
-
-  const dashboardJs = await fs.readFile(path.join(repoRoot, "public", "js", "dashboard.js"), "utf8");
-  assert.match(dashboardJs, /function renderWorkflowsPanel/);
-  assert.match(dashboardJs, /function showWorkflowForm/);
-  assert.match(dashboardJs, /async function saveWorkflow/);
-  assert.match(dashboardJs, /async function deleteWorkflow/);
-  assert.match(dashboardJs, /async function setWorkflowStatus/);
-  assert.match(dashboardJs, /async function addWorkflowEntry/);
-  assert.match(dashboardJs, /async function signalWorkflow/);
-  assert.match(dashboardJs, /api\(`\/api\/workflows\/\$\{encodeURIComponent\(id\)\}`/);
+  const dashboardSource = await fs.readFile(path.join(repoRoot, "dashboard-next", "src", "pages", "Dashboard.tsx"), "utf8");
+  assert.match(dashboardSource, /function WorkflowsPanel/);
+  assert.match(dashboardSource, /function WorkflowCard/);
+  assert.match(dashboardSource, /createWorkflowForm/);
+  assert.match(dashboardSource, /apiPost<AnyRecord>\('\/api\/workflows'/);
+  assert.match(dashboardSource, /apiPatch<AnyRecord>\(`\/api\/workflows\/\$\{encodeURIComponent\(form\.id\)\}`/);
+  assert.match(dashboardSource, /apiDelete<AnyRecord>\(`\/api\/workflows\/\$\{encodeURIComponent\(id\)\}`/);
+  assert.match(dashboardSource, /apiPost<AnyRecord>\(`\/api\/workflows\/\$\{encodeURIComponent\(id\)\}\/status`/);
+  assert.match(dashboardSource, /apiPost<AnyRecord>\(`\/api\/workflows\/\$\{encodeURIComponent\(id\)\}\/signal`/);
+  assert.match(dashboardSource, /apiPost<AnyRecord>\(`\/api\/workflows\/\$\{encodeURIComponent\(id\)\}\/\$\{actionState\.action\}`/);
 
   await withHub(async (memoryDir) => {
     const port = await getFreePort();
@@ -774,28 +689,14 @@ test("dashboard workflow API supports CRUD actions and UI hooks", async () => {
 });
 
 test("dashboard projects API exposes registry data and UI hooks", async () => {
-  const dashboardHtml = await fs.readFile(path.join(repoRoot, "templates", "dashboard-v2.html"), "utf8");
-  assert.match(dashboardHtml, /id="tab-projects"/);
-  assert.match(dashboardHtml, /id="projectEditor"/);
-  assert.match(dashboardHtml, /id="sidebarProjects"/);
-  assert.match(dashboardHtml, /onclick="showProjectForm\(\)"/);
-  assert.match(dashboardHtml, /onclick="saveProject\(\)"/);
-
-  const dashboardJs = await fs.readFile(path.join(repoRoot, "public", "js", "dashboard.js"), "utf8");
-  assert.match(dashboardJs, /function renderProjectsPanel/);
-  assert.match(dashboardJs, /async function saveProject/);
-  assert.match(dashboardJs, /async function archiveProject/);
-  assert.match(dashboardJs, /function renderProjectResourceValueHTML/);
-  assert.match(dashboardJs, /api\('\/api\/projects'\)/);
-  assert.match(dashboardJs, /projectMatchesFilter/);
-  assert.match(dashboardJs, /project-resource-link/);
-  assert.match(dashboardJs, /projectIdLabel: "Project ID"/);
-  assert.match(dashboardJs, /projectIdLabel: "项目 ID"/);
-
-  const dashboardCss = await fs.readFile(path.join(repoRoot, "public", "css", "dashboard.css"), "utf8");
-  assert.match(dashboardCss, /\.project-resource-link/);
-  assert.match(dashboardCss, /text-overflow:\s*ellipsis/);
-  assert.match(dashboardCss, /white-space:\s*nowrap/);
+  const dashboardSource = await fs.readFile(path.join(repoRoot, "dashboard-next", "src", "pages", "Dashboard.tsx"), "utf8");
+  const dashboardCopy = await fs.readFile(path.join(repoRoot, "dashboard-next", "src", "lib", "dashboardCopy.ts"), "utf8");
+  assert.match(dashboardSource, /function ProjectsPanel/);
+  assert.match(dashboardSource, /visibleProjects/);
+  assert.match(dashboardSource, /unregisteredProjects/);
+  assert.match(dashboardSource, /<DataTable/);
+  assert.match(dashboardCopy, /visibleProjects: '可见项目'/);
+  assert.match(dashboardCopy, /visibleProjects: 'Visible projects'/);
 
   const projectGuide = await fs.readFile(path.join(repoRoot, "docs", "project-registry.md"), "utf8");
   assert.match(projectGuide, /GET    \/api\/projects/);

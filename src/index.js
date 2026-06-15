@@ -5109,7 +5109,7 @@ function appCommand(argv) {
       if (req.method === "GET" && url.pathname.startsWith("/assets/")) {
         return sendStaticAsset(res, url.pathname);
       }
-      if (req.method === "GET" && (url.pathname.startsWith("/css/") || url.pathname.startsWith("/js/"))) {
+      if (req.method === "GET" && (url.pathname.startsWith("/css/") || url.pathname.startsWith("/js/") || url.pathname.startsWith("/assets/") || url.pathname.endsWith(".svg"))) {
         return sendStaticFile(res, url.pathname);
       }
       if (req.method === "GET" && url.pathname === "/") {
@@ -6766,7 +6766,15 @@ function sendStaticFile(res, pathname) {
   const contentTypeMap = {
     ".css": "text/css; charset=utf-8",
     ".js": "application/javascript; charset=utf-8",
-    ".json": "application/json; charset=utf-8"
+    ".json": "application/json; charset=utf-8",
+    ".svg": "image/svg+xml",
+    ".html": "text/html; charset=utf-8",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".woff": "font/woff",
+    ".woff2": "font/woff2"
   };
 
   res.writeHead(200, {
@@ -6794,10 +6802,11 @@ function sendJson(res, value, status = 200) {
 
 function sendStaticAsset(res, pathname) {
   const relativePath = pathname.replace(/^\/+/, "");
-  const assetPath = path.join(projectRoot(), relativePath);
-  const assetsRoot = path.join(projectRoot(), "assets");
+  const assetPath = path.join(projectRoot(), "public", relativePath);
+  const assetsRoot = path.join(projectRoot(), "public", "assets");
   const normalizedAssetPath = path.resolve(assetPath);
   const normalizedAssetsRoot = path.resolve(assetsRoot);
+
   if (!normalizedAssetPath.startsWith(normalizedAssetsRoot + path.sep) && normalizedAssetPath !== normalizedAssetsRoot) {
     res.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" });
     res.end("Forbidden");
@@ -6817,6 +6826,14 @@ function sendStaticAsset(res, pathname) {
 
 function getContentType(file) {
   switch (path.extname(file).toLowerCase()) {
+    case ".js":
+      return "application/javascript; charset=utf-8";
+    case ".css":
+      return "text/css; charset=utf-8";
+    case ".json":
+      return "application/json; charset=utf-8";
+    case ".html":
+      return "text/html; charset=utf-8";
     case ".svg":
       return "image/svg+xml";
     case ".png":
@@ -6828,6 +6845,10 @@ function getContentType(file) {
       return "image/webp";
     case ".gif":
       return "image/gif";
+    case ".woff":
+      return "font/woff";
+    case ".woff2":
+      return "font/woff2";
     default:
       return "application/octet-stream";
   }

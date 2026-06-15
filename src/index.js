@@ -225,14 +225,20 @@ const dashboardActions = createDashboardActionsApi({
   createTaskNote,
   ensureDir,
   executeDispatch,
+  findTaskIndex,
   getDefaultProjectName: () => path.basename(process.cwd()),
+  getEntityEventsFile,
+  getEntityProjectionFile,
   getInstallTargets,
   getLocalInstallTargets,
   getRadioMessagesFile: (memoryDir) => path.join(memoryDir, "radio", "messages.jsonl"),
   getStatusObject,
+  getTaskEventStoreDefinition,
   invalidateToolDetectionCache,
+  materializeEntityProjection,
   pullCommand,
   radioPromoteCommand,
+  readEntityEvents,
   readTasks,
   readWorkflows,
   recordCommand,
@@ -5559,6 +5565,18 @@ function appCommand(argv) {
         }
         const result = dashboardActions.reviewDashboardTask(config, body);
         broadcastDashboardUpdate("task:review");
+        return sendJson(res, result);
+      }
+      if (req.method === "POST" && url.pathname === "/api/task/purge") {
+        const body = await readRequestJson(req);
+        if (!body.id || typeof body.id !== "string") {
+          return sendJson(res, { error: "id is required" }, 400);
+        }
+        if (!body.confirm || typeof body.confirm !== "string") {
+          return sendJson(res, { error: "confirm is required" }, 400);
+        }
+        const result = dashboardActions.purgeDashboardTask(config, body);
+        broadcastDashboardUpdate("task:purge");
         return sendJson(res, result);
       }
       if (req.method === "POST" && url.pathname === "/api/dispatch/run") {

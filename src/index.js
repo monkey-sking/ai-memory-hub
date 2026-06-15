@@ -7,6 +7,7 @@ import crypto from "node:crypto";
 import http from "node:http";
 import { spawnSync, execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { createDashboardActionsApi } from "./dashboard/actions.js";
 import { createDashboardBackupsApi } from "./dashboard/backups.js";
 import { createDashboardDispatchApi } from "./dashboard/dispatch.js";
 import { createDashboardHealthApi } from "./dashboard/health.js";
@@ -213,6 +214,34 @@ const dashboardRealtime = createDashboardRealtimeApi({
   dashboardTools,
   dashboardWorkflows,
   getStatusObject
+});
+
+const dashboardActions = createDashboardActionsApi({
+  appendIfMissing,
+  appendJsonl,
+  assertTaskStatus,
+  createRadioMessage,
+  createTask,
+  createTaskNote,
+  ensureDir,
+  executeDispatch,
+  getDefaultProjectName: () => path.basename(process.cwd()),
+  getInstallTargets,
+  getLocalInstallTargets,
+  getRadioMessagesFile: (memoryDir) => path.join(memoryDir, "radio", "messages.jsonl"),
+  getStatusObject,
+  invalidateToolDetectionCache,
+  pullCommand,
+  radioPromoteCommand,
+  readTasks,
+  readWorkflows,
+  recordCommand,
+  renderInstallSnippet,
+  syncCommand,
+  updateTask,
+  withHubLock,
+  writeTasks,
+  writeWorkflows
 });
 
 const RUNNER_PROFILES = {
@@ -5338,80 +5367,36 @@ function appCommand(argv) {
         if (!body.text || typeof body.text !== "string") {
           return sendJson(res, { error: "text is required" }, 400);
         }
-        recordCommand([
-          body.text,
-          "--source",
-          body.source || "dashboard",
-          "--kind",
-          body.kind || "note"
-        ]);
+        const result = dashboardActions.recordDashboardMemory(body);
         broadcastDashboardUpdate("record");
-        return sendJson(res, { ok: true, status: getStatusObject() });
+        return sendJson(res, result);
       }
       if (req.method === "POST" && url.pathname === "/api/radio/send") {
         const body = await readRequestJson(req);
         if (!body.text || typeof body.text !== "string") {
           return sendJson(res, { error: "text is required" }, 400);
         }
-        const config = loadConfig();
-        const message = createRadioMessage({
-          from: body.from || "dashboard",
-          to: body.to || "all",
-          type: body.type || "note",
-          text: body.text,
-          thread: body.thread || "",
-          replyTo: body.replyTo || "",
-          project: body.project || path.basename(process.cwd())
-        });
-        appendJsonl(path.join(config.memoryDir, "radio", "messages.jsonl"), message);
+        const result = dashboardActions.sendDashboardRadio(config, body);
         broadcastDashboardUpdate("radio:send");
-        return sendJson(res, { ok: true, message, status: getStatusObject() });
+        return sendJson(res, result);
       }
       if (req.method === "POST" && url.pathname === "/api/task/add") {
         const body = await readRequestJson(req);
         if (!body.title || typeof body.title !== "string") {
           return sendJson(res, { error: "title is required" }, 400);
         }
-        const config = loadConfig();
-        let task;
-        withHubLock(config.memoryDir, "task-add", () => {
-          const tasks = readTasks(config.memoryDir);
-          task = createTask({
-            title: body.title,
-            description: body.description || "",
-            handoff: body.handoff || "",
-            createdBy: body.from || "dashboard",
-            project: body.project || path.basename(process.cwd()),
-            priority: body.priority || "normal"
-          });
-          tasks.push(task);
-          writeTasks(config.memoryDir, tasks);
-        }, config.sync.lockStaleMs);
+        const result = dashboardActions.addDashboardTask(config, body);
         broadcastDashboardUpdate("task:add");
-        return sendJson(res, { ok: true, task, status: getStatusObject() });
+        return sendJson(res, result);
       }
       if (req.method === "POST" && url.pathname === "/api/task/claim") {
         const body = await readRequestJson(req);
         if (!body.id || typeof body.id !== "string") {
           return sendJson(res, { error: "id is required" }, 400);
         }
-        const config = loadConfig();
-        let task;
-        withHubLock(config.memoryDir, "task-claim", () => {
-          const by = body.by || "dashboard";
-          task = updateTask(config.memoryDir, body.id, (current) => ({
-            ...current,
-            status: current.status === "open" ? "claimed" : current.status,
-            assignee: by,
-            updatedAt: new Date().toISOString(),
-            notes: [
-              ...(current.notes || []),
-              createTaskNote(by, `Claimed by ${by}.`)
-            ]
-          }));
-        }, config.sync.lockStaleMs);
+        const result = dashboardActions.claimDashboardTask(config, body);
         broadcastDashboardUpdate("task:claim");
-        return sendJson(res, { ok: true, task, status: getStatusObject() });
+        return sendJson(res, result);
       }
       if (req.method === "POST" && url.pathname === "/api/task/status") {
         const body = await readRequestJson(req);
@@ -5421,30 +5406,9 @@ function appCommand(argv) {
         if (!body.status || typeof body.status !== "string") {
           return sendJson(res, { error: "status is required" }, 400);
         }
-        assertTaskStatus(body.status);
-        const config = loadConfig();
-        let task;
-        withHubLock(config.memoryDir, "task-status", () => {
-          const by = body.by || "dashboard";
-          task = updateTask(config.memoryDir, body.id, (current) => {
-            const notes = [...(current.notes || [])];
-            if (body.note) {
-              notes.push(createTaskNote(by, body.note));
-            } else if (current.status !== body.status) {
-              notes.push(createTaskNote(by, `Status changed to ${body.status}.`));
-            }
-            return {
-              ...current,
-              status: body.status,
-              assignee: current.assignee || by,
-              updatedAt: new Date().toISOString(),
-              completedAt: body.status === "done" ? new Date().toISOString() : current.completedAt || "",
-              notes
-            };
-          });
-        }, config.sync.lockStaleMs);
+        const result = dashboardActions.setDashboardTaskStatus(config, body);
         broadcastDashboardUpdate("task:status");
-        return sendJson(res, { ok: true, task, status: getStatusObject() });
+        return sendJson(res, result);
       }
       if (req.method === "POST" && url.pathname === "/api/task/review") {
         const body = await readRequestJson(req);
@@ -5455,184 +5419,67 @@ function appCommand(argv) {
         if (!["approved", "rejected"].includes(decision)) {
           return sendJson(res, { error: "decision must be approved or rejected" }, 400);
         }
-        const config = loadConfig();
-        let task;
-        let workflows = [];
-        withHubLock(config.memoryDir, "task-review", () => {
-          const by = body.by || "dashboard";
-          const note = String(body.note || "").trim();
-          const now = new Date().toISOString();
-          task = updateTask(config.memoryDir, body.id, (current) => ({
-            ...current,
-            status: decision === "approved" ? "done" : "blocked",
-            assignee: current.assignee || by,
-            updatedAt: now,
-            completedAt: decision === "approved" ? now : "",
-            reviewStatus: decision,
-            reviewedAt: now,
-            reviewedBy: by,
-            reviewNote: note,
-            notes: [
-              ...(current.notes || []),
-              createTaskNote(by, `Review ${decision}: ${note || "No note provided."}`)
-            ]
-          }));
-
-          const allWorkflows = readWorkflows(config.memoryDir);
-          let changed = false;
-          workflows = allWorkflows.map((workflow) => {
-            const linkedTasks = Array.isArray(workflow.linkedTasks) ? workflow.linkedTasks : [];
-            if (!linkedTasks.includes(task.id)) {
-              return workflow;
-            }
-            changed = true;
-            const text = `Task ${task.id} review ${decision}: ${note || task.title}`;
-            return {
-              ...workflow,
-              status: workflow.status === "done" || workflow.status === "cancelled" ? workflow.status : "review",
-              updatedAt: now,
-              reviews: [
-                ...(workflow.reviews || []),
-                { ts: now, by, role: "reviewer", text }
-              ],
-              notes: [
-                ...(workflow.notes || []),
-                createTaskNote(by, text)
-              ]
-            };
-          });
-          if (changed) {
-            writeWorkflows(config.memoryDir, workflows);
-          }
-          workflows = workflows.filter((workflow) => (workflow.linkedTasks || []).includes(task.id));
-        }, config.sync.lockStaleMs);
+        const result = dashboardActions.reviewDashboardTask(config, body);
         broadcastDashboardUpdate("task:review");
-        return sendJson(res, { ok: true, task, workflows, status: getStatusObject() });
+        return sendJson(res, result);
       }
       if (req.method === "POST" && url.pathname === "/api/dispatch/run") {
         const body = await readRequestJson(req);
-        const config = loadConfig();
-        const results = executeDispatch(config.memoryDir, {
-          run: true,
-          force: Boolean(body.force),
-          to: body.to || "",
-          project: body.project || "",
-          limit: Number(body.limit || 10),
-          isolateWorktree: Boolean(body.isolateWorktree),
-          worktreeRoot: body.worktreeRoot || ""
-        });
+        const result = dashboardActions.runDashboardDispatch(config, body);
         broadcastDashboardUpdate("dispatch:run");
-        return sendJson(res, { ok: true, results, status: getStatusObject() });
+        return sendJson(res, result);
       }
       if (req.method === "POST" && url.pathname === "/api/dispatch/marvis") {
         const body = await readRequestJson(req);
         if (!body.text || typeof body.text !== "string") {
           return sendJson(res, { error: "text is required" }, 400);
         }
-        const config = loadConfig();
-        const from = body.from || "unknown";
-        const project = body.project || path.basename(process.cwd());
-        const dispatchType = body.type || "handoff";
-
-        // Write to Agent Radio
-        const message = createRadioMessage({
-          from,
-          to: "marvis",
-          type: dispatchType,
-          text: body.text,
-          thread: body.thread || "",
-          project
-        });
-        appendJsonl(path.join(config.memoryDir, "radio", "messages.jsonl"), message);
-
-        // Also create a shared task
-        let task;
-        withHubLock(config.memoryDir, "task-add", () => {
-          const tasks = readTasks(config.memoryDir);
-          task = createTask({
-            title: body.text.slice(0, 120),
-            description: body.text,
-            handoff: `Dispatched by ${from}${body.thread ? ` (thread: ${body.thread})` : ""}`,
-            createdBy: from,
-            project,
-            priority: body.priority || "normal"
-          });
-          tasks.push(task);
-          writeTasks(config.memoryDir, tasks);
-        }, config.sync.lockStaleMs);
-
+        const result = dashboardActions.dispatchDashboardMarvis(config, body);
         broadcastDashboardUpdate("dispatch:marvis");
-        return sendJson(res, {
-          ok: true,
-          message,
-          task,
-          hint: "Task sent to Marvis. It will be processed when the user asks Marvis to check AI Memory Hub."
-        });
+        return sendJson(res, result);
       }
       if (req.method === "POST" && url.pathname === "/api/radio/promote") {
         const body = await readRequestJson(req);
         if (!body.id || typeof body.id !== "string") {
           return sendJson(res, { error: "id is required" }, 400);
         }
-        radioPromoteCommand(["--id", body.id]);
+        const result = dashboardActions.promoteDashboardRadio(body);
         broadcastDashboardUpdate("radio:promote");
-        return sendJson(res, { ok: true, status: getStatusObject() });
+        return sendJson(res, result);
       }
       if (req.method === "POST" && url.pathname === "/api/sync") {
-        syncCommand([]);
+        const result = dashboardActions.syncDashboardMemory();
         broadcastDashboardUpdate("sync");
-        return sendJson(res, { ok: true, status: getStatusObject() });
+        return sendJson(res, result);
       }
       if (req.method === "POST" && url.pathname === "/api/pull") {
-        pullCommand([]);
+        const result = dashboardActions.pullDashboardMemory();
         broadcastDashboardUpdate("pull");
-        return sendJson(res, { ok: true, status: getStatusObject() });
+        return sendJson(res, result);
       }
       if (req.method === "GET" && url.pathname === "/api/install/preview") {
         const toolName = url.searchParams.get("tool");
         const isLocal = url.searchParams.get("scope") === "local";
-        const config = loadConfig();
-        const targets = (isLocal 
-          ? getLocalInstallTargets(process.cwd(), config.memoryDir) 
-          : getInstallTargets(config.memoryDir)
-        ).filter(t => t.tool === toolName);
-
-        if (targets.length === 0) {
-          return sendJson(res, { error: `No preview target for tool ${toolName}` }, 404);
+        try {
+          return sendJson(res, dashboardActions.getDashboardInstallPreview(config, { toolName, isLocal }));
+        } catch (error) {
+          return sendJson(res, { error: error.message || String(error) }, 404);
         }
-        const target = targets[0];
-        const snippet = renderInstallSnippet(target, config.memoryDir);
-        return sendJson(res, {
-          tool: target.tool,
-          file: target.file,
-          snippet: snippet
-        });
       }
       if (req.method === "POST" && url.pathname === "/api/install/apply") {
         const body = await readRequestJson(req);
         const toolName = body.tool;
-        const isLocal = body.scope === "local";
         if (!toolName) {
           return sendJson(res, { error: "tool is required" }, 400);
         }
-        const config = loadConfig();
-        const targets = (isLocal 
-          ? getLocalInstallTargets(process.cwd(), config.memoryDir) 
-          : getInstallTargets(config.memoryDir)
-        ).filter(t => t.tool === toolName);
-
-        if (targets.length === 0) {
-          return sendJson(res, { error: `No install targets for tool: ${toolName}` }, 404);
+        let result;
+        try {
+          result = dashboardActions.applyDashboardInstall(config, body);
+        } catch (error) {
+          return sendJson(res, { error: error.message || String(error) }, 404);
         }
-        
-        const target = targets[0];
-        const snippet = renderInstallSnippet(target, config.memoryDir);
-        
-        ensureDir(path.dirname(target.file));
-        appendIfMissing(target.file, snippet, "Shared AI Memory");
-        invalidateToolDetectionCache(config.memoryDir);
         broadcastDashboardUpdate("install:apply");
-        return sendJson(res, { success: true, file: target.file });
+        return sendJson(res, result);
       }
       return sendJson(res, { error: "not found" }, 404);
     } catch (error) {

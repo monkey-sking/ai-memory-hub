@@ -288,3 +288,34 @@ test("dashboard realtime and snapshot API lives outside the CLI entrypoint", asy
   assert.match(realtimeModule, /dashboardMemory\.getDashboardMemory\(memoryDir\)/);
   assert.match(realtimeModule, /snapshot:\s*getDashboardSnapshot\(memoryDir\)/);
 });
+
+test("dashboard action route wrappers live outside the CLI entrypoint", async () => {
+  const index = await readRepoFile("src/index.js");
+  const actionsModule = await readRepoFile("src/dashboard/actions.js");
+
+  assert.match(index, /from\s+["']\.\/dashboard\/actions\.js["']/);
+  assert.match(index, /createDashboardActionsApi\(/);
+  for (const action of [
+    "recordDashboardMemory",
+    "sendDashboardRadio",
+    "addDashboardTask",
+    "claimDashboardTask",
+    "setDashboardTaskStatus",
+    "reviewDashboardTask",
+    "runDashboardDispatch",
+    "dispatchDashboardMarvis",
+    "promoteDashboardRadio",
+    "syncDashboardMemory",
+    "pullDashboardMemory",
+    "getDashboardInstallPreview",
+    "applyDashboardInstall"
+  ]) {
+    assert.match(index, new RegExp(`dashboardActions\\.${action}`));
+    assert.match(actionsModule, new RegExp(`function\\s+${action}\\(`));
+  }
+
+  assert.doesNotMatch(index, /recordCommand\(\[/);
+  assert.doesNotMatch(index, /createRadioMessage\(\{\s*[\s\S]*?to:\s*"marvis"/);
+  assert.match(actionsModule, /export\s+function\s+createDashboardActionsApi/);
+  assert.match(actionsModule, /appendIfMissing\(target\.file,\s*snippet,\s*"Shared AI Memory"\)/);
+});

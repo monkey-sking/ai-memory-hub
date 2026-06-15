@@ -458,6 +458,7 @@ function TasksPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; 
   const columns = {
     open: filteredTasks.filter(task => textOf(task.status, 'open') === 'open'),
     active: filteredTasks.filter(task => ['claimed', 'in_progress', 'blocked'].includes(textOf(task.status))),
+    verification: filteredTasks.filter(task => textOf(task.status) === 'needs_verification'),
     completed: filteredTasks.filter(task => ['done', 'cancelled'].includes(textOf(task.status)))
   }
 
@@ -510,9 +511,10 @@ function TasksPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; 
           </button>
         </div>
         {error ? <div className="inline-error">{error}</div> : null}
-        <div className="kanban-grid">
+        <div className="kanban-grid kanban-grid-4">
           <TaskColumn title={copy.open} count={columns.open.length} tasks={columns.open} copy={copy} busy={busy} onMutate={mutateTask} />
           <TaskColumn title={copy.active} count={columns.active.length} tasks={columns.active} copy={copy} busy={busy} onMutate={mutateTask} />
+          <TaskColumn title={copy.needsVerification} count={columns.verification.length} tasks={columns.verification} copy={copy} busy={busy} onMutate={mutateTask} />
           <TaskColumn title={copy.completed} count={columns.completed.length} tasks={columns.completed} copy={copy} busy={busy} onMutate={mutateTask} />
         </div>
       </Panel>
@@ -596,6 +598,9 @@ function TaskColumn({ title, count, tasks, copy, busy, onMutate }: {
 
 function TaskCard({ task, copy, busy, onMutate }: { task: AnyRecord; copy: Copy; busy: string; onMutate: TaskMutator }) {
   const [note, setNote] = useState('')
+  const [issueReportOpen, setIssueReportOpen] = useState(false)
+  const [issueNote, setIssueNote] = useState('')
+  const [shouldReopen, setShouldReopen] = useState(true)
   const id = textOf(task.id)
   const status = textOf(task.status, 'open')
   const actionBase = `${id}:`
@@ -636,6 +641,30 @@ function TaskCard({ task, copy, busy, onMutate }: { task: AnyRecord; copy: Copy;
       text: message
     })
     if (succeeded) setNote('')
+  }
+
+  const reportIssue = () => {
+    setIssueNote('')
+    setShouldReopen(true)
+    setIssueReportOpen(true)
+  }
+
+  const submitIssueReport = async () => {
+    const succeeded = await onMutate(
+      `${actionBase}report-issue`,
+      '/api/task/review',
+      {
+        id,
+        decision: 'rejected',
+        by: 'dashboard-next',
+        note: issueNote.trim() || 'Issue reported',
+        reopen: shouldReopen
+      }
+    )
+    if (succeeded) {
+      setIssueReportOpen(false)
+      setIssueNote('')
+    }
   }
 
   const secondaryActions: TaskMenuAction[] = [
@@ -723,18 +752,83 @@ function TaskCard({ task, copy, busy, onMutate }: { task: AnyRecord; copy: Copy;
             {copy.block}
           </button>
         ) : null}
-        {['claimed', 'in_progress', 'blocked'].includes(status) ? (
-          <button className="btn small" type="button" disabled={isBusy} onClick={() => void setStatus('done')}>
-            {copy.complete}
-          </button>
+        {status === 'in_progress' ? (
+          <>
+            <button className="btn small" type="button" disabled={isBusy} onClick={() => void setStatus('done', 'Completed directly')}>
+              {copy.completeDirectly}
+            </button>
+            <button className="btn small ghost" type="button" disabled={isBusy} onClick={() => void setStatus('needs_verification', 'Requested verification')}>
+              {copy.requestVerification}
+            </button>
+          </>
         ) : null}
-        {['done', 'cancelled'].includes(status) ? (
+        {status === 'needs_verification' ? (
+          <>
+            <button className="btn small" type="button" disabled={isBusy} onClick={() => void review('approved')}>
+              {copy.approveAndComplete}
+            </button>
+            <button className="btn small ghost" type="button" disabled={isBusy} onClick={() => reportIssue()}>
+              {copy.reportIssue}
+            </button>
+          </>
+        ) : null}
+        {status === 'done' ? (
+          <>
+            <button className="btn small ghost" type="button" disabled={isBusy} onClick={() => void setStatus('open')}>
+              {copy.reopen}
+            </button>
+            <button className="btn small ghost" type="button" disabled={isBusy} onClick={() => reportIssue()}>
+              {copy.reportIssue}
+            </button>
+          </>
+        ) : null}
+        {status === 'cancelled' ? (
           <button className="btn small ghost" type="button" disabled={isBusy} onClick={() => void setStatus('open')}>
             {copy.reopen}
           </button>
         ) : null}
         <TaskActionMenu label={copy.moreActions} actions={secondaryActions} />
       </div>
+      {issueReportOpen ? (
+        <Modal title={copy.reportIssue} onClose={() => setIssueReportOpen(false)}>
+          <div className="form-grid">
+            <label className="field span-all">
+              <span>{copy.issueDescription}</span>
+              <textarea
+                value={issueNote}
+                onChange={e => setIssueNote(e.target.value)}
+                rows={4}
+                placeholder={copy.issueDescriptionPlaceholder}
+              />
+            </label>
+            <label className="field checkbox-field span-all">
+              <input
+                type="checkbox"
+                checked={shouldReopen}
+                onChange={e => setShouldReopen(e.target.checked)}
+              />
+              <span>{copy.reopenTask}</span>
+            </label>
+            <div className="form-actions span-all">
+              <button
+                className="btn ghost"
+                type="button"
+                onClick={() => setIssueReportOpen(false)}
+              >
+                {copy.cancel}
+              </button>
+              <button
+                className="btn"
+                type="button"
+                onClick={() => void submitIssueReport()}
+                disabled={isBusy}
+              >
+                {isBusy ? copy.running : copy.save}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
     </article>
   )
 }

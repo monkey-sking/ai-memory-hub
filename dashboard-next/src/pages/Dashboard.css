@@ -540,6 +540,7 @@
 .status-badge.pending,
 .status-badge.retrying,
 .status-badge.needs-adapter,
+.status-badge.needs_verification,
 .status-badge.planned,
 .status-badge.review {
   border-color: rgba(245, 184, 75, 0.34);
@@ -599,6 +600,10 @@ td {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
   margin-top: 14px;
+}
+
+.kanban-grid-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .kanban-column {
@@ -1739,6 +1744,12 @@ td {
   font-size: 14px;
 }
 
+@media (max-width: 1280px) {
+  .kanban-grid-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 1180px) {
   .dashboard-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1752,7 +1763,8 @@ td {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .kanban-grid {
+  .kanban-grid,
+  .kanban-grid-4 {
     grid-template-columns: 1fr;
   }
 

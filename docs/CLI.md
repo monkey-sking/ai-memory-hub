@@ -259,12 +259,13 @@ ai-memory-hub task add "Implement user dashboard" \
 List tasks.
 
 ```bash
-ai-memory-hub task list [--status <status>] [--project <name>]
+ai-memory-hub task list [--status <status>] [--project <name>] [--all]
 ```
 
 **Options:**
 - `--status <status>` - Filter by status: open, claimed, in_progress, blocked, done, cancelled, active
 - `--project <name>` - Filter by project
+- `--all` - Include cancelled tasks when listing all statuses
 
 **Examples:**
 ```bash
@@ -276,7 +277,14 @@ ai-memory-hub task list --project my-app
 
 # Open tasks
 ai-memory-hub task list --status open
+
+# Include cancelled tasks in an all-status audit
+ai-memory-hub task list --status all --all
 ```
+
+`cancelled` is a normal terminal state. It is hidden from default task list
+views to keep active work readable, but it remains queryable with
+`--status cancelled` or `--status all --all`.
 
 ### `task claim`
 

@@ -2088,13 +2088,27 @@ function taskListCommand(argv) {
   const project = getOption(argv, "--project") || "";
   const assignee = getOption(argv, "--assignee") || "";
   const limit = Number(getOption(argv, "--limit") || 20);
+  const includeCancelled = hasFlag(argv, "--all");
   const tasks = readTasks(config.memoryDir)
-    .filter((task) => status === "all" ? true : status === "active" ? !["done", "cancelled"].includes(task.status) : task.status === status)
+    .filter((task) => taskListStatusMatches(task, status, includeCancelled))
     .filter((task) => project ? task.project === project : true)
     .filter((task) => assignee ? task.assignee === assignee : true)
     .sort((a, b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")))
     .slice(0, limit);
   console.log(JSON.stringify(tasks, null, 2));
+}
+
+function taskListStatusMatches(task, status, includeCancelled) {
+  if (task.status === "cancelled" && !includeCancelled && status !== "cancelled") {
+    return false;
+  }
+  if (status === "all") {
+    return true;
+  }
+  if (status === "active") {
+    return !["done", "cancelled"].includes(task.status);
+  }
+  return task.status === status;
 }
 
 function taskClaimCommand(argv) {
@@ -2125,7 +2139,7 @@ function taskStatusCommand(argv) {
   const status = getOption(argv, "--status") || positionalArgs(argv)[1] || "";
   const by = getOption(argv, "--by") || getOption(argv, "--from") || "manual";
   if (!id || !status) {
-    throw new Error("Usage: ai-memory-hub task status --id <task-id> --status <open|claimed|in_progress|blocked|done|cancelled> [--by codex]");
+    throw new Error("Usage: ai-memory-hub task status --id <task-id> --status <open|claimed|in_progress|blocked|needs_verification|done|cancelled> [--by codex]");
   }
   assertTaskStatus(status);
   const config = loadConfig();
@@ -5133,7 +5147,8 @@ function appCommand(argv) {
       }
       if (req.method === "GET" && url.pathname === "/api/tasks") {
         const status = url.searchParams.get("status") || "all";
-        return sendJson(res, dashboardTasks.getDashboardTasks(config.memoryDir, status));
+        const includeCancelled = url.searchParams.get("includeCancelled") === "1";
+        return sendJson(res, dashboardTasks.getDashboardTasks(config.memoryDir, status, { includeCancelled }));
       }
       if (req.method === "GET" && url.pathname === "/api/workflows") {
         return sendJson(res, dashboardWorkflows.getDashboardWorkflows(config.memoryDir));
@@ -7722,7 +7737,7 @@ function assertWorkflowStatus(status) {
 }
 
 function isTaskStatus(status) {
-  return new Set(["open", "claimed", "in_progress", "blocked", "done", "cancelled"]).has(status);
+  return new Set(["open", "claimed", "in_progress", "blocked", "needs_verification", "done", "cancelled"]).has(status);
 }
 
 function isWorkflowStatus(status) {

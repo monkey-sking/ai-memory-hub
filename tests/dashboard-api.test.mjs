@@ -428,6 +428,75 @@ test("dashboard serves externalized virtual-scroll assets", async () => {
   assert.doesNotMatch(dashboardJs, /echarts\.init/);
 });
 
+test("dashboard task APIs hide cancelled tasks by default", async () => {
+  await withHub(async (memoryDir) => {
+    await appendJsonl(path.join(memoryDir, "tasks", "tasks.jsonl"), {
+      id: "dashboard-open-visible",
+      createdAt: "2026-06-15T00:00:00.000Z",
+      updatedAt: "2026-06-15T00:00:00.000Z",
+      createdBy: "test",
+      status: "open",
+      title: "Visible dashboard task",
+      project: "ai-memory-hub"
+    });
+    await appendJsonl(path.join(memoryDir, "tasks", "tasks.jsonl"), {
+      id: "dashboard-cancelled-hidden",
+      createdAt: "2026-06-15T00:01:00.000Z",
+      updatedAt: "2026-06-15T00:01:00.000Z",
+      createdBy: "test",
+      status: "cancelled",
+      title: "Hidden dashboard task",
+      project: "ai-memory-hub"
+    });
+
+    const port = await getFreePort();
+    const child = spawn(process.execPath, [cliPath, "app", "--port", String(port)], {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        AI_MEMORY_DIR: memoryDir
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true
+    });
+    const stderr = [];
+    child.stderr.on("data", (chunk) => stderr.push(String(chunk)));
+    try {
+      await waitForServer(port, child);
+
+      const defaultRes = await fetch(`http://127.0.0.1:${port}/api/tasks`);
+      assert.equal(defaultRes.status, 200);
+      const defaultPayload = await defaultRes.json();
+      assert.ok(defaultPayload.tasks.some((task) => task.id === "dashboard-open-visible"));
+      assert.equal(defaultPayload.tasks.some((task) => task.id === "dashboard-cancelled-hidden"), false);
+
+      const allRes = await fetch(`http://127.0.0.1:${port}/api/tasks?status=all`);
+      assert.equal(allRes.status, 200);
+      const allPayload = await allRes.json();
+      assert.equal(allPayload.tasks.some((task) => task.id === "dashboard-cancelled-hidden"), false);
+
+      const includeRes = await fetch(`http://127.0.0.1:${port}/api/tasks?status=all&includeCancelled=1`);
+      assert.equal(includeRes.status, 200);
+      const includePayload = await includeRes.json();
+      assert.ok(includePayload.tasks.some((task) => task.id === "dashboard-cancelled-hidden"));
+
+      const cancelledRes = await fetch(`http://127.0.0.1:${port}/api/tasks?status=cancelled`);
+      assert.equal(cancelledRes.status, 200);
+      const cancelledPayload = await cancelledRes.json();
+      assert.deepEqual(cancelledPayload.tasks.map((task) => task.id), ["dashboard-cancelled-hidden"]);
+
+      const dashboardRes = await fetch(`http://127.0.0.1:${port}/api/dashboard`);
+      assert.equal(dashboardRes.status, 200);
+      const dashboard = await dashboardRes.json();
+      assert.ok(dashboard.tasks.tasks.some((task) => task.id === "dashboard-open-visible"));
+      assert.equal(dashboard.tasks.tasks.some((task) => task.id === "dashboard-cancelled-hidden"), false);
+    } finally {
+      await stopServer(child);
+    }
+    assert.deepEqual(stderr, []);
+  });
+});
+
 test("dashboard settings API persists editable runtime preferences", async () => {
   await withHub(async (memoryDir) => {
     const port = await getFreePort();

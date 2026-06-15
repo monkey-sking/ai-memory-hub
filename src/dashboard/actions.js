@@ -116,27 +116,44 @@ export function createDashboardActionsApi({
 
   function reviewDashboardTask(config, body = {}) {
     const decision = String(body.decision || "").toLowerCase();
+    const reopen = Boolean(body.reopen);
     let task;
     let workflows = [];
     withHubLock(config.memoryDir, "task-review", () => {
       const by = body.by || "dashboard";
       const note = String(body.note || "").trim();
       const now = new Date().toISOString();
-      task = updateTask(config.memoryDir, body.id, (current) => ({
-        ...current,
-        status: decision === "approved" ? "done" : "blocked",
-        assignee: current.assignee || by,
-        updatedAt: now,
-        completedAt: decision === "approved" ? now : "",
-        reviewStatus: decision,
-        reviewedAt: now,
-        reviewedBy: by,
-        reviewNote: note,
-        notes: [
-          ...(current.notes || []),
-          createTaskNote(by, `Review ${decision}: ${note || "No note provided."}`)
-        ]
-      }));
+      task = updateTask(config.memoryDir, body.id, (current) => {
+        // 状态转换逻辑
+        let nextStatus = current.status;
+        if (decision === "approved" && current.status !== "cancelled") {
+          nextStatus = "done";
+        } else if (decision === "rejected" && reopen) {
+          nextStatus = "open"; // 拒绝且选择 reopen
+        } else if (decision === "rejected" && current.status === "needs_verification") {
+          nextStatus = "needs_verification"; // 拒绝但不 reopen，保持在待验证状态
+        } else if (decision === "rejected") {
+          nextStatus = "blocked"; // 其他状态被拒绝，设为 blocked
+        }
+
+        const noteText = `Review ${decision}${note ? `: ${note}` : ""}${reopen ? " (task reopened)" : ""}`;
+
+        return {
+          ...current,
+          status: nextStatus,
+          assignee: current.assignee || by,
+          updatedAt: now,
+          completedAt: nextStatus === "done" ? now : current.completedAt || "",
+          reviewStatus: decision,
+          reviewedAt: now,
+          reviewedBy: by,
+          reviewNote: note,
+          notes: [
+            ...(current.notes || []),
+            createTaskNote(by, noteText)
+          ]
+        };
+      });
 
       const allWorkflows = readWorkflows(config.memoryDir);
       let changed = false;

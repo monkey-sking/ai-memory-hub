@@ -326,6 +326,53 @@ test("task, workflow, and project projections rebuild from event streams", async
   });
 });
 
+test("task list hides cancelled tasks by default but can include them explicitly", async () => {
+  await withHub(async (memoryDir) => {
+    await appendJsonl(path.join(memoryDir, "tasks", "tasks.jsonl"), {
+      id: "task-open-visible",
+      createdAt: "2026-06-15T00:00:00.000Z",
+      updatedAt: "2026-06-15T00:00:00.000Z",
+      createdBy: "test",
+      status: "open",
+      title: "Visible open task",
+      project: "ai-memory-hub"
+    });
+    await appendJsonl(path.join(memoryDir, "tasks", "tasks.jsonl"), {
+      id: "task-done-visible",
+      createdAt: "2026-06-15T00:01:00.000Z",
+      updatedAt: "2026-06-15T00:01:00.000Z",
+      createdBy: "test",
+      status: "done",
+      title: "Visible done task",
+      project: "ai-memory-hub"
+    });
+    await appendJsonl(path.join(memoryDir, "tasks", "tasks.jsonl"), {
+      id: "cancelled-hidden-item",
+      createdAt: "2026-06-15T00:02:00.000Z",
+      updatedAt: "2026-06-15T00:02:00.000Z",
+      createdBy: "test",
+      status: "cancelled",
+      title: "Hidden cancelled task",
+      project: "ai-memory-hub"
+    });
+
+    const defaultTasks = parseJson(runCli(memoryDir, ["task", "list", "--limit", "20"]));
+    assert.ok(defaultTasks.some((task) => task.id === "task-open-visible"));
+    assert.equal(defaultTasks.some((task) => task.id === "cancelled-hidden-item"), false);
+
+    const allTasks = parseJson(runCli(memoryDir, ["task", "list", "--status", "all", "--limit", "20"]));
+    assert.ok(allTasks.some((task) => task.id === "task-open-visible"));
+    assert.ok(allTasks.some((task) => task.id === "task-done-visible"));
+    assert.equal(allTasks.some((task) => task.id === "cancelled-hidden-item"), false);
+
+    const withCancelledTasks = parseJson(runCli(memoryDir, ["task", "list", "--status", "all", "--all", "--limit", "20"]));
+    assert.ok(withCancelledTasks.some((task) => task.id === "cancelled-hidden-item"));
+
+    const cancelledTasks = parseJson(runCli(memoryDir, ["task", "list", "--status", "cancelled", "--limit", "20"]));
+    assert.deepEqual(cancelledTasks.map((task) => task.id), ["cancelled-hidden-item"]);
+  });
+});
+
 test("workflow create normalizes role lists and metadata", async () => {
   await withHub(async (memoryDir) => {
     const workflow = parseJson(runCli(memoryDir, [

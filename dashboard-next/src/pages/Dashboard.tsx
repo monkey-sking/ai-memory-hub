@@ -601,6 +601,8 @@ function TaskCard({ task, copy, busy, onMutate }: { task: AnyRecord; copy: Copy;
   const [issueReportOpen, setIssueReportOpen] = useState(false)
   const [issueNote, setIssueNote] = useState('')
   const [shouldReopen, setShouldReopen] = useState(true)
+  const [purgeConfirmOpen, setPurgeConfirmOpen] = useState(false)
+  const [purgeConfirmText, setPurgeConfirmText] = useState('')
   const id = textOf(task.id)
   const status = textOf(task.status, 'open')
   const actionBase = `${id}:`
@@ -664,6 +666,31 @@ function TaskCard({ task, copy, busy, onMutate }: { task: AnyRecord; copy: Copy;
     if (succeeded) {
       setIssueReportOpen(false)
       setIssueNote('')
+    }
+  }
+
+  const openPurgeConfirm = () => {
+    setPurgeConfirmText('')
+    setPurgeConfirmOpen(true)
+  }
+
+  const submitPurge = async () => {
+    const taskTitle = textOf(task.title, '')
+    if (purgeConfirmText !== taskTitle) {
+      alert(copy.purgeWarning)
+      return
+    }
+    const succeeded = await onMutate(
+      `${actionBase}purge`,
+      '/api/task/purge',
+      {
+        id,
+        confirm: taskTitle
+      }
+    )
+    if (succeeded) {
+      setPurgeConfirmOpen(false)
+      setPurgeConfirmText('')
     }
   }
 
@@ -783,9 +810,14 @@ function TaskCard({ task, copy, busy, onMutate }: { task: AnyRecord; copy: Copy;
           </>
         ) : null}
         {status === 'cancelled' ? (
-          <button className="btn small ghost" type="button" disabled={isBusy} onClick={() => void setStatus('open')}>
-            {copy.reopen}
-          </button>
+          <>
+            <button className="btn small ghost" type="button" disabled={isBusy} onClick={() => void setStatus('open')}>
+              {copy.reopen}
+            </button>
+            <button className="btn small danger" type="button" disabled={isBusy} onClick={() => openPurgeConfirm()}>
+              {copy.purge}
+            </button>
+          </>
         ) : null}
         <TaskActionMenu label={copy.moreActions} actions={secondaryActions} />
       </div>
@@ -824,6 +856,46 @@ function TaskCard({ task, copy, busy, onMutate }: { task: AnyRecord; copy: Copy;
                 disabled={isBusy}
               >
                 {isBusy ? copy.running : copy.save}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
+      {purgeConfirmOpen ? (
+        <Modal title={copy.purgeTask} onClose={() => setPurgeConfirmOpen(false)}>
+          <div className="form-grid">
+            <div className="field span-all">
+              <p style={{ marginBottom: '1rem', color: 'var(--text-danger)' }}>
+                ⚠️ {copy.purgeWarning}
+              </p>
+              <p style={{ marginBottom: '0.5rem', fontWeight: 'bold' }}>
+                {textOf(task.title)}
+              </p>
+            </div>
+            <label className="field span-all">
+              <span>{copy.purgeConfirm}</span>
+              <input
+                type="text"
+                value={purgeConfirmText}
+                onChange={e => setPurgeConfirmText(e.target.value)}
+                placeholder={textOf(task.title)}
+              />
+            </label>
+            <div className="form-actions span-all">
+              <button
+                className="btn ghost"
+                type="button"
+                onClick={() => setPurgeConfirmOpen(false)}
+              >
+                {copy.cancel}
+              </button>
+              <button
+                className="btn danger"
+                type="button"
+                onClick={() => void submitPurge()}
+                disabled={isBusy || purgeConfirmText !== textOf(task.title)}
+              >
+                {isBusy ? copy.running : copy.purge}
               </button>
             </div>
           </div>

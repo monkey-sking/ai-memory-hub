@@ -1,4 +1,5 @@
 import path from "node:path";
+import fs from "node:fs";
 
 export function createDashboardActionsApi({
   appendIfMissing,
@@ -9,14 +10,20 @@ export function createDashboardActionsApi({
   createTaskNote,
   ensureDir,
   executeDispatch,
+  findTaskIndex,
   getDefaultProjectName = () => "",
+  getEntityEventsFile,
+  getEntityProjectionFile,
   getInstallTargets,
   getLocalInstallTargets,
   getRadioMessagesFile,
   getStatusObject,
+  getTaskEventStoreDefinition,
   invalidateToolDetectionCache,
+  materializeEntityProjection,
   pullCommand,
   radioPromoteCommand,
+  readEntityEvents,
   readTasks,
   readWorkflows,
   recordCommand,
@@ -287,6 +294,105 @@ export function createDashboardActionsApi({
     return { success: true, file: target.file };
   }
 
+  function purgeDashboardTask(config, body = {}) {
+    let result;
+    withHubLock(config.memoryDir, "task-purge", () => {
+      const tasks = readTasks(config.memoryDir);
+      const taskIndex = findTaskIndex(tasks, body.id);
+
+      if (taskIndex === -1) {
+        throw new Error(`Task not found: ${body.id}`);
+      }
+
+      const task = tasks[taskIndex];
+
+      // Safety check: only allow purging cancelled tasks
+      if (task.status !== "cancelled") {
+        throw new Error(`Cannot purge task with status '${task.status}'. Only 'cancelled' tasks can be purged.`);
+      }
+
+      // Require confirmation by typing task title
+      if (body.confirm !== task.title) {
+        throw new Error("Confirmation failed. You must type the exact task title to confirm deletion.");
+      }
+
+      const definition = getTaskEventStoreDefinition();
+      const eventsFile = getEntityEventsFile(config.memoryDir, definition);
+      const projectionFile = getEntityProjectionFile(config.memoryDir, definition);
+      const purgeLogFile = path.join(config.memoryDir, "tasks", "purge.log");
+
+      // Create timestamped backups
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const eventsBackup = `${eventsFile}.backup.${timestamp}`;
+      const projectionBackup = `${projectionFile}.backup.${timestamp}`;
+
+      try {
+        // Backup files
+        if (fs.existsSync(eventsFile)) {
+          fs.copyFileSync(eventsFile, eventsBackup);
+        }
+        if (fs.existsSync(projectionFile)) {
+          fs.copyFileSync(projectionFile, projectionBackup);
+        }
+
+        // Read and filter events
+        const allEvents = readEntityEvents(config.memoryDir, definition);
+        const filteredEvents = allEvents.filter(event => event.entityId !== body.id);
+
+        // Write filtered events atomically
+        const tempEventsFile = `${eventsFile}.tmp.${Date.now()}`;
+        ensureDir(path.dirname(tempEventsFile));
+        fs.writeFileSync(
+          tempEventsFile,
+          filteredEvents.map(e => JSON.stringify(e)).join("\n") + (filteredEvents.length ? "\n" : ""),
+          "utf8"
+        );
+        fs.renameSync(tempEventsFile, eventsFile);
+
+        // Rematerialize projection
+        materializeEntityProjection(config.memoryDir, definition);
+
+        // Log the purge operation
+        const logEntry = {
+          ts: new Date().toISOString(),
+          action: "purge",
+          taskId: body.id,
+          taskTitle: task.title,
+          taskStatus: task.status,
+          eventsBackup: path.basename(eventsBackup),
+          projectionBackup: path.basename(projectionBackup),
+          eventCountBefore: allEvents.length,
+          eventCountAfter: filteredEvents.length,
+          removedEvents: allEvents.length - filteredEvents.length,
+          by: body.by || "dashboard"
+        };
+        appendJsonl(purgeLogFile, logEntry);
+
+        result = {
+          ok: true,
+          success: true,
+          taskId: body.id,
+          taskTitle: task.title,
+          backups: {
+            events: eventsBackup,
+            projection: projectionBackup
+          },
+          purgeLog: purgeLogFile
+        };
+      } catch (error) {
+        // Restore from backups on error
+        if (fs.existsSync(eventsBackup)) {
+          fs.copyFileSync(eventsBackup, eventsFile);
+        }
+        if (fs.existsSync(projectionBackup)) {
+          fs.copyFileSync(projectionBackup, projectionFile);
+        }
+        throw new Error(`Purge failed and backups restored: ${error.message}`);
+      }
+    }, config.sync.lockStaleMs);
+    return result;
+  }
+
   return {
     addDashboardTask,
     applyDashboardInstall,
@@ -295,6 +401,7 @@ export function createDashboardActionsApi({
     getDashboardInstallPreview,
     promoteDashboardRadio,
     pullDashboardMemory,
+    purgeDashboardTask,
     recordDashboardMemory,
     reviewDashboardTask,
     runDashboardDispatch,

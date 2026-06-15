@@ -261,3 +261,30 @@ test("dashboard health API lives outside the CLI entrypoint", async () => {
   assert.match(healthModule, /function\s+formatHealthAnalysisForDashboard\(/);
   assert.match(healthModule, /renderMemoryHealthReport\(config,\s*index/);
 });
+
+test("dashboard realtime and snapshot API lives outside the CLI entrypoint", async () => {
+  const index = await readRepoFile("src/index.js");
+  const realtimeModule = await readRepoFile("src/dashboard/realtime.js");
+
+  assert.match(index, /from\s+["']\.\/dashboard\/realtime\.js["']/);
+  assert.match(index, /createDashboardRealtimeApi\(/);
+  assert.match(index, /dashboardRealtime\.getDashboardSnapshot/);
+  assert.match(index, /dashboardRealtime\.createDashboardRealtime/);
+  assert.match(index, /dashboardRealtime\.watchDashboardState/);
+  assert.doesNotMatch(index, /function\s+getDashboardSnapshot\(/);
+  assert.doesNotMatch(index, /function\s+createDashboardRealtime\(/);
+  assert.doesNotMatch(index, /function\s+handleIncomingWebSocketData\(/);
+  assert.doesNotMatch(index, /function\s+sendWebSocketJson\(/);
+  assert.doesNotMatch(index, /function\s+sendWebSocketFrame\(/);
+  assert.doesNotMatch(index, /function\s+watchDashboardState\(/);
+
+  assert.match(realtimeModule, /export\s+function\s+createDashboardRealtimeApi/);
+  assert.match(realtimeModule, /function\s+getDashboardSnapshot\(/);
+  assert.match(realtimeModule, /function\s+createDashboardRealtime\(/);
+  assert.match(realtimeModule, /function\s+handleIncomingWebSocketData\(/);
+  assert.match(realtimeModule, /function\s+sendWebSocketJson\(/);
+  assert.match(realtimeModule, /function\s+sendWebSocketFrame\(/);
+  assert.match(realtimeModule, /function\s+watchDashboardState\(/);
+  assert.match(realtimeModule, /dashboardMemory\.getDashboardMemory\(memoryDir\)/);
+  assert.match(realtimeModule, /snapshot:\s*getDashboardSnapshot\(memoryDir\)/);
+});

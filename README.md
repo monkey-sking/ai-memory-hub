@@ -164,6 +164,12 @@ ai-memory-hub task claim --id <task-id> --by claude
 
 # 完成任务
 ai-memory-hub task done --id <task-id> --by claude
+
+# 取消任务
+ai-memory-hub task update --id <task-id> --status cancelled
+
+# 物理删除已取消的任务（需要确认任务标题）
+ai-memory-hub task purge --id <task-id> --confirm "Implement feature X"
 ```
 
 #### 5. 使用工作流模板
@@ -224,6 +230,7 @@ ai-memory-hub task list --status <status>
 ai-memory-hub task claim --id <id> --by <tool>
 ai-memory-hub task done --id <id> --by <tool>
 ai-memory-hub task note --id <id> <text> --by <tool>
+ai-memory-hub task purge --id <id> --confirm <task-title>  # 物理删除已取消的任务
 ```
 
 #### 工作流

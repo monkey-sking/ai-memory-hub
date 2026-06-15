@@ -2053,8 +2053,10 @@ function taskCommand(argv) {
       return taskNoteCommand(actionArgs);
     case "done":
       return taskDoneCommand(actionArgs);
+    case "purge":
+      return taskPurgeCommand(actionArgs);
     default:
-      throw new Error("Usage: ai-memory-hub task <add|list|claim|status|update|note|done> ...");
+      throw new Error("Usage: ai-memory-hub task <add|list|claim|status|update|note|done|purge> ...");
   }
 }
 
@@ -2204,6 +2206,127 @@ function taskDoneCommand(argv) {
       ]
     }));
     console.log(JSON.stringify(task, null, 2));
+  }, config.sync.lockStaleMs);
+}
+
+function taskPurgeCommand(argv) {
+  const id = getOption(argv, "--id") || positionalArgs(argv)[0] || "";
+  const confirmTitle = getOption(argv, "--confirm") || "";
+  const force = hasFlag(argv, "--force");
+
+  if (!id) {
+    throw new Error("Usage: ai-memory-hub task purge --id <task-id> --confirm <task-title>");
+  }
+
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+
+  return withHubLock(config.memoryDir, "task-purge", () => {
+    const tasks = readTasks(config.memoryDir);
+    const taskIndex = findTaskIndex(tasks, id);
+
+    if (taskIndex === -1) {
+      throw new Error(`Task not found: ${id}`);
+    }
+
+    const task = tasks[taskIndex];
+
+    // Safety check: only allow purging cancelled tasks
+    if (task.status !== "cancelled" && !force) {
+      throw new Error(`Cannot purge task with status '${task.status}'. Only 'cancelled' tasks can be purged. Use --force to override (not recommended).`);
+    }
+
+    // Require confirmation by typing task title
+    if (confirmTitle !== task.title) {
+      console.error(JSON.stringify({
+        error: true,
+        message: "Confirmation failed. You must type the exact task title to confirm deletion.",
+        taskId: task.id,
+        taskTitle: task.title,
+        hint: `Run: ai-memory-hub task purge --id ${id} --confirm "${task.title}"`
+      }, null, 2));
+      process.exit(1);
+    }
+
+    const definition = getTaskEventStoreDefinition();
+    const eventsFile = getEntityEventsFile(config.memoryDir, definition);
+    const projectionFile = getEntityProjectionFile(config.memoryDir, definition);
+    const purgeLogFile = path.join(config.memoryDir, "tasks", "purge.log");
+
+    // Create timestamped backups
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const eventsBackup = `${eventsFile}.backup.${timestamp}`;
+    const projectionBackup = `${projectionFile}.backup.${timestamp}`;
+
+    try {
+      // Backup events file
+      if (fs.existsSync(eventsFile)) {
+        fs.copyFileSync(eventsFile, eventsBackup);
+      }
+
+      // Backup projection file
+      if (fs.existsSync(projectionFile)) {
+        fs.copyFileSync(projectionFile, projectionBackup);
+      }
+
+      // Read all events
+      const allEvents = readEntityEvents(config.memoryDir, definition);
+
+      // Filter out events related to this task (atomic write)
+      const filteredEvents = allEvents.filter(event => event.entityId !== id);
+
+      // Write filtered events atomically
+      const tempEventsFile = `${eventsFile}.tmp.${Date.now()}`;
+      ensureDir(path.dirname(tempEventsFile));
+      fs.writeFileSync(
+        tempEventsFile,
+        filteredEvents.map(e => JSON.stringify(e)).join("\n") + (filteredEvents.length ? "\n" : ""),
+        "utf8"
+      );
+      fs.renameSync(tempEventsFile, eventsFile);
+
+      // Rematerialize projection
+      materializeEntityProjection(config.memoryDir, definition);
+
+      // Log the purge operation
+      ensureDir(path.dirname(purgeLogFile));
+      const logEntry = {
+        ts: new Date().toISOString(),
+        action: "purge",
+        taskId: id,
+        taskTitle: task.title,
+        taskStatus: task.status,
+        eventsBackup: path.basename(eventsBackup),
+        projectionBackup: path.basename(projectionBackup),
+        eventCountBefore: allEvents.length,
+        eventCountAfter: filteredEvents.length,
+        removedEvents: allEvents.length - filteredEvents.length
+      };
+      appendJsonl(purgeLogFile, logEntry);
+
+      console.log(JSON.stringify({
+        success: true,
+        message: "Task purged successfully",
+        taskId: id,
+        taskTitle: task.title,
+        backups: {
+          events: eventsBackup,
+          projection: projectionBackup
+        },
+        purgeLog: purgeLogFile
+      }, null, 2));
+
+    } catch (error) {
+      // Restore from backups on error
+      if (fs.existsSync(eventsBackup)) {
+        fs.copyFileSync(eventsBackup, eventsFile);
+      }
+      if (fs.existsSync(projectionBackup)) {
+        fs.copyFileSync(projectionBackup, projectionFile);
+      }
+      throw new Error(`Purge failed and backups restored: ${error.message}`);
+    }
+
   }, config.sync.lockStaleMs);
 }
 

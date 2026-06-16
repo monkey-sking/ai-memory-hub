@@ -6210,8 +6210,12 @@ function workflowCommand(argv) {
       return workflowSignalCommand(actionArgs);
     case "done":
       return workflowStatusCommand(["--status", "done", ...actionArgs]);
+    case "node":
+      return workflowNodeCommand(actionArgs);
+    case "graph":
+      return workflowGraphCommand(actionArgs);
     default:
-      throw new Error("Usage: ai-memory-hub workflow <create|list|start|status|result|review|signal|done> ...");
+      throw new Error("Usage: ai-memory-hub workflow <create|list|start|status|result|review|signal|done|node|graph> ...");
   }
 }
 
@@ -6388,6 +6392,191 @@ function workflowSignalCommand(argv) {
   });
   appendJsonl(path.join(config.memoryDir, "radio", "messages.jsonl"), message);
   console.log(JSON.stringify(message, null, 2));
+}
+
+function workflowNodeCommand(argv) {
+  const action = argv[0] || "list";
+  const actionArgs = argv.slice(1);
+  switch (action) {
+    case "add":
+    case "create":
+      return workflowNodeAddCommand(actionArgs);
+    case "start":
+      return workflowNodeTransitionCommand(actionArgs, "running");
+    case "wait":
+      return workflowNodeTransitionCommand(actionArgs, "waiting");
+    case "done":
+    case "complete":
+      return workflowNodeTransitionCommand(actionArgs, "completed");
+    case "fail":
+      return workflowNodeTransitionCommand(actionArgs, "failed");
+    case "error":
+      return workflowNodeTransitionCommand(actionArgs, "error");
+    case "cancel":
+      return workflowNodeTransitionCommand(actionArgs, "cancelled");
+    case "reject":
+      return workflowNodeTransitionCommand(actionArgs, "rejected");
+    case "list":
+      return workflowNodeListCommand(actionArgs);
+    case "show":
+      return workflowNodeShowCommand(actionArgs);
+    default:
+      throw new Error("Usage: ai-memory-hub workflow node <add|start|wait|done|fail|error|cancel|reject|list|show> ...");
+  }
+}
+
+function workflowNodeAddCommand(argv) {
+  const workflowId = getOption(argv, "--workflow") || getOption(argv, "--id");
+  const slug = getOption(argv, "--slug");
+  const label = getOption(argv, "--label") || slug;
+  const role = getOption(argv, "--role") || "";
+  const actor = getOption(argv, "--actor") || "";
+  const isRequired = !hasOption(argv, "--optional");
+  if (!workflowId || !slug) {
+    throw new Error("Usage: ai-memory-hub workflow node add --workflow <id> --slug <slug> [--label <label>] [--role <role>] [--actor <actor>] [--optional]");
+  }
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const workflows = readWorkflows(config.memoryDir);
+  const workflow = workflows.find((w) => w.id === workflowId || w.id.startsWith(workflowId));
+  if (!workflow) {
+    throw new Error(`Workflow not found: ${workflowId}`);
+  }
+  const nodeId = `${workflow.id}:${slug}`;
+  const now = new Date().toISOString();
+  const event = {
+    workflowId: workflow.id,
+    nodeId,
+    slug,
+    label,
+    role,
+    actor,
+    status: "queued",
+    ts: now,
+    createdAt: now,
+    isRequired
+  };
+  const result = appendWorkflowNodeEvent(config.memoryDir, event);
+  console.log(JSON.stringify(result, null, 2));
+}
+
+function workflowNodeTransitionCommand(argv, targetStatus) {
+  const workflowId = getOption(argv, "--workflow") || getOption(argv, "--id");
+  const nodeSlugOrId = getOption(argv, "--node") || positionalArgs(argv)[0];
+  const note = getOption(argv, "--note") || "";
+  const error = getOption(argv, "--error") || "";
+  const outputRaw = getOption(argv, "--output");
+  const output = outputRaw ? JSON.parse(outputRaw) : {};
+  if (!workflowId || !nodeSlugOrId) {
+    throw new Error(`Usage: ai-memory-hub workflow node ${targetStatus} --workflow <id> --node <nodeId|slug> [--note <text>] [--error <text>] [--output <json>]`);
+  }
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const workflows = readWorkflows(config.memoryDir);
+  const workflow = workflows.find((w) => w.id === workflowId || w.id.startsWith(workflowId));
+  if (!workflow) {
+    throw new Error(`Workflow not found: ${workflowId}`);
+  }
+  const nodes = readWorkflowNodes(config.memoryDir, workflow.id);
+  const node = nodes.find((n) => n.nodeId === nodeSlugOrId || n.slug === nodeSlugOrId || n.nodeId.endsWith(`:${nodeSlugOrId}`));
+  if (!node) {
+    throw new Error(`Node not found: ${nodeSlugOrId} in workflow ${workflow.id}`);
+  }
+  const now = new Date().toISOString();
+  const event = {
+    ...node,
+    status: targetStatus,
+    ts: now,
+    note: note || node.note,
+    error: error || node.error,
+    output: Object.keys(output).length > 0 ? output : node.output
+  };
+  if (targetStatus === "running" && !node.startedAt) {
+    event.startedAt = now;
+  }
+  if (["completed", "failed", "error", "cancelled", "rejected"].includes(targetStatus) && !node.completedAt) {
+    event.completedAt = now;
+  }
+  const result = appendWorkflowNodeEvent(config.memoryDir, event);
+  console.log(JSON.stringify(result, null, 2));
+}
+
+function workflowNodeListCommand(argv) {
+  const workflowId = getOption(argv, "--workflow") || getOption(argv, "--id") || positionalArgs(argv)[0];
+  if (!workflowId) {
+    throw new Error("Usage: ai-memory-hub workflow node list --workflow <id>");
+  }
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const workflows = readWorkflows(config.memoryDir);
+  const workflow = workflows.find((w) => w.id === workflowId || w.id.startsWith(workflowId));
+  if (!workflow) {
+    throw new Error(`Workflow not found: ${workflowId}`);
+  }
+  const nodes = readWorkflowNodes(config.memoryDir, workflow.id);
+  console.log(JSON.stringify(nodes, null, 2));
+}
+
+function workflowNodeShowCommand(argv) {
+  const workflowId = getOption(argv, "--workflow") || getOption(argv, "--id");
+  const nodeSlugOrId = getOption(argv, "--node") || positionalArgs(argv)[0];
+  if (!workflowId || !nodeSlugOrId) {
+    throw new Error("Usage: ai-memory-hub workflow node show --workflow <id> --node <nodeId|slug>");
+  }
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const workflows = readWorkflows(config.memoryDir);
+  const workflow = workflows.find((w) => w.id === workflowId || w.id.startsWith(workflowId));
+  if (!workflow) {
+    throw new Error(`Workflow not found: ${workflowId}`);
+  }
+  const nodes = readWorkflowNodes(config.memoryDir, workflow.id);
+  const node = nodes.find((n) => n.nodeId === nodeSlugOrId || n.slug === nodeSlugOrId || n.nodeId.endsWith(`:${nodeSlugOrId}`));
+  if (!node) {
+    throw new Error(`Node not found: ${nodeSlugOrId}`);
+  }
+  console.log(JSON.stringify(node, null, 2));
+}
+
+function workflowGraphCommand(argv) {
+  const workflowId = getOption(argv, "--id") || getOption(argv, "--workflow") || positionalArgs(argv)[0];
+  if (!workflowId) {
+    throw new Error("Usage: ai-memory-hub workflow graph --id <workflow-id>");
+  }
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const workflows = readWorkflows(config.memoryDir);
+  const workflow = workflows.find((w) => w.id === workflowId || w.id.startsWith(workflowId));
+  if (!workflow) {
+    throw new Error(`Workflow not found: ${workflowId}`);
+  }
+  const nodes = readWorkflowNodes(config.memoryDir, workflow.id);
+  const derivedStatus = deriveWorkflowStatusFromNodes(nodes);
+  console.log(`Workflow ${workflow.id}: ${derivedStatus || workflow.status}`);
+  if (nodes.length === 0) {
+    console.log("  (no execution history)");
+  } else {
+    for (const node of nodes) {
+      const icon = {
+        completed: "✓",
+        failed: "✗",
+        error: "✗",
+        cancelled: "⊗",
+        rejected: "⊘",
+        running: "▶",
+        waiting: "⏸",
+        queued: "◦"
+      }[node.status] || "?";
+      const required = node.isRequired ? "" : " (optional)";
+      console.log(`  [${icon}] ${node.label} (${node.role}:${node.actor}) — ${node.status}${required}`);
+      if (node.note) {
+        console.log(`      Note: ${node.note}`);
+      }
+      if (node.error) {
+        console.log(`      Error: ${node.error}`);
+      }
+    }
+  }
 }
 
 function enrichToolConnection(tool, memoryDir) {
@@ -7139,6 +7328,69 @@ function getWorkflowEventStoreDefinition() {
     normalize: normalizeWorkflow,
     isValid: (workflow) => workflow.id && workflow.title
   };
+}
+
+// Workflow node history (P0: workflow execution history with node states)
+
+function readWorkflowNodes(memoryDir, workflowId) {
+  const nodesFile = path.join(memoryDir, "workflows", "nodes.jsonl");
+  const events = readEvents(nodesFile).filter((event) => event.workflowId === workflowId);
+  const nodeMap = new Map();
+  for (const event of events) {
+    const existing = nodeMap.get(event.nodeId);
+    if (!existing || new Date(event.ts) > new Date(existing.ts)) {
+      nodeMap.set(event.nodeId, event);
+    }
+  }
+  return Array.from(nodeMap.values()).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
+
+function appendWorkflowNodeEvent(memoryDir, event) {
+  const nodesFile = path.join(memoryDir, "workflows", "nodes.jsonl");
+  ensureDir(path.dirname(nodesFile));
+  const normalized = {
+    type: "workflow.node",
+    workflowId: event.workflowId,
+    nodeId: event.nodeId,
+    slug: event.slug,
+    label: event.label || event.slug,
+    role: event.role || "",
+    actor: event.actor || "",
+    status: event.status,
+    ts: event.ts || new Date().toISOString(),
+    createdAt: event.createdAt || event.ts || new Date().toISOString(),
+    startedAt: event.startedAt || "",
+    completedAt: event.completedAt || "",
+    input: event.input || {},
+    output: event.output || {},
+    error: event.error || "",
+    note: event.note || "",
+    isRequired: event.isRequired !== false,
+    isFinal: ["completed", "failed", "error", "cancelled", "rejected"].includes(event.status)
+  };
+  appendJsonl(nodesFile, normalized);
+  return normalized;
+}
+
+function deriveWorkflowStatusFromNodes(nodes) {
+  if (!nodes || nodes.length === 0) return null;
+  const required = nodes.filter((n) => n.isRequired);
+  const hasRunning = nodes.some((n) => n.status === "running");
+  const hasWaiting = nodes.some((n) => n.status === "waiting");
+  const allRequiredCompleted = required.every((n) => n.status === "completed");
+  const hasBlocker = required.some((n) => ["failed", "error", "rejected"].includes(n.status));
+  const allCancelled = nodes.every((n) => n.status === "cancelled");
+  if (allCancelled) return "cancelled";
+  if (allRequiredCompleted) return "done";
+  if (hasBlocker && !hasRunning && !hasWaiting) return "blocked";
+  if (hasWaiting && !hasRunning) return "waiting";
+  if (hasRunning) return "in_progress";
+  const reviewNodes = nodes.filter((n) => n.role === "reviewer");
+  const execNodes = required.filter((n) => n.role === "executor");
+  if (execNodes.every((n) => n.status === "completed") && reviewNodes.some((n) => !["completed", "rejected"].includes(n.status))) {
+    return "review";
+  }
+  return "open";
 }
 
 function getEntityProjectionFile(memoryDir, definition) {

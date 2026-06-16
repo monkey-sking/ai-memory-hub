@@ -1,0 +1,349 @@
+import { useState } from 'react'
+import type { AnyRecord } from '@/lib/api'
+import { apiPatch, apiDelete, asArray, asRecord, textOf } from '@/lib/api'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+
+interface ProjectsPanelProps {
+  copy: {
+    visibleProjects: string
+    unregisteredProjects: string
+    noData: string
+    status: string
+    project: string
+    type: string
+    title: string
+    updated: string
+    actions: string
+  }
+  model: {
+    visibleProjects: AnyRecord[]
+    unregisteredProjects: string[]
+  }
+  onRefresh: () => Promise<void>
+}
+
+function formatDate(value: string): string {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleString()
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const variants: Record<string, 'default' | 'secondary' | 'outline'> = {
+    active: 'default',
+    paused: 'secondary',
+    archived: 'outline',
+    hidden: 'outline'
+  }
+  return <Badge variant={variants[status] || 'outline'}>{status}</Badge>
+}
+
+function ProjectEditDialog({
+  project,
+  open,
+  onClose,
+  onSave
+}: {
+  project: AnyRecord
+  open: boolean
+  onClose: () => void
+  onSave: (id: string, patch: AnyRecord) => Promise<void>
+}) {
+  const metadata = asRecord(project.metadata)
+  const resources = asRecord(project.resources)
+  const aliases = asArray<string>(project.aliases)
+
+  const [form, setForm] = useState({
+    name: textOf(project.name, ''),
+    displayName: textOf(project.displayName, ''),
+    status: textOf(project.status, 'active'),
+    type: textOf(project.type, ''),
+    description: textOf(project.description, ''),
+    aliases: aliases.join(', '),
+    metadataJson: JSON.stringify(metadata, null, 2),
+    resourcesJson: JSON.stringify(resources, null, 2)
+  })
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  const updateField = (key: string, value: string) => {
+    setForm(prev => ({ ...prev, [key]: value }))
+  }
+
+  const handleSave = async () => {
+    setBusy(true)
+    setError('')
+    try {
+      const patch: AnyRecord = {
+        name: form.name,
+        displayName: form.displayName,
+        status: form.status,
+        type: form.type,
+        description: form.description,
+        aliases: form.aliases.split(',').map(s => s.trim()).filter(Boolean)
+      }
+
+      try {
+        if (form.metadataJson.trim()) {
+          patch.metadata = JSON.parse(form.metadataJson)
+        }
+      } catch (e) {
+        setError('Invalid metadata JSON')
+        return
+      }
+
+      try {
+        if (form.resourcesJson.trim()) {
+          patch.resources = JSON.parse(form.resourcesJson)
+        }
+      } catch (e) {
+        setError('Invalid resources JSON')
+        return
+      }
+
+      await onSave(textOf(project.id), patch)
+      onClose()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Edit Project: {textOf(project.id)}</DialogTitle>
+        </DialogHeader>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="name">Name</Label>
+            <Input id="name" value={form.name} onChange={e => updateField('name', e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="displayName">Display Name</Label>
+            <Input id="displayName" value={form.displayName} onChange={e => updateField('displayName', e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="status">Status</Label>
+            <select 
+              id="status" 
+              value={form.status} 
+              onChange={e => updateField('status', e.target.value)}
+              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+            >
+              <option value="active">active</option>
+              <option value="paused">paused</option>
+              <option value="archived">archived</option>
+              <option value="hidden">hidden</option>
+            </select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="type">Type</Label>
+            <Input id="type" value={form.type} onChange={e => updateField('type', e.target.value)} placeholder="game, tool, etc." />
+          </div>
+          <div className="col-span-2 space-y-2">
+            <Label htmlFor="description">Description</Label>
+            <Textarea id="description" value={form.description} onChange={e => updateField('description', e.target.value)} rows={2} />
+          </div>
+          <div className="col-span-2 space-y-2">
+            <Label htmlFor="aliases">Aliases (comma separated)</Label>
+            <Input id="aliases" value={form.aliases} onChange={e => updateField('aliases', e.target.value)} placeholder="alias1, alias2" />
+          </div>
+          <div className="col-span-2 space-y-2">
+            <Label htmlFor="metadata">Metadata (JSON)</Label>
+            <Textarea
+              id="metadata"
+              value={form.metadataJson}
+              onChange={e => updateField('metadataJson', e.target.value)}
+              rows={6}
+              className="font-mono text-xs"
+              placeholder='{"key": "value"}'
+            />
+          </div>
+          <div className="col-span-2 space-y-2">
+            <Label htmlFor="resources">Resources (JSON)</Label>
+            <Textarea
+              id="resources"
+              value={form.resourcesJson}
+              onChange={e => updateField('resourcesJson', e.target.value)}
+              rows={4}
+              className="font-mono text-xs"
+              placeholder='{"repo": "https://...", "feishu": "https://..."}'
+            />
+          </div>
+          <div className="col-span-2 grid grid-cols-2 gap-4 p-3 bg-muted rounded-md text-sm">
+            <div><span className="text-muted-foreground">Created:</span> {textOf(project.createdAt, '-')}</div>
+            <div><span className="text-muted-foreground">Updated:</span> {textOf(project.updatedAt, '-')}</div>
+          </div>
+          {error && <div className="col-span-2 text-sm text-destructive">{error}</div>}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button onClick={handleSave} disabled={busy}>{busy ? 'Saving...' : 'Save'}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+export function ProjectsPanel({ copy, model, onRefresh }: ProjectsPanelProps) {
+  const [editingProject, setEditingProject] = useState<AnyRecord | null>(null)
+  const [busy, setBusy] = useState('')
+
+  const openEdit = (project: AnyRecord) => {
+    setEditingProject(project)
+  }
+
+  const closeEdit = () => {
+    setEditingProject(null)
+  }
+
+  const updateProject = async (id: string, patch: AnyRecord) => {
+    setBusy('update')
+    try {
+      await apiPatch(`/api/projects/${encodeURIComponent(id)}`, patch)
+      await onRefresh()
+      closeEdit()
+    } catch (err) {
+      throw err
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const archiveProject = async (id: string) => {
+    if (!confirm(`Archive project "${id}"?`)) return
+    setBusy('archive')
+    try {
+      await apiDelete(`/api/projects/${encodeURIComponent(id)}`, {})
+      await onRefresh()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="rounded-lg border bg-card">
+        <div className="p-6 border-b">
+          <h3 className="text-lg font-semibold">{copy.visibleProjects}</h3>
+        </div>
+        <div className="p-6">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{copy.status}</TableHead>
+                <TableHead>{copy.project}</TableHead>
+                <TableHead>{copy.type}</TableHead>
+                <TableHead>{copy.title}</TableHead>
+                <TableHead>{copy.updated}</TableHead>
+                <TableHead>{copy.actions}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {model.visibleProjects.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center text-muted-foreground">{copy.noData}</TableCell>
+                </TableRow>
+              ) : (
+                model.visibleProjects.map((project, idx) => (
+                  <TableRow key={idx}>
+                    <TableCell>
+                      <StatusBadge status={textOf(project.status, 'active')} />
+                    </TableCell>
+                    <TableCell>
+                      <div className="space-y-1">
+                        <div className="font-medium">{textOf(project.id || project.name, '-')}</div>
+                        {asArray<string>(project.aliases).length > 0 && (
+                          <div className="text-xs text-muted-foreground">
+                            {asArray<string>(project.aliases).join(', ')}
+                          </div>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary">{textOf(project.type, '-')}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="space-y-1 max-w-md">
+                        <div>{textOf(project.displayName || project.description, '-')}</div>
+                        {(() => {
+                          const resources = asRecord(project.resources)
+                          const repoUrl = resources.repo ? String(resources.repo) : ''
+                          const feishuUrl = resources.feishu ? String(resources.feishu) : ''
+                          if (!repoUrl && !feishuUrl) return null
+                          return (
+                            <div className="flex gap-2">
+                              {repoUrl && (
+                                <a href={repoUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline">
+                                  Repo
+                                </a>
+                              )}
+                              {feishuUrl && (
+                                <a href={feishuUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline">
+                                  飞书
+                                </a>
+                              )}
+                            </div>
+                          )
+                        })()}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {formatDate(textOf(project.updatedAt))}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="outline" onClick={() => openEdit(project)}>Edit</Button>
+                        <Button size="sm" variant="ghost" onClick={() => void archiveProject(textOf(project.id))} disabled={busy === 'archive'}>
+                          Archive
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </div>
+
+      <div className="rounded-lg border bg-card">
+        <div className="p-6 border-b">
+          <h3 className="text-lg font-semibold">{copy.unregisteredProjects}</h3>
+        </div>
+        <div className="p-6">
+          {model.unregisteredProjects.length === 0 ? (
+            <div className="text-center text-muted-foreground py-4">{copy.noData}</div>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {model.unregisteredProjects.map((project, idx) => (
+                <Badge key={idx} variant="outline">{project}</Badge>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {editingProject && (
+        <ProjectEditDialog
+          project={editingProject}
+          open={true}
+          onClose={closeEdit}
+          onSave={updateProject}
+        />
+      )}
+    </div>
+  )
+}

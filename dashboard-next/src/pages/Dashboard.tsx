@@ -2,11 +2,26 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import type { AnyRecord } from '../lib/api'
-import { apiDelete, apiGet, apiPatch, apiPost, asArray, asRecord, boolOf, numberOf, textOf } from '../lib/api'
+import { apiGet, apiPost, asArray, asRecord, boolOf, numberOf, textOf } from '../lib/api'
 import type { AppLanguage, AppOutletContext } from '../lib/i18n'
 import { dashboardLabels, dashboardSubtitles, dashboardTitles } from '../lib/dashboardCopy'
 import type { DashboardCopy, DashboardSection } from '../lib/dashboardCopy'
 import { toolDisplayNames, toolIconAssetVersion, toolIconFiles, toolKindBadges, toolKinds } from '../lib/toolMetadata'
+import { ProjectsPanel } from '../components/ProjectsPanel'
+import { DashboardHeader } from '../components/DashboardHeader'
+import { ToastStack } from '../components/ToastStack'
+import { TasksPanel as NewTasksPanel } from '../components/TasksPanel'
+import { MemoryPanel as NewMemoryPanel } from '../components/MemoryPanel'
+import { RadioPanel as NewRadioPanel } from '../components/RadioPanel'
+import { WorkflowsPanel as NewWorkflowsPanel } from '../components/WorkflowsPanel'
+import {
+  MetricCard as NewMetricCard,
+  Panel as NewPanel,
+  TaskList as NewTaskList,
+  RadioList as NewRadioList,
+  ToolList as NewToolList,
+  StatusBadge as NewStatusBadge
+} from '../components/OverviewComponents'
 import './Dashboard.css'
 
 type Language = AppLanguage
@@ -110,57 +125,54 @@ export default function Dashboard({ section }: DashboardProps) {
   const viewModel = useMemo(() => buildViewModel(data), [data])
 
   return (
-    <div className="dashboard-page">
-      <header className="page-header">
-        <div className="page-title-group">
-          <p className="eyebrow">AI Memory Hub</p>
-          <h2>{dashboardTitles[language][section]}</h2>
-          <p className="page-subtitle">{dashboardSubtitles[language][section]}</p>
-        </div>
-        <div className="header-actions">
-          <button className="btn ghost" type="button" onClick={() => void runHubAction('/api/pull', 'pull')} disabled={loading || Boolean(busyAction)}>
-            {busyAction === 'pull' ? copy.running : copy.rebuildSnapshot}
-          </button>
-          <button className="btn ghost" type="button" onClick={() => void runHubAction('/api/sync', 'sync')} disabled={loading || Boolean(busyAction)}>
-            {busyAction === 'sync' ? copy.running : copy.syncInbox}
-          </button>
-          <button className="btn ghost" type="button" onClick={toggleLanguage}>
-            {copy.language}
-          </button>
-          <button className="btn" type="button" onClick={() => void refresh()} disabled={loading}>
-            {loading ? copy.refreshing : copy.refresh}
-          </button>
-        </div>
-      </header>
+    <div className="flex flex-col h-full">
+      <DashboardHeader
+        title={dashboardTitles[language][section]}
+        subtitle={dashboardSubtitles[language][section]}
+        loading={loading}
+        busyAction={busyAction}
+        copy={copy}
+        onRefresh={refresh}
+        onPull={() => void runHubAction('/api/pull', 'pull')}
+        onSync={() => void runHubAction('/api/sync', 'sync')}
+        onToggleLanguage={toggleLanguage}
+      />
 
-      {error ? (
-        <section className="notice error">
-          <strong>{copy.connectionError}</strong>
-          <span>{error}</span>
-        </section>
-      ) : null}
+      <div className="flex-1 overflow-y-auto">
+        {error ? (
+          <div className="m-6 p-4 rounded-lg border border-destructive/20 bg-destructive/10">
+            <p className="font-semibold text-destructive">{copy.connectionError}</p>
+            <p className="text-sm text-muted-foreground mt-1">{error}</p>
+          </div>
+        ) : null}
 
-      {loading && !data ? (
-        <section className="notice">
-          <span>{copy.refreshing}</span>
-        </section>
-      ) : (
-        <>
-          {section === 'overview' && <Overview copy={copy} model={viewModel} />}
-          {section === 'memory' && <MemoryPanel copy={copy} model={viewModel} onRefresh={refresh} />}
-          {section === 'tasks' && <TasksPanel copy={copy} model={viewModel} onRefresh={refresh} />}
-          {section === 'radio' && <RadioPanel copy={copy} model={viewModel} onRefresh={refresh} />}
-          {section === 'dispatch' && <DispatchPanel copy={copy} model={viewModel} onRefresh={refresh} />}
-          {section === 'workflows' && <WorkflowsPanel copy={copy} model={viewModel} onRefresh={refresh} />}
-          {section === 'analytics' && <AnalyticsPanel copy={copy} model={viewModel} />}
-          {section === 'backups' && <BackupsPanel copy={copy} model={viewModel} onRefresh={refresh} />}
-          {section === 'search' && <SearchPanel copy={copy} />}
-          {section === 'tools' && <ToolsPanel copy={copy} language={language} model={viewModel} onRefresh={refresh} />}
-          {section === 'projects' && <ProjectsPanel copy={copy} model={viewModel} />}
-          {section === 'health' && <HealthPanel copy={copy} model={viewModel} health={health} onRefresh={refresh} />}
-          {section === 'settings' && <SettingsPanel copy={copy} model={viewModel} onRefresh={refresh} />}
-        </>
-      )}
+        {loading && !data ? (
+          <div className="m-6 p-4 rounded-lg border bg-card text-center">
+            <span className="text-muted-foreground">{copy.refreshing}</span>
+          </div>
+        ) : (
+          <div className="p-6">
+            {section === 'overview' && <Overview copy={copy} model={viewModel} />}
+            {section === 'memory' && <NewMemoryPanel memory={viewModel.memory} copy={copy} onRefresh={refresh} />}
+            {section === 'tasks' && <NewTasksPanel tasks={viewModel.tasks} visibleProjects={viewModel.visibleProjects} copy={copy} onMutate={async (_action, path, body) => {
+              await apiPost<AnyRecord>(path, body)
+              await refresh()
+              return true
+            }} />}
+            {section === 'radio' && <NewRadioPanel radio={viewModel.radio} visibleProjects={viewModel.visibleProjects} copy={copy} onRefresh={refresh} />}
+            {section === 'dispatch' && <DispatchPanel copy={copy} model={viewModel} onRefresh={refresh} />}
+            {section === 'workflows' && <NewWorkflowsPanel workflows={viewModel.workflows} visibleProjects={viewModel.visibleProjects} copy={copy} onRefresh={refresh} />}
+            {section === 'analytics' && <AnalyticsPanel copy={copy} model={viewModel} />}
+            {section === 'backups' && <BackupsPanel copy={copy} model={viewModel} onRefresh={refresh} />}
+            {section === 'search' && <SearchPanel copy={copy} />}
+            {section === 'tools' && <ToolsPanel copy={copy} language={language} model={viewModel} onRefresh={refresh} />}
+            {section === 'projects' && <ProjectsPanel copy={copy} model={viewModel} onRefresh={refresh} />}
+            {section === 'health' && <HealthPanel copy={copy} model={viewModel} health={health} onRefresh={refresh} />}
+            {section === 'settings' && <SettingsPanel copy={copy} model={viewModel} onRefresh={refresh} />}
+          </div>
+        )}
+      </div>
+
       <ToastStack toasts={toasts} onDismiss={dismissToast} />
     </div>
   )
@@ -218,41 +230,52 @@ function Overview({ copy, model }: { copy: Copy; model: ViewModel }) {
   const recentFailures = asArray<AnyRecord>(model.metrics.recentFailures).slice(0, 4)
 
   return (
-    <div className="dashboard-grid">
-      <MetricCard label={copy.totalTasks} value={formatNumber(statusTasks.total)} />
-      <MetricCard label={copy.activeTasks} value={formatNumber(statusTasks.active)} tone="success" />
-      <MetricCard label={copy.workflows} value={formatNumber(statusWorkflows.total)} />
-      <MetricCard label={copy.relayRate} value={textOf(relay.successRate, '0%')} tone="warning" />
-      <MetricCard label={copy.toolsReady} value={formatNumber(capabilitySummary.autoDispatch)} />
-      <MetricCard label={copy.memoryRecords} value={formatNumber(index.records)} />
+    <div className="space-y-6">
+      {/* Metrics Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <NewMetricCard label={copy.totalTasks} value={formatNumber(statusTasks.total)} />
+        <NewMetricCard label={copy.activeTasks} value={formatNumber(statusTasks.active)} tone="success" />
+        <NewMetricCard label={copy.workflows} value={formatNumber(statusWorkflows.total)} />
+        <NewMetricCard label={copy.relayRate} value={textOf(relay.successRate, '0%')} tone="warning" />
+        <NewMetricCard label={copy.toolsReady} value={formatNumber(capabilitySummary.autoDispatch)} />
+        <NewMetricCard label={copy.memoryRecords} value={formatNumber(index.records)} />
+      </div>
 
-      <Panel title={copy.recentTasks} className="span-2">
-        <TaskList copy={copy} tasks={model.tasks.slice(0, 6)} />
-      </Panel>
-      <Panel title={copy.toolReadiness}>
-        <ToolList copy={copy} tools={model.tools.slice(0, 7)} />
-      </Panel>
-      <Panel title={copy.recentRadio} className="span-2">
-        <RadioList copy={copy} messages={model.radio.slice(-6).reverse()} />
-      </Panel>
-      <Panel title={copy.recentFailures}>
-        {recentFailures.length ? (
-          <div className="stack">
-            {recentFailures.map((failure, indexValue) => (
-              <div className="compact-row" key={`${textOf(failure.id)}-${indexValue}`}>
-                <StatusBadge status="failed" />
-                <span className="truncate">{textOf(failure.error, copy.noData)}</span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <EmptyState text={copy.noData} />
-        )}
-      </Panel>
+      {/* Content Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <NewPanel title={copy.recentTasks} className="lg:col-span-2">
+          <NewTaskList tasks={model.tasks.slice(0, 6)} emptyText={copy.noData} />
+        </NewPanel>
+
+        <NewPanel title={copy.toolReadiness}>
+          <NewToolList tools={model.tools.slice(0, 7)} emptyText={copy.noData} />
+        </NewPanel>
+
+        <NewPanel title={copy.recentRadio} className="lg:col-span-2">
+          <NewRadioList messages={model.radio.slice(-6).reverse()} emptyText={copy.noData} />
+        </NewPanel>
+
+        <NewPanel title={copy.recentFailures}>
+          {recentFailures.length ? (
+            <div className="space-y-2">
+              {recentFailures.map((failure, indexValue) => (
+                <div className="flex items-center gap-3 p-2 rounded-lg border bg-card" key={`${textOf(failure.id)}-${indexValue}`}>
+                  <NewStatusBadge status="failed" />
+                  <span className="truncate text-sm">{textOf(failure.error, copy.noData)}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center text-muted-foreground py-8">{copy.noData}</div>
+          )}
+        </NewPanel>
+      </div>
     </div>
   )
 }
 
+// Old MemoryPanel commented out - using new component from MemoryPanel.tsx
+/*
 function MemoryPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; onRefresh: () => Promise<void> }) {
   const pending = asArray<AnyRecord>(model.memory.pending)
   const memoryRecords = asArray<AnyRecord>(model.memory.records)
@@ -421,7 +444,10 @@ function MemoryPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel;
     </div>
   )
 }
+*/
 
+// Old TasksPanel commented out - using new component from TasksPanel.tsx
+/*
 function TasksPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; onRefresh: () => Promise<void> }) {
   const [projectFilter, setProjectFilter] = useState('')
   const [priorityFilter, setPriorityFilter] = useState('')
@@ -564,7 +590,9 @@ function TasksPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; 
     </div>
   )
 }
+*/
 
+/*
 type TaskMutator = (action: string, path: string, body: AnyRecord) => Promise<boolean>
 type TaskMenuAction = {
   key: string
@@ -572,7 +600,10 @@ type TaskMenuAction = {
   disabled?: boolean
   onSelect: () => void
 }
+*/
 
+// Old Task-related components commented out
+/*
 function TaskColumn({ title, count, tasks, copy, busy, onMutate }: {
   title: string
   count: number
@@ -708,6 +739,16 @@ function TaskCard({ task, copy, busy, onMutate }: { task: AnyRecord; copy: Copy;
       onSelect: () => void sendRadioRequest()
     }
   ]
+
+  // Add cancel option for active tasks (not already cancelled or done)
+  if (!['cancelled', 'done'].includes(status)) {
+    secondaryActions.push({
+      key: 'cancel',
+      label: copy.cancel,
+      disabled: isBusy,
+      onSelect: () => void setStatus('cancelled')
+    })
+  }
 
   if (status !== 'cancelled') {
     secondaryActions.push(
@@ -963,7 +1004,10 @@ function TaskActionMenu({ label, actions }: { label: string; actions: TaskMenuAc
     </div>
   )
 }
+*/
 
+// Old RadioPanel commented out - using new component from RadioPanel.tsx
+/*
 function RadioPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; onRefresh: () => Promise<void> }) {
   const [form, setForm] = useState({ text: '', from: 'dashboard-next', to: 'all', type: 'note', project: 'ai-memory-hub', thread: '', replyTo: '' })
   const [query, setQuery] = useState('')
@@ -1148,6 +1192,7 @@ function RadioPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; 
     </div>
   )
 }
+*/
 
 function DispatchPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; onRefresh: () => Promise<void> }) {
   const [force, setForce] = useState(false)
@@ -1230,6 +1275,7 @@ function DispatchPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewMode
   )
 }
 
+/* OLD workflow helpers - commented out, kept for reference
 const workflowStatusOptions = ['open', 'planned', 'in_progress', 'review', 'blocked', 'done', 'cancelled']
 const workflowPriorityOptions = ['low', 'normal', 'high', 'urgent']
 
@@ -1255,7 +1301,9 @@ interface WorkflowActionState {
   action: WorkflowEntryAction
   workflow: AnyRecord
 }
+*/
 
+/* OLD WorkflowsPanel - replaced by NewWorkflowsPanel component
 function WorkflowsPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; onRefresh: () => Promise<void> }) {
   const workflows = model.workflows
   const [query, setQuery] = useState('')
@@ -1783,6 +1831,8 @@ function collectWorkflowLogs(workflow: AnyRecord, copy: Copy): Array<{ type: str
     ...normalizeEntries(workflow.notes, copy.workflowNote)
   ].sort((left, right) => right.ts.localeCompare(left.ts))
 }
+
+/* ========== END OF OLD WorkflowsPanel ========== */
 
 function AnalyticsPanel({ copy, model }: { copy: Copy; model: ViewModel }) {
   const statusTasks = asRecord(model.status.tasks)
@@ -2800,31 +2850,6 @@ function getFallbackGradient(name: string): string {
   return gradients[Math.abs(hash) % gradients.length]
 }
 
-function ProjectsPanel({ copy, model }: { copy: Copy; model: ViewModel }) {
-  return (
-    <div className="panel-grid two">
-      <Panel title={copy.visibleProjects}>
-        <DataTable
-          emptyText={copy.noData}
-          columns={[copy.status, copy.project, copy.title]}
-          rows={model.visibleProjects.map(project => [
-            <StatusBadge status={textOf(project.status, 'active')} />,
-            textOf(project.id || project.name, '-'),
-            textOf(project.displayName || project.description, '-')
-          ])}
-        />
-      </Panel>
-      <Panel title={copy.unregisteredProjects}>
-        <div className="chip-list">
-          {model.unregisteredProjects.length ? model.unregisteredProjects.map(project => (
-            <span className="chip" key={project}>{project}</span>
-          )) : <EmptyState text={copy.noData} />}
-        </div>
-      </Panel>
-    </div>
-  )
-}
-
 interface SettingsFormState {
   snapshotLimit: string
   coreLimit: string
@@ -3365,14 +3390,12 @@ function StorageRows({ copy, items }: { copy: Copy; items: AnyRecord[] }) {
 }
 
 function MetricCard({ label, value, tone = 'default' }: { label: string; value: string; tone?: 'default' | 'success' | 'warning' }) {
-  return (
-    <section className={`metric-card ${tone}`}>
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </section>
-  )
+  // Use NewMetricCard for consistency
+  return <NewMetricCard label={label} value={value} tone={tone} />
 }
 
+// Old FilterSelect commented out - using inline select elements in new components
+/*
 function FilterSelect({ label, value, onChange, allLabel, options }: {
   label: string
   value: string
@@ -3392,23 +3415,7 @@ function FilterSelect({ label, value, onChange, allLabel, options }: {
     </label>
   )
 }
-
-function ToastStack({ toasts, onDismiss }: { toasts: ToastMessage[]; onDismiss: (id: string) => void }) {
-  if (!toasts.length) return null
-
-  return (
-    <div className="toast-stack" aria-live="polite" aria-atomic="false">
-      {toasts.map(toast => (
-        <div className={`toast ${toast.tone}`} key={toast.id}>
-          <span>{toast.message}</span>
-          <button type="button" onClick={() => onDismiss(toast.id)} aria-label="Close notification">
-            x
-          </button>
-        </div>
-      ))}
-    </div>
-  )
-}
+*/
 
 const focusableSelectors = [
   'a[href]',
@@ -3495,14 +3502,8 @@ function Modal({ title, children, onClose }: { title: string; children: ReactNod
 }
 
 function Panel({ title, children, className = '' }: { title: string; children: ReactNode; className?: string }) {
-  return (
-    <section className={`panel ${className}`}>
-      <header className="panel-header">
-        <h3>{title}</h3>
-      </header>
-      {children}
-    </section>
-  )
+  // Use NewPanel (shadcn/ui Card) for consistency
+  return <NewPanel title={title} className={className}>{children}</NewPanel>
 }
 
 function DataTable({ columns, rows, emptyText }: { columns: string[]; rows: ReactNode[][]; emptyText: string }) {
@@ -3546,54 +3547,6 @@ function BarList({ items, emptyText }: { items: Array<{ key: string; count: numb
   )
 }
 
-function TaskList({ copy, tasks }: { copy: Copy; tasks: AnyRecord[] }) {
-  if (!tasks.length) return <EmptyState text={copy.noData} />
-  return (
-    <div className="stack">
-      {tasks.map(task => (
-        <div className="list-row" key={textOf(task.id)}>
-          <StatusBadge status={textOf(task.status, 'open')} />
-          <div className="list-row-main">
-            <strong>{textOf(task.title, '-')}</strong>
-            <span>{textOf(task.project, '-')} · {textOf(task.assignee || task.createdBy, '-')}</span>
-          </div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function RadioList({ copy, messages }: { copy: Copy; messages: AnyRecord[] }) {
-  if (!messages.length) return <EmptyState text={copy.noData} />
-  return (
-    <div className="stack">
-      {messages.map(message => (
-        <div className="message-row" key={textOf(message.id)}>
-          <div className="message-meta">
-            <StatusBadge status={textOf(message.type, 'note')} />
-            <span>{textOf(message.from)} {'->'} {textOf(message.to)}</span>
-          </div>
-          <p>{textOf(message.text, '-')}</p>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function ToolList({ copy, tools }: { copy: Copy; tools: AnyRecord[] }) {
-  if (!tools.length) return <EmptyState text={copy.noData} />
-  return (
-    <div className="stack">
-      {tools.map(tool => (
-        <div className="compact-row" key={textOf(tool.name)}>
-          <StatusBadge status={textOf(tool.connectionStatus, 'missing')} />
-          <span className="truncate">{textOf(tool.name, '-')}</span>
-        </div>
-      ))}
-    </div>
-  )
-}
-
 function Property({ label, value }: { label: string; value: string }) {
   return (
     <div className="property">
@@ -3604,19 +3557,21 @@ function Property({ label, value }: { label: string; value: string }) {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const clean = status.toLowerCase().replace(/[^a-z0-9_-]/g, '-')
-  return <span className={`status-badge ${clean}`}>{status || '-'}</span>
+  // Use NewStatusBadge for consistency
+  return <NewStatusBadge status={status} />
 }
 
 function EmptyState({ text }: { text: string }) {
   return <div className="empty-state">{text}</div>
 }
 
+/* OLD workflow helper - commented out
 function summarizeRoles(workflow: AnyRecord): string {
   const roles = ['planner', 'executor', 'reviewer', 'observer']
     .flatMap(role => asArray<string>(workflow[role]).map(value => `${role}:${value}`))
   return roles.join(', ') || '-'
 }
+*/
 
 function formatDate(value: string): string {
   if (!value) return '-'
@@ -3666,10 +3621,12 @@ function toolMatchesStatusFilter(tool: AnyRecord, filter: string): boolean {
   return true
 }
 
+/* OLD helper - commented out, used in component files now
 function uniqueSorted(values: string[]): string[] {
   return Array.from(new Set(values.map(value => value.trim()).filter(Boolean)))
     .sort((left, right) => left.localeCompare(right))
 }
+*/
 
 function countValues(values: string[], limit = 8): Array<{ key: string; count: number }> {
   const counts = new Map<string, number>()

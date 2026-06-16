@@ -103,6 +103,7 @@ const dashboardWorkflows = createDashboardWorkflowsApi({
   normalizeWorkflowRole,
   notifyWorkflowRoles,
   readWorkflows,
+  readWorkflowNodes,
   spawnWorkflowTasks,
   updateWorkflow,
   writeWorkflows
@@ -5345,6 +5346,9 @@ function appCommand(argv) {
       if (workflowApiMatch) {
         const workflowId = decodeURIComponent(workflowApiMatch[1]);
         const workflowAction = workflowApiMatch[2] ? decodeURIComponent(workflowApiMatch[2]) : "";
+        if (req.method === "GET" && workflowAction === "nodes") {
+          return sendJson(res, dashboardWorkflows.getDashboardWorkflowNodes(config.memoryDir, workflowId));
+        }
         if (req.method === "PATCH" && !workflowAction) {
           const body = await readRequestJson(req);
           let workflow;

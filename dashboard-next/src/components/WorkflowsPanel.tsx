@@ -4,8 +4,21 @@ import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
-import { Plus, Search, X, Users, GitBranch } from 'lucide-react'
+import { Plus, Search, X, Users, GitBranch, ChevronDown, ChevronUp } from 'lucide-react'
 import type { AnyRecord } from '@/lib/api'
+
+interface WorkflowNode {
+  nodeId: string
+  slug: string
+  label: string
+  role: string
+  actor: string
+  status: string
+  note: string
+  error: string
+  isRequired: boolean
+  isFinal: boolean
+}
 
 interface WorkflowsPanelProps {
   workflows: AnyRecord[]
@@ -62,6 +75,9 @@ export function WorkflowsPanel({ workflows, copy }: WorkflowsPanelProps) {
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [projectFilter, setProjectFilter] = useState('all')
+  const [expandedWorkflow, setExpandedWorkflow] = useState<string | null>(null)
+  const [workflowNodes, setWorkflowNodes] = useState<Record<string, WorkflowNode[]>>({})
+  const [loadingNodes, setLoadingNodes] = useState<Record<string, boolean>>({})
 
   const projectOptions = useMemo(
     () => uniqueSorted(workflows.map(workflow => textOf(workflow.project)).filter(Boolean)),
@@ -81,6 +97,25 @@ export function WorkflowsPanel({ workflows, copy }: WorkflowsPanelProps) {
     status,
     count: workflows.filter(workflow => textOf(workflow.status, 'open') === status).length
   }))
+
+  const toggleWorkflow = async (workflowId: string) => {
+    if (expandedWorkflow === workflowId) {
+      setExpandedWorkflow(null)
+      return
+    }
+    setExpandedWorkflow(workflowId)
+    if (workflowNodes[workflowId]) return
+    setLoadingNodes({ ...loadingNodes, [workflowId]: true })
+    try {
+      const res = await fetch(`/api/workflows/${workflowId}/nodes`)
+      const data = await res.json()
+      setWorkflowNodes({ ...workflowNodes, [workflowId]: data.nodes || [] })
+    } catch (err) {
+      console.error('Failed to fetch workflow nodes:', err)
+    } finally {
+      setLoadingNodes({ ...loadingNodes, [workflowId]: false })
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -228,9 +263,13 @@ export function WorkflowsPanel({ workflows, copy }: WorkflowsPanelProps) {
                 const reviewer = textOf(workflow.reviewer, '-')
                 const createdAt = textOf(workflow.createdAt)
                 const updatedAt = textOf(workflow.updatedAt)
+                const workflowId = textOf(workflow.id)
+                const isExpanded = expandedWorkflow === workflowId
+                const nodes = workflowNodes[workflowId] || []
+                const isLoading = loadingNodes[workflowId]
 
                 return (
-                  <Card key={textOf(workflow.id)} className="hover:shadow-md transition-shadow">
+                  <Card key={workflowId} className="hover:shadow-md transition-shadow">
                     <CardContent className="p-4">
                       <div className="space-y-3">
                         {/* Header */}
@@ -259,6 +298,43 @@ export function WorkflowsPanel({ workflows, copy }: WorkflowsPanelProps) {
                             </div>
                           )}
                         </div>
+
+                        {/* Toggle Execution Graph */}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => toggleWorkflow(workflowId)}
+                          className="w-full justify-between"
+                        >
+                          <span className="text-xs">Execution Graph</span>
+                          {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                        </Button>
+
+                        {/* Execution Graph */}
+                        {isExpanded && (
+                          <div className="pt-2 border-t space-y-2">
+                            {isLoading ? (
+                              <p className="text-xs text-muted-foreground">Loading nodes...</p>
+                            ) : nodes.length > 0 ? (
+                              nodes.map(node => (
+                                <div key={node.nodeId} className="flex items-start gap-2 text-xs">
+                                  <NodeStatusBadge status={node.status} />
+                                  <div className="flex-1 min-w-0">
+                                    <p className="font-medium truncate">{node.label}</p>
+                                    <p className="text-muted-foreground">
+                                      {node.role}:{node.actor}
+                                      {!node.isRequired && <span className="ml-1">(optional)</span>}
+                                    </p>
+                                    {node.note && <p className="text-muted-foreground italic">Note: {node.note}</p>}
+                                    {node.error && <p className="text-destructive">Error: {node.error}</p>}
+                                  </div>
+                                </div>
+                              ))
+                            ) : (
+                              <p className="text-xs text-muted-foreground">(no execution history)</p>
+                            )}
+                          </div>
+                        )}
 
                         {/* Footer */}
                         <div className="pt-2 border-t text-xs text-muted-foreground">
@@ -294,4 +370,32 @@ function StatusBadge({ status }: { status: string }) {
 
   const config = variants[status] || variants.open
   return <Badge variant={config.variant}>{status}</Badge>
+}
+
+function NodeStatusBadge({ status }: { status: string }) {
+  const icons: Record<string, string> = {
+    completed: '✓',
+    failed: '✗',
+    error: '✗',
+    cancelled: '⊗',
+    rejected: '⊘',
+    running: '▶',
+    waiting: '⏸',
+    queued: '◦'
+  }
+
+  const variants: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
+    completed: { variant: 'default' },
+    failed: { variant: 'destructive' },
+    error: { variant: 'destructive' },
+    cancelled: { variant: 'outline' },
+    rejected: { variant: 'destructive' },
+    running: { variant: 'default' },
+    waiting: { variant: 'secondary' },
+    queued: { variant: 'outline' }
+  }
+
+  const icon = icons[status] || '?'
+  const config = variants[status] || variants.queued
+  return <Badge variant={config.variant} className="text-xs">{icon}</Badge>
 }

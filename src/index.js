@@ -6246,6 +6246,10 @@ function workflowCreateCommand(argv) {
     });
     workflows.push(workflow);
     writeWorkflows(config.memoryDir, workflows);
+
+    // Phase 4: Auto-create workflow nodes
+    autoCreateWorkflowNodes(config.memoryDir, workflow);
+
     if (hasFlag(argv, "--spawn-tasks")) {
       spawnWorkflowTasks(config.memoryDir, workflow);
     }
@@ -7933,6 +7937,71 @@ function createWorkflow({ title, createdBy, project, priority, planner, executor
   };
 }
 
+function autoCreateWorkflowNodes(memoryDir, workflow) {
+  // Phase 4: Auto-create initial nodes for planner/executor/reviewer when workflow is created
+  const nodes = [];
+
+  // Roles are arrays, take first element if present
+  const plannerActor = Array.isArray(workflow.planner) && workflow.planner.length > 0 ? workflow.planner[0] : workflow.planner;
+  const executorActor = Array.isArray(workflow.executor) && workflow.executor.length > 0 ? workflow.executor[0] : workflow.executor;
+  const reviewerActor = Array.isArray(workflow.reviewer) && workflow.reviewer.length > 0 ? workflow.reviewer[0] : workflow.reviewer;
+
+  if (plannerActor) {
+    nodes.push({
+      slug: "plan",
+      label: "Planning phase",
+      role: "planner",
+      actor: plannerActor,
+      status: "running", // planner starts immediately
+      isRequired: true
+    });
+  }
+
+  if (executorActor) {
+    nodes.push({
+      slug: "exec",
+      label: "Execution phase",
+      role: "executor",
+      actor: executorActor,
+      status: "queued", // executor waits for plan
+      isRequired: true
+    });
+  }
+
+  if (reviewerActor) {
+    nodes.push({
+      slug: "review",
+      label: "Review phase",
+      role: "reviewer",
+      actor: reviewerActor,
+      status: "queued", // reviewer waits for execution
+      isRequired: !workflow.qualityGate?.reviewOptional // required unless marked optional
+    });
+  }
+
+  // Create node events
+  for (const node of nodes) {
+    appendWorkflowNodeEvent(memoryDir, {
+      type: "workflow.node",
+      workflowId: workflow.id,
+      nodeId: `${workflow.id}:${node.slug}`,
+      slug: node.slug,
+      label: node.label,
+      role: node.role,
+      actor: node.actor,
+      status: node.status,
+      ts: new Date().toISOString(),
+      note: "Auto-created by workflow creation",
+      isRequired: node.isRequired,
+      input: {},
+      output: {},
+      error: ""
+    });
+  }
+
+  return nodes.length;
+}
+
 function updateWorkflow(memoryDir, id, updater) {
   const workflows = readWorkflows(memoryDir);
   const index = findWorkflowIndex(workflows, id);
@@ -8923,6 +8992,9 @@ function createWorkflowFromRecipe(memoryDir, recipeName, toolMapping, variables)
   const workflows = readWorkflows(memoryDir);
   workflows.push(workflow);
   writeWorkflows(memoryDir, workflows);
+
+  // Phase 4: Auto-create workflow nodes
+  autoCreateWorkflowNodes(memoryDir, workflow);
 
   // Create tasks for each step
   const tasks = [];

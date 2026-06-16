@@ -6332,6 +6332,25 @@ function workflowStatusCommand(argv) {
   const config = loadConfig();
   ensureHub(config.memoryDir);
   return withHubLock(config.memoryDir, "workflow-status", () => {
+    // Phase 3: When marking workflow as done, check all required nodes are completed
+    if (status === "done") {
+      const workflows = readWorkflows(config.memoryDir);
+      const workflow = workflows.find((item) => item.id === id || item.id.startsWith(id));
+      if (workflow) {
+        const nodes = readWorkflowNodes(config.memoryDir, workflow.id);
+        const requiredNodes = Object.values(nodes).filter(n => n.isRequired);
+        const incompleteRequired = requiredNodes.filter(n => n.status !== "completed");
+
+        if (incompleteRequired.length > 0) {
+          const nodeList = incompleteRequired.map(n => `  - ${n.label} (${n.role}:${n.actor}) → ${n.status}`).join("\n");
+          throw new Error(
+            `Cannot mark workflow as done: ${incompleteRequired.length} required node(s) not completed:\n${nodeList}\n\n` +
+            `Use 'workflow node done --workflow ${id} --node <slug>' to complete them first.`
+          );
+        }
+      }
+    }
+
     const workflow = updateWorkflow(config.memoryDir, id, (current) => ({
       ...current,
       status,
@@ -6367,6 +6386,44 @@ function workflowAppendCommand(argv, field) {
         { ts: new Date().toISOString(), by, role, text }
       ]
     }));
+
+    // Phase 3: Auto-update node status when role is specified
+    if (role) {
+      const nodes = readWorkflowNodes(config.memoryDir, workflow.id);
+      const matchingNode = Object.values(nodes).find(n => n.role === role && n.actor === by);
+
+      if (matchingNode) {
+        if (field === "results") {
+          // workflow result → mark executor node as completed
+          appendWorkflowNodeEvent(config.memoryDir, {
+            type: "workflow.node",
+            workflowId: workflow.id,
+            nodeId: matchingNode.nodeId,
+            slug: matchingNode.slug,
+            status: "completed",
+            ts: new Date().toISOString(),
+            note: `Auto-completed by workflow result command`,
+            output: { text }
+          });
+        } else if (field === "reviews") {
+          // workflow review → mark reviewer node as completed or rejected
+          // Heuristic: if text contains rejection keywords, mark as rejected
+          const isRejection = /reject|block|fail|不通过|拒绝|驳回/i.test(text);
+          const status = isRejection ? "rejected" : "completed";
+          appendWorkflowNodeEvent(config.memoryDir, {
+            type: "workflow.node",
+            workflowId: workflow.id,
+            nodeId: matchingNode.nodeId,
+            slug: matchingNode.slug,
+            status,
+            ts: new Date().toISOString(),
+            note: `Auto-${status} by workflow review command`,
+            output: { text }
+          });
+        }
+      }
+    }
+
     console.log(JSON.stringify(workflow, null, 2));
   }, config.sync.lockStaleMs);
 }

@@ -5241,9 +5241,6 @@ function appCommand(argv) {
       if (req.method === "GET" && (url.pathname.startsWith("/css/") || url.pathname.startsWith("/js/") || url.pathname.startsWith("/assets/") || url.pathname.endsWith(".svg"))) {
         return sendStaticFile(res, url.pathname);
       }
-      if (req.method === "GET" && url.pathname === "/") {
-        return sendHtml(res, renderDashboard());
-      }
       if (req.method === "GET" && url.pathname === "/api/dashboard") {
         return sendJson(res, dashboardRealtime.getDashboardSnapshot(config.memoryDir));
       }
@@ -5636,6 +5633,11 @@ function appCommand(argv) {
         }
         broadcastDashboardUpdate("install:apply");
         return sendJson(res, result);
+      }
+      // SPA fallback: serve Dashboard HTML for all other GET requests
+      // This allows React Router to handle client-side routing for paths like /tasks, /workflows, etc.
+      if (req.method === "GET" && !url.pathname.startsWith("/api/")) {
+        return sendHtml(res, renderDashboard());
       }
       return sendJson(res, { error: "not found" }, 404);
     } catch (error) {

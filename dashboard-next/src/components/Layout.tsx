@@ -2,7 +2,6 @@ import { Outlet } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import type { AppLanguage } from '../lib/i18n'
 import Sidebar from './Sidebar'
-import './Layout.css'
 
 export default function Layout() {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('hub-sidebar') === 'collapsed')
@@ -19,9 +18,9 @@ export default function Layout() {
   const toggleLanguage = () => setLanguage(value => value === 'zh' ? 'en' : 'zh')
 
   return (
-    <div className={`app-layout ${collapsed ? 'sidebar-is-collapsed' : ''}`}>
+    <div className="flex h-screen overflow-hidden bg-background">
       <Sidebar collapsed={collapsed} language={language} onToggle={() => setCollapsed(value => !value)} />
-      <main className="main-content">
+      <main className="flex-1 overflow-y-auto">
         <Outlet context={{ language, toggleLanguage }} />
       </main>
     </div>

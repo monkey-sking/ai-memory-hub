@@ -22,7 +22,7 @@ export function createDashboardRealtimeApi({
       status: getStatusObject(),
       memory: dashboardMemory.getDashboardMemory(memoryDir),
       radio: dashboardRadio.getDashboardRadio(memoryDir),
-      tasks: dashboardTasks.getDashboardTasks(memoryDir),
+      tasks: dashboardTasks.getDashboardTasks(memoryDir, "all", { includeCancelled: true }),
       workflows: dashboardWorkflows.getDashboardWorkflows(memoryDir),
       projects: dashboardProjects.getDashboardProjects(memoryDir),
       dispatch: dashboardDispatch.getDashboardDispatch(memoryDir),

@@ -13,6 +13,7 @@ export function createDashboardWorkflowsApi({
   normalizeWorkflowRole,
   notifyWorkflowRoles,
   readWorkflows,
+  readWorkflowNodes,
   spawnWorkflowTasks,
   updateWorkflow,
   writeWorkflows
@@ -217,11 +218,22 @@ export function createDashboardWorkflowsApi({
       .filter(Boolean);
   }
 
+  function getDashboardWorkflowNodes(memoryDir, workflowId) {
+    const workflows = readWorkflows(memoryDir);
+    const workflow = workflows.find((w) => w.id === workflowId || w.id.startsWith(workflowId));
+    if (!workflow) {
+      throw new Error(`Workflow not found: ${workflowId}`);
+    }
+    const nodes = readWorkflowNodes(memoryDir, workflow.id);
+    return { nodes };
+  }
+
   return {
     appendDashboardWorkflowEntry,
     createDashboardWorkflow,
     deleteDashboardWorkflow,
     getDashboardWorkflows,
+    getDashboardWorkflowNodes,
     setDashboardWorkflowStatus,
     signalDashboardWorkflow,
     updateDashboardWorkflow

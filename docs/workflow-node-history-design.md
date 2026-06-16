@@ -221,36 +221,47 @@ Once P0-#2 (approval gates) is implemented, `dispatch` and `workflow create --sp
 
 ### 8. Implementation Phases
 
-#### Phase 1: Data Layer (MVP for acceptance)
+> **Status: All phases (1-5) implemented and verified. Commits:**
+> - Phase 1: data layer + CLI
+> - Phase 2: dashboard integration
+> - Phase 3: command integration
+> - Phase 4: dispatch/creation integration
+> - Phase 5: status derivation
 
-- [ ] Add `readWorkflowNodes(memoryDir, workflowId)` — replay events, return current node map
-- [ ] Add `appendWorkflowNodeEvent(memoryDir, event)` — append to `nodes.jsonl`
-- [ ] CLI: `workflow node add|start|wait|done|fail|cancel|reject`
-- [ ] CLI: `workflow node list|show`
-- [ ] Add `deriveWorkflowStatusFromNodes(nodes)` helper (does not auto-apply yet)
+#### Phase 1: Data Layer (MVP for acceptance) ✅
 
-#### Phase 2: Dashboard Integration
+- [x] Add `readWorkflowNodes(memoryDir, workflowId)` — replay events, return current node array
+- [x] Add `appendWorkflowNodeEvent(memoryDir, event)` — append to `nodes.jsonl`
+- [x] CLI: `workflow node add|start|wait|done|fail|cancel|reject`
+- [x] CLI: `workflow node list|show`
+- [x] Add `deriveWorkflowStatusFromNodes(nodes)` helper
 
-- [ ] Dashboard API: `GET /api/workflows/:id/nodes` → return node array
-- [ ] `WorkflowsPanel.tsx`: add "Execution Graph" card
-- [ ] Render node status badges with color coding
+#### Phase 2: Dashboard Integration ✅
 
-#### Phase 3: Workflow Commands Integration
+- [x] Dashboard API: `GET /api/workflows/:id/nodes` → return node array
+- [x] `WorkflowsPanel.tsx`: add expandable "Execution Graph" section
+- [x] Render node status badges with status icons (✓ ✗ ⊗ ⊘ ▶ ⏸ ◦)
 
-- [ ] `workflow result` auto-marks executor node → `completed`
-- [ ] `workflow review` auto-marks reviewer node → `completed|rejected`
-- [ ] `workflow done` checks node states, errors if required nodes not completed
+#### Phase 3: Workflow Commands Integration ✅
 
-#### Phase 4: Dispatch Integration
+- [x] `workflow result --role executor` auto-marks executor node → `completed`
+- [x] `workflow review --role reviewer` auto-marks reviewer node → `completed|rejected`
+      (rejection detected via keywords: reject/block/fail/不通过/拒绝/驳回)
+- [x] `workflow done` checks node states, errors if required nodes not completed
 
-- [ ] `dispatch` creates initial node events for planner/executor/reviewer when spawning workflow
-- [ ] Set planner node → `running`, others → `queued`
+#### Phase 4: Dispatch Integration ✅
 
-#### Phase 5: Status Derivation (breaking opt-in)
+- [x] `autoCreateWorkflowNodes` creates planner/executor/reviewer nodes on workflow creation
+      (wired into both `workflowCreateCommand` and `createWorkflowFromRecipe`)
+- [x] Set planner node → `running`, others → `queued`
 
-- [ ] Add `workflow.derivedStatus` field (read-only, computed from nodes)
-- [ ] CLI: `workflow status --auto` switches a workflow to derived-status mode
-- [ ] Once opted in, `workflow.status` becomes read-only, always derived from nodes
+#### Phase 5: Status Derivation (opt-in) ✅
+
+- [x] Add `usesDerivedStatus` + `derivedStatus` fields (normalized + persisted)
+- [x] CLI: `workflow status --auto` switches a workflow to derived-status mode
+- [x] Once opted in, `workflow.status` is always recomputed from nodes on read
+      (manual status changes are blocked with a clear error)
+- [x] Performance: `readWorkflowNodesByWorkflow` reads nodes.jsonl once per `readWorkflows`
 
 ### 9. Open Questions
 

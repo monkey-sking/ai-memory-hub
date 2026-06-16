@@ -6329,20 +6329,54 @@ function workflowStatusCommand(argv) {
   const id = getOption(argv, "--id") || positionalArgs(argv)[0] || "";
   const status = getOption(argv, "--status") || positionalArgs(argv)[1] || "";
   const by = getOption(argv, "--by") || getOption(argv, "--from") || "manual";
+  const auto = hasFlag(argv, "--auto");
+
+  // Phase 5: --auto flag switches to derived status mode
+  if (auto) {
+    if (!id) {
+      throw new Error("Usage: ai-memory-hub workflow status --id <workflow-id> --auto [--by codex]");
+    }
+    const config = loadConfig();
+    ensureHub(config.memoryDir);
+    return withHubLock(config.memoryDir, "workflow-status", () => {
+      const workflow = updateWorkflow(config.memoryDir, id, (current) => ({
+        ...current,
+        usesDerivedStatus: true,
+        updatedAt: new Date().toISOString(),
+        notes: [
+          ...(current.notes || []),
+          createTaskNote(by, `Switched to derived status mode. Status will now be computed from node states.`)
+        ]
+      }));
+      // Re-read to get derived status applied
+      const updated = readWorkflows(config.memoryDir).find(w => w.id === workflow.id) || workflow;
+      console.log(JSON.stringify(updated, null, 2));
+    }, config.sync.lockStaleMs);
+  }
+
   if (!id || !status) {
-    throw new Error("Usage: ai-memory-hub workflow status --id <workflow-id> --status <open|planned|in_progress|review|blocked|done|cancelled> [--by codex]");
+    throw new Error("Usage: ai-memory-hub workflow status --id <workflow-id> --status <open|planned|in_progress|review|blocked|done|cancelled> [--by codex]\n       ai-memory-hub workflow status --id <workflow-id> --auto [--by codex]");
   }
   assertWorkflowStatus(status);
   const config = loadConfig();
   ensureHub(config.memoryDir);
   return withHubLock(config.memoryDir, "workflow-status", () => {
+    // Phase 5: Block manual status changes if using derived status
+    const workflows = readWorkflows(config.memoryDir);
+    const current = workflows.find((item) => item.id === id || item.id.startsWith(id));
+    if (current?.usesDerivedStatus) {
+      throw new Error(
+        `Cannot manually set status: workflow is using derived status mode.\n` +
+        `Status is automatically computed from node states.\n` +
+        `Current derived status: ${current.status}`
+      );
+    }
+
     // Phase 3: When marking workflow as done, check all required nodes are completed
     if (status === "done") {
-      const workflows = readWorkflows(config.memoryDir);
-      const workflow = workflows.find((item) => item.id === id || item.id.startsWith(id));
-      if (workflow) {
-        const nodes = readWorkflowNodes(config.memoryDir, workflow.id);
-        const requiredNodes = Object.values(nodes).filter(n => n.isRequired);
+      if (current) {
+        const nodes = readWorkflowNodes(config.memoryDir, current.id);
+        const requiredNodes = nodes.filter(n => n.isRequired);
         const incompleteRequired = requiredNodes.filter(n => n.status !== "completed");
 
         if (incompleteRequired.length > 0) {
@@ -6394,7 +6428,7 @@ function workflowAppendCommand(argv, field) {
     // Phase 3: Auto-update node status when role is specified
     if (role) {
       const nodes = readWorkflowNodes(config.memoryDir, workflow.id);
-      const matchingNode = Object.values(nodes).find(n => n.role === role && n.actor === by);
+      const matchingNode = nodes.find(n => n.role === role && n.actor === by);
 
       if (matchingNode) {
         if (field === "results") {
@@ -7326,12 +7360,37 @@ function writeTasks(memoryDir, tasks) {
 function readWorkflows(memoryDir) {
   bootstrapEntityEventsFromProjection(memoryDir, getWorkflowEventStoreDefinition());
   const events = readEntityEvents(memoryDir, getWorkflowEventStoreDefinition());
+  let workflows = [];
   if (events.length > 0) {
-    return replayEntityEvents(events, getWorkflowEventStoreDefinition());
+    workflows = replayEntityEvents(events, getWorkflowEventStoreDefinition());
+  } else {
+    workflows = readEvents(getWorkflowsFile(memoryDir))
+      .map(normalizeWorkflow)
+      .filter((workflow) => workflow.id && workflow.title);
   }
-  return readEvents(getWorkflowsFile(memoryDir))
-    .map(normalizeWorkflow)
-    .filter((workflow) => workflow.id && workflow.title);
+
+  // Phase 5: Apply derived status for workflows that opted in.
+  // Read the nodes file at most once and only when needed.
+  const derivedWorkflows = workflows.filter((workflow) => workflow.usesDerivedStatus);
+  if (derivedWorkflows.length === 0) {
+    return workflows;
+  }
+  const nodesByWorkflow = readWorkflowNodesByWorkflow(memoryDir);
+  return workflows.map((workflow) => {
+    if (!workflow.usesDerivedStatus) {
+      return workflow;
+    }
+    const nodeList = nodesByWorkflow.get(workflow.id) || [];
+    const derivedStatus = deriveWorkflowStatusFromNodes(nodeList);
+    if (derivedStatus) {
+      return {
+        ...workflow,
+        status: derivedStatus,
+        derivedStatus // store the derived value for debugging/inspection
+      };
+    }
+    return workflow;
+  });
 }
 
 function writeWorkflows(memoryDir, workflows) {
@@ -7408,6 +7467,35 @@ function readWorkflowNodes(memoryDir, workflowId) {
     }
   }
   return Array.from(nodeMap.values()).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
+
+// Read every workflow's current nodes in a single pass over nodes.jsonl.
+// Returns a Map of workflowId -> sorted node array. Used by readWorkflows to
+// avoid re-reading the file once per derived-status workflow.
+function readWorkflowNodesByWorkflow(memoryDir) {
+  const nodesFile = path.join(memoryDir, "workflows", "nodes.jsonl");
+  const events = readEvents(nodesFile);
+  const latestByNode = new Map();
+  for (const event of events) {
+    if (!event.workflowId || !event.nodeId) {
+      continue;
+    }
+    const existing = latestByNode.get(event.nodeId);
+    if (!existing || new Date(event.ts) > new Date(existing.ts)) {
+      latestByNode.set(event.nodeId, event);
+    }
+  }
+  const byWorkflow = new Map();
+  for (const node of latestByNode.values()) {
+    if (!byWorkflow.has(node.workflowId)) {
+      byWorkflow.set(node.workflowId, []);
+    }
+    byWorkflow.get(node.workflowId).push(node);
+  }
+  for (const list of byWorkflow.values()) {
+    list.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  }
+  return byWorkflow;
 }
 
 function appendWorkflowNodeEvent(memoryDir, event) {
@@ -8121,7 +8209,9 @@ function normalizeWorkflow(workflow) {
     statusRadioId: workflow.statusRadioId || "",
     dispatchReportPath: workflow.dispatchReportPath || "",
     worktree: normalizeDispatchWorktreeMetadata(workflow.worktree),
-    notes: Array.isArray(workflow.notes) ? workflow.notes : []
+    notes: Array.isArray(workflow.notes) ? workflow.notes : [],
+    usesDerivedStatus: Boolean(workflow.usesDerivedStatus),
+    derivedStatus: workflow.derivedStatus || ""
   };
   if (isPlainObject(workflow.recipe)) {
     normalized.recipe = normalizeRecipeMetadata(workflow.recipe);

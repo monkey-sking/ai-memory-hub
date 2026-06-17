@@ -7,7 +7,9 @@ export function createDashboardToolsApi({
   readLatestRelayStatusByThread,
   readRadioMessages,
   readTasks,
-  refreshDetectedTools
+  refreshDetectedTools,
+  resolvePermission,
+  POLICY_OPERATIONS
 }) {
   function getDashboardDetection(memoryDir) {
     const tools = refreshDetectedTools(memoryDir);
@@ -96,7 +98,7 @@ export function createDashboardToolsApi({
     const entries = detectedTools.map((tool) => buildToolCapabilityEntry(
       tool,
       effectiveMetricsByTool[normalizeToolName(tool.name)] || createEmptyToolMetrics(),
-      { includeMetrics }
+      { includeMetrics, memoryDir }
     ));
     return {
       ok: true,
@@ -108,7 +110,7 @@ export function createDashboardToolsApi({
     };
   }
 
-  function buildToolCapabilityEntry(tool, metrics = createEmptyToolMetrics(), { includeMetrics = true } = {}) {
+  function buildToolCapabilityEntry(tool, metrics = createEmptyToolMetrics(), { includeMetrics = true, memoryDir = "" } = {}) {
     const name = normalizeToolName(tool.name);
     const profile = getRunnerProfile(name) || {};
     const profileCapabilities = normalizeCapabilityList(profile.capabilities);
@@ -141,7 +143,7 @@ export function createDashboardToolsApi({
       outputModes: profile.outputMode ? [profile.outputMode] : [],
       capabilities: profileCapabilities
     };
-    const permissions = buildToolPermissionPolicy(capability);
+    const permissions = buildToolPermissionPolicy(capability, memoryDir, name);
     const health = buildToolCapabilityHealth(tool, capability);
     const entry = {
       name: tool.name,
@@ -192,14 +194,29 @@ export function createDashboardToolsApi({
     return diagnosticOnly ? "diagnostic-only" : "unknown";
   }
 
-  function buildToolPermissionPolicy(capability) {
+  function buildToolPermissionPolicy(capability, memoryDir, actor) {
+    // Phase 2: call the policy resolver for each operation instead of hardcoded static values.
+    const byOperation = {};
+    if (resolvePermission && POLICY_OPERATIONS) {
+      for (const operation of POLICY_OPERATIONS) {
+        try {
+          const result = resolvePermission(memoryDir, { actor, project: "*", operation, scope: "all" });
+          byOperation[operation] = { decision: result.decision, reason: result.reason };
+        } catch (err) {
+          byOperation[operation] = { decision: "ask", reason: `Policy resolver error: ${err.message}` };
+        }
+      }
+    }
+    // Legacy fields kept for compatibility during transition.
     return {
       canAutoDispatch: Boolean(capability.autoDispatch),
       canUseSharedState: Boolean(capability.sharedState),
       canUseGatewayRest: Boolean(capability.gatewayRest),
       canUseDesktopAutomation: Boolean(capability.cdpCandidate || capability.desktopAutomation),
       defaultGuardrails: ["no-push", "no-delete-files", "no-install-dependencies"],
-      requiresApprovalFor: ["push", "delete-files", "install-dependencies", "system-config", "destructive-commands"]
+      requiresApprovalFor: ["push", "delete-files", "install-dependencies", "system-config", "destructive-commands"],
+      byOperation,
+      source: resolvePermission ? "policy-layer" : "legacy-static"
     };
   }
 

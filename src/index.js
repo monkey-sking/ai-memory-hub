@@ -22,6 +22,34 @@ import { createDashboardTasksApi } from "./dashboard/tasks.js";
 import { createDashboardToolsApi } from "./dashboard/tools.js";
 import { createDashboardWorkflowsApi } from "./dashboard/workflows.js";
 
+// Permission policy layer (P0: capability permission matrix) — defined at the
+// top so they are initialized before dashboard module initialization.
+const POLICY_OPERATIONS = [
+  "read-memory", "write-memory", "send-radio", "claim-task", "dispatch",
+  "modify-files", "run-tests", "install-dependencies", "push", "delete",
+  "purge", "archive"
+];
+const POLICY_DECISIONS = ["allow", "ask", "deny"];
+const POLICY_SCOPES = ["all", "project", "own"];
+const POLICY_SCOPE_BREADTH = { all: 3, project: 2, own: 1 };
+const POLICY_DESTRUCTIVE_OPERATIONS = ["push", "delete", "purge", "install-dependencies"];
+
+// Seeded defaults derived from the previously hardcoded guardrails.
+const POLICY_DEFAULT_SEED = [
+  { operation: "read-memory", decision: "allow", reason: "Standard collaboration operation" },
+  { operation: "write-memory", decision: "allow", reason: "Standard collaboration operation" },
+  { operation: "send-radio", decision: "allow", reason: "Standard collaboration operation" },
+  { operation: "claim-task", decision: "allow", reason: "Standard collaboration operation" },
+  { operation: "dispatch", decision: "allow", reason: "Standard collaboration operation" },
+  { operation: "run-tests", decision: "allow", reason: "Running tests is safe" },
+  { operation: "modify-files", decision: "allow", reason: "Editing within the workspace is allowed" },
+  { operation: "archive", decision: "allow", reason: "Archiving is reversible" },
+  { operation: "install-dependencies", decision: "ask", reason: "Dependency installs need approval (supply-chain safety)" },
+  { operation: "push", decision: "ask", reason: "Pushing to remote needs human approval" },
+  { operation: "delete", decision: "ask", reason: "Destructive data operations need approval" },
+  { operation: "purge", decision: "ask", reason: "Destructive data operations need approval" }
+];
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -150,7 +178,9 @@ const dashboardTools = createDashboardToolsApi({
   readLatestRelayStatusByThread,
   readRadioMessages,
   readTasks,
-  refreshDetectedTools
+  refreshDetectedTools,
+  resolvePermission,
+  POLICY_OPERATIONS
 });
 
 const dashboardSettings = createDashboardSettingsApi({
@@ -378,34 +408,6 @@ const ASYNC_CALL_TRANSITIONS = {
 
 const RECIPE_GATE_STRING_ARRAY_FIELDS = ["stopWhen", "allowedActions", "forbiddenActions"];
 const RECIPE_GATE_FIELDS = ["verifyCommands", ...RECIPE_GATE_STRING_ARRAY_FIELDS, "reviewRequired", "maxRepairAttempts"];
-
-// Permission policy layer (P0: capability permission matrix) — defined near the
-// top so they are initialized before main() runs the policy CLI commands.
-const POLICY_OPERATIONS = [
-  "read-memory", "write-memory", "send-radio", "claim-task", "dispatch",
-  "modify-files", "run-tests", "install-dependencies", "push", "delete",
-  "purge", "archive"
-];
-const POLICY_DECISIONS = ["allow", "ask", "deny"];
-const POLICY_SCOPES = ["all", "project", "own"];
-const POLICY_SCOPE_BREADTH = { all: 3, project: 2, own: 1 };
-const POLICY_DESTRUCTIVE_OPERATIONS = ["push", "delete", "purge", "install-dependencies"];
-
-// Seeded defaults derived from the previously hardcoded guardrails.
-const POLICY_DEFAULT_SEED = [
-  { operation: "read-memory", decision: "allow", reason: "Standard collaboration operation" },
-  { operation: "write-memory", decision: "allow", reason: "Standard collaboration operation" },
-  { operation: "send-radio", decision: "allow", reason: "Standard collaboration operation" },
-  { operation: "claim-task", decision: "allow", reason: "Standard collaboration operation" },
-  { operation: "dispatch", decision: "allow", reason: "Standard collaboration operation" },
-  { operation: "run-tests", decision: "allow", reason: "Running tests is safe" },
-  { operation: "modify-files", decision: "allow", reason: "Editing within the workspace is allowed" },
-  { operation: "archive", decision: "allow", reason: "Archiving is reversible" },
-  { operation: "install-dependencies", decision: "ask", reason: "Dependency installs need approval (supply-chain safety)" },
-  { operation: "push", decision: "ask", reason: "Pushing to remote needs human approval" },
-  { operation: "delete", decision: "ask", reason: "Destructive data operations need approval" },
-  { operation: "purge", decision: "ask", reason: "Destructive data operations need approval" }
-];
 
 const rawArgs = process.argv.slice(2);
 const parsedArgs = parseCliArgs(rawArgs);
@@ -5562,6 +5564,17 @@ function appCommand(argv) {
         return sendJson(res, dashboardTools.buildCapabilityRegistry(config.memoryDir, {
           refresh: url.searchParams.get("refresh") === "1"
         }));
+      }
+      if (req.method === "GET" && url.pathname === "/api/policy") {
+        const rules = readPolicyRules(config.memoryDir);
+        return sendJson(res, {
+          ok: true,
+          count: rules.length,
+          rules,
+          operations: POLICY_OPERATIONS,
+          decisions: POLICY_DECISIONS,
+          scopes: POLICY_SCOPES
+        });
       }
       if (req.method === "GET" && url.pathname === "/api/backups") {
         return sendJson(res, dashboardBackups.getDashboardBackups(config));
@@ -13442,4 +13455,12 @@ function summarizeText(value, limit = 80) {
   }
   const safeLimit = Math.max(0, Number(limit) || 0);
   return `${text.slice(0, Math.max(0, safeLimit - 3)).trimEnd()}...`;
+}
+
+// Export policy functions for dashboard integration (Phase 2).
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = {
+    resolvePermission,
+    POLICY_OPERATIONS
+  };
 }

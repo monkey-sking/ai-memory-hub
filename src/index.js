@@ -2987,6 +2987,88 @@ function executeDispatch(memoryDir, {
     }
     const attempt = nextRelayAttempt(relayState, job);
     const maxRetries = getDispatchJobMaxRetries(job);
+
+    // Phase 3: Permission policy preflight check
+    const permission = resolvePermission(memoryDir, {
+      actor: job.tool,
+      project: job.project || "*",
+      operation: "dispatch",
+      scope: "all"
+    });
+    if (permission.decision === "deny") {
+      const result = {
+        ...job,
+        runnable: false,
+        reason: `Permission denied: ${permission.reason}`,
+        exitCode: 403,
+        error: `Policy layer blocked dispatch: ${permission.reason}`
+      };
+      appendRelayStatus(memoryDir, job, {
+        state: "failed-permanent",
+        attempt,
+        maxRetries,
+        exitCode: 403,
+        lastError: result.error,
+        sessionId: "",
+        ackTimeout: DEFAULT_DISPATCH_ACK_TIMEOUT_MS
+      });
+      updateDispatchSourceState(memoryDir, job, {
+        deliveryState: "failed-permanent",
+        dispatchId: job.id,
+        threadKey: getDispatchThreadKey(job),
+        attempt,
+        maxRetries,
+        nextRetryAt: "",
+        sessionId: "",
+        lastError: result.error
+      });
+      const statusMessage = appendDispatchStatusMessage(memoryDir, job, { ...result, relayState: "failed-permanent" });
+      appendDispatchLog(memoryDir, result);
+      applyDispatchOutcome(memoryDir, job, { ...result, statusRadioId: statusMessage?.id || "" }, "failed-permanent", {
+        statusMessage
+      });
+      results.push(result);
+      continue;
+    }
+    if (permission.decision === "ask") {
+      // TODO: integrate with approval gate (P0#3) once implemented.
+      // For now, log warning and treat as blocked.
+      const result = {
+        ...job,
+        runnable: false,
+        reason: `Approval required: ${permission.reason}`,
+        exitCode: 451,
+        error: `Policy layer requires approval: ${permission.reason} (approval gate not yet implemented)`
+      };
+      appendRelayStatus(memoryDir, job, {
+        state: "approval-required",
+        attempt,
+        maxRetries,
+        exitCode: 451,
+        lastError: result.error,
+        sessionId: "",
+        ackTimeout: DEFAULT_DISPATCH_ACK_TIMEOUT_MS
+      });
+      updateDispatchSourceState(memoryDir, job, {
+        deliveryState: "approval-required",
+        dispatchId: job.id,
+        threadKey: getDispatchThreadKey(job),
+        attempt,
+        maxRetries,
+        nextRetryAt: "",
+        sessionId: "",
+        lastError: result.error
+      });
+      const statusMessage = appendDispatchStatusMessage(memoryDir, job, { ...result, relayState: "approval-required" });
+      appendDispatchLog(memoryDir, result);
+      applyDispatchOutcome(memoryDir, job, { ...result, statusRadioId: statusMessage?.id || "" }, "approval-required", {
+        statusMessage
+      });
+      results.push(result);
+      continue;
+    }
+    // permission.decision === "allow" → proceed
+
     appendRelayStatus(memoryDir, job, {
       state: "dispatched",
       attempt,

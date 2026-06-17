@@ -379,6 +379,34 @@ const ASYNC_CALL_TRANSITIONS = {
 const RECIPE_GATE_STRING_ARRAY_FIELDS = ["stopWhen", "allowedActions", "forbiddenActions"];
 const RECIPE_GATE_FIELDS = ["verifyCommands", ...RECIPE_GATE_STRING_ARRAY_FIELDS, "reviewRequired", "maxRepairAttempts"];
 
+// Permission policy layer (P0: capability permission matrix) — defined near the
+// top so they are initialized before main() runs the policy CLI commands.
+const POLICY_OPERATIONS = [
+  "read-memory", "write-memory", "send-radio", "claim-task", "dispatch",
+  "modify-files", "run-tests", "install-dependencies", "push", "delete",
+  "purge", "archive"
+];
+const POLICY_DECISIONS = ["allow", "ask", "deny"];
+const POLICY_SCOPES = ["all", "project", "own"];
+const POLICY_SCOPE_BREADTH = { all: 3, project: 2, own: 1 };
+const POLICY_DESTRUCTIVE_OPERATIONS = ["push", "delete", "purge", "install-dependencies"];
+
+// Seeded defaults derived from the previously hardcoded guardrails.
+const POLICY_DEFAULT_SEED = [
+  { operation: "read-memory", decision: "allow", reason: "Standard collaboration operation" },
+  { operation: "write-memory", decision: "allow", reason: "Standard collaboration operation" },
+  { operation: "send-radio", decision: "allow", reason: "Standard collaboration operation" },
+  { operation: "claim-task", decision: "allow", reason: "Standard collaboration operation" },
+  { operation: "dispatch", decision: "allow", reason: "Standard collaboration operation" },
+  { operation: "run-tests", decision: "allow", reason: "Running tests is safe" },
+  { operation: "modify-files", decision: "allow", reason: "Editing within the workspace is allowed" },
+  { operation: "archive", decision: "allow", reason: "Archiving is reversible" },
+  { operation: "install-dependencies", decision: "ask", reason: "Dependency installs need approval (supply-chain safety)" },
+  { operation: "push", decision: "ask", reason: "Pushing to remote needs human approval" },
+  { operation: "delete", decision: "ask", reason: "Destructive data operations need approval" },
+  { operation: "purge", decision: "ask", reason: "Destructive data operations need approval" }
+];
+
 const rawArgs = process.argv.slice(2);
 const parsedArgs = parseCliArgs(rawArgs);
 const args = parsedArgs.args;
@@ -399,6 +427,8 @@ async function main() {
     case "capability":
     case "capabilities":
       return capabilitiesCommand(rest);
+    case "policy":
+      return policyCommand(rest);
     case "status":
       return statusCommand();
     case "record":
@@ -526,6 +556,116 @@ function capabilitiesCommand(argv) {
     return;
   }
   console.log(JSON.stringify(registry, null, 2));
+}
+
+function policyCommand(argv) {
+  const action = argv[0] || "list";
+  const actionArgs = argv.slice(1);
+  switch (action) {
+    case "init":
+      return policyInitCommand(actionArgs);
+    case "add":
+      return policyAddCommand(actionArgs);
+    case "list":
+      return policyListCommand(actionArgs);
+    case "remove":
+    case "rm":
+      return policyRemoveCommand(actionArgs);
+    case "show":
+      return policyShowCommand(actionArgs);
+    case "check":
+      return policyCheckCommand(actionArgs);
+    default:
+      throw new Error("Usage: ai-memory-hub policy <init|add|list|remove|show|check> ...");
+  }
+}
+
+function policyInitCommand() {
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  return withHubLock(config.memoryDir, "policy-init", () => {
+    const added = seedDefaultPolicyRules(config.memoryDir);
+    console.log(JSON.stringify({ ok: true, seeded: added, message: added > 0 ? `Seeded ${added} default policy rule(s).` : "Defaults already present." }, null, 2));
+  }, config.sync.lockStaleMs);
+}
+
+function policyAddCommand(argv) {
+  const actor = getOption(argv, "--actor") || "*";
+  const project = getOption(argv, "--project") || "*";
+  const operation = getOption(argv, "--operation") || "";
+  const scope = getOption(argv, "--scope") || "all";
+  const decision = getOption(argv, "--decision") || "";
+  const reason = getOption(argv, "--reason") || "";
+  const priority = getOption(argv, "--priority");
+  const by = getOption(argv, "--by") || getOption(argv, "--from") || "human";
+  if (!operation || !decision) {
+    throw new Error("Usage: ai-memory-hub policy add --operation <op> --decision <allow|ask|deny> [--actor <actor>] [--project <project>] [--scope all|project|own] [--reason <text>] [--priority N] [--by human]");
+  }
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  return withHubLock(config.memoryDir, "policy-add", () => {
+    const rule = appendPolicyRule(config.memoryDir, {
+      actor, project, operation, scope, decision, reason,
+      priority: priority !== "" ? Number(priority) : 100,
+      createdBy: by
+    });
+    console.log(JSON.stringify(rule, null, 2));
+  }, config.sync.lockStaleMs);
+}
+
+function policyListCommand(argv) {
+  const actorFilter = getOption(argv, "--actor") || "";
+  const operationFilter = getOption(argv, "--operation") || "";
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  let rules = readPolicyRules(config.memoryDir);
+  if (actorFilter) rules = rules.filter((rule) => rule.actor === actorFilter);
+  if (operationFilter) rules = rules.filter((rule) => rule.operation === operationFilter);
+  console.log(JSON.stringify({ count: rules.length, rules }, null, 2));
+}
+
+function policyRemoveCommand(argv) {
+  const id = getOption(argv, "--id") || positionalArgs(argv)[0] || "";
+  const by = getOption(argv, "--by") || getOption(argv, "--from") || "human";
+  if (!id) {
+    throw new Error("Usage: ai-memory-hub policy remove --id <rule-id> [--by human]");
+  }
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  return withHubLock(config.memoryDir, "policy-remove", () => {
+    const removed = removePolicyRule(config.memoryDir, id, by);
+    console.log(JSON.stringify({ ok: true, removed }, null, 2));
+  }, config.sync.lockStaleMs);
+}
+
+function policyShowCommand(argv) {
+  const actor = getOption(argv, "--actor") || "*";
+  const actorRoles = (getOption(argv, "--roles") || "").split(",").map((r) => r.trim()).filter(Boolean);
+  const project = getOption(argv, "--project") || "*";
+  const scope = getOption(argv, "--scope") || "all";
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const byOperation = {};
+  for (const operation of POLICY_OPERATIONS) {
+    const result = resolvePermission(config.memoryDir, { actor, actorRoles, project, operation, scope });
+    byOperation[operation] = { decision: result.decision, reason: result.reason };
+  }
+  console.log(JSON.stringify({ actor, project, scope, byOperation }, null, 2));
+}
+
+function policyCheckCommand(argv) {
+  const actor = getOption(argv, "--actor") || "*";
+  const actorRoles = (getOption(argv, "--roles") || "").split(",").map((r) => r.trim()).filter(Boolean);
+  const project = getOption(argv, "--project") || "*";
+  const operation = getOption(argv, "--operation") || "";
+  const scope = getOption(argv, "--scope") || "all";
+  if (!operation) {
+    throw new Error("Usage: ai-memory-hub policy check --operation <op> [--actor <actor>] [--roles role:executor,...] [--project <project>] [--scope all|project|own]");
+  }
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const result = resolvePermission(config.memoryDir, { actor, actorRoles, project, operation, scope });
+  console.log(JSON.stringify(result, null, 2));
 }
 
 function doctorCommand(argv) {
@@ -7544,6 +7684,171 @@ function deriveWorkflowStatusFromNodes(nodes) {
     return "review";
   }
   return "open";
+}
+
+// Permission policy layer (P0: capability permission matrix)
+
+function getPolicyRulesFile(memoryDir) {
+  return path.join(memoryDir, "policy", "rules.jsonl");
+}
+
+function readPolicyRules(memoryDir) {
+  const file = getPolicyRulesFile(memoryDir);
+  const events = readEvents(file).filter((event) => String(event.type || "") === "policy.rule" && event.id);
+  const byId = new Map();
+  for (const event of events) {
+    byId.set(event.id, event);
+  }
+  // Tombstones (decision === "__removed__") drop the rule.
+  return Array.from(byId.values())
+    .filter((rule) => rule.decision !== "__removed__")
+    .sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || "")));
+}
+
+function normalizePolicyRule(rule) {
+  const operation = String(rule.operation || "").trim();
+  const decision = String(rule.decision || "").trim();
+  const scope = POLICY_SCOPES.includes(rule.scope) ? rule.scope : "all";
+  const now = new Date().toISOString();
+  return {
+    type: "policy.rule",
+    id: rule.id || createId(`policy:${rule.actor}:${rule.project}:${operation}:${scope}`),
+    actor: String(rule.actor || "*").trim() || "*",
+    project: String(rule.project || "*").trim() || "*",
+    operation,
+    scope,
+    decision,
+    reason: String(rule.reason || "").trim(),
+    priority: Number.isFinite(Number(rule.priority)) ? Number(rule.priority) : 0,
+    createdAt: rule.createdAt || now,
+    createdBy: rule.createdBy || "manual",
+    ts: now
+  };
+}
+
+function appendPolicyRule(memoryDir, rule) {
+  if (!POLICY_OPERATIONS.includes(rule.operation)) {
+    throw new Error(`Invalid operation: ${rule.operation}. Valid: ${POLICY_OPERATIONS.join(", ")}`);
+  }
+  if (!POLICY_DECISIONS.includes(rule.decision)) {
+    throw new Error(`Invalid decision: ${rule.decision}. Valid: ${POLICY_DECISIONS.join(", ")}`);
+  }
+  if (rule.scope && !POLICY_SCOPES.includes(rule.scope)) {
+    throw new Error(`Invalid scope: ${rule.scope}. Valid: ${POLICY_SCOPES.join(", ")}`);
+  }
+  const file = getPolicyRulesFile(memoryDir);
+  ensureDir(path.dirname(file));
+  const normalized = normalizePolicyRule(rule);
+  appendJsonl(file, normalized);
+  return normalized;
+}
+
+function removePolicyRule(memoryDir, id, by = "manual") {
+  const rules = readPolicyRules(memoryDir);
+  const target = rules.find((rule) => rule.id === id || rule.id.startsWith(id));
+  if (!target) {
+    throw new Error(`Policy rule not found: ${id}`);
+  }
+  const file = getPolicyRulesFile(memoryDir);
+  ensureDir(path.dirname(file));
+  appendJsonl(file, {
+    type: "policy.rule",
+    id: target.id,
+    actor: target.actor,
+    project: target.project,
+    operation: target.operation,
+    scope: target.scope,
+    decision: "__removed__",
+    reason: "",
+    priority: target.priority,
+    createdAt: target.createdAt,
+    createdBy: by,
+    ts: new Date().toISOString()
+  });
+  return target;
+}
+
+function seedDefaultPolicyRules(memoryDir) {
+  const existing = readPolicyRules(memoryDir);
+  const seededOps = new Set(
+    existing
+      .filter((rule) => rule.actor === "*" && rule.project === "*" && rule.scope === "all" && rule.priority === 0)
+      .map((rule) => rule.operation)
+  );
+  let added = 0;
+  for (const seed of POLICY_DEFAULT_SEED) {
+    if (seededOps.has(seed.operation)) {
+      continue;
+    }
+    appendPolicyRule(memoryDir, {
+      actor: "*",
+      project: "*",
+      scope: "all",
+      operation: seed.operation,
+      decision: seed.decision,
+      reason: seed.reason,
+      priority: 0,
+      createdBy: "system"
+    });
+    added += 1;
+  }
+  return added;
+}
+
+// Actor query carries the literal actor plus any roles it holds (e.g. ["role:executor"]).
+function policyActorMatches(rule, actor, actorRoles = []) {
+  if (rule.actor === "*") return true;
+  if (rule.actor === actor) return true;
+  if (rule.actor.startsWith("role:") && actorRoles.includes(rule.actor)) return true;
+  return false;
+}
+
+function policyScopeMatches(rule, scope) {
+  // A rule applies if its scope is at least as broad as the queried scope.
+  return POLICY_SCOPE_BREADTH[rule.scope] >= POLICY_SCOPE_BREADTH[scope];
+}
+
+function policyRuleSpecificity(rule) {
+  let score = 0;
+  if (rule.actor !== "*") score += 4;
+  if (rule.project !== "*") score += 2;
+  if (rule.scope !== "all") score += 1;
+  return score;
+}
+
+function resolvePermission(memoryDir, { actor = "*", actorRoles = [], project = "*", operation, scope = "all" }) {
+  if (!POLICY_OPERATIONS.includes(operation)) {
+    throw new Error(`Invalid operation: ${operation}. Valid: ${POLICY_OPERATIONS.join(", ")}`);
+  }
+  if (!POLICY_SCOPES.includes(scope)) {
+    throw new Error(`Invalid scope: ${scope}. Valid: ${POLICY_SCOPES.join(", ")}`);
+  }
+  let rules = readPolicyRules(memoryDir);
+  if (rules.length === 0) {
+    seedDefaultPolicyRules(memoryDir);
+    rules = readPolicyRules(memoryDir);
+  }
+  const matches = rules.filter((rule) =>
+    rule.operation === operation &&
+    policyActorMatches(rule, actor, actorRoles) &&
+    (rule.project === "*" || rule.project === project) &&
+    policyScopeMatches(rule, scope)
+  );
+  if (matches.length > 0) {
+    matches.sort((a, b) => {
+      const specDelta = policyRuleSpecificity(b) - policyRuleSpecificity(a);
+      if (specDelta !== 0) return specDelta;
+      if (b.priority !== a.priority) return b.priority - a.priority;
+      return String(b.ts || "").localeCompare(String(a.ts || ""));
+    });
+    const top = matches[0];
+    return { decision: top.decision, reason: top.reason, matchedRule: top };
+  }
+  // Fail-safe fallback when no rule matches.
+  if (POLICY_DESTRUCTIVE_OPERATIONS.includes(operation)) {
+    return { decision: "ask", reason: "No policy matched; destructive operation requires approval by default", matchedRule: null };
+  }
+  return { decision: "allow", reason: "No policy restricts this operation", matchedRule: null };
 }
 
 function getEntityProjectionFile(memoryDir, definition) {

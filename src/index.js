@@ -3033,14 +3033,25 @@ function executeDispatch(memoryDir, {
       continue;
     }
     if (permission.decision === "ask") {
-      // TODO: integrate with approval gate (P0#3) once implemented.
-      // For now, log warning and treat as blocked.
+      // Phase 2: Create approval gate
+      const gate = appendApprovalGateEvent(memoryDir, {
+        status: "requested",
+        actor: job.tool,
+        scope: "dispatch",
+        operation: "dispatch",
+        refId: job.id,
+        refType: "dispatch-job",
+        reason: permission.reason,
+        reviewer: "human",
+        project: job.project || ""
+      });
       const result = {
         ...job,
         runnable: false,
         reason: `Approval required: ${permission.reason}`,
         exitCode: 451,
-        error: `Policy layer requires approval: ${permission.reason} (approval gate not yet implemented)`
+        error: `Policy requires approval (gate ${gate.gateId}): ${permission.reason}`,
+        gateId: gate.gateId
       };
       appendRelayStatus(memoryDir, job, {
         state: "approval-required",
@@ -3049,7 +3060,8 @@ function executeDispatch(memoryDir, {
         exitCode: 451,
         lastError: result.error,
         sessionId: "",
-        ackTimeout: DEFAULT_DISPATCH_ACK_TIMEOUT_MS
+        ackTimeout: DEFAULT_DISPATCH_ACK_TIMEOUT_MS,
+        gateId: gate.gateId
       });
       updateDispatchSourceState(memoryDir, job, {
         deliveryState: "approval-required",
@@ -3059,7 +3071,8 @@ function executeDispatch(memoryDir, {
         maxRetries,
         nextRetryAt: "",
         sessionId: "",
-        lastError: result.error
+        lastError: result.error,
+        gateId: gate.gateId
       });
       const statusMessage = appendDispatchStatusMessage(memoryDir, job, { ...result, relayState: "approval-required" });
       appendDispatchLog(memoryDir, result);
@@ -3226,6 +3239,69 @@ function executeDispatchRetry(memoryDir, {
       });
       continue;
     }
+
+    // Phase 2: Check approval gate before retry
+    if (job.gateId) {
+      const gates = readApprovalGates(memoryDir, { });
+      const gate = gates.find((g) => g.gateId === job.gateId);
+      if (gate) {
+        if (gate.status === "rejected") {
+          // Gate rejected → permanent failure
+          const result = {
+            ...job,
+            runnable: false,
+            reason: `Approval gate rejected: ${gate.decisionNote || gate.reason}`,
+            exitCode: 403,
+            error: `Gate ${gate.gateId} rejected by ${gate.reviewer}: ${gate.decisionNote || gate.reason}`
+          };
+          if (run) {
+            appendRelayStatus(memoryDir, job, {
+              state: "failed-permanent",
+              attempt: job.attempt,
+              maxRetries,
+              exitCode: 403,
+              lastError: result.error,
+              sessionId: "",
+              ackTimeout: DEFAULT_DISPATCH_ACK_TIMEOUT_MS,
+              gateId: job.gateId
+            });
+            updateDispatchSourceState(memoryDir, job, {
+              deliveryState: "failed-permanent",
+              dispatchId: job.id,
+              threadKey: getDispatchThreadKey(job),
+              attempt: job.attempt,
+              maxRetries,
+              nextRetryAt: "",
+              sessionId: "",
+              lastError: result.error,
+              gateId: job.gateId
+            });
+            const statusMessage = appendDispatchStatusMessage(memoryDir, job, { ...result, relayState: "failed-permanent" });
+            appendDispatchLog(memoryDir, result);
+            applyDispatchOutcome(memoryDir, job, { ...result, statusRadioId: statusMessage?.id || "" }, "failed-permanent", {
+              statusMessage
+            });
+          }
+          results.push(result);
+          continue;
+        }
+        if (gate.status === "requested" || gate.status === "needs_changes") {
+          // Gate still pending → block retry
+          const result = {
+            ...job,
+            runnable: false,
+            reason: `Waiting for approval: gate ${gate.gateId} status=${gate.status}`,
+            exitCode: 451,
+            error: `Gate ${gate.gateId} still pending (${gate.status}). Use 'gate approve/reject --id ${gate.gateId}' to decide.`,
+            gateId: job.gateId
+          };
+          results.push(result);
+          continue;
+        }
+        // gate.status === "approved" or "waived" → proceed
+      }
+    }
+
     appendRelayStatus(memoryDir, job, {
       state: "retrying",
       attempt: job.attempt,
@@ -3657,7 +3733,8 @@ function updateDispatchSourceState(memoryDir, job, patch) {
     progressStatus: patch.progressStatus || "",
     progressAt: patch.progressAt || "",
     progressBy: patch.progressBy || "",
-    worktree: patch.worktree || null
+    worktree: patch.worktree || null,
+    gateId: patch.gateId || ""
   };
   if (job.kind === "radio") {
     updateRadioMessage(memoryDir, job.refId, statePatch);
@@ -3904,7 +3981,8 @@ function rebuildDispatchJobFromRelay(memoryDir, entry, { respectRecipeDependenci
       project: message.project || "",
       text: message.text,
       refId: message.id,
-      thread: message.thread || message.id
+      thread: message.thread || message.id,
+      gateId: entry.gateId || ""
     };
   }
   if (entry.sourceKind === "task") {
@@ -3913,13 +3991,19 @@ function rebuildDispatchJobFromRelay(memoryDir, entry, { respectRecipeDependenci
     if (!task) return null;
     if (isClosedDispatchSourceState(task.status || task.deliveryState)) return null;
     if (respectRecipeDependencies && !areTaskRecipeDependenciesSatisfied(task, tasks)) return null;
-    return dispatchJobFromTask(task);
+    return {
+      ...dispatchJobFromTask(task),
+      gateId: entry.gateId || ""
+    };
   }
   if (entry.sourceKind === "workflow") {
     const workflow = readWorkflows(memoryDir).find((item) => item.id === entry.sourceId);
     if (!workflow) return null;
     if (isClosedDispatchSourceState(workflow.status || workflow.deliveryState)) return null;
-    return dispatchJobFromWorkflow(workflow, entry.tool || "");
+    return {
+      ...dispatchJobFromWorkflow(workflow, entry.tool || ""),
+      gateId: entry.gateId || ""
+    };
   }
   return null;
 }
@@ -4680,6 +4764,10 @@ function isRelayRetryCandidate(entry, now = Date.now()) {
   if (!entry) {
     return false;
   }
+  // Phase 2: approval-required is retryable once gate is approved
+  if (entry.state === "approval-required") {
+    return true;
+  }
   if (entry.state === ASYNC_CALL_STATES.FAILED) {
     if (!entry.nextRetryAt) {
       return false;
@@ -4717,7 +4805,8 @@ function appendRelayStatus(memoryDir, job, patch = {}) {
     worktree: patch.worktree || null,
     project: job.project || "",
     tool: job.tool || "",
-    thread: job.thread || ""
+    thread: job.thread || "",
+    gateId: patch.gateId || ""
   });
 }
 
@@ -8862,6 +8951,7 @@ function normalizeWorkflow(workflow) {
     deliveryUpdatedAt: workflow.deliveryUpdatedAt || "",
     dispatchId: workflow.dispatchId || "",
     threadKey: workflow.threadKey || "",
+    gateId: workflow.gateId || "",
     attempt: Number(workflow.attempt || 0),
     maxRetries: Number(workflow.maxRetries || 0),
     nextRetryAt: workflow.nextRetryAt || "",
@@ -8947,6 +9037,7 @@ function normalizeTask(task) {
     deliveryUpdatedAt: task.deliveryUpdatedAt || "",
     dispatchId: task.dispatchId || "",
     threadKey: task.threadKey || "",
+    gateId: task.gateId || "",
     attempt: Number(task.attempt || 0),
     maxRetries: Number(task.maxRetries || 0),
     nextRetryAt: task.nextRetryAt || "",

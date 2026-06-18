@@ -1107,6 +1107,119 @@ test("dispatch includes quality gates in runner prompts and retry metadata", asy
   });
 });
 
+test("dispatch approval-required relay waits for approval before retrying", async () => {
+  await withHub(async (memoryDir) => {
+    const binDir = await createFakeCodexRunner(memoryDir);
+    const now = new Date().toISOString();
+    await appendJsonl(path.join(memoryDir, "tasks", "tasks.jsonl"), {
+      id: "task-approval-gated",
+      createdAt: now,
+      updatedAt: now,
+      completedAt: "",
+      createdBy: "test",
+      assignee: "codex",
+      status: "claimed",
+      priority: "normal",
+      project: "test-project",
+      title: "Approval gated dispatch",
+      description: "",
+      handoff: "",
+      notes: []
+    });
+
+    const policy = runCli(memoryDir, [
+      "policy",
+      "add",
+      "--actor",
+      "codex",
+      "--project",
+      "test-project",
+      "--operation",
+      "dispatch",
+      "--decision",
+      "ask",
+      "--reason",
+      "Manual approval required for test dispatch",
+      "--priority",
+      "1000",
+      "--by",
+      "test"
+    ]);
+    assert.equal(policy.status, 0, policy.stderr || policy.stdout);
+
+    const gated = runCli(
+      memoryDir,
+      ["dispatch", "--run", "--to", "codex", "--project", "test-project", "--limit", "1"],
+      prependPathEnv(binDir)
+    );
+    assert.equal(gated.status, 0, gated.stderr || gated.stdout);
+    const gatedPayload = JSON.parse(gated.stdout);
+    assert.equal(gatedPayload.results.length, 1);
+    assert.equal(gatedPayload.results[0].runnable, false);
+    assert.equal(gatedPayload.results[0].exitCode, 451);
+    assert.match(gatedPayload.results[0].reason, /Approval required/);
+    assert.ok(gatedPayload.results[0].gateId);
+
+    const gates = await readJsonl(path.join(memoryDir, "gates", "approvals.jsonl"));
+    assert.equal(gates.length, 1);
+    assert.equal(gates[0].gateId, gatedPayload.results[0].gateId);
+    assert.equal(gates[0].status, "requested");
+    assert.equal(gates[0].refId, "task:task-approval-gated");
+
+    const relay = await readJsonl(path.join(memoryDir, "state", "relay-status.jsonl"));
+    assert.equal(relay.at(-1).state, "approval-required");
+    assert.equal(relay.at(-1).gateId, gatedPayload.results[0].gateId);
+
+    let tasks = await readJsonl(path.join(memoryDir, "tasks", "tasks.jsonl"));
+    assert.equal(tasks[0].status, "claimed");
+    assert.equal(tasks[0].deliveryState, "approval-required");
+    assert.equal(tasks[0].gateId, gatedPayload.results[0].gateId);
+
+    const pendingRetry = runCli(
+      memoryDir,
+      ["dispatch", "retry", "--run", "--to", "codex", "--project", "test-project"],
+      prependPathEnv(binDir)
+    );
+    assert.equal(pendingRetry.status, 0, pendingRetry.stderr || pendingRetry.stdout);
+    const pendingPayload = JSON.parse(pendingRetry.stdout);
+    assert.equal(pendingPayload.results.length, 1);
+    assert.equal(pendingPayload.results[0].runnable, false);
+    assert.equal(pendingPayload.results[0].exitCode, 451);
+    assert.match(pendingPayload.results[0].reason, /Waiting for approval/);
+
+    const approval = runCli(memoryDir, [
+      "gate",
+      "approve",
+      "--id",
+      gatedPayload.results[0].gateId,
+      "--by",
+      "human",
+      "--note",
+      "approved for retry"
+    ]);
+    assert.equal(approval.status, 0, approval.stderr || approval.stdout);
+
+    const approvedRetry = runCli(
+      memoryDir,
+      ["dispatch", "retry", "--run", "--to", "codex", "--project", "test-project"],
+      prependPathEnv(binDir)
+    );
+    assert.equal(approvedRetry.status, 0, approvedRetry.stderr || approvedRetry.stdout);
+    const approvedPayload = JSON.parse(approvedRetry.stdout);
+    assert.equal(approvedPayload.results.length, 1);
+    assert.equal(approvedPayload.results[0].exitCode, 0, JSON.stringify(approvedPayload.results[0], null, 2));
+    assert.equal(approvedPayload.results[0].retry, true);
+    assert.equal(approvedPayload.results[0].attempt, 2);
+
+    const stdout = JSON.parse(approvedPayload.results[0].stdout);
+    assert.match(stdout.stdin, /Approval gated dispatch/);
+
+    tasks = await readJsonl(path.join(memoryDir, "tasks", "tasks.jsonl"));
+    assert.equal(tasks[0].status, "done");
+    assert.equal(tasks[0].deliveryState, "completed");
+  });
+});
+
 test("dispatch retry respects task quality gate maxRepairAttempts", async () => {
   await withHub(async (memoryDir) => {
     const now = new Date().toISOString();

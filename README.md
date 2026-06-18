@@ -19,38 +19,41 @@
 ### 🚀 核心功能
 
 #### 1. 共享记忆系统
-- **持久化记忆** - 跨工具共享的长期记忆
-- **智能快照** - 自动维护核心/工作/归档分层
-- **快速搜索** - 基于关键词的记忆检索
-- **上下文打包** - 为任务生成专用上下文包
+- **持久化记忆** - 跨工具共享的长期记忆，自动维护核心/工作/归档分层
+- **快速搜索** - 基于关键词、标签、线程、任务、工作流的记忆检索
+- **上下文打包** - 为任务生成专用上下文包（含相关记忆、最近消息、任务/工作流状态）
+- **记忆快照** - 可按项目/标签过滤的快照视图，不重写 MEMORY.md
+- **Pull 重建** - 从 ledger 重建 MEMORY.md 和 INDEX.md
 
 #### 2. 多工具协作
-- **消息总线 (Radio)** - 工具间实时消息传递
-- **任务管理** - 共享任务队列和状态追踪
-- **工作流系统** - 多角色协作工作流模板
-- **Shared Skill Layer** - 为 Codex/Claude/QClaw/OpenCode/MiMo Code/Marvis 等工具安装同一套协作流程
+- **消息总线 (Radio)** - 工具间实时消息传递，支持 replyTo 双向追踪
+- **任务管理** - 共享任务队列（open/claimed/in_progress/blocked/done/cancelled），支持认领、进展记录、完成
+- **工作流系统** - 多角色协作（planner/executor/reviewer/observer），支持 result/review/signal 交互
+- **Shared Skill Layer** - 为 Codex/Claude/Gemini/QClaw/OpenClaw/OpenCode/MiMo Code/Marvis 等工具安装统一协作流程
 - **Capability Registry** - 汇总工具能力、接入方式、自动执行状态和安全权限边界
 - **Session 切换** - 跨工具上下文传递
+- **Connect** - 跨工具连接管理，发送 request/review/handoff 消息
 
-#### 3. 通信机制
-- **RPC 调用** - 同步请求-响应模式
-- **异步状态机** - 7种状态管理（pending/dispatched/acked/retrying/failed/completed/abandoned）
-- **通知总线** - 跨平台通知路由
-- **优先级队列** - 任务调度和重试控制
+#### 3. 调度与分发
+- **Dispatch Relay** - 异步状态机管理 7 种投递状态（pending/dispatched/acked/retrying/failed/completed/abandoned）
+- **Daemon** - 后台守护进程，自动轮询分发任务到目标 CLI 工具，支持 recipe 依赖顺序
+- **Worktree 隔离** - `--isolate-worktree` 在独立 Git worktree 中运行分发任务，不影响当前工作区
+- **Progress 上报** - 长时间运行的任务通过 heartbeat 报告进度百分比和状态
+- **Dispatch Retry** - 自动重试超时/失败的分发，支持 recipe 修复次数上限
 
 #### 4. 工作流自动化
-- **Recipe 模板** - JSON 驱动的协作模板
-  - `docs-cleanup` - 文档审查和改进
-  - `implement-and-review` - 实现+代码审查
-  - `multi-tool-review` - 多工具并行审查
+- **Recipe 模板** - JSON 驱动的协作模板，内置 `frontend-feature`、`backend-service`、`fullstack-feature`、`lights-out-local`
+- **QualityGate** - 机器可读的质量门禁（验证命令、review 要求、最大修复次数、停止条件、允许/禁止动作）
 - **Scheduler 队列** - 优先级调度和自动重试
-- **Metrics 统计** - 成功率、持续时间、失败原因
+- **Metrics 统计** - 成功率、持续时间、失败原因分析
 
-#### 5. 开发者工具
-- **VS Code 扩展** - 编辑器集成（状态栏、命令面板）
-- **CLI 工具** - 完整的命令行接口
-- **自动更新** - 一键更新到最新版本
-- **文件锁** - 防止并发写入冲突
+#### 5. 运维与诊断
+- **Dashboard Web UI** - `ai-memory-hub app` 启动本地 Web 面板，可视化管理记忆、任务、工作流、分发、项目
+- **Health Report** - `ai-memory-hub health` 生成健康报告（存储、损坏记录、增长趋势、建议操作）
+- **Doctor 诊断** - `ai-memory-hub doctor` 检查工具 runner 兼容性（shim 类型、prompt 模式、版本探测）
+- **Backup 系统** - 本地备份 + GitHub 数据备份，支持定时任务、敏感数据扫描、保留策略
+- **Watch 定时同步** - `ai-memory-hub watch` 后台自动索引 inbox 事件
+- **自动更新** - 一键检查和更新到最新版本
 
 ### 📁 本地目录结构
 
@@ -94,6 +97,8 @@
   ├── backups/               # 备份
   ├── locks/                 # 文件锁
   │   └── hub.lock
+  ├── state/                 # 运行状态
+  │   └── daemon.pid         # 守护进程 PID
   ├── tools/                 # 工具适配器
   └── extensions/            # 扩展（VS Code等）
 ```
@@ -191,6 +196,36 @@ ai-memory-hub recipe create \
 ```bash
 # 显示操作指标
 ai-memory-hub metrics
+```
+
+#### 7. 启动 Dashboard
+
+```bash
+# 启动本地仪表盘
+ai-memory-hub app --port 38787
+
+# 浏览器访问
+# http://127.0.0.1:38787
+```
+
+#### 8. 启动守护进程
+
+```bash
+# 启动自动调度守护进程
+ai-memory-hub daemon --interval-ms 10000
+
+# 查看守护进程状态
+ai-memory-hub daemon status
+```
+
+#### 9. 健康检查
+
+```bash
+# 生成健康报告
+ai-memory-hub health
+
+# 诊断工具状态
+ai-memory-hub doctor
 ```
 
 ### 🔧 CLI 命令参考
@@ -320,6 +355,70 @@ Recipe 可声明机器可读 `qualityGate`，包括验证命令、review 要求�
 ai-memory-hub metrics          # 显示所有指标
 ```
 
+#### 调度与守护进程
+
+```bash
+ai-memory-hub dispatch --project <name>              # 派发待处理工作
+ai-memory-hub dispatch --to <tool> --run              # 派发给指定工具并运行
+ai-memory-hub dispatch --to <tool> --run --isolate-worktree  # Worktree 隔离模式
+ai-memory-hub dispatch status --recent 10 --project <name>   # 查看派发状态
+ai-memory-hub dispatch progress --thread-key <key> --percent 40  # 更新进度
+ai-memory-hub dispatch retry --project <name> --to <tool> --run  # 重试失败派发
+
+ai-memory-hub daemon                              # 启动守护进程
+ai-memory-hub daemon --project <name> --interval-ms 10000  # 自定义间隔
+ai-memory-hub daemon --project <name> --isolate-worktree   # Worktree 隔离
+ai-memory-hub daemon status                       # 查看守护进程状态
+
+ai-memory-hub watch --interval-ms 30000           # 定时索引 inbox 事件
+```
+
+#### 备份与恢复
+
+```bash
+ai-memory-hub backup --reason manual              # 创建备份
+ai-memory-hub backup list --limit 20              # 列出备份
+ai-memory-hub backup prune --daily 7 --weekly 4 --apply  # 清理旧备份
+ai-memory-hub backup status                       # 备份状态
+ai-memory-hub backup run --no-push                # 运行备份（不推送）
+```
+
+#### 健康检查与诊断
+
+```bash
+ai-memory-hub health                              # 生成健康报告
+ai-memory-hub doctor                              # 诊断工具状态
+ai-memory-hub doctor --tool <name>                # 诊断指定工具
+```
+
+#### 工具连接与安装
+
+```bash
+ai-memory-hub connect                             # 检查工具连接
+ai-memory-hub connect --apply                     # 应用连接
+ai-memory-hub connect request --from <tool> --to <tool> --text "..."  # 发送请求
+
+ai-memory-hub install --tool <name>               # 查看工具指令
+ai-memory-hub install --tool <name> --apply       # 安装工具指令
+ai-memory-hub install --local --apply             # 写入当前项目目录
+
+ai-memory-hub pull                                # 从账本重建 MEMORY.md
+```
+
+#### Dashboard
+
+```bash
+ai-memory-hub app --port 38787                    # 启动本地仪表盘
+```
+
+#### Task-Spec
+
+```bash
+ai-memory-hub task-spec list                      # 列出项目任务命令
+ai-memory-hub task-spec validate                  # 验证任务命令
+ai-memory-hub task-spec run <name>                # 运行任务命令
+```
+
 完整命令文档请查看 [docs/CLI.md](docs/CLI.md)
 
 ### 🔌 支持的 AI 工具
@@ -360,6 +459,9 @@ ai-memory-hub metrics          # 显示所有指标
         │  • 工作流引擎            │
         │  • RPC 通信              │
         │  • 调度队列              │
+        │  • 守护进程              │
+        │  • Dashboard Web UI     │
+        │  • 备份系统              │
         └─────────────────────────┘
                      │
         ┌────────────┴────────────┐
@@ -377,6 +479,10 @@ ai-memory-hub metrics          # 显示所有指标
 5. **RPC Layer** - 同步通信
 6. **Notification Bus** - 跨平台通知
 7. **Context Packer** - 上下文打包
+8. **Dispatch Scheduler** - 工作派发和 Worktree 隔离
+9. **Daemon** - 后台守护进程，自动调度
+10. **Dashboard** - Web UI 可视化管理
+11. **Backup System** - 备份、保留策略、恢复
 
 ### 📖 更多文档
 
@@ -385,8 +491,9 @@ ai-memory-hub metrics          # 显示所有指标
 - [Shared Skill Layer](docs/shared-skill-layer.md) - 跨工具 skill/adapter 边界与安装验证
 - [Capability Registry](docs/capability-registry.md) - 工具能力、接入模式和权限边界
 - [中继协议](docs/relay-protocol.md) - 工具间通信协议
-- [CLI 命令参考](docs/CLI.md) - 完整命令文档（待创建）
-- [工作流模板指南](docs/RECIPES.md) - 如何编写模板（待创建）
+- [CLI 命令参考](docs/CLI.md) - 完整命令文档
+- [项目注册表](docs/project-registry.md) - 项目元数据和管理
+- [Dashboard UI 设计](docs/dashboard-ui-redesign-plan.md) - 仪表盘界面设计
 
 ### 🤝 贡献指南
 
@@ -441,6 +548,16 @@ MIT License - 详见 [LICENSE](LICENSE)
 - **Capability Registry** - Tool capability, integration mode, automation readiness, and safety policy summaries
 - **RPC Communication** - Synchronous request-response
 - **Priority Scheduler** - Task scheduling and retry control
+- **Dispatch** - Dispatch pending Radio/Task work to verified CLI runners (with Worktree isolation)
+- **Daemon** - Background process for automatic scheduling
+- **Dashboard Web UI** - Vite + React + TypeScript local dashboard for monitoring tasks, workflows, Radio, and dispatch
+- **Backup** - Hub file backups, retention management, GitHub data backup
+- **Health & Doctor** - Health report generation and AI tool diagnostics
+- **Connect** - Check tool connections, send requests/reviews/handoff to other tools
+- **Install** - Apply per-tool instruction snippets (supports --local for project directory)
+- **Task-Spec** - Project-declared task commands: list, validate, and run
+- **Auto-Watch** - Periodically index pending inbox events
+- **Pull** - Rebuild MEMORY.md from the local memory ledger
 - **Metrics Dashboard** - Success rates, durations, failures
 - **Auto-Update** - One-click updates
 - **VS Code Extension** - Editor integration
@@ -467,10 +584,17 @@ ai-memory-hub radio send "Hello!" --from claude --to all
 # Create a task
 ai-memory-hub task add "Implement feature" --from claude --priority high
 
-# Use workflow template
-ai-memory-hub recipe create \
-  --recipe implement-and-review \
-  --tools planner:claude,executor:codex,reviewer:gemini
+# Start dashboard
+ai-memory-hub app --port 38787
+
+# Start daemon for auto-dispatch
+ai-memory-hub daemon --interval-ms 10000
+
+# Run health check
+ai-memory-hub health
+
+# Backup hub data
+ai-memory-hub backup --reason manual
 ```
 
 ### 📖 Documentation
@@ -480,7 +604,9 @@ ai-memory-hub recipe create \
 - [Shared Skill Layer](docs/shared-skill-layer.md)
 - [Capability Registry](docs/capability-registry.md)
 - [Relay Protocol](docs/relay-protocol.md)
-- [CLI Reference](docs/CLI.md) (coming soon)
+- [CLI Reference](docs/CLI.md)
+- [Project Registry](docs/project-registry.md)
+- [Dashboard UI Plan](docs/dashboard-ui-redesign-plan.md)
 
 ### 📝 License
 

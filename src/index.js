@@ -5462,11 +5462,12 @@ function appCommand(argv) {
   const server = http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url || "/", `http://${host}:${port}`);
-      if (req.method === "GET" && url.pathname.startsWith("/assets/")) {
-        return sendStaticAsset(res, url.pathname);
+      const rawPathname = String(req.url || "/").split(/[?#]/, 1)[0] || "/";
+      if (req.method === "GET" && rawPathname.startsWith("/assets/")) {
+        return sendStaticAsset(res, rawPathname);
       }
-      if (req.method === "GET" && (url.pathname.startsWith("/css/") || url.pathname.startsWith("/js/") || url.pathname.startsWith("/assets/") || url.pathname.endsWith(".svg"))) {
-        return sendStaticFile(res, url.pathname);
+      if (req.method === "GET" && (rawPathname.startsWith("/css/") || rawPathname.startsWith("/js/") || rawPathname.startsWith("/assets/") || rawPathname.endsWith(".svg"))) {
+        return sendStaticFile(res, rawPathname);
       }
       if (req.method === "GET" && url.pathname === "/api/dashboard") {
         return sendJson(res, dashboardRealtime.getDashboardSnapshot(config.memoryDir));
@@ -5877,6 +5878,9 @@ function appCommand(argv) {
       }
       // SPA fallback: serve Dashboard HTML for all other GET requests
       // This allows React Router to handle client-side routing for paths like /tasks, /workflows, etc.
+      if (req.method === "GET" && !url.pathname.startsWith("/api/") && path.extname(url.pathname)) {
+        return sendPlain(res, "Not Found", 404);
+      }
       if (req.method === "GET" && !url.pathname.startsWith("/api/")) {
         return sendHtml(res, renderDashboard());
       }
@@ -7576,12 +7580,21 @@ function extractInstructionIncludes(text) {
 }
 
 function renderDashboard() {
+  const indexPath = path.join(getDashboardStaticRoot(), "index.html");
+  if (fs.existsSync(indexPath) && fs.statSync(indexPath).isFile()) {
+    return fs.readFileSync(indexPath, "utf8");
+  }
   return readTemplate("dashboard-v2.html");
 }
 
 function sendStaticFile(res, pathname) {
-  const publicDir = path.join(projectRoot(), "public");
-  const relativePath = pathname.replace(/^\/+/, "");
+  const publicDir = getDashboardStaticRoot();
+  const relativePath = getSafeStaticRelativePath(pathname);
+  if (!relativePath) {
+    res.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("Forbidden");
+    return;
+  }
   const filePath = path.join(publicDir, relativePath);
   const normalizedFilePath = path.resolve(filePath);
   const normalizedPublicDir = path.resolve(publicDir);
@@ -7637,9 +7650,15 @@ function sendJson(res, value, status = 200) {
 }
 
 function sendStaticAsset(res, pathname) {
-  const relativePath = pathname.replace(/^\/+/, "");
-  const assetPath = path.join(projectRoot(), "public", relativePath);
-  const assetsRoot = path.join(projectRoot(), "public", "assets");
+  const publicDir = getDashboardStaticRoot();
+  const relativePath = getSafeStaticRelativePath(pathname);
+  if (!relativePath) {
+    res.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("Forbidden");
+    return;
+  }
+  const assetPath = path.join(publicDir, relativePath);
+  const assetsRoot = path.join(publicDir, "assets");
   const normalizedAssetPath = path.resolve(assetPath);
   const normalizedAssetsRoot = path.resolve(assetsRoot);
 
@@ -7658,6 +7677,29 @@ function sendStaticAsset(res, pathname) {
     "Cache-Control": "public, max-age=31536000, immutable"
   });
   fs.createReadStream(normalizedAssetPath).pipe(res);
+}
+
+function getDashboardStaticRoot() {
+  const publicDir = path.join(projectRoot(), "public");
+  if (fs.existsSync(publicDir) && fs.statSync(publicDir).isDirectory()) {
+    return publicDir;
+  }
+  return path.join(projectRoot(), "dashboard-next", "dist");
+}
+
+function getSafeStaticRelativePath(pathname) {
+  let decodedPath;
+  try {
+    decodedPath = decodeURIComponent(pathname);
+  } catch {
+    return "";
+  }
+  const relativePath = decodedPath.replace(/^\/+/, "").replace(/\\/g, "/");
+  const segments = relativePath.split("/").filter(Boolean);
+  if (segments.some((segment) => segment === "..")) {
+    return "";
+  }
+  return segments.join(path.sep);
 }
 
 function getContentType(file) {

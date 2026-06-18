@@ -1,4 +1,11 @@
-const { test, expect } = require('@playwright/test');
+if (process.env.RUN_MANUAL_DASHBOARD_VERIFY !== '1') {
+  console.log('Skipping manual dashboard verification. Set RUN_MANUAL_DASHBOARD_VERIFY=1 to run.');
+  process.exit(0);
+}
+
+const { test, expect } = await import('@playwright/test');
+
+const screenshotsDir = 'docs/screenshots';
 
 test('Workflow execution graph displays and expands', async ({ page }) => {
   // Navigate to workflows page
@@ -8,7 +15,7 @@ test('Workflow execution graph displays and expands', async ({ page }) => {
   await page.waitForSelector('[class*="Card"]', { timeout: 5000 });
 
   // Take screenshot of initial state
-  await page.screenshot({ path: 'screenshots/workflows-initial.png', fullPage: true });
+  await page.screenshot({ path: `${screenshotsDir}/workflows-initial.png`, fullPage: true });
 
   // Find workflow card containing "Test workflow node history"
   const workflowCard = page.locator('text=Test workflow node history').locator('..').locator('..').locator('..');
@@ -31,7 +38,7 @@ test('Workflow execution graph displays and expands', async ({ page }) => {
   await page.waitForTimeout(1000);
 
   // Take screenshot after expansion
-  await page.screenshot({ path: 'screenshots/workflows-expanded.png', fullPage: true });
+  await page.screenshot({ path: `${screenshotsDir}/workflows-expanded.png`, fullPage: true });
 
   // Verify node list appeared
   const nodeList = workflowCard.locator('div').filter({ hasText: /planner|executor|reviewer/ }).first();

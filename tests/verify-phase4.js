@@ -1,6 +1,13 @@
 import { chromium } from 'playwright';
 import fs from 'fs';
 
+if (process.env.RUN_MANUAL_DASHBOARD_VERIFY !== '1') {
+  console.log('Skipping manual dashboard verification. Set RUN_MANUAL_DASHBOARD_VERIFY=1 to run.');
+  process.exit(0);
+}
+
+const screenshotsDir = 'docs/screenshots';
+
 (async () => {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
@@ -10,7 +17,7 @@ import fs from 'fs';
     await page.goto('http://127.0.0.1:38787/workflows');
     await page.waitForLoadState('networkidle');
 
-    fs.mkdirSync('screenshots', { recursive: true });
+    fs.mkdirSync(screenshotsDir, { recursive: true });
 
     // Find Phase 4 test workflow
     const workflowCards = await page.locator('h3').allTextContents();
@@ -20,7 +27,7 @@ import fs from 'fs';
 
     if (!phase4Workflow) {
       console.log('⚠️  Phase 4 test workflow not found');
-      await page.screenshot({ path: 'screenshots/workflows-all.png', fullPage: true });
+      await page.screenshot({ path: `${screenshotsDir}/workflows-all.png`, fullPage: true });
       await browser.close();
       return;
     }
@@ -35,7 +42,7 @@ import fs from 'fs';
     await expandBtn.click();
     await page.waitForTimeout(1500);
 
-    await page.screenshot({ path: 'screenshots/phase4-auto-created-nodes.png', fullPage: true });
+    await page.screenshot({ path: `${screenshotsDir}/phase4-auto-created-nodes.png`, fullPage: true });
     console.log('✓ Screenshot: phase4-auto-created-nodes.png');
 
     // Check node details
@@ -58,7 +65,7 @@ import fs from 'fs';
 
   } catch (err) {
     console.error('✗ Error:', err.message);
-    await page.screenshot({ path: 'screenshots/error-phase4.png', fullPage: true });
+    await page.screenshot({ path: `${screenshotsDir}/error-phase4.png`, fullPage: true });
     await browser.close();
     process.exit(1);
   }

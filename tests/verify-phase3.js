@@ -1,6 +1,13 @@
 import { chromium } from 'playwright';
 import fs from 'fs';
 
+if (process.env.RUN_MANUAL_DASHBOARD_VERIFY !== '1') {
+  console.log('Skipping manual dashboard verification. Set RUN_MANUAL_DASHBOARD_VERIFY=1 to run.');
+  process.exit(0);
+}
+
+const screenshotsDir = 'docs/screenshots';
+
 (async () => {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
@@ -10,7 +17,7 @@ import fs from 'fs';
     await page.goto('http://127.0.0.1:38787/workflows');
     await page.waitForLoadState('networkidle');
 
-    fs.mkdirSync('screenshots', { recursive: true });
+    fs.mkdirSync(screenshotsDir, { recursive: true });
 
     // Find Phase 3 test workflows
     const workflowCards = await page.locator('h3').allTextContents();
@@ -23,7 +30,7 @@ import fs from 'fs';
 
     if (phase3Workflows.length === 0) {
       console.log('⚠️  No Phase 3 test workflows found');
-      await page.screenshot({ path: 'screenshots/workflows-overview.png', fullPage: true });
+      await page.screenshot({ path: `${screenshotsDir}/workflows-overview.png`, fullPage: true });
       await browser.close();
       return;
     }
@@ -39,7 +46,7 @@ import fs from 'fs';
     await expandBtn1.click();
     await page.waitForTimeout(1000);
 
-    await page.screenshot({ path: 'screenshots/phase3-completed-workflow.png', fullPage: true });
+    await page.screenshot({ path: `${screenshotsDir}/phase3-completed-workflow.png`, fullPage: true });
     console.log('✓ Screenshot: phase3-completed-workflow.png');
 
     // Check node details
@@ -61,7 +68,7 @@ import fs from 'fs';
       await expandBtn2.click();
       await page.waitForTimeout(1000);
 
-      await page.screenshot({ path: 'screenshots/phase3-rejected-workflow.png', fullPage: true });
+      await page.screenshot({ path: `${screenshotsDir}/phase3-rejected-workflow.png`, fullPage: true });
       console.log('✓ Screenshot: phase3-rejected-workflow.png');
 
       const nodeCount2 = await card2.locator('text=/planner:|executor:|reviewer:/').count();
@@ -75,7 +82,7 @@ import fs from 'fs';
 
   } catch (err) {
     console.error('✗ Error:', err.message);
-    await page.screenshot({ path: 'screenshots/error-phase3.png', fullPage: true });
+    await page.screenshot({ path: `${screenshotsDir}/error-phase3.png`, fullPage: true });
     await browser.close();
     process.exit(1);
   }

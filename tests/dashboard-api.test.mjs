@@ -31,6 +31,30 @@ async function withTempDir(prefix, fn) {
   }
 }
 
+async function withPathTemporarilyHidden(targetPath, fn) {
+  const hiddenPath = `${targetPath}.test-hidden`;
+  let renamed = false;
+  try {
+    await fs.rm(hiddenPath, { recursive: true, force: true });
+    await fs.access(targetPath);
+    await fs.rename(targetPath, hiddenPath);
+    renamed = true;
+  } catch (error) {
+    if (error.code !== "ENOENT") {
+      throw error;
+    }
+  }
+
+  try {
+    await fn();
+  } finally {
+    if (renamed) {
+      await fs.rm(targetPath, { recursive: true, force: true });
+      await fs.rename(hiddenPath, targetPath);
+    }
+  }
+}
+
 function runCli(memoryDir, args) {
   return spawnSync(process.execPath, [cliPath, ...args], {
     cwd: repoRoot,
@@ -331,10 +355,19 @@ test("dashboard serves externalized virtual-scroll assets", async () => {
 
   const dashboardSource = await fs.readFile(path.join(repoRoot, "dashboard-next", "src", "pages", "Dashboard.tsx"), "utf8");
   const dashboardCss = await fs.readFile(path.join(repoRoot, "dashboard-next", "src", "pages", "Dashboard.css"), "utf8");
-  assert.match(dashboardSource, /function TasksPanel/);
-  assert.match(dashboardSource, /function WorkflowsPanel/);
-  assert.match(dashboardSource, /function ProjectsPanel/);
-  assert.match(dashboardSource, /function ToastStack/);
+  const projectsPanelSource = await fs.readFile(path.join(repoRoot, "dashboard-next", "src", "components", "ProjectsPanel.tsx"), "utf8");
+  const tasksPanelSource = await fs.readFile(path.join(repoRoot, "dashboard-next", "src", "components", "TasksPanel.tsx"), "utf8");
+  const workflowsPanelSource = await fs.readFile(path.join(repoRoot, "dashboard-next", "src", "components", "WorkflowsPanel.tsx"), "utf8");
+  const toastStackSource = await fs.readFile(path.join(repoRoot, "dashboard-next", "src", "components", "ToastStack.tsx"), "utf8");
+  assert.match(dashboardSource, /TasksPanel as NewTasksPanel/);
+  assert.match(dashboardSource, /WorkflowsPanel as NewWorkflowsPanel/);
+  assert.match(dashboardSource, /import \{ ProjectsPanel \}/);
+  assert.match(tasksPanelSource, /export function TasksPanel/);
+  assert.match(workflowsPanelSource, /export function WorkflowsPanel/);
+  assert.match(projectsPanelSource, /export function ProjectsPanel/);
+  assert.match(dashboardSource, /from '\.\.\/components\/ToastStack'/);
+  assert.match(toastStackSource, /export function ToastStack/);
+  assert.match(toastStackSource, /aria-live="polite"/);
   assert.match(dashboardSource, /function Modal/);
   assert.match(dashboardSource, /apiGet<DashboardSnapshot>\('\/api\/dashboard'\)/);
   assert.match(dashboardSource, /'\/api\/task\/status'/);
@@ -346,6 +379,45 @@ test("dashboard serves externalized virtual-scroll assets", async () => {
   assert.match(dashboardCss, /\.toast-stack/);
   assert.match(dashboardCss, /\.workflow-card/);
   assert.match(dashboardCss, /\.tool-card/);
+});
+
+test("dashboard serves SPA assets from dashboard-next/dist when public is absent", async () => {
+  await withPathTemporarilyHidden(path.join(repoRoot, "public"), async () => {
+    await withHub(async (memoryDir) => {
+      const port = await getFreePort();
+      const child = spawn(process.execPath, [cliPath, "app", "--port", String(port)], {
+        cwd: repoRoot,
+        env: {
+          ...process.env,
+          AI_MEMORY_DIR: memoryDir
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: true
+      });
+      const stderr = [];
+      child.stderr.on("data", (chunk) => stderr.push(String(chunk)));
+      try {
+        await waitForServer(port, child);
+        const res = await fetch(`http://127.0.0.1:${port}/`);
+        assert.equal(res.status, 200);
+        const html = await res.text();
+        assert.match(html, /<div id="root"><\/div>/);
+
+        const scriptMatch = html.match(/<script type="module" crossorigin src="([^"]+\.js)"><\/script>/);
+        assert.ok(scriptMatch, "dashboard HTML should still point at a Vite bundle");
+
+        const jsRes = await fetch(`http://127.0.0.1:${port}${scriptMatch[1]}`);
+        assert.equal(jsRes.status, 200);
+        assert.match(jsRes.headers.get("content-type") || "", /application\/javascript/);
+
+        const iconRes = await fetch(`http://127.0.0.1:${port}/assets/tool-icons/codex.png`);
+        assert.equal(iconRes.status, 200);
+      } finally {
+        await stopServer(child);
+      }
+      assert.deepEqual(stderr, []);
+    });
+  });
 });
 
 test("dashboard task APIs hide cancelled tasks by default", async () => {
@@ -690,11 +762,13 @@ test("dashboard workflow API supports CRUD actions and UI hooks", async () => {
 
 test("dashboard projects API exposes registry data and UI hooks", async () => {
   const dashboardSource = await fs.readFile(path.join(repoRoot, "dashboard-next", "src", "pages", "Dashboard.tsx"), "utf8");
+  const projectsPanelSource = await fs.readFile(path.join(repoRoot, "dashboard-next", "src", "components", "ProjectsPanel.tsx"), "utf8");
   const dashboardCopy = await fs.readFile(path.join(repoRoot, "dashboard-next", "src", "lib", "dashboardCopy.ts"), "utf8");
-  assert.match(dashboardSource, /function ProjectsPanel/);
+  assert.match(dashboardSource, /import \{ ProjectsPanel \}/);
+  assert.match(projectsPanelSource, /export function ProjectsPanel/);
   assert.match(dashboardSource, /visibleProjects/);
-  assert.match(dashboardSource, /unregisteredProjects/);
-  assert.match(dashboardSource, /<DataTable/);
+  assert.match(projectsPanelSource, /unregisteredProjects/);
+  assert.match(projectsPanelSource, /<Table/);
   assert.match(dashboardCopy, /visibleProjects: '可见项目'/);
   assert.match(dashboardCopy, /visibleProjects: 'Visible projects'/);
 

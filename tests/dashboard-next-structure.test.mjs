@@ -89,11 +89,13 @@ test("Dashboard hides empty filter dropdowns instead of rendering unusable selec
 test("Dashboard exposes a toast notification stack for async actions", async () => {
   const dashboard = await readSource("pages/Dashboard.tsx");
   const css = await readSource("pages/Dashboard.css");
+  const toastStack = await readSource("components/ToastStack.tsx");
 
   assert.match(dashboard, /type\s+ToastMessage\s*=/);
   assert.match(dashboard, /const\s+showToast\s*=\s*useCallback/);
-  assert.match(dashboard, /function\s+ToastStack/);
-  assert.match(dashboard, /aria-live=['"]polite['"]/);
+  assert.match(dashboard, /from\s+['"]\.\.\/components\/ToastStack['"]/);
+  assert.match(toastStack, /export\s+function\s+ToastStack/);
+  assert.match(toastStack, /aria-live=['"]polite['"]/);
   assert.match(dashboard, /<ToastStack\s+toasts=\{toasts\}/);
   assert.match(css, /\.toast-stack/);
   assert.match(css, /\.toast\./);

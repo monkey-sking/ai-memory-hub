@@ -17,12 +17,16 @@ export function ToastStack({ toasts, onDismiss }: ToastStackProps) {
   if (toasts.length === 0) return null
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-md">
+    <div
+      className="toast-stack fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-md"
+      aria-live="polite"
+    >
       {toasts.map(toast => (
         <div
           key={toast.id}
           className={cn(
-            'flex items-center gap-3 px-4 py-3 rounded-lg border shadow-lg animate-in slide-in-from-right',
+            'toast flex items-center gap-3 px-4 py-3 rounded-lg border shadow-lg animate-in slide-in-from-right',
+            toast.tone,
             toast.tone === 'success' ? 'bg-card border-primary/20' : 'bg-destructive/10 border-destructive/20'
           )}
         >

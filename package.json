@@ -17,7 +17,8 @@
     "sync": "node src/index.js sync",
     "pull": "node src/index.js pull",
     "watch": "node src/index.js watch",
-    "app": "node src/index.js app"
+    "app": "node src/index.js app",
+    "build:dashboard": "npm --prefix dashboard-next run build"
   },
   "keywords": [
     "ai",

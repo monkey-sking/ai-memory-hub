@@ -1,6 +1,13 @@
 import { chromium } from 'playwright';
 import fs from 'fs';
 
+if (process.env.RUN_MANUAL_DASHBOARD_VERIFY !== '1') {
+  console.log('Skipping manual dashboard verification. Set RUN_MANUAL_DASHBOARD_VERIFY=1 to run.');
+  process.exit(0);
+}
+
+const screenshotsDir = 'docs/screenshots';
+
 (async () => {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
@@ -11,8 +18,8 @@ import fs from 'fs';
     await page.waitForLoadState('networkidle');
 
     // Take initial screenshot
-    fs.mkdirSync('screenshots', { recursive: true });
-    await page.screenshot({ path: 'screenshots/workflows-initial.png', fullPage: true });
+    fs.mkdirSync(screenshotsDir, { recursive: true });
+    await page.screenshot({ path: `${screenshotsDir}/workflows-initial.png`, fullPage: true });
     console.log('✓ Initial screenshot saved');
 
     // Find workflow cards
@@ -46,7 +53,7 @@ import fs from 'fs';
     await page.waitForTimeout(1500);
 
     // Take expanded screenshot
-    await page.screenshot({ path: 'screenshots/workflows-expanded.png', fullPage: true });
+    await page.screenshot({ path: `${screenshotsDir}/workflows-expanded.png`, fullPage: true });
     console.log('✓ Expanded screenshot saved');
 
     // Check for node list
@@ -67,7 +74,7 @@ import fs from 'fs';
 
   } catch (err) {
     console.error('✗ FAIL:', err.message);
-    await page.screenshot({ path: 'screenshots/error.png', fullPage: true });
+    await page.screenshot({ path: `${screenshotsDir}/error.png`, fullPage: true });
     await browser.close();
     process.exit(1);
   }

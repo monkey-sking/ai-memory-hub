@@ -4,6 +4,11 @@ node_modules/
 *.log
 coverage/
 dist/
+public/
+logs/
+dashboard-next/dist/
+dashboard-next/node_modules/
+dashboard-next/test-results/
 tmp/
 .tmp-amh-test-*/
 

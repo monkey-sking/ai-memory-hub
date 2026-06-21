@@ -20,7 +20,8 @@
     "app": "node src/index.js app",
     "build:dashboard": "npm --prefix dashboard-next run build",
     "review:overengineering": "node scripts/review-overengineering.js",
-    "cdp-bridge": "node src/cdp-bridge.js"
+    "cdp-bridge": "node src/cdp-bridge.js",
+    "demo": "node scripts/demo.js"
   },
   "keywords": [
     "ai",

@@ -19,7 +19,8 @@
     "watch": "node src/index.js watch",
     "app": "node src/index.js app",
     "build:dashboard": "npm --prefix dashboard-next run build",
-    "review:overengineering": "node scripts/review-overengineering.js"
+    "review:overengineering": "node scripts/review-overengineering.js",
+    "cdp-bridge": "node src/cdp-bridge.js"
   },
   "keywords": [
     "ai",
@@ -34,6 +35,9 @@
   "license": "MIT",
   "engines": {
     "node": ">=18"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "playwright": "^1.61.0"

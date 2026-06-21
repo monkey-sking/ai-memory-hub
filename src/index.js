@@ -2993,6 +2993,7 @@ function executeDispatch(memoryDir, {
     // Phase 3: Permission policy preflight check
     const permission = resolvePermission(memoryDir, {
       actor: job.tool,
+      actorRoles: job.roles || [],
       project: job.project || "*",
       operation: "dispatch",
       scope: "all"
@@ -3831,7 +3832,8 @@ function buildDispatchJobs(memoryDir, { to, project, limit, force, respectRecipe
             project: message.project || "",
             text: message.text,
             refId: message.id,
-            thread: message.thread || message.id
+            thread: message.thread || message.id,
+            roles: []
           }));
       }
       return [{
@@ -3841,7 +3843,8 @@ function buildDispatchJobs(memoryDir, { to, project, limit, force, respectRecipe
         project: message.project || "",
         text: message.text,
         refId: message.id,
-        thread: message.thread || message.id
+        thread: message.thread || message.id,
+        roles: []
       }];
     });
   const allTasks = readTasks(memoryDir);
@@ -3860,6 +3863,10 @@ function buildDispatchJobs(memoryDir, { to, project, limit, force, respectRecipe
 }
 
 function dispatchJobFromTask(task) {
+  const roles = [];
+  if (task.recipeStep?.role) {
+    roles.push(`role:${task.recipeStep.role}`);
+  }
   return {
     id: `task:${task.id}`,
     kind: "task",
@@ -3870,11 +3877,14 @@ function dispatchJobFromTask(task) {
     thread: task.id,
     qualityGate: task.qualityGate || {},
     recipe: task.recipe || null,
-    recipeStep: task.recipeStep || null
+    recipeStep: task.recipeStep || null,
+    roles
   };
 }
 
 function dispatchJobFromWorkflow(workflow, tool = "") {
+  const roles = [];
+  // Workflow level doesn't have a specific role, but we could add workflow roles in the future
   return {
     id: `workflow:${workflow.id}`,
     kind: "workflow",
@@ -3884,7 +3894,8 @@ function dispatchJobFromWorkflow(workflow, tool = "") {
     refId: workflow.id,
     thread: workflow.id,
     qualityGate: workflow.qualityGate || {},
-    recipe: workflow.recipe || null
+    recipe: workflow.recipe || null,
+    roles
   };
 }
 

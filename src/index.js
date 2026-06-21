@@ -407,7 +407,7 @@ const ASYNC_CALL_TRANSITIONS = {
 };
 
 const RECIPE_GATE_STRING_ARRAY_FIELDS = ["stopWhen", "allowedActions", "forbiddenActions"];
-const RECIPE_GATE_FIELDS = ["verifyCommands", ...RECIPE_GATE_STRING_ARRAY_FIELDS, "reviewRequired", "maxRepairAttempts"];
+const RECIPE_GATE_FIELDS = ["verifyCommands", ...RECIPE_GATE_STRING_ARRAY_FIELDS, "reviewRequired", "maxRepairAttempts", "minimalImplementation", "dependencyBudget"];
 
 const rawArgs = process.argv.slice(2);
 const parsedArgs = parseCliArgs(rawArgs);
@@ -9597,6 +9597,12 @@ function normalizeQualityGate(source) {
   if (maxRepairAttempts !== null) {
     gate.maxRepairAttempts = maxRepairAttempts;
   }
+  if (isPlainObject(extracted.minimalImplementation)) {
+    gate.minimalImplementation = normalizeMinimalImplementation(extracted.minimalImplementation);
+  }
+  if (isPlainObject(extracted.dependencyBudget)) {
+    gate.dependencyBudget = normalizeDependencyBudget(extracted.dependencyBudget);
+  }
   return gate;
 }
 
@@ -9635,6 +9641,18 @@ function validateQualityGateFields(source, label) {
   }
   if (hasOwnField(source, "maxRepairAttempts") && (!Number.isInteger(source.maxRepairAttempts) || source.maxRepairAttempts < 0)) {
     return { valid: false, error: `${label}.maxRepairAttempts must be a non-negative integer` };
+  }
+  if (hasOwnField(source, "minimalImplementation")) {
+    const validation = validateMinimalImplementation(source.minimalImplementation, `${label}.minimalImplementation`);
+    if (!validation.valid) {
+      return validation;
+    }
+  }
+  if (hasOwnField(source, "dependencyBudget")) {
+    const validation = validateDependencyBudget(source.dependencyBudget, `${label}.dependencyBudget`);
+    if (!validation.valid) {
+      return validation;
+    }
   }
   return { valid: true };
 }
@@ -9711,6 +9729,127 @@ function normalizeNonNegativeInteger(value) {
   const number = typeof value === "number" ? value : Number(value);
   return Number.isInteger(number) && number >= 0 ? number : null;
 }
+
+function normalizeMinimalImplementation(source) {
+  if (!isPlainObject(source)) {
+    return {};
+  }
+  const normalized = {};
+  if (typeof source.enabled === "boolean") {
+    normalized.enabled = source.enabled;
+  }
+  if (Array.isArray(source.principles)) {
+    const principles = source.principles.map((item) => String(item).trim()).filter(Boolean);
+    if (principles.length > 0) {
+      normalized.principles = principles;
+    }
+  }
+  if (Array.isArray(source.forbiddenPatterns)) {
+    const patterns = source.forbiddenPatterns.map((item) => String(item).trim()).filter(Boolean);
+    if (patterns.length > 0) {
+      normalized.forbiddenPatterns = patterns;
+    }
+  }
+  const maxNewFiles = normalizeNonNegativeInteger(source.maxNewFiles);
+  if (maxNewFiles !== null) {
+    normalized.maxNewFiles = maxNewFiles;
+  }
+  const maxLinesPerFile = normalizeNonNegativeInteger(source.maxLinesPerFile);
+  if (maxLinesPerFile !== null) {
+    normalized.maxLinesPerFile = maxLinesPerFile;
+  }
+  return normalized;
+}
+
+function normalizeDependencyBudget(source) {
+  if (!isPlainObject(source)) {
+    return {};
+  }
+  const normalized = {};
+  if (typeof source.enabled === "boolean") {
+    normalized.enabled = source.enabled;
+  }
+  const maxNewDependencies = normalizeNonNegativeInteger(source.maxNewDependencies);
+  if (maxNewDependencies !== null) {
+    normalized.maxNewDependencies = maxNewDependencies;
+  }
+  const maxTotalSizeMB = normalizeNonNegativeInteger(source.maxTotalSizeMB);
+  if (maxTotalSizeMB !== null) {
+    normalized.maxTotalSizeMB = maxTotalSizeMB;
+  }
+  if (Array.isArray(source.allowedScopes)) {
+    const scopes = source.allowedScopes.map((item) => String(item).trim()).filter(Boolean);
+    if (scopes.length > 0) {
+      normalized.allowedScopes = scopes;
+    }
+  }
+  if (Array.isArray(source.forbiddenPackages)) {
+    const packages = source.forbiddenPackages.map((item) => String(item).trim()).filter(Boolean);
+    if (packages.length > 0) {
+      normalized.forbiddenPackages = packages;
+    }
+  }
+  if (typeof source.requireJustification === "boolean") {
+    normalized.requireJustification = source.requireJustification;
+  }
+  return normalized;
+}
+
+function validateMinimalImplementation(source, label) {
+  if (!isPlainObject(source)) {
+    return { valid: false, error: `${label} must be an object` };
+  }
+  if (hasOwnField(source, "enabled") && typeof source.enabled !== "boolean") {
+    return { valid: false, error: `${label}.enabled must be a boolean` };
+  }
+  if (hasOwnField(source, "principles")) {
+    if (!Array.isArray(source.principles) || source.principles.some((item) => typeof item !== "string" || item.trim() === "")) {
+      return { valid: false, error: `${label}.principles must be an array of non-empty strings` };
+    }
+  }
+  if (hasOwnField(source, "forbiddenPatterns")) {
+    if (!Array.isArray(source.forbiddenPatterns) || source.forbiddenPatterns.some((item) => typeof item !== "string" || item.trim() === "")) {
+      return { valid: false, error: `${label}.forbiddenPatterns must be an array of non-empty strings` };
+    }
+  }
+  if (hasOwnField(source, "maxNewFiles") && (!Number.isInteger(source.maxNewFiles) || source.maxNewFiles < 0)) {
+    return { valid: false, error: `${label}.maxNewFiles must be a non-negative integer` };
+  }
+  if (hasOwnField(source, "maxLinesPerFile") && (!Number.isInteger(source.maxLinesPerFile) || source.maxLinesPerFile < 0)) {
+    return { valid: false, error: `${label}.maxLinesPerFile must be a non-negative integer` };
+  }
+  return { valid: true };
+}
+
+function validateDependencyBudget(source, label) {
+  if (!isPlainObject(source)) {
+    return { valid: false, error: `${label} must be an object` };
+  }
+  if (hasOwnField(source, "enabled") && typeof source.enabled !== "boolean") {
+    return { valid: false, error: `${label}.enabled must be a boolean` };
+  }
+  if (hasOwnField(source, "maxNewDependencies") && (!Number.isInteger(source.maxNewDependencies) || source.maxNewDependencies < 0)) {
+    return { valid: false, error: `${label}.maxNewDependencies must be a non-negative integer` };
+  }
+  if (hasOwnField(source, "maxTotalSizeMB") && (!Number.isInteger(source.maxTotalSizeMB) || source.maxTotalSizeMB < 0)) {
+    return { valid: false, error: `${label}.maxTotalSizeMB must be a non-negative integer` };
+  }
+  if (hasOwnField(source, "allowedScopes")) {
+    if (!Array.isArray(source.allowedScopes) || source.allowedScopes.some((item) => typeof item !== "string" || item.trim() === "")) {
+      return { valid: false, error: `${label}.allowedScopes must be an array of non-empty strings` };
+    }
+  }
+  if (hasOwnField(source, "forbiddenPackages")) {
+    if (!Array.isArray(source.forbiddenPackages) || source.forbiddenPackages.some((item) => typeof item !== "string" || item.trim() === "")) {
+      return { valid: false, error: `${label}.forbiddenPackages must be an array of non-empty strings` };
+    }
+  }
+  if (hasOwnField(source, "requireJustification") && typeof source.requireJustification !== "boolean") {
+    return { valid: false, error: `${label}.requireJustification must be a boolean` };
+  }
+  return { valid: true };
+}
+
 
 function validateQualityGate(source, label) {
   if (!isPlainObject(source)) {

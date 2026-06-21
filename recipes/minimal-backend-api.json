@@ -1,0 +1,155 @@
+{
+  "name": "minimal-backend-api",
+  "title": "Minimal Backend API Implementation",
+  "description": "Add a new backend API endpoint with minimal implementation principles and dependency budget constraints. Focuses on solving the immediate need without over-engineering.",
+  "version": "1.0.0",
+  "variables": {
+    "feature": "new-api-endpoint",
+    "priority": "normal",
+    "maxRepairAttempts": "2"
+  },
+  "qualityGate": {
+    "verifyCommands": [
+      {
+        "id": "syntax-check",
+        "command": "node --check src/index.js",
+        "required": true,
+        "description": "Verify JavaScript syntax"
+      },
+      {
+        "id": "unit-tests",
+        "command": "npm.cmd test",
+        "required": true,
+        "description": "Run all unit tests"
+      }
+    ],
+    "reviewRequired": true,
+    "maxRepairAttempts": 2,
+    "minimalImplementation": {
+      "enabled": true,
+      "principles": [
+        "YAGNI - You Ain't Gonna Need It",
+        "Solve the stated problem only",
+        "No premature optimization",
+        "No speculative features",
+        "Prefer boring solutions over clever ones"
+      ],
+      "forbiddenPatterns": [
+        "abstract factory",
+        "strategy pattern without demonstrated need",
+        "plugin system for single use case",
+        "configuration DSL",
+        "custom framework"
+      ],
+      "maxNewFiles": 3,
+      "maxLinesPerFile": 300
+    },
+    "dependencyBudget": {
+      "enabled": true,
+      "maxNewDependencies": 1,
+      "maxTotalSizeMB": 5,
+      "allowedScopes": [
+        "dependencies"
+      ],
+      "forbiddenPackages": [
+        "lodash",
+        "moment",
+        "request"
+      ],
+      "requireJustification": true
+    },
+    "stopWhen": [
+      "acceptance_unclear",
+      "over_engineering_detected",
+      "dependency_budget_exceeded",
+      "max_repair_attempts_reached"
+    ],
+    "allowedActions": [
+      "read_project_docs",
+      "add_single_route_handler",
+      "add_focused_tests",
+      "minimal_error_handling",
+      "local_commit_when_allowed"
+    ],
+    "forbiddenActions": [
+      "add_middleware_framework",
+      "create_abstraction_layers",
+      "add_caching_layer_without_proof_of_need",
+      "install_heavy_dependencies",
+      "refactor_unrelated_code"
+    ]
+  },
+  "roles": {
+    "planner": {
+      "description": "Defines the minimal scope needed to solve the problem. Identifies what NOT to build."
+    },
+    "executor": {
+      "description": "Implements only what's required. Resists the urge to add nice-to-haves."
+    },
+    "reviewer": {
+      "description": "Reviews for over-engineering: abstractions without multiple uses, dependencies without justification, code solving problems not yet proven to exist."
+    }
+  },
+  "steps": [
+    {
+      "id": "scope-definition",
+      "role": "planner",
+      "task": "Read the feature request and define the minimal scope: what input, what output, what error cases must be handled NOW. List non-goals explicitly. Verify dependency budget allows the planned approach. Output JSON with scope, acceptance, non-goals, and budget check.",
+      "minimalImplementation": {
+        "enabled": true,
+        "principles": [
+          "Start with the simplest thing that could work",
+          "Defer all non-critical decisions"
+        ]
+      }
+    },
+    {
+      "id": "implementation",
+      "role": "executor",
+      "task": "Implement the minimal scope. Inline simple logic. Use existing utilities. Add one dependency only if stdlib/existing code cannot solve it. Write tests for the happy path and documented error cases only. No abstractions unless there are 3+ call sites.",
+      "dependsOn": [
+        "scope-definition"
+      ],
+      "minimalImplementation": {
+        "enabled": true,
+        "maxNewFiles": 2,
+        "maxLinesPerFile": 200
+      },
+      "dependencyBudget": {
+        "enabled": true,
+        "maxNewDependencies": 1,
+        "requireJustification": true
+      }
+    },
+    {
+      "id": "verification",
+      "role": "executor",
+      "task": "Run syntax check and tests. Fix failures. Verify no unplanned dependencies were added. Output JSON with test results, files changed, dependencies added, and readiness.",
+      "dependsOn": [
+        "implementation"
+      ],
+      "verifyCommands": [
+        "node --check src/index.js",
+        "npm.cmd test"
+      ]
+    },
+    {
+      "id": "review",
+      "role": "reviewer",
+      "task": "Review for over-engineering. Check: Are there abstractions with single call sites? Dependencies without clear justification? Code solving future problems? Configuration for things that don't vary? Reply PASS if minimal or list specific over-engineering with file:line evidence.",
+      "dependsOn": [
+        "verification"
+      ],
+      "reviewRequired": true,
+      "minimalImplementation": {
+        "enabled": true,
+        "forbiddenPatterns": [
+          "premature abstraction",
+          "speculative generality",
+          "dead code",
+          "unused configuration"
+        ]
+      }
+    }
+  ]
+}

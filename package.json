@@ -18,7 +18,8 @@
     "pull": "node src/index.js pull",
     "watch": "node src/index.js watch",
     "app": "node src/index.js app",
-    "build:dashboard": "npm --prefix dashboard-next run build"
+    "build:dashboard": "npm --prefix dashboard-next run build",
+    "review:overengineering": "node scripts/review-overengineering.js"
   },
   "keywords": [
     "ai",

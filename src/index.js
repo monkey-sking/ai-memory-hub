@@ -97,6 +97,9 @@ const DAEMON_PID_FILE = "daemon.pid";
 const DAEMON_STATUS_FILE = "daemon-status.json";
 const DAEMON_DEFAULT_TOOLS = ["codex", "gemini", "claude"];
 const LOOP_CHECKPOINT_FILE = "loop-checkpoint.json";
+const DAEMON_HEARTBEAT_FILE = "daemon-heartbeat.json";
+const DAEMON_HEARTBEAT_STALE_MS = 30000; // 30 seconds without heartbeat = stale
+const SKILL_DELTA_FILE = "skill-deltas.jsonl";
 const TOOL_CAPABILITY_REGISTRY_VERSION = 1;
 let toolDetectionCache = null;
 
@@ -494,6 +497,11 @@ async function main() {
       return dispatchCommand(rest);
     case "checkpoint":
       return checkpointCommand(rest);
+    case "heartbeat":
+      return heartbeatCommand(rest);
+    case "skill-delta":
+    case "skilldelta":
+      return skillDeltaCommand(rest);
     case "sync":
       return syncCommand(rest);
     case "index":
@@ -5797,6 +5805,13 @@ function daemonCommand(argv) {
     loopCheckpoint.lastCompletedAt = cycleFinishedAt;
     writeLoopCheckpoint(config.memoryDir, loopCheckpoint);
 
+    // Write heartbeat
+    writeDaemonHeartbeat(config.memoryDir, {
+      pid: process.pid,
+      cycle: iteration,
+      toolResults: cycleErrors.length === 0 ? "ok" : cycleErrors.join("; ")
+    });
+
     console.log("");
   };
 
@@ -5820,6 +5835,11 @@ function daemonCommand(argv) {
       cycle: iteration
     });
     clearDaemonPid(config.memoryDir, process.pid);
+    // Clean up file watchers
+    for (const w of watchers) {
+      try { w.close(); } catch {}
+    }
+    if (debounceTimer) clearTimeout(debounceTimer);
     console.log(`\n${signal || "stop"} received; daemon stopped.`);
     process.exit(0);
   };
@@ -5828,6 +5848,207 @@ function daemonCommand(argv) {
 
   runCycle();
   timer = setInterval(runCycle, intervalMs);
+
+  // Event-driven push: watch files for changes and trigger immediate cycle
+  const watchDebounceMs = 1000;
+  let debounceTimer = null;
+  const triggerCycle = () => {
+    if (stopping) return;
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      debounceTimer = null;
+      if (!stopping) runCycle();
+    }, watchDebounceMs);
+  };
+
+  const watchFiles = [
+    path.join(config.memoryDir, "radio", "messages.jsonl"),
+    path.join(config.memoryDir, "tasks", "events.jsonl"),
+    path.join(config.memoryDir, "inbox", "events.jsonl")
+  ];
+
+  const watchers = [];
+  for (const file of watchFiles) {
+    try {
+      ensureDir(path.dirname(file));
+      if (!fs.existsSync(file)) {
+        fs.writeFileSync(file, "", "utf8");
+      }
+      const watcher = fs.watch(file, { persistent: false }, (eventType) => {
+        if (eventType === "change" || eventType === "rename") {
+          console.log(`[${new Date().toISOString()}] Change detected in ${path.basename(file)}, scheduling cycle...`);
+          triggerCycle();
+        }
+      });
+      watchers.push(watcher);
+    } catch { /* file watch not available */ }
+  }
+
+  if (watchers.length > 0) {
+    console.log(`Watching ${watchers.length} file(s) for changes (event-driven mode).`);
+  }
+}
+
+// Skill delta system (self-improvement)
+
+function getSkillDeltasFile(memoryDir) {
+  return path.join(memoryDir, "prompts", SKILL_DELTA_FILE);
+}
+
+function readSkillDeltas(memoryDir) {
+  const file = getSkillDeltasFile(memoryDir);
+  if (!fs.existsSync(file)) return [];
+  return readEvents(file);
+}
+
+function createSkillDelta({ tool, section, original, proposed, reason, createdBy }) {
+  const now = new Date().toISOString();
+  return {
+    id: createId(`delta:${tool}:${section}:${proposed}`),
+    createdAt: now,
+    tool: String(tool || ""),
+    section: String(section || ""),
+    original: String(original || ""),
+    proposed: String(proposed || ""),
+    reason: String(reason || ""),
+    status: "pending", // pending | approved | rejected | merged
+    createdBy: String(createdBy || "observer"),
+    reviewedBy: "",
+    reviewedAt: "",
+    mergedAt: ""
+  };
+}
+
+function approveSkillDelta(memoryDir, id, reviewer) {
+  const deltas = readSkillDeltas(memoryDir);
+  const index = deltas.findIndex((d) => d.id === id || d.id.startsWith(id));
+  if (index === -1) throw new Error(`Skill delta not found: ${id}`);
+  deltas[index].status = "approved";
+  deltas[index].reviewedBy = reviewer;
+  deltas[index].reviewedAt = new Date().toISOString();
+  writeSkillDeltas(memoryDir, deltas);
+  return deltas[index];
+}
+
+function rejectSkillDelta(memoryDir, id, reviewer, reason) {
+  const deltas = readSkillDeltas(memoryDir);
+  const index = deltas.findIndex((d) => d.id === id || d.id.startsWith(id));
+  if (index === -1) throw new Error(`Skill delta not found: ${id}`);
+  deltas[index].status = "rejected";
+  deltas[index].reviewedBy = reviewer;
+  deltas[index].reviewedAt = new Date().toISOString();
+  if (reason) deltas[index].rejectReason = reason;
+  writeSkillDeltas(memoryDir, deltas);
+  return deltas[index];
+}
+
+function mergeSkillDelta(memoryDir, id) {
+  const deltas = readSkillDeltas(memoryDir);
+  const index = deltas.findIndex((d) => d.id === id || d.id.startsWith(id));
+  if (index === -1) throw new Error(`Skill delta not found: ${id}`);
+  const delta = deltas[index];
+  if (delta.status !== "approved") {
+    throw new Error(`Delta must be approved before merging. Current status: ${delta.status}`);
+  }
+
+  // Find and update the skill template
+  const toolName = delta.tool;
+  const templateDir = path.join(__dirname, "..", "templates");
+  const possibleFiles = [
+    path.join(templateDir, `${toolName.toUpperCase()}.md`),
+    path.join(templateDir, `${toolName.toUpperCase()}_SKILL.md`),
+    path.join(templateDir, "shared-skill-layer.md"),
+    path.join(templateDir, "shared-instructions.md")
+  ];
+
+  let merged = false;
+  for (const file of possibleFiles) {
+    if (!fs.existsSync(file)) continue;
+    const content = fs.readFileSync(file, "utf8");
+    if (delta.original && content.includes(delta.original)) {
+      const updated = content.replace(delta.original, delta.proposed);
+      fs.writeFileSync(file, updated, "utf8");
+      delta.status = "merged";
+      delta.mergedAt = new Date().toISOString();
+      merged = true;
+      break;
+    }
+  }
+
+  if (!merged) {
+    throw new Error(`Could not find original text in any template file for tool: ${toolName}`);
+  }
+
+  writeSkillDeltas(memoryDir, deltas);
+  return delta;
+}
+
+function writeSkillDeltas(memoryDir, deltas) {
+  const file = getSkillDeltasFile(memoryDir);
+  ensureDir(path.dirname(file));
+  const lines = deltas.map((d) => JSON.stringify(d)).join("\n") + "\n";
+  fs.writeFileSync(file, lines, "utf8");
+}
+
+function skillDeltaCommand(argv) {
+  const action = argv[0] || "list";
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+
+  switch (action) {
+    case "create": {
+      const tool = getOption(argv, "--tool") || "";
+      const section = getOption(argv, "--section") || "";
+      const original = getOption(argv, "--original") || "";
+      const proposed = getOption(argv, "--proposed") || "";
+      const reason = getOption(argv, "--reason") || "";
+      const createdBy = getOption(argv, "--from") || "observer";
+      if (!tool || !original || !proposed) {
+        throw new Error('Usage: ai-memory-hub skill-delta create --tool <name> --section <section> --original "old text" --proposed "new text" --reason "why"');
+      }
+      const delta = createSkillDelta({ tool, section, original, proposed, reason, createdBy });
+      const deltas = readSkillDeltas(config.memoryDir);
+      deltas.push(delta);
+      writeSkillDeltas(config.memoryDir, deltas);
+      console.log(JSON.stringify(delta, null, 2));
+      break;
+    }
+    case "list": {
+      const tool = getOption(argv, "--tool") || "";
+      const status = getOption(argv, "--status") || "";
+      let deltas = readSkillDeltas(config.memoryDir);
+      if (tool) deltas = deltas.filter((d) => d.tool === tool);
+      if (status) deltas = deltas.filter((d) => d.status === status);
+      console.log(JSON.stringify(deltas, null, 2));
+      break;
+    }
+    case "approve": {
+      const id = positionalArgs(argv).slice(1)[0] || getOption(argv, "--id") || "";
+      const reviewer = getOption(argv, "--by") || "human";
+      if (!id) throw new Error("Usage: ai-memory-hub skill-delta approve <id> [--by reviewer]");
+      const delta = approveSkillDelta(config.memoryDir, id, reviewer);
+      console.log(JSON.stringify(delta, null, 2));
+      break;
+    }
+    case "reject": {
+      const id = positionalArgs(argv).slice(1)[0] || getOption(argv, "--id") || "";
+      const reviewer = getOption(argv, "--by") || "human";
+      const reason = getOption(argv, "--reason") || "";
+      if (!id) throw new Error("Usage: ai-memory-hub skill-delta reject <id> [--by reviewer] [--reason text]");
+      const delta = rejectSkillDelta(config.memoryDir, id, reviewer, reason);
+      console.log(JSON.stringify(delta, null, 2));
+      break;
+    }
+    case "merge": {
+      const id = positionalArgs(argv).slice(1)[0] || getOption(argv, "--id") || "";
+      if (!id) throw new Error("Usage: ai-memory-hub skill-delta merge <id>");
+      const delta = mergeSkillDelta(config.memoryDir, id);
+      console.log(JSON.stringify(delta, null, 2));
+      break;
+    }
+    default:
+      throw new Error("Usage: ai-memory-hub skill-delta <create|list|approve|reject|merge>");
+  }
 }
 
 function checkpointCommand(argv) {
@@ -5854,6 +6075,40 @@ function checkpointCommand(argv) {
     }
     default:
       throw new Error("Usage: ai-memory-hub checkpoint <status|reset|show>");
+  }
+}
+
+function heartbeatCommand(argv) {
+  const action = argv[0] || "check";
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+
+  switch (action) {
+    case "check": {
+      const result = checkDaemonHeartbeat(config.memoryDir);
+      console.log(JSON.stringify(result, null, 2));
+      break;
+    }
+    case "show": {
+      const heartbeat = readDaemonHeartbeat(config.memoryDir);
+      console.log(JSON.stringify(heartbeat, null, 2));
+      break;
+    }
+    case "watch": {
+      const interval = Number(getOption(argv, "--interval") || 10000);
+      console.log(`Watching daemon heartbeat every ${interval}ms. Press Ctrl+C to stop.`);
+      const check = () => {
+        const result = checkDaemonHeartbeat(config.memoryDir);
+        const status = result.alive ? "ALIVE" : (result.stale ? "STALE" : "DEAD");
+        const icon = result.alive ? "+" : (result.stale ? "!" : "x");
+        console.log(`[${new Date().toISOString()}] ${icon} ${status} pid=${result.pid || "?"} cycle=${result.cycle || "?"} age=${result.ageMs ? Math.round(result.ageMs / 1000) + "s" : "?"} — ${result.reason}`);
+      };
+      check();
+      setInterval(check, interval);
+      break;
+    }
+    default:
+      throw new Error("Usage: ai-memory-hub heartbeat <check|show|watch>");
   }
 }
 
@@ -5965,6 +6220,43 @@ function clearDaemonPid(memoryDir, pid) {
   if (currentPid === pid && fs.existsSync(paths.pidFile)) {
     fs.unlinkSync(paths.pidFile);
   }
+}
+
+function writeDaemonHeartbeat(memoryDir, data) {
+  const filePath = path.join(memoryDir, "state", DAEMON_HEARTBEAT_FILE);
+  ensureDir(path.dirname(filePath));
+  fs.writeFileSync(filePath, JSON.stringify({
+    ...data,
+    ts: new Date().toISOString()
+  }, null, 2), "utf8");
+}
+
+function readDaemonHeartbeat(memoryDir) {
+  const filePath = path.join(memoryDir, "state", DAEMON_HEARTBEAT_FILE);
+  if (!fs.existsSync(filePath)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(filePath, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function checkDaemonHeartbeat(memoryDir) {
+  const heartbeat = readDaemonHeartbeat(memoryDir);
+  if (!heartbeat || !heartbeat.ts) {
+    return { alive: false, reason: "No heartbeat file found", stale: false };
+  }
+  const age = Date.now() - new Date(heartbeat.ts).getTime();
+  const stale = age > DAEMON_HEARTBEAT_STALE_MS;
+  return {
+    alive: !stale,
+    stale,
+    ageMs: age,
+    pid: heartbeat.pid,
+    cycle: heartbeat.cycle,
+    lastTs: heartbeat.ts,
+    reason: stale ? `Heartbeat is ${Math.round(age / 1000)}s old (threshold: ${DAEMON_HEARTBEAT_STALE_MS / 1000}s)` : "OK"
+  };
 }
 
 function readDaemonStatus(memoryDir) {
@@ -6537,6 +6829,8 @@ Commands:
   doctor     Diagnose AI tool runner paths, shims, probes, and prompt mode.
   dispatch   Dispatch pending radio/task work to verified CLI runners.
   checkpoint Show, reset, or inspect loop checkpoint state for resumable daemon loops.
+  heartbeat  Check daemon heartbeat status, or watch for stale/dead daemon.
+  skill-delta Manage skill improvement proposals (observer → reviewer → merge).
   pull       Rebuild MEMORY.md from the local memory ledger.
   backup     Back up hub files, inspect/prune retention, and manage GitHub data backups.
   watch      Periodically index pending inbox events.

@@ -5725,6 +5725,13 @@ function daemonCommand(argv) {
     });
     console.log(`[${cycleStartedAt}] Cycle #${iteration}`);
 
+    // Write heartbeat at start of cycle so it's fresh even if dispatch takes long
+    writeDaemonHeartbeat(config.memoryDir, {
+      pid: process.pid,
+      cycle: iteration,
+      toolResults: "running"
+    });
+
     try {
       const tools = daemonTools;
 

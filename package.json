@@ -35,9 +35,10 @@
   ],
   "license": "MIT",
   "engines": {
-    "node": ">=18"
+    "node": ">=24"
   },
   "dependencies": {
+    "nunjucks": "^3.2.4",
     "ws": "^8.18.0"
   },
   "devDependencies": {

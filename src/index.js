@@ -5655,7 +5655,9 @@ function daemonCommand(argv) {
   const isolateWorktree = hasFlag(argv, "--isolate-worktree");
   const worktreeRoot = getOption(argv, "--worktree-root") || "";
   const toolsOption = getOption(argv, "--tools");
-  const daemonTools = toolsOption ? toolsOption.split(",").map((t) => t.trim()).filter(Boolean) : DAEMON_DEFAULT_TOOLS;
+  const daemonTools = toolsOption
+    ? toolsOption.split(/[,\s]+/).map((t) => t.trim()).filter(Boolean)
+    : [...DAEMON_DEFAULT_TOOLS];
   const startedAt = new Date().toISOString();
   const currentStatus = buildDaemonStatus(config.memoryDir);
   if (currentStatus.running && !force) {
@@ -5671,7 +5673,7 @@ function daemonCommand(argv) {
     intervalMs,
     limit,
     projects: projectList,
-    tools: daemonTools,
+    tools: Array.isArray(daemonTools) ? daemonTools : String(daemonTools).split(/[,\s]+/),
     isolateWorktree,
     worktreeRoot,
     cycle: 0,
@@ -5716,7 +5718,7 @@ function daemonCommand(argv) {
       intervalMs,
       limit,
       projects: projectList,
-      tools: daemonTools,
+      tools: Array.isArray(daemonTools) ? daemonTools : String(daemonTools).split(/[,\s]+/),
       cycle: iteration,
       lastCycleStartedAt: cycleStartedAt,
       lastError: ""

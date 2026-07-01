@@ -7,6 +7,8 @@ import crypto from "node:crypto";
 import http from "node:http";
 import { spawnSync, execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import nunjucks from "nunjucks";
+import { createSearchDb, rebuildIndex, searchIndex, getIndexStats, tokenizeChinese } from "./fts5-search.js";
 import { createDashboardActionsApi } from "./dashboard/actions.js";
 import { createDashboardBackupsApi } from "./dashboard/backups.js";
 import { createDashboardDispatchApi } from "./dashboard/dispatch.js";
@@ -63,6 +65,10 @@ const DEFAULT_GITHUB_BACKUP_TASK_NAME = "AI Memory Hub GitHub Backup";
 const DEFAULT_DISPATCH_ACK_TIMEOUT_MS = 5 * 60 * 1000;
 const DEFAULT_DISPATCH_RUN_TIMEOUT_MS = 10 * 60 * 1000;
 const DEFAULT_DISPATCH_MAX_RETRIES = 3;
+// Oscillation: N consecutive failed attempts with an identical (exitCode, error)
+// fingerprint mean the loop is stuck repeating the same call for the same result.
+// Abandon early instead of burning the full retry budget on a deterministic failure.
+const DISPATCH_OSCILLATION_THRESHOLD = 2;
 const DEFAULT_TASK_SPEC_TIMEOUT_MS = 10 * 60 * 1000;
 const STALE_OPERATIONAL_RADIO_AFTER_DAYS = 7;
 const OPERATIONAL_RADIO_DECAY_RATE_PER_DAY = 8;
@@ -90,6 +96,7 @@ const DEFAULT_DISPATCH_WORKTREE_DIR = ".ai-worktrees";
 const DAEMON_PID_FILE = "daemon.pid";
 const DAEMON_STATUS_FILE = "daemon-status.json";
 const DAEMON_DEFAULT_TOOLS = ["codex", "gemini", "claude"];
+const LOOP_CHECKPOINT_FILE = "loop-checkpoint.json";
 const TOOL_CAPABILITY_REGISTRY_VERSION = 1;
 let toolDetectionCache = null;
 
@@ -361,6 +368,11 @@ const RUNNER_PROFILES = {
     sharedStateOnly: true,
     reason: "qclaw should currently be coordinated through shared tasks/radio or its own gateway; no verified direct prompt runner is configured"
   },
+  coze: {
+    tool: "coze",
+    sharedStateOnly: true,
+    reason: "coze (扣子) should currently be coordinated through shared tasks/radio or its own gateway; no verified direct prompt runner is configured"
+  },
   openclaw: {
     tool: "openclaw",
     sharedStateOnly: true,
@@ -448,6 +460,8 @@ async function main() {
     case "workflow":
     case "flow":
       return workflowCommand(rest);
+    case "prompt":
+      return promptCommand(rest);
     case "gate":
       return gateCommand(rest);
     case "session":
@@ -478,6 +492,8 @@ async function main() {
       return doctorCommand(rest);
     case "dispatch":
       return dispatchCommand(rest);
+    case "checkpoint":
+      return checkpointCommand(rest);
     case "sync":
       return syncCommand(rest);
     case "index":
@@ -536,6 +552,47 @@ function initCommand(argv) {
 
   console.log(`Initialized shared memory directory: ${memoryDir}`);
   console.log(`Config: ${configPath}`);
+
+  if (hasFlag(argv, "--all")) {
+    initAllTools(memoryDir, { apply: hasFlag(argv, "--apply") });
+  }
+}
+
+// One-shot onboarding: detect installed tools and install their shared-memory
+// adapters in a single step, instead of running install --tool per tool. Lowers
+// the adoption cost that keeps some tools from ever reading the hub.
+function initAllTools(memoryDir, { apply = false } = {}) {
+  const detected = detectTools(memoryDir).filter((tool) => tool.installed);
+  const detectedNames = new Set(detected.map((tool) => normalizeToolName(tool.name)));
+  const targets = getInstallTargets(memoryDir).filter((target) =>
+    detectedNames.has(normalizeToolName(target.tool))
+  );
+
+  console.log(`\nDetected ${detected.length} installed tool(s); ${targets.length} have a shared-memory adapter.`);
+
+  if (targets.length === 0) {
+    console.log("No matching adapters to install. Run \"ai-memory-hub detect\" to see what was found.");
+    return;
+  }
+
+  if (!apply) {
+    console.log("\n[dry-run] Would install adapters for:");
+    for (const target of targets) {
+      console.log(`  ${target.tool}: ${target.file}`);
+    }
+    console.log("\nRe-run with --apply to write these files.");
+    return;
+  }
+
+  let installed = 0;
+  for (const target of targets) {
+    const snippet = renderInstallSnippet(target, memoryDir);
+    ensureDir(path.dirname(target.file));
+    appendIfMissing(target.file, snippet, "Shared AI Memory");
+    console.log(`Installed shared memory instructions for ${target.tool}: ${target.file}`);
+    installed += 1;
+  }
+  console.log(`\nOnboarded ${installed} tool(s) into the shared memory hub.`);
 }
 
 function detectCommand() {
@@ -1038,6 +1095,19 @@ function recordCommand(argv) {
   };
 
   appendJsonl(path.join(config.memoryDir, "inbox", "events.jsonl"), event);
+
+  // Incrementally update FTS5 search index
+  let db = null;
+  try {
+    db = createSearchDb(config.memoryDir);
+    const content = tokenizeChinese(text);
+    const tags = Array.isArray(metadata.tags) ? metadata.tags.join(" ") : "";
+    const project = metadata.project || "";
+    db.exec(`INSERT INTO search_index (entity_type, entity_id, title, content, kind, project, tags, ts)
+      VALUES ('memory', '${event.id.replace(/'/g, "''")}', '', '${content.replace(/'/g, "''")}', '${kind}', '${project.replace(/'/g, "''")}', '${tokenizeChinese(tags).replace(/'/g, "''")}', '${event.ts}')`);
+  } catch { /* index not yet built or unavailable */ }
+  finally { if (db) try { db.close(); } catch {} }
+
   console.log(`Recorded memory event: ${event.id}`);
 }
 
@@ -2211,6 +2281,188 @@ function taskCommand(argv) {
   }
 }
 
+function promptCommand(argv) {
+  const action = argv[0] || "list";
+  const actionArgs = argv.slice(1);
+  switch (action) {
+    case "create":
+      return promptCreateCommand(actionArgs);
+    case "list":
+      return promptListCommand(actionArgs);
+    case "get":
+      return promptGetCommand(actionArgs);
+    case "update":
+      return promptUpdateCommand(actionArgs);
+    case "delete":
+    case "rm":
+      return promptDeleteCommand(actionArgs);
+    case "render":
+      return promptRenderCommand(actionArgs);
+    case "versions":
+      return promptVersionsCommand(actionArgs);
+    default:
+      throw new Error("Usage: ai-memory-hub prompt <create|list|get|update|delete|render|versions> ...");
+  }
+}
+
+function promptCreateCommand(argv) {
+  const name = positionalArgs(argv).join(" ").trim();
+  if (!name) {
+    throw new Error('Usage: ai-memory-hub prompt create <name> --type prd --file template.njk [--description text]');
+  }
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const type = getOption(argv, "--type") || "general";
+  const filePath = getOption(argv, "--file") || "";
+  const description = getOption(argv, "--description") || "";
+  const createdBy = getOption(argv, "--from") || getOption(argv, "--by") || "manual";
+
+  let content = "";
+  if (filePath) {
+    const resolved = path.resolve(filePath);
+    if (!fs.existsSync(resolved)) {
+      throw new Error(`Template file not found: ${resolved}`);
+    }
+    content = fs.readFileSync(resolved, "utf8");
+  } else {
+    content = getOption(argv, "--content") || "";
+  }
+
+  if (!content) {
+    throw new Error("Template content is required. Use --file <path> or --content <text>.");
+  }
+
+  const variables = extractVariables(content);
+
+  return withHubLock(config.memoryDir, "prompt-create", () => {
+    const prompts = readPrompts(config.memoryDir);
+    const prompt = createPrompt({ name, type, content, variables, description, createdBy });
+    prompts.push(prompt);
+    writePrompts(config.memoryDir, prompts);
+    console.log(JSON.stringify(prompt, null, 2));
+  }, config.sync.lockStaleMs);
+}
+
+function promptListCommand(argv) {
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const type = getOption(argv, "--type") || "";
+  const limit = Number(getOption(argv, "--limit") || 50);
+  let prompts = readPrompts(config.memoryDir);
+  if (type) {
+    prompts = prompts.filter((p) => p.type === type);
+  }
+  prompts = prompts
+    .sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")))
+    .slice(0, limit);
+  console.log(JSON.stringify(prompts, null, 2));
+}
+
+function promptGetCommand(argv) {
+  const id = positionalArgs(argv)[0] || getOption(argv, "--id") || "";
+  if (!id) {
+    throw new Error("Usage: ai-memory-hub prompt get <id-or-name>");
+  }
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const prompts = readPrompts(config.memoryDir);
+  const index = findPromptIndex(prompts, id);
+  if (index === -1) {
+    throw new Error(`Prompt not found: ${id}`);
+  }
+  console.log(JSON.stringify(prompts[index], null, 2));
+}
+
+function promptUpdateCommand(argv) {
+  const id = positionalArgs(argv)[0] || getOption(argv, "--id") || "";
+  if (!id) {
+    throw new Error("Usage: ai-memory-hub prompt update <id> --file template.njk");
+  }
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const filePath = getOption(argv, "--file") || "";
+  const name = getOption(argv, "--name") || "";
+  const type = getOption(argv, "--type") || "";
+  const description = getOption(argv, "--description");
+
+  return withHubLock(config.memoryDir, "prompt-update", () => {
+    const updated = updatePrompt(config.memoryDir, id, (prompt) => {
+      const result = { ...prompt };
+      if (name) result.name = name;
+      if (type) result.type = type;
+      if (description !== null && description !== undefined) result.description = description;
+      if (filePath) {
+        const resolved = path.resolve(filePath);
+        if (!fs.existsSync(resolved)) {
+          throw new Error(`Template file not found: ${resolved}`);
+        }
+        result.content = fs.readFileSync(resolved, "utf8");
+      } else {
+        const content = getOption(argv, "--content");
+        if (content) result.content = content;
+      }
+      result.variables = extractVariables(result.content);
+      return result;
+    });
+    console.log(JSON.stringify(updated, null, 2));
+  }, config.sync.lockStaleMs);
+}
+
+function promptDeleteCommand(argv) {
+  const id = positionalArgs(argv)[0] || getOption(argv, "--id") || "";
+  if (!id) {
+    throw new Error("Usage: ai-memory-hub prompt delete <id>");
+  }
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  return withHubLock(config.memoryDir, "prompt-delete", () => {
+    const removed = deletePrompt(config.memoryDir, id);
+    console.log(JSON.stringify({ ok: true, deleted: removed }, null, 2));
+  }, config.sync.lockStaleMs);
+}
+
+function promptRenderCommand(argv) {
+  const id = positionalArgs(argv)[0] || getOption(argv, "--id") || "";
+  if (!id) {
+    throw new Error("Usage: ai-memory-hub prompt render <id> --vars '{\"key\":\"value\"}'");
+  }
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const prompts = readPrompts(config.memoryDir);
+  const index = findPromptIndex(prompts, id);
+  if (index === -1) {
+    throw new Error(`Prompt not found: ${id}`);
+  }
+  const prompt = prompts[index];
+  let variables = {};
+  const varsJson = getOption(argv, "--vars") || "";
+  if (varsJson) {
+    try {
+      variables = JSON.parse(varsJson);
+    } catch (err) {
+      throw new Error(`Invalid --vars JSON: ${err.message}`);
+    }
+  }
+  const rendered = renderPrompt(prompt.content, variables);
+  console.log(rendered);
+}
+
+function promptVersionsCommand(argv) {
+  const id = positionalArgs(argv)[0] || getOption(argv, "--id") || "";
+  if (!id) {
+    throw new Error("Usage: ai-memory-hub prompt versions <id>");
+  }
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const prompts = readPrompts(config.memoryDir);
+  const index = findPromptIndex(prompts, id);
+  if (index === -1) {
+    throw new Error(`Prompt not found: ${id}`);
+  }
+  const versions = getPromptVersions(config.memoryDir, prompts[index].id);
+  console.log(JSON.stringify(versions, null, 2));
+}
+
 function taskAddCommand(argv) {
   const title = positionalArgs(argv).join(" ").trim();
   if (!title) {
@@ -3132,41 +3384,53 @@ function executeDispatch(memoryDir, {
     const finalState = result.exitCode === 0 ? "completed" : getRelayFailureState(attempt, maxRetries);
     const nextRetryAt = result.exitCode === 0 ? "" : computeNextRetryAt(attempt, maxRetries);
     const lastError = result.exitCode === 0 ? "" : (result.error || result.stderr || "");
+    const fingerprint = result.exitCode === 0 ? "" : relayFailureFingerprint(result.exitCode, lastError);
+    let resolvedState = finalState;
+    let oscillating = false;
+    if (result.exitCode !== 0) {
+      const osc = getRelayFailureStateWithOscillation(memoryDir, job, attempt, maxRetries, fingerprint);
+      resolvedState = osc.state;
+      oscillating = osc.oscillating;
+    }
+    const resolvedNextRetryAt = resolvedState === "abandoned" ? "" : nextRetryAt;
     appendRelayStatus(memoryDir, job, {
-      state: finalState,
+      state: resolvedState,
       attempt,
       maxRetries,
       exitCode: result.exitCode,
       lastError,
       sessionId: result.sessionId || "",
       ackTimeout: DEFAULT_DISPATCH_ACK_TIMEOUT_MS,
-      nextRetryAt,
-      worktree: result.worktree || null
+      nextRetryAt: resolvedNextRetryAt,
+      worktree: result.worktree || null,
+      fingerprint,
+      oscillating
     });
     updateDispatchSourceState(memoryDir, job, {
-      deliveryState: finalState,
+      deliveryState: resolvedState,
       dispatchId: job.id,
       threadKey: getDispatchThreadKey(job),
       attempt,
       maxRetries,
-      nextRetryAt,
+      nextRetryAt: resolvedNextRetryAt,
       sessionId: result.sessionId || "",
       lastError,
       worktree: result.worktree || null
     });
-    const responseMessage = appendDispatchResponseMessage(memoryDir, job, { ...result, relayState: finalState });
-    const statusMessage = appendDispatchStatusMessage(memoryDir, job, { ...result, relayState: finalState });
+    const responseMessage = appendDispatchResponseMessage(memoryDir, job, { ...result, relayState: resolvedState });
+    const statusMessage = appendDispatchStatusMessage(memoryDir, job, { ...result, relayState: resolvedState, oscillating });
     const enrichedResult = {
       ...result,
-      relayState: finalState,
+      relayState: resolvedState,
+      oscillating,
       attempt,
       maxRetries,
-      nextRetryAt,
+      nextRetryAt: resolvedNextRetryAt,
       responseRadioId: responseMessage?.id || "",
       statusRadioId: statusMessage?.id || ""
     };
     appendDispatchLog(memoryDir, enrichedResult);
-    applyDispatchOutcome(memoryDir, job, enrichedResult, finalState, {
+    applyDispatchOutcome(memoryDir, job, enrichedResult, resolvedState, {
       responseMessage,
       statusMessage
     });
@@ -4355,6 +4619,7 @@ function invokeRunnerCommand(runner, args = [], input = "", timeoutMs = DEFAULT_
     cwd,
     encoding: "utf8",
     timeout: timeoutMs,
+    maxBuffer: 10 * 1024 * 1024,
     windowsHide: true,
     shell: useCmdLauncher,
     input
@@ -4730,6 +4995,64 @@ function getRelayFailureState(attempt, maxRetries = DEFAULT_DISPATCH_MAX_RETRIES
   return Number(attempt || 0) >= normalizeDispatchRetryLimit(maxRetries) ? "abandoned" : "failed";
 }
 
+// Fingerprint a failed attempt by its observable outcome (exit code + error text),
+// normalizing volatile substrings (timestamps, hex ids) so two structurally
+// identical failures hash the same. Used to detect oscillation across attempts.
+function relayFailureFingerprint(exitCode, lastError) {
+  const normalizedError = String(lastError || "")
+    .toLowerCase()
+    .replace(/\d{4}-\d{2}-\d{2}t[\d:.]+z?/g, "<ts>")
+    .replace(/0x[0-9a-f]+/g, "<hex>")
+    .replace(/\b[0-9a-f]{8,}\b/g, "<id>")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 500);
+  return createId(`relay-fp:${exitCode ?? "null"}:${normalizedError}`);
+}
+
+// Count how many of the most recent consecutive failed attempts for this job's
+// source share the given fingerprint. A run of identical failures signals the
+// dispatch loop is oscillating rather than making progress.
+function countRecentRelayOscillation(memoryDir, job, fingerprint) {
+  if (!fingerprint) {
+    return 0;
+  }
+  const sourceKey = getDispatchSourceKey(job);
+  const entries = readRelayStatus(memoryDir).filter(
+    (entry) => getRelaySourceKey(entry) === sourceKey
+  );
+  let run = 0;
+  for (let i = entries.length - 1; i >= 0; i -= 1) {
+    const entry = entries[i];
+    // Only failed/abandoned attempts carry a comparable fingerprint. Skip the
+    // in-flight dispatched/acked rows so they don't break the consecutive run.
+    if (entry.state !== "failed" && entry.state !== "abandoned") {
+      continue;
+    }
+    if (entry.fingerprint && entry.fingerprint === fingerprint) {
+      run += 1;
+    } else {
+      break;
+    }
+  }
+  return run;
+}
+
+// Decide the terminal/retry state for a failed dispatch, abandoning early when
+// the same failure has now repeated past the oscillation threshold.
+function getRelayFailureStateWithOscillation(memoryDir, job, attempt, maxRetries, fingerprint) {
+  const baseState = getRelayFailureState(attempt, maxRetries);
+  if (baseState === "abandoned") {
+    return { state: baseState, oscillating: false };
+  }
+  // +1 for the current attempt about to be recorded.
+  const repeated = countRecentRelayOscillation(memoryDir, job, fingerprint) + 1;
+  if (repeated >= DISPATCH_OSCILLATION_THRESHOLD) {
+    return { state: "abandoned", oscillating: true, repeated };
+  }
+  return { state: baseState, oscillating: false };
+}
+
 function isValidAsyncCallState(state) {
   return Object.values(ASYNC_CALL_STATES).includes(state);
 }
@@ -4814,6 +5137,8 @@ function appendRelayStatus(memoryDir, job, patch = {}) {
     progressBy: patch.progressBy || "",
     nextRetryAt: patch.nextRetryAt || "",
     worktree: patch.worktree || null,
+    fingerprint: patch.fingerprint || "",
+    oscillating: patch.oscillating === true,
     project: job.project || "",
     tool: job.tool || "",
     thread: job.thread || "",
@@ -5060,17 +5385,47 @@ function memoryCommand(argv) {
 }
 
 function searchCommand(argv) {
+  const action = argv[0] || "";
+  // Subcommands: rebuild, status
+  if (action === "rebuild") {
+    return searchRebuildCommand(argv.slice(1));
+  }
+  if (action === "status") {
+    return searchStatusCommand(argv.slice(1));
+  }
+
   const query = positionalArgs(argv).join(" ").trim();
   const config = loadConfig();
   ensureHub(config.memoryDir);
   const limit = Number(getOption(argv, "--limit") || 10);
+  const useFts = !hasFlag(argv, "--legacy");
+  const entityType = getOption(argv, "--type") || "";
   const filters = parseMemoryFilters(argv);
   const hasFilter = hasMemoryFilters(filters);
   const trackAccess = !hasFlag(argv, "--no-track") && !hasFlag(argv, "--no-access-track");
   if (!query && !hasFilter) {
-    throw new Error("Usage: ai-memory-hub search [query] [--limit 10] [--project <name>] [--tag <tag>|--tags <a,b>] [--thread <id>] [--task <id>] [--workflow <id>] [--radio <id>] [--no-track]");
+    throw new Error("Usage: ai-memory-hub search [query] [--limit 10] [--type memory|task|radio|workflow|prompt] [--legacy] [--no-track]");
   }
 
+  // Try FTS5 search first
+  if (query && useFts) {
+    try {
+      const db = createSearchDb(config.memoryDir);
+      const stats = getIndexStats(db);
+      if (stats.total > 0) {
+        const results = searchIndex(db, query, { limit, entityType });
+        db.close();
+        for (const item of results) {
+          const preview = item.content ? item.content.slice(0, 120) : "";
+          console.log(`[${item.score.toFixed(2)}] [${item.entityType}] ${item.entityId} ${item.title ? `(${item.title}) ` : ""}${item.project ? `project=${item.project} ` : ""}${preview}`);
+        }
+        return;
+      }
+      db.close();
+    } catch { /* fallback to legacy */ }
+  }
+
+  // Legacy search fallback
   const runSearch = () => {
     const ledger = readLedger(config.memoryDir);
     const index = buildMemoryIndex(ledger, config);
@@ -5097,6 +5452,29 @@ function searchCommand(argv) {
     return withHubLock(config.memoryDir, "search-access", runSearch, config.sync.lockStaleMs);
   }
   return runSearch();
+}
+
+function searchRebuildCommand(argv) {
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  console.log("Rebuilding FTS5 search index...");
+  const db = createSearchDb(config.memoryDir);
+  const indexed = rebuildIndex(db, config.memoryDir);
+  db.close();
+  console.log(`Indexed ${indexed} records.`);
+}
+
+function searchStatusCommand(argv) {
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  try {
+    const db = createSearchDb(config.memoryDir);
+    const stats = getIndexStats(db);
+    db.close();
+    console.log(JSON.stringify(stats, null, 2));
+  } catch {
+    console.log(JSON.stringify({ total: 0, byType: {}, lastRebuilt: "never", schemaVersion: "unknown" }, null, 2));
+  }
 }
 
 function printMemorySearchResults(results) {
@@ -5256,18 +5634,20 @@ function daemonCommand(argv) {
     return daemonStatusCommand(argv.slice(1));
   }
   if (action) {
-    throw new Error("Usage: ai-memory-hub daemon [status] [--interval-ms <ms>] [--project <name[,name]>] [--limit <n>] [--force] [--isolate-worktree] [--worktree-root <dir>]");
+    throw new Error("Usage: ai-memory-hub daemon [status] [--interval-ms <ms>] [--project <name[,name]>] [--tools <tool1,tool2>] [--limit <n>] [--force] [--isolate-worktree] [--worktree-root <dir>]");
   }
 
   const config = loadConfig();
   ensureHub(config.memoryDir);
-  const intervalMs = Number(getOption(argv, "--interval-ms") || 5000); // 改为 5 秒轮询，支持更快的实时协作
+  const intervalMs = Number(getOption(argv, "--interval-ms") || 5000);
   const limit = Number(getOption(argv, "--limit") || 10);
   const projects = getOption(argv, "--project");
   const projectList = projects ? projects.split(",") : [];
   const force = hasFlag(argv, "--force");
   const isolateWorktree = hasFlag(argv, "--isolate-worktree");
   const worktreeRoot = getOption(argv, "--worktree-root") || "";
+  const toolsOption = getOption(argv, "--tools");
+  const daemonTools = toolsOption ? toolsOption.split(",").map((t) => t.trim()).filter(Boolean) : DAEMON_DEFAULT_TOOLS;
   const startedAt = new Date().toISOString();
   const currentStatus = buildDaemonStatus(config.memoryDir);
   if (currentStatus.running && !force) {
@@ -5283,6 +5663,7 @@ function daemonCommand(argv) {
     intervalMs,
     limit,
     projects: projectList,
+    tools: daemonTools,
     isolateWorktree,
     worktreeRoot,
     cycle: 0,
@@ -5296,13 +5677,21 @@ function daemonCommand(argv) {
   console.log(`PID: ${process.pid}`);
   console.log(`Monitoring: radio messages and tasks`);
   console.log(`Interval: ${intervalMs}ms`);
+  console.log(`Tools: ${daemonTools.join(", ")}`);
   console.log(`Limit per tool/project: ${limit}`);
   if (projectList.length > 0) {
     console.log(`Projects: ${projectList.join(", ")}`);
   }
+
+  // Read loop checkpoint for resumable loops
+  let loopCheckpoint = readLoopCheckpoint(config.memoryDir);
+  const checkpointStats = getCheckpointStats(loopCheckpoint);
+  if (checkpointStats.cycle > 0) {
+    console.log(`Resuming from checkpoint: cycle ${checkpointStats.cycle}, ${checkpointStats.completed} completed, ${checkpointStats.failed} failed`);
+  }
   console.log("Press Ctrl+C to stop.\n");
 
-  let iteration = 0;
+  let iteration = checkpointStats.cycle;
   let timer = null;
   let stopping = false;
   const runCycle = () => {
@@ -5319,6 +5708,7 @@ function daemonCommand(argv) {
       intervalMs,
       limit,
       projects: projectList,
+      tools: daemonTools,
       cycle: iteration,
       lastCycleStartedAt: cycleStartedAt,
       lastError: ""
@@ -5326,7 +5716,7 @@ function daemonCommand(argv) {
     console.log(`[${cycleStartedAt}] Cycle #${iteration}`);
 
     try {
-      const tools = DAEMON_DEFAULT_TOOLS;
+      const tools = daemonTools;
 
       for (const tool of tools) {
         const runner = getToolRunner(tool);
@@ -5402,6 +5792,11 @@ function daemonCommand(argv) {
       lastError: cycleErrors.join(" | ")
     });
 
+    // Write loop checkpoint
+    loopCheckpoint.cycle = iteration;
+    loopCheckpoint.lastCompletedAt = cycleFinishedAt;
+    writeLoopCheckpoint(config.memoryDir, loopCheckpoint);
+
     console.log("");
   };
 
@@ -5435,10 +5830,83 @@ function daemonCommand(argv) {
   timer = setInterval(runCycle, intervalMs);
 }
 
+function checkpointCommand(argv) {
+  const action = argv[0] || "status";
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+
+  switch (action) {
+    case "status": {
+      const checkpoint = readLoopCheckpoint(config.memoryDir);
+      const stats = getCheckpointStats(checkpoint);
+      console.log(JSON.stringify(stats, null, 2));
+      break;
+    }
+    case "reset": {
+      writeLoopCheckpoint(config.memoryDir, { cycle: 0, jobs: {}, lastCompletedAt: "" });
+      console.log(JSON.stringify({ ok: true, message: "Checkpoint reset." }, null, 2));
+      break;
+    }
+    case "show": {
+      const checkpoint = readLoopCheckpoint(config.memoryDir);
+      console.log(JSON.stringify(checkpoint, null, 2));
+      break;
+    }
+    default:
+      throw new Error("Usage: ai-memory-hub checkpoint <status|reset|show>");
+  }
+}
+
 function daemonStatusCommand() {
   const config = loadConfig();
   ensureHub(config.memoryDir);
   console.log(JSON.stringify(buildDaemonStatus(config.memoryDir), null, 2));
+}
+
+// Loop checkpoint system
+
+function readLoopCheckpoint(memoryDir) {
+  const filePath = path.join(memoryDir, "state", LOOP_CHECKPOINT_FILE);
+  if (!fs.existsSync(filePath)) {
+    return { cycle: 0, jobs: {}, lastCompletedAt: "" };
+  }
+  try {
+    return JSON.parse(fs.readFileSync(filePath, "utf8"));
+  } catch {
+    return { cycle: 0, jobs: {}, lastCompletedAt: "" };
+  }
+}
+
+function writeLoopCheckpoint(memoryDir, checkpoint) {
+  const filePath = path.join(memoryDir, "state", LOOP_CHECKPOINT_FILE);
+  ensureDir(path.dirname(filePath));
+  fs.writeFileSync(filePath, JSON.stringify(checkpoint, null, 2), "utf8");
+}
+
+function recordCheckpointJob(checkpoint, jobId, status, tool, project) {
+  checkpoint.jobs[jobId] = {
+    status,
+    tool,
+    project,
+    recordedAt: new Date().toISOString()
+  };
+  return checkpoint;
+}
+
+function isJobCheckpointed(checkpoint, jobId) {
+  const entry = checkpoint.jobs[jobId];
+  return entry && (entry.status === "completed" || entry.status === "failed");
+}
+
+function getCheckpointStats(checkpoint) {
+  const jobs = Object.values(checkpoint.jobs);
+  return {
+    cycle: checkpoint.cycle,
+    total: jobs.length,
+    completed: jobs.filter((j) => j.status === "completed").length,
+    failed: jobs.filter((j) => j.status === "failed").length,
+    lastCompletedAt: checkpoint.lastCompletedAt
+  };
 }
 
 function buildDaemonStatus(memoryDir) {
@@ -6039,7 +6507,7 @@ function helpCommand() {
   console.log(`Usage: ${APP_NAME} <command> [options]
 
 Commands:
-  init       Create ~/.ai-memory and config.
+  init       Create ~/.ai-memory and config. Use --all to detect installed tools and install their adapters in one step.
   detect     Detect installed AI tools.
   capabilities
              Show the cross-tool capability registry and safety policy.
@@ -6048,11 +6516,12 @@ Commands:
   radio      Send, list, and promote cross-agent radio messages.
   sync       Index pending inbox events into the local memory ledger.
   index      Rebuild MEMORY.md, INDEX.md, and the structured local index.
-  search     Search indexed local memories.
+  search     Search indexed local memories (FTS5 with BM25 ranking).
   snapshot   Print a filtered memory snapshot view without rewriting MEMORY.md.
   resolve    Resolve an @include or file name from local paths and memory.
   task       Share task/todo state across AI tools.
   workflow   Coordinate planner/executor/reviewer/observer work across AI tools.
+  prompt     Manage prompt templates with Nunjucks rendering for AI tools.
   project    Manage project metadata, aliases, resources, and archive state.
   session    Manage session handoff for context transfer between tools.
   rpc        Synchronous request-response RPC calls between tools.
@@ -6067,6 +6536,7 @@ Commands:
   connect    Check tool connections or send a request/review/handoff to another tool.
   doctor     Diagnose AI tool runner paths, shims, probes, and prompt mode.
   dispatch   Dispatch pending radio/task work to verified CLI runners.
+  checkpoint Show, reset, or inspect loop checkpoint state for resumable daemon loops.
   pull       Rebuild MEMORY.md from the local memory ledger.
   backup     Back up hub files, inspect/prune retention, and manage GitHub data backups.
   watch      Periodically index pending inbox events.
@@ -6077,6 +6547,8 @@ Commands:
 
 Examples:
   ${APP_NAME} init
+  ${APP_NAME} init --all
+  ${APP_NAME} init --all --apply
   ${APP_NAME} record "User prefers concise answers." --source codex --kind preference
   ${APP_NAME} record "Project memory with tags." --source codex --kind project --project ai-memory-hub --tags schema,memos --confidence 0.8
   ${APP_NAME} radio send "Please review the latest implementation." --from codex --to claude --type review
@@ -6101,6 +6573,13 @@ Examples:
   ${APP_NAME} doctor --tool claude
   ${APP_NAME} workflow create "Review dashboard changes" --from codex --project ai-memory-hub --planner codex --executor opencode --reviewer qclaw --spawn-tasks --notify
   ${APP_NAME} workflow list --status active
+  ${APP_NAME} prompt create "飞书 PRD" --type prd --file template.njk --description "飞书文档 PRD 模板"
+  ${APP_NAME} prompt list --type prd
+  ${APP_NAME} prompt get prd-feishu
+  ${APP_NAME} prompt render prd-feishu --vars '{"game_name":"铁环跑跑","version":"V0.1"}'
+  ${APP_NAME} prompt update prd-feishu --file new-template.njk
+  ${APP_NAME} prompt versions prd-feishu
+  ${APP_NAME} prompt delete prd-feishu
   ${APP_NAME} project list --status visible
   ${APP_NAME} project add my-app --name "My App" --status active --type tool
   ${APP_NAME} dispatch --project ai-memory-hub
@@ -6111,6 +6590,9 @@ Examples:
   ${APP_NAME} dispatch status --recent --state failed --to claude
   ${APP_NAME} dispatch progress --thread-key codex:ai-memory-hub:<ref> --percent 40 --status "working" --by codex
   ${APP_NAME} dispatch retry --project ai-memory-hub --to qclaw --run --limit 1
+  ${APP_NAME} checkpoint status
+  ${APP_NAME} checkpoint show
+  ${APP_NAME} checkpoint reset
   ${APP_NAME} task-spec list
   ${APP_NAME} task-spec validate
   ${APP_NAME} task-spec run test
@@ -6185,6 +6667,7 @@ function defaultConfig(memoryDir) {
       antigravityCockpit: { enabled: true },
       marvis: { enabled: true },
       qclaw: { enabled: true },
+      coze: { enabled: true },
       openclaw: { enabled: true },
       opencode: { enabled: true },
       mimocode: { enabled: true },
@@ -6224,6 +6707,7 @@ function ensureHub(memoryDir) {
     path.join(memoryDir, "tasks"),
     path.join(memoryDir, "workflows"),
     path.join(memoryDir, "projects"),
+    path.join(memoryDir, "prompts"),
     path.join(memoryDir, "tools"),
     path.join(memoryDir, "backups"),
     path.join(memoryDir, "locks"),
@@ -6523,6 +7007,11 @@ function detectTools(memoryDir = resolveMemoryDir()) {
       name: "qclaw",
       kind: "app-state",
       dir: path.join(home, ".qclaw")
+    },
+    {
+      name: "coze",
+      kind: "app-state",
+      dir: path.join(home, ".coze")
     },
     {
       name: "openclaw",
@@ -7567,6 +8056,11 @@ function getInstallTargets(memoryDir) {
       template: readTemplate("QCLAW_SKILL.md")
     },
     {
+      tool: "coze",
+      file: path.join(home, ".coze", "skills", "ai-memory-hub", "SKILL.md"),
+      template: readTemplate("COZE_SKILL.md")
+    },
+    {
       tool: "openclaw",
       file: path.join(home, ".openclaw", "skills", "ai-memory-hub", "SKILL.md"),
       template: readTemplate("OPENCLAW_SKILL.md")
@@ -8140,6 +8634,156 @@ function getWorkflowEventStoreDefinition() {
     normalize: normalizeWorkflow,
     isValid: (workflow) => workflow.id && workflow.title
   };
+}
+
+// Prompt template system
+
+function getPromptEventStoreDefinition() {
+  return {
+    entity: "prompt",
+    dirName: "prompts",
+    projectionName: "templates.jsonl",
+    normalize: normalizePrompt,
+    isValid: (prompt) => prompt.id && prompt.name
+  };
+}
+
+function getPromptsFile(memoryDir) {
+  return path.join(memoryDir, "prompts", "templates.jsonl");
+}
+
+function getPromptVersionsFile(memoryDir) {
+  return path.join(memoryDir, "prompts", "versions.jsonl");
+}
+
+function readPrompts(memoryDir) {
+  const file = getPromptsFile(memoryDir);
+  if (!fs.existsSync(file)) return [];
+  return readEvents(file).map(normalizePrompt).filter((p) => p.id);
+}
+
+function createPrompt({ name, type, content, variables, description, createdBy }) {
+  const now = new Date().toISOString();
+  const cleanName = String(name || "").trim();
+  const cleanType = String(type || "general").trim();
+  const id = createId(`prompt:${cleanName}:${cleanType}`);
+  return {
+    id,
+    createdAt: now,
+    updatedAt: now,
+    createdBy: String(createdBy || "manual"),
+    name: cleanName,
+    type: cleanType,
+    description: String(description || ""),
+    content: String(content || ""),
+    variables: Array.isArray(variables) ? variables : [],
+    version: 1
+  };
+}
+
+function normalizePrompt(prompt) {
+  const now = new Date().toISOString();
+  return {
+    id: prompt.id || createId(`prompt:${prompt.name || JSON.stringify(prompt)}`),
+    createdAt: prompt.createdAt || prompt.ts || now,
+    updatedAt: prompt.updatedAt || prompt.createdAt || prompt.ts || now,
+    createdBy: prompt.createdBy || "unknown",
+    name: prompt.name || "",
+    type: prompt.type || "general",
+    description: prompt.description || "",
+    content: prompt.content || "",
+    variables: Array.isArray(prompt.variables) ? prompt.variables : [],
+    version: Number(prompt.version || 1)
+  };
+}
+
+function findPromptIndex(prompts, id) {
+  const lower = id.toLowerCase();
+  return prompts.findIndex((p) =>
+    p.id === id || p.id.toLowerCase() === lower || p.id.toLowerCase().startsWith(lower)
+  );
+}
+
+function updatePrompt(memoryDir, id, updater) {
+  const prompts = readPrompts(memoryDir);
+  const index = findPromptIndex(prompts, id);
+  if (index === -1) {
+    throw new Error(`Prompt not found: ${id}`);
+  }
+  const old = prompts[index];
+  const updated = normalizePrompt(updater(old));
+  if (updated.version === old.version) {
+    updated.version = old.version + 1;
+  }
+  updated.updatedAt = new Date().toISOString();
+  prompts[index] = updated;
+  writePrompts(memoryDir, prompts);
+
+  // Save version history
+  const versionsFile = getPromptVersionsFile(memoryDir);
+  appendJsonl(versionsFile, {
+    promptId: old.id,
+    version: old.version,
+    content: old.content,
+    variables: old.variables,
+    snapshotAt: new Date().toISOString(),
+    updatedBy: updated.createdBy
+  });
+
+  return updated;
+}
+
+function writePrompts(memoryDir, prompts) {
+  const file = getPromptsFile(memoryDir);
+  ensureDir(path.dirname(file));
+  const lines = prompts.map((p) => JSON.stringify(normalizePrompt(p))).join("\n") + "\n";
+  fs.writeFileSync(file, lines, "utf8");
+}
+
+function deletePrompt(memoryDir, id) {
+  const prompts = readPrompts(memoryDir);
+  const index = findPromptIndex(prompts, id);
+  if (index === -1) {
+    throw new Error(`Prompt not found: ${id}`);
+  }
+  const removed = prompts.splice(index, 1)[0];
+  writePrompts(memoryDir, prompts);
+
+  // Record deletion in versions
+  const versionsFile = getPromptVersionsFile(memoryDir);
+  appendJsonl(versionsFile, {
+    promptId: removed.id,
+    version: removed.version,
+    action: "deleted",
+    snapshotAt: new Date().toISOString()
+  });
+
+  return removed;
+}
+
+function renderPrompt(template, variables) {
+  const env = new nunjucks.Environment();
+  try {
+    return env.renderString(template, variables || {});
+  } catch (err) {
+    throw new Error(`Template render error: ${err.message}`);
+  }
+}
+
+function extractVariables(content) {
+  const regex = /\{\{\s*(\w+)\s*\}\}/g;
+  const vars = new Set();
+  let match;
+  while ((match = regex.exec(content)) !== null) {
+    vars.add(match[1]);
+  }
+  return [...vars];
+}
+
+function getPromptVersions(memoryDir, promptId) {
+  const versionsFile = getPromptVersionsFile(memoryDir);
+  if (!fs.existsSync(versionsFile)) return [];
+  return readEvents(versionsFile).filter((v) => v.promptId === promptId);
 }
 
 // Workflow node history (P0: workflow execution history with node states)
@@ -12183,7 +12827,7 @@ function scoreImportance(memory, topics, ordinal, total, access = {}) {
   if (["project", "lesson"].includes(kind)) score += 30;
   if (["reference", "raw", "note"].includes(kind)) score += 10;
   if (/must|always|never|必须|不要|偏好|规范|规则|纠错|红线|合规|错误|lesson/i.test(text)) score += 18;
-  if (/github|git|lark|feishu|qclaw|claude|codex|opencode|mimocode|mimo code|memory|飞书|微信|小游戏/i.test(text)) score += 8;
+  if (/github|git|lark|feishu|qclaw|coze|扣子|claude|codex|opencode|mimocode|mimo code|memory|飞书|微信|小游戏/i.test(text)) score += 8;
   if (topics.length > 0) score += Math.min(10, topics.length * 2);
   const recency = total > 0 ? ordinal / total : 0;
   score += Math.round(recency * 8);
@@ -12238,7 +12882,7 @@ function inferTopics(memory) {
   const text = `${memory.text || ""} ${memory.project || memory.metadata?.project || ""} ${tags.join(" ")}`.toLowerCase();
   const topics = [];
   const rules = [
-    ["ai-memory-hub", /ai-memory|shared memory|memory hub|agent radio|opencode|mimocode|mimo code|qclaw|claude|codex|gemini|共享记忆|本地记忆/],
+    ["ai-memory-hub", /ai-memory|shared memory|memory hub|agent radio|opencode|mimocode|mimo code|qclaw|coze|扣子|claude|codex|gemini|共享记忆|本地记忆/],
     ["game", /game|unity|mahjong|match|西游|麻将|小游戏|策划|关卡|体力|广告|分享/],
     ["wechat-mini-game", /wechat|微信|小游戏|wx\.|sendgift|红包|开放能力/],
     ["lark-feishu", /lark|feishu|飞书|多维表格|任务|文档|lark-cli/],

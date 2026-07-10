@@ -514,6 +514,8 @@ async function main() {
       return resolveCommand(rest);
     case "pull":
       return pullCommand(rest);
+    case "merge":
+      return mergeCommand(rest);
     case "backup":
       return backupCommand(rest);
     case "watch":
@@ -1097,6 +1099,7 @@ function recordCommand(argv) {
   const event = {
     id: createId(text),
     ts: new Date().toISOString(),
+    device: os.hostname(),
     source,
     text,
     metadata
@@ -5248,16 +5251,17 @@ function findDispatchOrigin(memoryDir, job) {
 
 function syncCommand(argv) {
   const dryRun = hasFlag(argv, "--dry-run");
+  const allowSensitive = hasFlag(argv, "--allow-sensitive") || hasFlag(argv, "--force");
   const config = loadConfig();
   ensureHub(config.memoryDir);
 
   if (!dryRun) {
-    return withHubLock(config.memoryDir, "sync", () => syncIndexedEvents(config, dryRun), config.sync.lockStaleMs);
+    return withHubLock(config.memoryDir, "sync", () => syncIndexedEvents(config, dryRun, allowSensitive), config.sync.lockStaleMs);
   }
-  return syncIndexedEvents(config, dryRun);
+  return syncIndexedEvents(config, dryRun, allowSensitive);
 }
 
-function syncIndexedEvents(config, dryRun) {
+function syncIndexedEvents(config, dryRun, allowSensitive = false) {
   const inboxPath = path.join(config.memoryDir, "inbox", "events.jsonl");
   const eventEntries = readEventsWithLocations(inboxPath);
   const events = eventEntries.map((entry) => entry.event);
@@ -5292,7 +5296,10 @@ function syncIndexedEvents(config, dryRun) {
   for (const entry of eventEntries) {
     const event = entry.event;
     const normalizedEvent = normalizeMemoryEvent(event);
-    const skipReason = getMemoryEventSkipReason(normalizedEvent);
+    let skipReason = getMemoryEventSkipReason(normalizedEvent);
+    if (skipReason === "looks sensitive" && allowSensitive) {
+      skipReason = "";
+    }
     if (skipReason) {
       console.log(`Skipped event ${event.id || "(no id)"} at ${formatEventLocation(entry)}: ${skipReason}.`);
       remaining.push(event);
@@ -5319,6 +5326,7 @@ function syncIndexedEvents(config, dryRun) {
       scope: normalizedEvent.metadata?.scope || "",
       refs: normalizedEvent.metadata?.refs || {},
       confidence: normalizedEvent.metadata?.confidence ?? 1,
+      device: normalizedEvent.device || normalizedEvent.metadata?.device || os.hostname(),
       metadata: normalizedEvent.metadata || {}
     };
 
@@ -5556,6 +5564,149 @@ function pullCommand() {
 
     console.log(`Rebuilt MEMORY.md, INDEX.md, and memories/index.json from ${ledger.length} local memory record(s).`);
   }, config.sync.lockStaleMs);
+}
+
+function mergeCommand(argv) {
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+
+  const isAutoGit = hasFlag(argv, "--auto-git");
+  const fromOption = getOption(argv, "--from");
+  
+  const defaultRepoDir = path.join(os.homedir(), ".ai-memory-github-backup");
+  const backupRepoDir = config.backup?.repoDir || defaultRepoDir;
+  const backupDataDir = path.join(backupRepoDir, "data");
+  
+  if (isAutoGit) {
+    console.log("Scanning files in backup repository for Git conflict markers...");
+    const targets = [
+      path.join(backupDataDir, "memories", "ledger.jsonl"),
+      path.join(backupDataDir, "tasks", "tasks.jsonl"),
+      path.join(backupDataDir, "radio", "messages.jsonl")
+    ];
+    
+    let resolvedAny = false;
+    for (const target of targets) {
+      if (resolveGitConflictsInFile(target)) {
+        resolvedAny = true;
+      }
+    }
+    
+    if (resolvedAny) {
+      console.log(`\nConflicts resolved in backup repository. Copying resolved files to local memory directory: ${config.memoryDir}`);
+      mergeFolders(config.memoryDir, backupDataDir);
+      const ledger = readLedger(config.memoryDir);
+      rebuildMemoryOutputs(config, ledger);
+      console.log("\nMerge complete! Run 'ai-memory-hub health' to verify.");
+    } else {
+      console.log("No Git conflict markers found to resolve.");
+    }
+    return;
+  }
+
+  const sourceDir = fromOption || backupDataDir;
+  console.log(`Merging local memory (${config.memoryDir}) with source data (${sourceDir})...`);
+  
+  if (!fs.existsSync(sourceDir)) {
+    throw new Error(`Source directory not found: ${sourceDir}`);
+  }
+  
+  return withHubLock(config.memoryDir, "merge", () => {
+    mergeFolders(config.memoryDir, sourceDir);
+    const ledger = readLedger(config.memoryDir);
+    rebuildMemoryOutputs(config, ledger);
+    console.log("\nMerge and index rebuild complete! Run 'ai-memory-hub health' to verify.");
+  }, config.sync.lockStaleMs);
+}
+
+function resolveGitConflictsInFile(filePath) {
+  if (!fs.existsSync(filePath)) {
+    return false;
+  }
+  const content = fs.readFileSync(filePath, "utf8");
+  if (!content.includes("<<<<<<<")) {
+    return false;
+  }
+  
+  console.log(`Conflict detected in ${path.basename(filePath)}. Resolving...`);
+  const lines = content.split(/\r?\n/);
+  const records = {};
+  
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    if (trimmed.startsWith("<<<<<<<") || trimmed.startsWith("=======") || trimmed.startsWith(">>>>>>>")) {
+      continue;
+    }
+    try {
+      const data = JSON.parse(trimmed);
+      const id = data.id || data.localEventId || createId(data.text || JSON.stringify(data));
+      records[id] = data;
+    } catch {
+      // Ignore
+    }
+  }
+  
+  const sortedRecords = Object.values(records).sort((a, b) => {
+    const tsA = a.ts || a.createdAt || a.indexedAt || "";
+    const tsB = b.ts || b.createdAt || b.indexedAt || "";
+    return tsA.localeCompare(tsB);
+  });
+  
+  fs.writeFileSync(filePath, sortedRecords.map(r => JSON.stringify(r)).join("\n") + "\n", "utf8");
+  console.log(`Resolved conflict: ${path.basename(filePath)} successfully rewritten with ${sortedRecords.length} unique records.`);
+  return true;
+}
+
+function mergeFolders(localDir, sourceDir) {
+  const filesToMerge = [
+    "memories/ledger.jsonl",
+    "tasks/tasks.jsonl",
+    "radio/messages.jsonl",
+    "workflows/workflows.jsonl"
+  ];
+  
+  for (const relPath of filesToMerge) {
+    const localFile = path.join(localDir, relPath);
+    const sourceFile = path.join(sourceDir, relPath);
+    
+    if (!fs.existsSync(localFile) && !fs.existsSync(sourceFile)) {
+      continue;
+    }
+    
+    console.log(`Merging ${relPath}...`);
+    const records = {};
+    
+    for (const file of [localFile, sourceFile]) {
+      if (!fs.existsSync(file)) continue;
+      const content = fs.readFileSync(file, "utf8");
+      const lines = content.split(/\r?\n/);
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        if (trimmed.startsWith("<<<<<<<") || trimmed.startsWith("=======") || trimmed.startsWith(">>>>>>>")) {
+          continue;
+        }
+        try {
+          const data = JSON.parse(trimmed);
+          const id = data.id || data.localEventId || createId(data.text || JSON.stringify(data));
+          records[id] = data;
+        } catch {
+          // Ignore
+        }
+      }
+    }
+    
+    const sortedRecords = Object.values(records).sort((a, b) => {
+      const tsA = a.ts || a.createdAt || a.indexedAt || "";
+      const tsB = b.ts || b.createdAt || b.indexedAt || "";
+      return tsA.localeCompare(tsB);
+    });
+    
+    ensureDir(path.dirname(localFile));
+    fs.writeFileSync(localFile, sortedRecords.map(r => JSON.stringify(r)).join("\n") + "\n", "utf8");
+    console.log(`Successfully merged ${relPath}. Total unique records: ${sortedRecords.length}`);
+  }
 }
 
 function backupCommand(argv) {
@@ -6841,6 +6992,7 @@ Commands:
   heartbeat  Check daemon heartbeat status, or watch for stale/dead daemon.
   skill-delta Manage skill improvement proposals (observer → reviewer → merge).
   pull       Rebuild MEMORY.md from the local memory ledger.
+  merge      Merge local memory with backup data or resolve Git conflicts.
   backup     Back up hub files, inspect/prune retention, and manage GitHub data backups.
   watch      Periodically index pending inbox events.
   daemon     Run or inspect the local dispatch daemon.
@@ -6861,6 +7013,9 @@ Examples:
   ${APP_NAME} sync
   ${APP_NAME} index
   ${APP_NAME} search "git commit rules" --limit 5 --tag workflow
+  ${APP_NAME} merge
+  ${APP_NAME} merge --auto-git
+  ${APP_NAME} merge --from <path>
   ${APP_NAME} snapshot --project ai-memory-hub --tags workflow,git --limit 20
   ${APP_NAME} resolve "@RTK.md" --from ~/.codex/AGENTS.md
   ${APP_NAME} task add "Review README task-list section" --description "Goal: check task docs. Scope: README only. Acceptance: examples are accurate." --handoff "Next: reviewer verifies wording." --from codex --project ai-memory-hub --priority high
@@ -8814,6 +8969,7 @@ function readLedger(memoryDir) {
         indexedAt: item.indexedAt || "",
         source: item.source || metadata.source || "unknown",
         text: item.text || item.memory || "",
+        device: item.device || metadata.device || "",
         metadata
       };
       return applyMemoryAccessFields(record, access);
@@ -11466,6 +11622,7 @@ function normalizeMemoryMetadata(metadata = {}, fallback = {}) {
   normalized.scope = normalizeMemoryScope(normalized.scope || fallback.scope || "");
   normalized.refs = normalizeMemoryRefs(normalized.refs || normalized.references || {}, { ...fallback, ...normalized });
   normalized.confidence = normalizeConfidence(normalized.confidence ?? fallback.confidence);
+  normalized.device = normalized.device || fallback.device || os.hostname();
   return normalized;
 }
 
@@ -14657,7 +14814,15 @@ function sleep(ms) {
 }
 
 function looksSensitive(text) {
-  return /\b(sk-[A-Za-z0-9_-]{12,}|api[_-]?key|password|secret|token)\b/i.test(text);
+  // 1. Bare keys like sk- openai tokens (at least 16 chars)
+  if (/sk-[A-Za-z0-9_-]{16,}/i.test(text)) {
+    return true;
+  }
+  // 2. Generic secret assignments (e.g. token: "xxx" or password = "yyy")
+  if (/\b(api[_-]?key|password|secret|token)\b\s*[:=]\s*["']?[A-Za-z0-9_\-./+=]{8,}/i.test(text)) {
+    return true;
+  }
+  return false;
 }
 
 function normalizeMemoryEvent(event) {
@@ -14674,6 +14839,7 @@ function normalizeMemoryEvent(event) {
     ts: event.ts || event.timestamp || event.createdAt || "",
     source: event.source || metadata.source || "unknown",
     text: String(text || "").trim(),
+    device: event.device || metadata.device || os.hostname(),
     metadata
   };
 }

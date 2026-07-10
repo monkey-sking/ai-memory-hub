@@ -1132,8 +1132,10 @@ function radioCommand(argv) {
       return radioListCommand(actionArgs);
     case "promote":
       return radioPromoteCommand(actionArgs);
+    case "archive":
+      return radioArchiveCommand(actionArgs);
     default:
-      throw new Error("Usage: ai-memory-hub radio <send|list|promote> ...");
+      throw new Error("Usage: ai-memory-hub radio <send|list|promote|archive> ...");
   }
 }
 
@@ -2287,8 +2289,10 @@ function taskCommand(argv) {
       return taskDoneCommand(actionArgs);
     case "purge":
       return taskPurgeCommand(actionArgs);
+    case "archive":
+      return taskArchiveCommand(actionArgs);
     default:
-      throw new Error("Usage: ai-memory-hub task <add|list|claim|status|update|note|done|purge> ...");
+      throw new Error("Usage: ai-memory-hub task <add|list|claim|status|update|note|done|purge|archive> ...");
   }
 }
 
@@ -2743,6 +2747,119 @@ function taskPurgeCommand(argv) {
 
   }, config.sync.lockStaleMs);
 }
+
+function taskArchiveCommand(argv) {
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  
+  const daysOption = getOption(argv, "--days") || "30";
+  const days = parseInt(daysOption, 10);
+  if (isNaN(days) || days < 0) {
+    throw new Error("Usage: ai-memory-hub task archive [--days <number>]");
+  }
+  
+  const cutoffTime = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  console.log(`Archiving tasks completed before ${cutoffTime.toISOString()} (older than ${days} days)...`);
+  
+  const tasks = readTasks(config.memoryDir);
+  const tasksToArchive = tasks.filter(task => {
+    if (task.status !== "done") return false;
+    const dateStr = task.completedAt || task.updatedAt || task.createdAt || "";
+    if (!dateStr) return false;
+    const date = new Date(dateStr);
+    return date < cutoffTime;
+  });
+  
+  if (tasksToArchive.length === 0) {
+    console.log("No completed tasks found matching the archiving criteria.");
+    return;
+  }
+  
+  console.log(`Found ${tasksToArchive.length} completed task(s) to archive.`);
+  
+  const archiveIds = new Set(tasksToArchive.map(t => t.id));
+  const eventsFile = getEntityEventsFile(config.memoryDir, getTaskEventStoreDefinition());
+  const archiveEventsFile = path.join(config.memoryDir, "tasks", "events-archive.jsonl");
+  const archiveTasksFile = path.join(config.memoryDir, "tasks", "tasks-archive.jsonl");
+  
+  // Read all events
+  const allEvents = readEvents(eventsFile);
+  const keepEvents = [];
+  const archiveEvents = [];
+  
+  for (const event of allEvents) {
+    if (archiveIds.has(event.entityId)) {
+      archiveEvents.push(event);
+    } else {
+      keepEvents.push(event);
+    }
+  }
+  
+  console.log(`Moving ${archiveEvents.length} event(s) to archive...`);
+  
+  // Write files
+  ensureDir(path.dirname(archiveEventsFile));
+  fs.appendFileSync(archiveEventsFile, archiveEvents.map(e => JSON.stringify(e)).join("\n") + "\n", "utf8");
+  fs.appendFileSync(archiveTasksFile, tasksToArchive.map(t => JSON.stringify(t)).join("\n") + "\n", "utf8");
+  fs.writeFileSync(eventsFile, keepEvents.map(e => JSON.stringify(e)).join("\n") + "\n", "utf8");
+  
+  // Re-materialize task projection
+  materializeEntityProjection(config.memoryDir, getTaskEventStoreDefinition());
+  
+  console.log(`Successfully archived ${tasksToArchive.length} task(s).`);
+  console.log(`Active task events left: ${keepEvents.length}.`);
+}
+
+function radioArchiveCommand(argv) {
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  
+  const daysOption = getOption(argv, "--days") || "30";
+  const days = parseInt(daysOption, 10);
+  if (isNaN(days) || days < 0) {
+    throw new Error("Usage: ai-memory-hub radio archive [--days <number>]");
+  }
+  
+  const cutoffTime = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  console.log(`Archiving radio messages older than ${cutoffTime.toISOString()} (${days} days)...`);
+  
+  const radioFile = path.join(config.memoryDir, "radio", "messages.jsonl");
+  const archiveRadioFile = path.join(config.memoryDir, "radio", "messages-archive.jsonl");
+  
+  const allMessages = readRadioMessages(config.memoryDir);
+  const keepMessages = [];
+  const archiveMessages = [];
+  
+  for (const message of allMessages) {
+    const dateStr = message.ts || "";
+    if (!dateStr) {
+      keepMessages.push(message);
+      continue;
+    }
+    const date = new Date(dateStr);
+    if (date < cutoffTime) {
+      archiveMessages.push(message);
+    } else {
+      keepMessages.push(message);
+    }
+  }
+  
+  if (archiveMessages.length === 0) {
+    console.log("No radio messages found matching the archiving criteria.");
+    return;
+  }
+  
+  console.log(`Moving ${archiveMessages.length} message(s) to archive...`);
+  
+  // Write files
+  ensureDir(path.dirname(archiveRadioFile));
+  fs.appendFileSync(archiveRadioFile, archiveMessages.map(m => JSON.stringify(m)).join("\n") + "\n", "utf8");
+  fs.writeFileSync(radioFile, keepMessages.map(m => JSON.stringify(m)).join("\n") + "\n", "utf8");
+  
+  console.log(`Successfully archived ${archiveMessages.length} radio message(s).`);
+  console.log(`Active radio messages left: ${keepMessages.length}.`);
+}
+
 
 function dispatchCommand(argv) {
   const action = argv[0] && !argv[0].startsWith("--") ? argv[0] : "";
@@ -5751,14 +5868,17 @@ function backupCommand(argv) {
     const preSync = getOption(argv, "--pre-sync")
       ? parsePositiveIntegerOption(getOption(argv, "--pre-sync"), "--pre-sync")
       : retention.preSync;
+    const prePull = getOption(argv, "--pre-pull")
+      ? parsePositiveIntegerOption(getOption(argv, "--pre-pull"), "--pre-pull")
+      : retention.prePull;
     const result = apply
-      ? withHubLock(config.memoryDir, "backup-prune", () => pruneBackups(config.memoryDir, { apply, daily, weekly, preSync }), config.sync.lockStaleMs)
-      : pruneBackups(config.memoryDir, { apply, daily, weekly, preSync });
+      ? withHubLock(config.memoryDir, "backup-prune", () => pruneBackups(config.memoryDir, { apply, daily, weekly, preSync, prePull }), config.sync.lockStaleMs)
+      : pruneBackups(config.memoryDir, { apply, daily, weekly, preSync, prePull });
     console.log(JSON.stringify(result, null, 2));
     return;
   }
   if (action !== "create") {
-    throw new Error("Usage: ai-memory-hub backup [--reason manual] | ai-memory-hub backup status | ai-memory-hub backup run [--no-push] | ai-memory-hub backup configure [--enabled] [--remote-url <url>] [--repo-dir <dir>] [--allow-plaintext-sensitive] | ai-memory-hub backup schedule <status|install|uninstall> | ai-memory-hub backup list [--limit N] | ai-memory-hub backup prune [--daily 7] [--weekly 4] [--pre-sync 20] [--apply]");
+    throw new Error("Usage: ai-memory-hub backup [--reason manual] | ai-memory-hub backup status | ai-memory-hub backup run [--no-push] | ai-memory-hub backup configure [--enabled] [--remote-url <url>] [--repo-dir <dir>] [--allow-plaintext-sensitive] | ai-memory-hub backup schedule <status|install|uninstall> | ai-memory-hub backup list [--limit N] | ai-memory-hub backup prune [--daily 7] [--weekly 4] [--pre-sync 20] [--pre-pull 20] [--apply]");
   }
   const reason = getOption(argv, "--reason") || positionalArgs(argv).join(" ").trim() || "manual";
   const backup = withHubLock(config.memoryDir, "backup", () => backupHub(config.memoryDir, reason), config.sync.lockStaleMs);
@@ -7024,6 +7144,8 @@ Examples:
   ${APP_NAME} task update --id <task-id> --description "Goal: ... Scope: ... Acceptance: ..." --handoff "Current state and next step." --by codex
   ${APP_NAME} task note --id <task-id> "Reviewed Chinese docs." --by qclaw
   ${APP_NAME} task done --id <task-id> --by codex
+  ${APP_NAME} task archive --days 30
+  ${APP_NAME} radio archive --days 30
   ${APP_NAME} connect
   ${APP_NAME} connect --apply
   ${APP_NAME} capabilities --tool claude
@@ -7085,6 +7207,7 @@ function defaultConfig(memoryDir) {
         daily: 7,
         weekly: 4,
         preSync: 20,
+        prePull: 20,
         pruneAfterSync: true
       }
     },
@@ -13729,7 +13852,8 @@ function runAutomaticBackupStrategy(config, { trigger = "sync", includePreSync =
       apply: true,
       daily: retention.daily,
       weekly: retention.weekly,
-      preSync: retention.preSync
+      preSync: retention.preSync,
+      prePull: retention.prePull
     });
   }
 
@@ -13764,6 +13888,7 @@ function getBackupRetentionConfig(config = {}) {
     daily: readPositiveInteger(raw.daily, defaults.daily),
     weekly: readPositiveInteger(raw.weekly, defaults.weekly),
     preSync: readPositiveInteger(raw.preSync ?? raw.pre_sync, defaults.preSync),
+    prePull: readPositiveInteger(raw.prePull ?? raw.pre_pull, defaults.prePull || 20),
     pruneAfterSync: raw.pruneAfterSync !== false
   };
 }
@@ -14441,9 +14566,9 @@ sets in \`.ai-memory/backups\`.
 `;
 }
 
-function getBackupSummary(memoryDir, { limit = 50, daily = 7, weekly = 4, preSync = 20, pruneAfterSync = true } = {}) {
+function getBackupSummary(memoryDir, { limit = 50, daily = 7, weekly = 4, preSync = 20, prePull = 20, pruneAfterSync = true } = {}) {
   const backups = listBackupDirectories(memoryDir);
-  const retention = planBackupRetention(backups, { daily, weekly, preSync });
+  const retention = planBackupRetention(backups, { daily, weekly, preSync, prePull });
   const retentionByName = new Map(retention.backups.map((item) => [item.name, item]));
   return {
     dir: path.join(memoryDir, "backups"),
@@ -14454,8 +14579,9 @@ function getBackupSummary(memoryDir, { limit = 50, daily = 7, weekly = 4, preSyn
       daily,
       weekly,
       preSync,
+      prePull,
       pruneAfterSync,
-      note: "Manual backups are protected; daily, weekly, and pre-sync backups are pruned only inside backups/."
+      note: "Manual backups are protected; daily, weekly, pre-sync, and pre-pull backups are pruned only inside backups/."
     },
     retention: {
       keep: retention.keep.length,
@@ -14471,9 +14597,9 @@ function getBackupSummary(memoryDir, { limit = 50, daily = 7, weekly = 4, preSyn
   };
 }
 
-function pruneBackups(memoryDir, { apply = false, daily = 7, weekly = 4, preSync = 20 } = {}) {
+function pruneBackups(memoryDir, { apply = false, daily = 7, weekly = 4, preSync = 20, prePull = 20 } = {}) {
   const backups = listBackupDirectories(memoryDir);
-  const retention = planBackupRetention(backups, { daily, weekly, preSync });
+  const retention = planBackupRetention(backups, { daily, weekly, preSync, prePull });
   const backupsRoot = path.resolve(memoryDir, "backups");
   const pruned = [];
   if (apply) {
@@ -14488,7 +14614,7 @@ function pruneBackups(memoryDir, { apply = false, daily = 7, weekly = 4, preSync
   }
   return {
     apply,
-    policy: { daily, weekly, preSync },
+    policy: { daily, weekly, preSync, prePull },
     total: backups.length,
     keep: retention.keep.length,
     prune: retention.prune.length,
@@ -14539,7 +14665,7 @@ function listBackupDirectories(memoryDir) {
     .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
 }
 
-function planBackupRetention(backups, { daily = 7, weekly = 4, preSync = 20 } = {}) {
+function planBackupRetention(backups, { daily = 7, weekly = 4, preSync = 20, prePull = 20 } = {}) {
   const keep = new Map();
   const markKeep = (backup, reason) => {
     if (!backup || keep.has(backup.name)) return;
@@ -14567,6 +14693,12 @@ function planBackupRetention(backups, { daily = 7, weekly = 4, preSync = 20 } = 
     keyForBackup: (backup) => backup.name,
     label: "pre-sync"
   }, markKeep);
+  markTieredBackups(sorted, {
+    tier: "pre-pull",
+    limit: prePull,
+    keyForBackup: (backup) => backup.name,
+    label: "pre-pull"
+  }, markKeep);
 
   const keepList = sorted.map((backup) => keep.get(backup.name)).filter(Boolean);
   const prune = sorted
@@ -14581,7 +14713,7 @@ function planBackupRetention(backups, { daily = 7, weekly = 4, preSync = 20 } = 
 
 function markProtectedBackups(backups, markKeep) {
   for (const backup of backups) {
-    if (backup.retentionTier === "manual" || backup.retentionTier === "pre-pull" || backup.retentionTier === "protected") {
+    if (backup.retentionTier === "manual" || backup.retentionTier === "protected") {
       markKeep(backup, `${backup.retentionTier}-protected`);
     }
   }

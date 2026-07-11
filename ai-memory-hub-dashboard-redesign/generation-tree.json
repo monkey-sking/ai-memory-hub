@@ -1,0 +1,63 @@
+{
+  "root": "gen-project-shell",
+  "nodes": {
+    "gen-project-shell": {
+      "nodeId": "gen-project-shell",
+      "kind": "project-shell",
+      "pageIds": ["page-overview", "page-tasks", "page-workflows", "page-tools", "page-memory", "page-radio"],
+      "output": "partials/project-shell.html",
+      "sharedRegions": ["sidebar", "header", "layout frame", "scrollbar styling", "connection status indicator"],
+      "mutableSlots": ["activeNavItem", "pageTitle", "pageSubtitle", "headerActions", "pageContent"],
+      "status": "generated",
+      "children": ["gen-page-overview", "gen-page-tasks", "gen-page-workflows", "gen-page-tools", "gen-page-memory", "gen-page-radio"]
+    },
+    "gen-page-overview": {
+      "nodeId": "gen-page-overview",
+      "kind": "page-leaf",
+      "pageIds": ["page-overview"],
+      "output": "pages/overview.html",
+      "status": "generated",
+      "children": []
+    },
+    "gen-page-tasks": {
+      "nodeId": "gen-page-tasks",
+      "kind": "page-leaf",
+      "pageIds": ["page-tasks"],
+      "output": "pages/tasks.html",
+      "status": "generated",
+      "children": []
+    },
+    "gen-page-workflows": {
+      "nodeId": "gen-page-workflows",
+      "kind": "page-leaf",
+      "pageIds": ["page-workflows"],
+      "output": "pages/workflows.html",
+      "status": "generated",
+      "children": []
+    },
+    "gen-page-tools": {
+      "nodeId": "gen-page-tools",
+      "kind": "page-leaf",
+      "pageIds": ["page-tools"],
+      "output": "pages/tools.html",
+      "status": "generated",
+      "children": []
+    },
+    "gen-page-memory": {
+      "nodeId": "gen-page-memory",
+      "kind": "page-leaf",
+      "pageIds": ["page-memory"],
+      "output": "pages/memory.html",
+      "status": "generated",
+      "children": []
+    },
+    "gen-page-radio": {
+      "nodeId": "gen-page-radio",
+      "kind": "page-leaf",
+      "pageIds": ["page-radio"],
+      "output": "pages/radio.html",
+      "status": "generated",
+      "children": []
+    }
+  }
+}

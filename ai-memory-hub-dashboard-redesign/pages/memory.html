@@ -1,0 +1,1384 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>记忆 · AI Memory Hub</title>
+    <style id="theme-vars">
+/* ==========================================================================
+   AI Memory Hub Dashboard — Refined Dark Theme
+   Brand prefix: amh
+   ========================================================================== */
+
+/* ---------- Design Tokens ---------- */
+:root {
+  /* --- Background surfaces (layered depth) --- */
+  --amh-bg-canvas: #080c16;
+  --amh-bg-surface: #0e1422;
+  --amh-bg-elevated: #141c2e;
+  --amh-bg-hover: #1a2438;
+  --amh-bg-active: #1f2b44;
+  --amh-bg-input: #0b111e;
+  --amh-bg-sunken: #060a12;
+
+  /* --- Primary brand hue (teal) --- */
+  --amh-primary: #3fb7a3;
+  --amh-primary-hover: #4dc9b4;
+  --amh-primary-active: #36a592;
+  --amh-primary-muted: rgba(63, 183, 163, 0.12);
+  --amh-primary-subtle: rgba(63, 183, 163, 0.06);
+  --amh-primary-foreground: #ffffff;
+
+  /* --- Text hierarchy --- */
+  --amh-text: #e8edf7;
+  --amh-text-secondary: #9aa8c2;
+  --amh-text-tertiary: #5f6e8a;
+  --amh-text-disabled: #3d4860;
+
+  /* --- Borders --- */
+  --amh-border: #1e2840;
+  --amh-border-strong: #2a3756;
+  --amh-border-subtle: #161e30;
+  --amh-border-primary: rgba(63, 183, 163, 0.3);
+
+  /* --- State colors (semantic only) --- */
+  --amh-state-success: #34d399;
+  --amh-state-success-muted: rgba(52, 211, 153, 0.12);
+  --amh-state-warning: #fbbf24;
+  --amh-state-warning-muted: rgba(251, 191, 36, 0.12);
+  --amh-state-error: #f87171;
+  --amh-state-error-muted: rgba(248, 113, 113, 0.12);
+  --amh-state-info: #60a5fa;
+  --amh-state-info-muted: rgba(96, 165, 250, 0.12);
+
+  /* --- Radius scale --- */
+  --amh-radius-sm: 4px;
+  --amh-radius-md: 8px;
+  --amh-radius-lg: 12px;
+  --amh-radius-full: 9999px;
+
+  /* --- Typography --- */
+  --amh-font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  --amh-font-mono: "JetBrains Mono", "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  --amh-font-size-xs: 11px;
+  --amh-font-size-sm: 12px;
+  --amh-font-size-base: 13px;
+  --amh-font-size-md: 14px;
+  --amh-font-size-lg: 16px;
+  --amh-font-size-xl: 18px;
+  --amh-font-size-2xl: 22px;
+  --amh-font-size-3xl: 28px;
+
+  /* --- Spacing --- */
+  --amh-space-1: 4px;
+  --amh-space-2: 8px;
+  --amh-space-3: 12px;
+  --amh-space-4: 16px;
+  --amh-space-5: 20px;
+  --amh-space-6: 24px;
+  --amh-space-8: 32px;
+
+  /* --- Shadows (restrained: static surfaces border-led) --- */
+  --amh-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --amh-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.04);
+  --amh-shadow-lg: 0 8px 28px rgba(0, 0, 0, 0.12);
+  --amh-shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.16);
+
+  /* --- Transitions --- */
+  --amh-transition-fast: 120ms cubic-bezier(0.4, 0, 0.2, 1);
+  --amh-transition-normal: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  --amh-transition-slow: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* --- Layout --- */
+  --amh-sidebar-width: 240px;
+  --amh-sidebar-collapsed-width: 56px;
+  --amh-header-height: 56px;
+}
+
+/* ---------- Dark theme is the default ---------- */
+html {
+  background: var(--amh-bg-canvas);
+  color: var(--amh-text);
+  font-family: var(--amh-font-sans);
+  font-size: var(--amh-font-size-base);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  margin: 0;
+  background: var(--amh-bg-canvas);
+  color: var(--amh-text);
+}
+
+/* ---------- Typography classes ---------- */
+.amh-text-xs { font-size: var(--amh-font-size-xs); }
+.amh-text-sm { font-size: var(--amh-font-size-sm); }
+.amh-text-base { font-size: var(--amh-font-size-base); }
+.amh-text-md { font-size: var(--amh-font-size-md); }
+.amh-text-lg { font-size: var(--amh-font-size-lg); }
+.amh-text-xl { font-size: var(--amh-font-size-xl); }
+.amh-text-2xl { font-size: var(--amh-font-size-2xl); }
+.amh-text-3xl { font-size: var(--amh-font-size-3xl); }
+
+.amh-font-medium { font-weight: 500; }
+.amh-font-semibold { font-weight: 600; }
+.amh-font-bold { font-weight: 700; }
+
+.amh-text-primary { color: var(--amh-text); }
+.amh-text-secondary { color: var(--amh-text-secondary); }
+.amh-text-tertiary { color: var(--amh-text-tertiary); }
+.amh-text-disabled { color: var(--amh-text-disabled); }
+
+.amh-font-mono { font-family: var(--amh-font-mono); }
+
+/* ---------- Surface utilities ---------- */
+.amh-surface {
+  background: var(--amh-bg-surface);
+  border: 1px solid var(--amh-border);
+  border-radius: var(--amh-radius-lg);
+}
+
+.amh-surface-elevated {
+  background: var(--amh-bg-elevated);
+  border: 1px solid var(--amh-border);
+  border-radius: var(--amh-radius-lg);
+}
+
+.amh-surface-sunken {
+  background: var(--amh-bg-sunken);
+  border: 1px solid var(--amh-border-subtle);
+  border-radius: var(--amh-radius-md);
+}
+
+/* ---------- Scrollbar styling ---------- */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--amh-border-strong);
+  border-radius: var(--amh-radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--amh-text-tertiary);
+}
+
+/* ---------- Selection ---------- */
+::selection {
+  background: var(--amh-primary-muted);
+  color: var(--amh-primary-hover);
+}
+
+/* ---------- Focus ring ---------- */
+*:focus-visible {
+  outline: 2px solid var(--amh-primary);
+  outline-offset: 2px;
+}
+
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.1/dist/index.global.js"></script>
+    <script src="https://unpkg.com/lucide@1.8.0/dist/umd/lucide.min.js"></script>
+    <style type="text/tailwindcss">
+  @theme inline {
+    --color-primary: var(--amh-primary);
+    --color-primary-foreground: var(--amh-primary-foreground);
+    --color-border: var(--amh-border);
+  }
+  @layer base {
+    body { background: var(--amh-background); color: var(--amh-foreground); }
+    td, th { @apply break-words; word-break: break-all; word-break: auto-phrase; }
+    th { @apply whitespace-nowrap; }
+  }
+    </style>
+    <style>
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      [data-icon] {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        -webkit-mask-size: contain;
+        mask-size: contain;
+        -webkit-mask-repeat: no-repeat;
+        mask-repeat: no-repeat;
+        -webkit-mask-position: center;
+        mask-position: center;
+        background-color: currentColor;
+      }
+    </style>
+</head>
+<body class="min-h-screen font-sans antialiased">
+    <!-- ===== Project Shell: AI Memory Hub Dashboard ===== -->
+    <!-- Node: gen-project-shell | Kind: project-shell -->
+    <!-- This file is the shared template. Leaf pages copy this file and fill the SLOT markers. -->
+    <div class="shell-layout">
+
+      <!-- ================================================================ -->
+      <!-- SIDEBAR (240px) — Shared region, do NOT modify in leaf pages     -->
+      <!-- ================================================================ -->
+      <aside class="shell-sidebar">
+
+        <!-- --- Logo area (56px) --- -->
+        <div class="sidebar-logo">
+          <div class="sidebar-logo-mark">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"/>
+              <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"/>
+            </svg>
+          </div>
+          <span class="sidebar-logo-text">AI Memory Hub</span>
+          <button class="sidebar-logo-toggle" aria-label="折叠侧边栏" data-dom-id="sidebar-toggle">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect width="18" height="18" x="3" y="3" rx="2"/>
+              <path d="M9 3v18"/>
+              <path d="m15 9-3 3 3 3"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- --- Search bar --- -->
+        <div class="sidebar-search">
+          <div class="sidebar-search-wrap">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"/>
+              <path d="m21 21-4.3-4.3"/>
+            </svg>
+            <input type="text" class="sidebar-search-input" placeholder="搜索…" aria-label="搜索">
+            <span class="sidebar-search-kbd">⌘K</span>
+          </div>
+        </div>
+
+        <!-- --- Nav groups (scrollable) --- -->
+        <nav class="sidebar-nav" aria-label="主导航">
+
+          <!-- Group: 工作区 -->
+          <div class="sidebar-nav-group-label">工作区</div>
+          <!-- SLOT: activeNavItem --><a class="sidebar-nav-item" data-dom-id="nav-overview" href="#">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect width="7" height="9" x="3" y="3" rx="1"/>
+              <rect width="7" height="5" x="14" y="3" rx="1"/>
+              <rect width="7" height="9" x="14" y="12" rx="1"/>
+              <rect width="7" height="5" x="3" y="16" rx="1"/>
+            </svg>
+            <span>概览</span>
+          </a>
+          <!-- SLOT: activeNavItem --><a class="sidebar-nav-item active" data-dom-id="nav-memory" href="#">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <ellipse cx="12" cy="5" rx="9" ry="3"/>
+              <path d="M3 5V19A9 3 0 0 0 21 19V5"/>
+              <path d="M3 12A9 3 0 0 0 21 12"/>
+            </svg>
+            <span>记忆</span>
+          </a>
+          <!-- SLOT: activeNavItem --><a class="sidebar-nav-item" data-dom-id="nav-tasks" href="#">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="5" width="6" height="6" rx="1"/>
+              <path d="m3 17 2 2 4-4"/>
+              <path d="M13 6h8"/>
+              <path d="M13 12h8"/>
+              <path d="M13 18h8"/>
+            </svg>
+            <span>任务</span>
+          </a>
+          <!-- SLOT: activeNavItem --><a class="sidebar-nav-item" data-dom-id="nav-radio" href="#">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"/>
+              <path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"/>
+              <circle cx="12" cy="12" r="2"/>
+              <path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"/>
+              <path d="M19.1 4.9C23 8.8 23 15.2 19.1 19.1"/>
+            </svg>
+            <span>Radio</span>
+          </a>
+          <!-- SLOT: activeNavItem --><a class="sidebar-nav-item" data-dom-id="nav-workflows" href="#">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect width="8" height="8" x="3" y="3" rx="2"/>
+              <path d="M7 11v4a2 2 0 0 0 2 2h4"/>
+              <rect width="8" height="8" x="13" y="13" rx="2"/>
+            </svg>
+            <span>工作流</span>
+          </a>
+
+          <!-- Group: 运维 -->
+          <div class="sidebar-nav-group-label">运维</div>
+          <!-- SLOT: activeNavItem --><a class="sidebar-nav-item" data-dom-id="nav-dispatch" href="#">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3.5"/>
+              <path d="M16 2v4"/>
+              <path d="M8 2v4"/>
+              <path d="M3 10h5"/>
+              <circle cx="17.5" cy="17.5" r="4.5"/>
+              <path d="M17.5 14v2l1.5 1"/>
+            </svg>
+            <span>调度</span>
+          </a>
+          <!-- SLOT: activeNavItem --><a class="sidebar-nav-item" data-dom-id="nav-analytics" href="#">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 3v18h18"/>
+              <path d="M18 17V9"/>
+              <path d="M13 17V5"/>
+              <path d="M8 17v-3"/>
+            </svg>
+            <span>分析</span>
+          </a>
+          <!-- SLOT: activeNavItem --><a class="sidebar-nav-item" data-dom-id="nav-backups" href="#">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect width="20" height="5" x="2" y="3" rx="1"/>
+              <path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/>
+              <path d="M10 12h4"/>
+            </svg>
+            <span>备份</span>
+          </a>
+          <!-- SLOT: activeNavItem --><a class="sidebar-nav-item" data-dom-id="nav-search" href="#">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"/>
+              <path d="m21 21-4.3-4.3"/>
+            </svg>
+            <span>搜索</span>
+          </a>
+
+          <!-- Group: 系统 -->
+          <div class="sidebar-nav-group-label">系统</div>
+          <!-- SLOT: activeNavItem --><a class="sidebar-nav-item" data-dom-id="nav-tools" href="#">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+            </svg>
+            <span>工具</span>
+          </a>
+          <!-- SLOT: activeNavItem --><a class="sidebar-nav-item" data-dom-id="nav-projects" href="#">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/>
+              <path d="M8 10v4"/>
+              <path d="M12 10v4"/>
+              <path d="M16 10v4"/>
+            </svg>
+            <span>项目</span>
+          </a>
+          <!-- SLOT: activeNavItem --><a class="sidebar-nav-item" data-dom-id="nav-health" href="#">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/>
+            </svg>
+            <span>健康</span>
+          </a>
+          <!-- SLOT: activeNavItem --><a class="sidebar-nav-item" data-dom-id="nav-settings" href="#">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+            <span>设置</span>
+          </a>
+          <!-- SLOT: activeNavItem --><a class="sidebar-nav-item" data-dom-id="nav-chat" href="#">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+            <span>对话</span>
+          </a>
+
+        </nav>
+
+        <!-- --- Bottom section --- -->
+        <div class="sidebar-bottom">
+          <div class="sidebar-connection">
+            <span class="sidebar-connection-dot"></span>
+            <span class="sidebar-connection-text">Hub 已连接</span>
+            <span class="sidebar-version">v2.1.0</span>
+          </div>
+          <div class="sidebar-user">
+            <div class="sidebar-user-avatar">A</div>
+            <span class="sidebar-user-name">Admin</span>
+            <button class="sidebar-user-btn" aria-label="用户设置" data-dom-id="sidebar-user-settings">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+      </aside>
+
+      <!-- ================================================================ -->
+      <!-- MAIN AREA — Header + Content                                     -->
+      <!-- ================================================================ -->
+      <div class="shell-main">
+
+        <!-- --- Header (56px) --- -->
+        <header class="shell-header">
+          <!-- Left: breadcrumb + subtitle -->
+          <div class="header-left">
+            <div class="header-breadcrumb">
+              <span class="header-breadcrumb-root">AI Memory Hub</span>
+              <svg class="header-breadcrumb-sep" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m9 18 6-6-6-6"/>
+              </svg>
+              <!-- SLOT: pageTitle --><span class="header-breadcrumb-current">记忆</span>
+            </div>
+            <!-- SLOT: pageSubtitle --><span class="header-subtitle">共享 AI 记忆记录</span>
+          </div>
+
+          <!-- Right: actions + divider + lang + refresh + connection -->
+          <div class="header-right">
+            <!-- SLOT: headerActions -->
+            <button class="memory-record-btn" aria-label="记录记忆" data-dom-id="memory-record">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M5 12h14"/>
+                <path d="M12 5v14"/>
+              </svg>
+              <span>记录记忆</span>
+            </button>
+            <div class="header-divider"></div>
+            <button class="header-lang-btn" aria-label="切换语言" data-dom-id="header-lang">中</button>
+            <button class="header-icon-btn" aria-label="刷新" data-dom-id="header-refresh">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+                <path d="M21 3v5h-5"/>
+                <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+                <path d="M8 16H3v5"/>
+              </svg>
+            </button>
+            <div class="header-conn">
+              <span class="header-conn-dot"></span>
+              <span class="header-conn-text">已连接</span>
+            </div>
+          </div>
+        </header>
+
+        <!-- --- Content area --- -->
+        <main class="shell-content">
+          <!-- SLOT: pageContent -->
+
+          <!-- ===== Section 1: Stats Row ===== -->
+          <div class="memory-stats">
+            <div class="memory-stat">
+              <span class="memory-stat-value">1,847</span>
+              <span class="memory-stat-label">总记录</span>
+            </div>
+            <div class="memory-stat">
+              <span class="memory-stat-value is-success">+23</span>
+              <span class="memory-stat-label">今日新增</span>
+            </div>
+            <div class="memory-stat">
+              <span class="memory-stat-value">12</span>
+              <span class="memory-stat-label">本周来源</span>
+            </div>
+          </div>
+
+          <!-- ===== Section 2: Filter Bar ===== -->
+          <div class="memory-filter-bar">
+            <select class="memory-filter-select" aria-label="筛选类型">
+              <option>全部类型</option>
+              <option>观察</option>
+              <option>决策</option>
+              <option>偏好</option>
+              <option>上下文</option>
+              <option>事实</option>
+            </select>
+            <select class="memory-filter-select" aria-label="筛选来源">
+              <option>全部来源</option>
+              <option>Claude Code</option>
+              <option>Codex</option>
+              <option>Gemini</option>
+              <option>Trae</option>
+              <option>Windsurf</option>
+            </select>
+            <div class="memory-search-wrap">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8"/>
+                <path d="m21 21-4.3-4.3"/>
+              </svg>
+              <input type="text" class="memory-search-input" placeholder="搜索记忆…" aria-label="搜索记忆">
+            </div>
+            <select class="memory-filter-select" aria-label="排序方式">
+              <option>最近创建</option>
+              <option>最早创建</option>
+              <option>最近更新</option>
+            </select>
+          </div>
+
+          <!-- ===== Section 3: Memory Record List ===== -->
+          <div class="memory-list">
+
+            <!-- Record 1: observation -->
+            <article class="memory-card mem-kind-observation">
+              <div class="memory-card-header">
+                <div class="memory-card-meta-left">
+                  <span class="memory-kind-badge">观察</span>
+                  <div class="memory-source">
+                    <span class="memory-source-avatar">C</span>
+                    <span class="memory-source-name">Claude Code</span>
+                  </div>
+                </div>
+                <div class="memory-time">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M12 6v6l4 2"/>
+                  </svg>
+                  <span>2 分钟前</span>
+                </div>
+              </div>
+              <p class="memory-content">发现 ai-memory-hub 项目使用 React 19 + Vite + Tailwind CSS v4 技术栈，dashboard 组件位于 src/pages/Dashboard.tsx，包含 13 个功能区块。</p>
+              <div class="memory-tags">
+                <span class="memory-tag">ai-memory-hub</span>
+                <span class="memory-tag">技术栈</span>
+                <span class="memory-tag">项目结构</span>
+              </div>
+            </article>
+
+            <!-- Record 2: decision -->
+            <article class="memory-card mem-kind-decision">
+              <div class="memory-card-header">
+                <div class="memory-card-meta-left">
+                  <span class="memory-kind-badge">决策</span>
+                  <div class="memory-source">
+                    <span class="memory-source-avatar">X</span>
+                    <span class="memory-source-name">Codex</span>
+                  </div>
+                </div>
+                <div class="memory-time">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M12 6v6l4 2"/>
+                  </svg>
+                  <span>15 分钟前</span>
+                </div>
+              </div>
+              <p class="memory-content">决定将 API 认证从 JWT 迁移到 OAuth 2.0 + PKCE，以提高安全性并支持第三方应用授权。迁移计划分 3 个阶段执行。</p>
+              <div class="memory-tags">
+                <span class="memory-tag">认证</span>
+                <span class="memory-tag">OAuth</span>
+                <span class="memory-tag">安全</span>
+              </div>
+            </article>
+
+            <!-- Record 3: fact -->
+            <article class="memory-card mem-kind-fact">
+              <div class="memory-card-header">
+                <div class="memory-card-meta-left">
+                  <span class="memory-kind-badge">事实</span>
+                  <div class="memory-source">
+                    <span class="memory-source-avatar">G</span>
+                    <span class="memory-source-name">Gemini</span>
+                  </div>
+                </div>
+                <div class="memory-time">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M12 6v6l4 2"/>
+                  </svg>
+                  <span>32 分钟前</span>
+                </div>
+              </div>
+              <p class="memory-content">TypeScript 5.7 引入了新的 Path Rewriting 特性，可在 tsconfig.json 中配置 paths 来实现模块路径别名。</p>
+              <div class="memory-tags">
+                <span class="memory-tag">TypeScript</span>
+                <span class="memory-tag">配置</span>
+              </div>
+            </article>
+
+            <!-- Record 4: preference -->
+            <article class="memory-card mem-kind-preference">
+              <div class="memory-card-header">
+                <div class="memory-card-meta-left">
+                  <span class="memory-kind-badge">偏好</span>
+                  <div class="memory-source">
+                    <span class="memory-source-avatar">C</span>
+                    <span class="memory-source-name">Claude Code</span>
+                  </div>
+                </div>
+                <div class="memory-time">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M12 6v6l4 2"/>
+                  </svg>
+                  <span>1 小时前</span>
+                </div>
+              </div>
+              <p class="memory-content">用户偏好使用 4 空格缩进，ESLint 规则应配置为 indent: ['error', 4]。代码风格遵循 Airbnb 规范但缩进除外。</p>
+              <div class="memory-tags">
+                <span class="memory-tag">代码风格</span>
+                <span class="memory-tag">ESLint</span>
+                <span class="memory-tag">配置</span>
+              </div>
+            </article>
+
+            <!-- Record 5: observation -->
+            <article class="memory-card mem-kind-observation">
+              <div class="memory-card-header">
+                <div class="memory-card-meta-left">
+                  <span class="memory-kind-badge">观察</span>
+                  <div class="memory-source">
+                    <span class="memory-source-avatar">T</span>
+                    <span class="memory-source-name">Trae</span>
+                  </div>
+                </div>
+                <div class="memory-time">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M12 6v6l4 2"/>
+                  </svg>
+                  <span>2 小时前</span>
+                </div>
+              </div>
+              <p class="memory-content">工作流 'deploy-v2' 在审核阶段被阻塞，原因是缺少 CI/CD 配置文件。需要先创建 .github/workflows/ci.yml。</p>
+              <div class="memory-tags">
+                <span class="memory-tag">工作流</span>
+                <span class="memory-tag">CI/CD</span>
+                <span class="memory-tag">阻塞</span>
+              </div>
+            </article>
+
+            <!-- Record 6: context -->
+            <article class="memory-card mem-kind-context">
+              <div class="memory-card-header">
+                <div class="memory-card-meta-left">
+                  <span class="memory-kind-badge">上下文</span>
+                  <div class="memory-source">
+                    <span class="memory-source-avatar">W</span>
+                    <span class="memory-source-name">Windsurf</span>
+                  </div>
+                </div>
+                <div class="memory-time">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M12 6v6l4 2"/>
+                  </svg>
+                  <span>3 小时前</span>
+                </div>
+              </div>
+              <p class="memory-content">当前项目处于重构阶段，重点优化 Dashboard UI 的视觉一致性和易用性。预计 2 周内完成。</p>
+              <div class="memory-tags">
+                <span class="memory-tag">重构</span>
+                <span class="memory-tag">Dashboard</span>
+                <span class="memory-tag">进度</span>
+              </div>
+            </article>
+
+            <!-- Record 7: fact -->
+            <article class="memory-card mem-kind-fact">
+              <div class="memory-card-header">
+                <div class="memory-card-meta-left">
+                  <span class="memory-kind-badge">事实</span>
+                  <div class="memory-source">
+                    <span class="memory-source-avatar">X</span>
+                    <span class="memory-source-name">Codex</span>
+                  </div>
+                </div>
+                <div class="memory-time">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M12 6v6l4 2"/>
+                  </svg>
+                  <span>5 小时前</span>
+                </div>
+              </div>
+              <p class="memory-content">React 19 的 useTransition Hook 已稳定，可用于处理非紧急状态更新，避免阻塞主线程渲染。</p>
+              <div class="memory-tags">
+                <span class="memory-tag">React 19</span>
+                <span class="memory-tag">性能优化</span>
+              </div>
+            </article>
+
+            <!-- Record 8: decision -->
+            <article class="memory-card mem-kind-decision">
+              <div class="memory-card-header">
+                <div class="memory-card-meta-left">
+                  <span class="memory-kind-badge">决策</span>
+                  <div class="memory-source">
+                    <span class="memory-source-avatar">G</span>
+                    <span class="memory-source-name">Gemini</span>
+                  </div>
+                </div>
+                <div class="memory-time">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M12 6v6l4 2"/>
+                  </svg>
+                  <span>1 天前</span>
+                </div>
+              </div>
+              <p class="memory-content">选择 Vite 8 作为构建工具替代 Webpack，构建速度提升约 60%。HMR 响应时间从 800ms 降至 50ms。</p>
+              <div class="memory-tags">
+                <span class="memory-tag">Vite</span>
+                <span class="memory-tag">构建工具</span>
+                <span class="memory-tag">性能</span>
+              </div>
+            </article>
+
+          </div>
+        </main>
+
+      </div>
+    </div>
+    <script>lucide.createIcons();</script>
+
+    <style id="shell-styles">
+      /* ===== Shell Layout Frame ===== */
+      .shell-layout {
+        height: 100vh;
+        display: flex;
+        overflow: hidden;
+      }
+
+      /* ===== Sidebar ===== */
+      .shell-sidebar {
+        width: var(--amh-sidebar-width);
+        flex-shrink: 0;
+        height: 100%;
+        border-right: 1px solid var(--amh-border);
+        background: var(--amh-bg-surface);
+        display: flex;
+        flex-direction: column;
+      }
+
+      /* --- Logo area --- */
+      .sidebar-logo {
+        height: var(--amh-header-height);
+        display: flex;
+        align-items: center;
+        gap: var(--amh-space-2);
+        padding: 0 var(--amh-space-4);
+        border-bottom: 1px solid var(--amh-border-subtle);
+        flex-shrink: 0;
+      }
+      .sidebar-logo-mark {
+        width: 32px;
+        height: 32px;
+        border-radius: var(--amh-radius-md);
+        background: linear-gradient(135deg, var(--amh-primary) 0%, var(--amh-primary-active) 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        color: #ffffff;
+      }
+      .sidebar-logo-text {
+        font-size: var(--amh-font-size-lg);
+        font-weight: 600;
+        color: var(--amh-text);
+        flex: 1;
+        white-space: nowrap;
+      }
+      .sidebar-logo-toggle {
+        width: 28px;
+        height: 28px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: none;
+        background: transparent;
+        color: var(--amh-text-tertiary);
+        border-radius: var(--amh-radius-md);
+        cursor: pointer;
+        transition: background var(--amh-transition-fast), color var(--amh-transition-fast);
+        flex-shrink: 0;
+      }
+      .sidebar-logo-toggle:hover {
+        background: var(--amh-bg-hover);
+        color: var(--amh-text-secondary);
+      }
+
+      /* --- Search bar --- */
+      .sidebar-search {
+        padding: var(--amh-space-3) var(--amh-space-4);
+        border-bottom: 1px solid var(--amh-border-subtle);
+        flex-shrink: 0;
+      }
+      .sidebar-search-wrap {
+        position: relative;
+        display: flex;
+        align-items: center;
+        height: 32px;
+        background: var(--amh-bg-input);
+        border: 1px solid var(--amh-border);
+        border-radius: var(--amh-radius-md);
+        transition: border-color var(--amh-transition-fast);
+      }
+      .sidebar-search-wrap:focus-within {
+        border-color: var(--amh-primary);
+      }
+      .sidebar-search-wrap > svg {
+        position: absolute;
+        left: 8px;
+        color: var(--amh-text-tertiary);
+        flex-shrink: 0;
+        pointer-events: none;
+      }
+      .sidebar-search-input {
+        flex: 1;
+        background: transparent;
+        border: none;
+        outline: none;
+        color: var(--amh-text);
+        font-size: var(--amh-font-size-sm);
+        font-family: var(--amh-font-sans);
+        padding: 0 var(--amh-space-2);
+        padding-left: 32px;
+        height: 100%;
+      }
+      .sidebar-search-input::placeholder {
+        color: var(--amh-text-tertiary);
+      }
+      .sidebar-search-kbd {
+        font-size: var(--amh-font-size-xs);
+        color: var(--amh-text-tertiary);
+        font-family: var(--amh-font-mono);
+        padding: 2px 5px;
+        border: 1px solid var(--amh-border);
+        border-radius: var(--amh-radius-sm);
+        margin-right: 6px;
+        line-height: 1;
+        white-space: nowrap;
+      }
+
+      /* --- Nav --- */
+      .sidebar-nav {
+        flex: 1;
+        overflow-y: auto;
+        padding-bottom: var(--amh-space-2);
+      }
+      .sidebar-nav-group-label {
+        font-size: var(--amh-font-size-xs);
+        color: var(--amh-text-tertiary);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        padding: var(--amh-space-4) var(--amh-space-4) 6px;
+        font-weight: 600;
+      }
+      .sidebar-nav-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        height: 36px;
+        padding: 0 var(--amh-space-3);
+        margin: 0 var(--amh-space-2);
+        border-radius: 6px;
+        color: var(--amh-text-secondary);
+        text-decoration: none;
+        font-size: var(--amh-font-size-base);
+        font-weight: 500;
+        transition: background var(--amh-transition-fast), color var(--amh-transition-fast);
+        border-left: 2px solid transparent;
+        cursor: pointer;
+      }
+      .sidebar-nav-item svg {
+        width: 18px;
+        height: 18px;
+        flex-shrink: 0;
+        color: var(--amh-text-secondary);
+        transition: color var(--amh-transition-fast);
+      }
+      .sidebar-nav-item:hover {
+        background: var(--amh-bg-hover);
+        color: var(--amh-text);
+      }
+      .sidebar-nav-item:hover svg {
+        color: var(--amh-text);
+      }
+      .sidebar-nav-item.active {
+        background: var(--amh-primary-muted);
+        color: var(--amh-primary);
+        font-weight: 600;
+        border-left: 2px solid var(--amh-primary);
+      }
+      .sidebar-nav-item.active svg {
+        color: var(--amh-primary);
+      }
+
+      /* --- Bottom section --- */
+      .sidebar-bottom {
+        border-top: 1px solid var(--amh-border-subtle);
+        padding: var(--amh-space-3) var(--amh-space-4);
+        flex-shrink: 0;
+      }
+      .sidebar-connection {
+        display: flex;
+        align-items: center;
+        gap: var(--amh-space-2);
+        margin-bottom: var(--amh-space-3);
+      }
+      .sidebar-connection-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: var(--amh-radius-full);
+        background: var(--amh-state-success);
+        flex-shrink: 0;
+      }
+      .sidebar-connection-text {
+        font-size: var(--amh-font-size-xs);
+        color: var(--amh-text-secondary);
+        flex: 1;
+      }
+      .sidebar-version {
+        font-size: var(--amh-font-size-xs);
+        color: var(--amh-text-tertiary);
+        font-family: var(--amh-font-mono);
+      }
+      .sidebar-user {
+        display: flex;
+        align-items: center;
+        gap: var(--amh-space-2);
+      }
+      .sidebar-user-avatar {
+        width: 28px;
+        height: 28px;
+        border-radius: var(--amh-radius-full);
+        background: var(--amh-primary-muted);
+        color: var(--amh-primary);
+        font-size: var(--amh-font-size-xs);
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+      }
+      .sidebar-user-name {
+        font-size: var(--amh-font-size-base);
+        color: var(--amh-text-secondary);
+        flex: 1;
+      }
+      .sidebar-user-btn {
+        width: 28px;
+        height: 28px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: none;
+        background: transparent;
+        color: var(--amh-text-tertiary);
+        border-radius: var(--amh-radius-md);
+        cursor: pointer;
+        transition: background var(--amh-transition-fast), color var(--amh-transition-fast);
+        flex-shrink: 0;
+      }
+      .sidebar-user-btn:hover {
+        background: var(--amh-bg-hover);
+        color: var(--amh-text-secondary);
+      }
+
+      /* ===== Main area ===== */
+      .shell-main {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        min-width: 0;
+      }
+
+      /* ===== Header ===== */
+      .shell-header {
+        height: var(--amh-header-height);
+        flex-shrink: 0;
+        border-bottom: 1px solid var(--amh-border);
+        background: var(--amh-bg-surface);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .header-left {
+        display: flex;
+        align-items: center;
+        gap: var(--amh-space-2);
+        padding-left: var(--amh-space-6);
+        min-width: 0;
+      }
+      .header-breadcrumb {
+        display: flex;
+        align-items: center;
+        gap: var(--amh-space-2);
+      }
+      .header-breadcrumb-root {
+        font-size: var(--amh-font-size-sm);
+        color: var(--amh-text-secondary);
+        white-space: nowrap;
+      }
+      .header-breadcrumb-sep {
+        color: var(--amh-text-tertiary);
+        flex-shrink: 0;
+      }
+      .header-breadcrumb-current {
+        font-size: var(--amh-font-size-md);
+        font-weight: 600;
+        color: var(--amh-text);
+        white-space: nowrap;
+      }
+      .header-subtitle {
+        font-size: var(--amh-font-size-xs);
+        color: var(--amh-text-tertiary);
+        padding-left: var(--amh-space-2);
+        border-left: 1px solid var(--amh-border);
+        white-space: nowrap;
+      }
+      .header-right {
+        display: flex;
+        align-items: center;
+        gap: var(--amh-space-2);
+        padding-right: var(--amh-space-6);
+        flex-shrink: 0;
+      }
+      .header-divider {
+        width: 1px;
+        height: 20px;
+        background: var(--amh-border);
+        flex-shrink: 0;
+      }
+      .header-icon-btn {
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid transparent;
+        background: transparent;
+        color: var(--amh-text-secondary);
+        border-radius: var(--amh-radius-md);
+        cursor: pointer;
+        transition: background var(--amh-transition-fast), color var(--amh-transition-fast);
+        flex-shrink: 0;
+      }
+      .header-icon-btn:hover {
+        background: var(--amh-bg-hover);
+        color: var(--amh-text);
+      }
+      .header-lang-btn {
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid var(--amh-border);
+        background: transparent;
+        color: var(--amh-text-secondary);
+        border-radius: var(--amh-radius-md);
+        cursor: pointer;
+        font-size: var(--amh-font-size-sm);
+        font-weight: 500;
+        font-family: var(--amh-font-sans);
+        transition: background var(--amh-transition-fast), color var(--amh-transition-fast);
+        flex-shrink: 0;
+      }
+      .header-lang-btn:hover {
+        background: var(--amh-bg-hover);
+        color: var(--amh-text);
+      }
+      .header-conn {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .header-conn-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: var(--amh-radius-full);
+        background: var(--amh-state-success);
+        flex-shrink: 0;
+      }
+      .header-conn-text {
+        font-size: var(--amh-font-size-xs);
+        color: var(--amh-text-tertiary);
+        white-space: nowrap;
+      }
+
+      /* ===== Content area ===== */
+      .shell-content {
+        flex: 1;
+        overflow-y: auto;
+        padding: var(--amh-space-6);
+        background: var(--amh-bg-canvas);
+      }
+
+      /* ===== Reduced motion ===== */
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after {
+          transition-duration: 0.01ms !important;
+        }
+      }
+    </style>
+    <style id="page-styles">
+      /* ===== Memory Page — Page-Specific Styles ===== */
+
+      /* --- Header CTA button --- */
+      .memory-record-btn {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        height: 36px;
+        padding: 0 14px;
+        background: var(--amh-primary);
+        color: var(--amh-primary-foreground);
+        border: none;
+        border-radius: var(--amh-radius-md);
+        font-size: var(--amh-font-size-sm);
+        font-weight: 600;
+        font-family: var(--amh-font-sans);
+        cursor: pointer;
+        transition: background var(--amh-transition-fast);
+        flex-shrink: 0;
+      }
+      .memory-record-btn svg {
+        width: 16px;
+        height: 16px;
+        flex-shrink: 0;
+      }
+      .memory-record-btn:hover {
+        background: var(--amh-primary-hover);
+      }
+      .memory-record-btn:active {
+        background: var(--amh-primary-active);
+      }
+
+      /* --- Stats Row --- */
+      .memory-stats {
+        display: flex;
+        gap: 24px;
+        margin-bottom: 20px;
+      }
+      .memory-stat {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .memory-stat-value {
+        font-size: var(--amh-font-size-xl);
+        font-weight: 700;
+        font-family: var(--amh-font-mono);
+        color: var(--amh-text);
+        line-height: 1.3;
+        font-variant-numeric: tabular-nums;
+      }
+      .memory-stat-value.is-success {
+        color: var(--amh-state-success);
+      }
+      .memory-stat-label {
+        font-size: var(--amh-font-size-xs);
+        color: var(--amh-text-tertiary);
+      }
+
+      /* --- Filter Bar --- */
+      .memory-filter-bar {
+        display: flex;
+        gap: 12px;
+        margin-bottom: 20px;
+        align-items: center;
+      }
+      .memory-filter-select {
+        height: 36px;
+        background: transparent;
+        border: 1px solid var(--amh-border);
+        border-radius: var(--amh-radius-md);
+        color: var(--amh-text-secondary);
+        font-size: var(--amh-font-size-sm);
+        font-family: var(--amh-font-sans);
+        padding: 0 32px 0 12px;
+        cursor: pointer;
+        transition: border-color var(--amh-transition-fast), background var(--amh-transition-fast);
+        appearance: none;
+        -webkit-appearance: none;
+        -moz-appearance: none;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%235f6e8a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 8px center;
+        flex-shrink: 0;
+      }
+      .memory-filter-select:hover {
+        border-color: var(--amh-border-strong);
+        background-color: var(--amh-bg-hover);
+      }
+      .memory-filter-select:focus {
+        border-color: var(--amh-primary);
+        outline: none;
+      }
+      .memory-filter-select option {
+        background: var(--amh-bg-surface);
+        color: var(--amh-text);
+      }
+      .memory-search-wrap {
+        position: relative;
+        display: flex;
+        align-items: center;
+        flex: 1;
+        min-width: 0;
+      }
+      .memory-search-wrap > svg {
+        position: absolute;
+        left: 10px;
+        color: var(--amh-text-tertiary);
+        flex-shrink: 0;
+        pointer-events: none;
+      }
+      .memory-search-input {
+        width: 100%;
+        height: 36px;
+        background: var(--amh-bg-input);
+        border: 1px solid var(--amh-border);
+        border-radius: var(--amh-radius-md);
+        color: var(--amh-text);
+        font-size: var(--amh-font-size-sm);
+        font-family: var(--amh-font-sans);
+        padding: 0 12px 0 32px;
+        transition: border-color var(--amh-transition-fast);
+      }
+      .memory-search-input::placeholder {
+        color: var(--amh-text-tertiary);
+      }
+      .memory-search-input:focus {
+        border-color: var(--amh-primary);
+        outline: none;
+      }
+
+      /* --- Memory Record List --- */
+      .memory-list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      /* --- Memory Record Card --- */
+      .memory-card {
+        background: var(--amh-bg-surface);
+        border: 1px solid var(--amh-border);
+        border-left: 3px solid var(--amh-border);
+        border-radius: 0 var(--amh-radius-md) var(--amh-radius-md) 0;
+        padding: 16px;
+        transition: background var(--amh-transition-fast), border-color var(--amh-transition-fast);
+      }
+      .memory-card:hover {
+        background: var(--amh-bg-elevated);
+        border-color: var(--amh-border-strong);
+      }
+
+      /* --- Card Row 1: Header --- */
+      .memory-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+      }
+      .memory-card-meta-left {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+      }
+
+      /* --- Kind Badge --- */
+      .memory-kind-badge {
+        font-size: var(--amh-font-size-xs);
+        font-weight: 600;
+        padding: 2px 8px;
+        border-radius: var(--amh-radius-sm);
+        line-height: 1.4;
+        white-space: nowrap;
+        flex-shrink: 0;
+      }
+      .mem-kind-observation .memory-kind-badge {
+        background: var(--amh-primary-muted);
+        color: var(--amh-primary);
+      }
+      .mem-kind-decision .memory-kind-badge {
+        background: var(--amh-bg-active);
+        color: var(--amh-text);
+      }
+      .mem-kind-preference .memory-kind-badge {
+        background: var(--amh-bg-hover);
+        color: var(--amh-text-secondary);
+      }
+      .mem-kind-context .memory-kind-badge {
+        background: var(--amh-bg-hover);
+        color: var(--amh-text-tertiary);
+      }
+      .mem-kind-fact .memory-kind-badge {
+        background: var(--amh-state-info-muted);
+        color: var(--amh-state-info);
+      }
+
+      /* --- Kind Left Border Colors --- */
+      .mem-kind-observation { border-left-color: var(--amh-primary); }
+      .mem-kind-decision { border-left-color: var(--amh-text-secondary); }
+      .mem-kind-preference { border-left-color: var(--amh-border-strong); }
+      .mem-kind-context { border-left-color: var(--amh-border); }
+      .mem-kind-fact { border-left-color: var(--amh-state-info); }
+
+      /* --- Source Badge --- */
+      .memory-source {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        min-width: 0;
+      }
+      .memory-source-avatar {
+        width: 20px;
+        height: 20px;
+        border-radius: var(--amh-radius-full);
+        background: var(--amh-primary-muted);
+        color: var(--amh-primary);
+        font-size: var(--amh-font-size-xs);
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+      }
+      .memory-source-name {
+        font-size: var(--amh-font-size-xs);
+        color: var(--amh-text-secondary);
+        white-space: nowrap;
+      }
+
+      /* --- Timestamp --- */
+      .memory-time {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-size: var(--amh-font-size-xs);
+        color: var(--amh-text-tertiary);
+        white-space: nowrap;
+        flex-shrink: 0;
+      }
+      .memory-time svg {
+        width: 12px;
+        height: 12px;
+        color: var(--amh-text-tertiary);
+        flex-shrink: 0;
+      }
+
+      /* --- Card Row 2: Content --- */
+      .memory-content {
+        font-size: var(--amh-font-size-sm);
+        color: var(--amh-text-secondary);
+        line-height: 1.5;
+        margin: 0 0 8px 0;
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        word-break: break-word;
+        overflow-wrap: break-word;
+      }
+
+      /* --- Card Row 3: Tags --- */
+      .memory-tags {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .memory-tag {
+        font-size: var(--amh-font-size-xs);
+        padding: 2px 6px;
+        border-radius: var(--amh-radius-sm);
+        background: var(--amh-bg-hover);
+        color: var(--amh-text-secondary);
+        line-height: 1.4;
+        white-space: nowrap;
+      }
+    </style>
+</body>
+</html>

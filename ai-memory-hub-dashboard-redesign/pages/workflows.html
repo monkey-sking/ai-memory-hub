@@ -1,0 +1,1928 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>工作流 — AI Memory Hub</title>
+    <style id="theme-vars">
+/* ==========================================================================
+   AI Memory Hub Dashboard — Refined Dark Theme
+   Brand prefix: amh
+   ========================================================================== */
+
+/* ---------- Design Tokens ---------- */
+:root {
+  /* --- Background surfaces (layered depth) --- */
+  --amh-bg-canvas: #080c16;
+  --amh-bg-surface: #0e1422;
+  --amh-bg-elevated: #141c2e;
+  --amh-bg-hover: #1a2438;
+  --amh-bg-active: #1f2b44;
+  --amh-bg-input: #0b111e;
+  --amh-bg-sunken: #060a12;
+
+  /* --- Primary brand hue (teal) --- */
+  --amh-primary: #3fb7a3;
+  --amh-primary-hover: #4dc9b4;
+  --amh-primary-active: #36a592;
+  --amh-primary-muted: rgba(63, 183, 163, 0.12);
+  --amh-primary-subtle: rgba(63, 183, 163, 0.06);
+  --amh-primary-foreground: #ffffff;
+
+  /* --- Text hierarchy --- */
+  --amh-text: #e8edf7;
+  --amh-text-secondary: #9aa8c2;
+  --amh-text-tertiary: #5f6e8a;
+  --amh-text-disabled: #3d4860;
+
+  /* --- Borders --- */
+  --amh-border: #1e2840;
+  --amh-border-strong: #2a3756;
+  --amh-border-subtle: #161e30;
+  --amh-border-primary: rgba(63, 183, 163, 0.3);
+
+  /* --- State colors (semantic only) --- */
+  --amh-state-success: #34d399;
+  --amh-state-success-muted: rgba(52, 211, 153, 0.12);
+  --amh-state-warning: #fbbf24;
+  --amh-state-warning-muted: rgba(251, 191, 36, 0.12);
+  --amh-state-error: #f87171;
+  --amh-state-error-muted: rgba(248, 113, 113, 0.12);
+  --amh-state-info: #60a5fa;
+  --amh-state-info-muted: rgba(96, 165, 250, 0.12);
+
+  /* --- Radius scale --- */
+  --amh-radius-sm: 4px;
+  --amh-radius-md: 8px;
+  --amh-radius-lg: 12px;
+  --amh-radius-full: 9999px;
+
+  /* --- Typography --- */
+  --amh-font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  --amh-font-mono: "JetBrains Mono", "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  --amh-font-size-xs: 11px;
+  --amh-font-size-sm: 12px;
+  --amh-font-size-base: 13px;
+  --amh-font-size-md: 14px;
+  --amh-font-size-lg: 16px;
+  --amh-font-size-xl: 18px;
+  --amh-font-size-2xl: 22px;
+  --amh-font-size-3xl: 28px;
+
+  /* --- Spacing --- */
+  --amh-space-1: 4px;
+  --amh-space-2: 8px;
+  --amh-space-3: 12px;
+  --amh-space-4: 16px;
+  --amh-space-5: 20px;
+  --amh-space-6: 24px;
+  --amh-space-8: 32px;
+
+  /* --- Shadows (restrained: static surfaces border-led) --- */
+  --amh-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --amh-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.04);
+  --amh-shadow-lg: 0 8px 28px rgba(0, 0, 0, 0.12);
+  --amh-shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.16);
+
+  /* --- Transitions --- */
+  --amh-transition-fast: 120ms cubic-bezier(0.4, 0, 0.2, 1);
+  --amh-transition-normal: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  --amh-transition-slow: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* --- Layout --- */
+  --amh-sidebar-width: 240px;
+  --amh-sidebar-collapsed-width: 56px;
+  --amh-header-height: 56px;
+}
+
+/* ---------- Dark theme is the default ---------- */
+html {
+  background: var(--amh-bg-canvas);
+  color: var(--amh-text);
+  font-family: var(--amh-font-sans);
+  font-size: var(--amh-font-size-base);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  margin: 0;
+  background: var(--amh-bg-canvas);
+  color: var(--amh-text);
+}
+
+/* ---------- Typography classes ---------- */
+.amh-text-xs { font-size: var(--amh-font-size-xs); }
+.amh-text-sm { font-size: var(--amh-font-size-sm); }
+.amh-text-base { font-size: var(--amh-font-size-base); }
+.amh-text-md { font-size: var(--amh-font-size-md); }
+.amh-text-lg { font-size: var(--amh-font-size-lg); }
+.amh-text-xl { font-size: var(--amh-font-size-xl); }
+.amh-text-2xl { font-size: var(--amh-font-size-2xl); }
+.amh-text-3xl { font-size: var(--amh-font-size-3xl); }
+
+.amh-font-medium { font-weight: 500; }
+.amh-font-semibold { font-weight: 600; }
+.amh-font-bold { font-weight: 700; }
+
+.amh-text-primary { color: var(--amh-text); }
+.amh-text-secondary { color: var(--amh-text-secondary); }
+.amh-text-tertiary { color: var(--amh-text-tertiary); }
+.amh-text-disabled { color: var(--amh-text-disabled); }
+
+.amh-font-mono { font-family: var(--amh-font-mono); }
+
+/* ---------- Surface utilities ---------- */
+.amh-surface {
+  background: var(--amh-bg-surface);
+  border: 1px solid var(--amh-border);
+  border-radius: var(--amh-radius-lg);
+}
+
+.amh-surface-elevated {
+  background: var(--amh-bg-elevated);
+  border: 1px solid var(--amh-border);
+  border-radius: var(--amh-radius-lg);
+}
+
+.amh-surface-sunken {
+  background: var(--amh-bg-sunken);
+  border: 1px solid var(--amh-border-subtle);
+  border-radius: var(--amh-radius-md);
+}
+
+/* ---------- Scrollbar styling ---------- */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--amh-border-strong);
+  border-radius: var(--amh-radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--amh-text-tertiary);
+}
+
+/* ---------- Selection ---------- */
+::selection {
+  background: var(--amh-primary-muted);
+  color: var(--amh-primary-hover);
+}
+
+/* ---------- Focus ring ---------- */
+*:focus-visible {
+  outline: 2px solid var(--amh-primary);
+  outline-offset: 2px;
+}
+
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.1/dist/index.global.js"></script>
+    <script src="https://unpkg.com/lucide@1.8.0/dist/umd/lucide.min.js"></script>
+    <style type="text/tailwindcss">
+  @theme inline {
+    --color-primary: var(--amh-primary);
+    --color-primary-foreground: var(--amh-primary-foreground);
+    --color-border: var(--amh-border);
+  }
+  @layer base {
+    body { background: var(--amh-background); color: var(--amh-foreground); }
+    td, th { @apply break-words; word-break: break-all; word-break: auto-phrase; }
+    th { @apply whitespace-nowrap; }
+  }
+    </style>
+    <style>
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      [data-icon] {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        -webkit-mask-size: contain;
+        mask-size: contain;
+        -webkit-mask-repeat: no-repeat;
+        mask-repeat: no-repeat;
+        -webkit-mask-position: center;
+        mask-position: center;
+        background-color: currentColor;
+      }
+    </style>
+</head>
+<body class="min-h-screen font-sans antialiased">
+    <!-- ===== Project Shell: AI Memory Hub Dashboard ===== -->
+    <!-- Node: gen-project-shell | Kind: project-shell -->
+    <!-- Leaf: page-workflows (gen-page-workflows) — fills mutable slots only -->
+    <div class="shell-layout">
+
+      <!-- ================================================================ -->
+      <!-- SIDEBAR (240px) — Shared region, do NOT modify in leaf pages     -->
+      <!-- ================================================================ -->
+      <aside class="shell-sidebar">
+
+        <!-- --- Logo area (56px) --- -->
+        <div class="sidebar-logo">
+          <div class="sidebar-logo-mark">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"/>
+              <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"/>
+            </svg>
+          </div>
+          <span class="sidebar-logo-text">AI Memory Hub</span>
+          <button class="sidebar-logo-toggle" aria-label="折叠侧边栏" data-dom-id="sidebar-toggle">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect width="18" height="18" x="3" y="3" rx="2"/>
+              <path d="M9 3v18"/>
+              <path d="m15 9-3 3 3 3"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- --- Search bar --- -->
+        <div class="sidebar-search">
+          <div class="sidebar-search-wrap">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"/>
+              <path d="m21 21-4.3-4.3"/>
+            </svg>
+            <input type="text" class="sidebar-search-input" placeholder="搜索…" aria-label="搜索">
+            <span class="sidebar-search-kbd">⌘K</span>
+          </div>
+        </div>
+
+        <!-- --- Nav groups (scrollable) --- -->
+        <nav class="sidebar-nav" aria-label="主导航">
+
+          <!-- Group: 工作区 -->
+          <div class="sidebar-nav-group-label">工作区</div>
+          <a class="sidebar-nav-item" data-dom-id="nav-overview" href="../pages/overview.html">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect width="7" height="9" x="3" y="3" rx="1"/>
+              <rect width="7" height="5" x="14" y="3" rx="1"/>
+              <rect width="7" height="9" x="14" y="12" rx="1"/>
+              <rect width="7" height="5" x="3" y="16" rx="1"/>
+            </svg>
+            <span>概览</span>
+          </a>
+          <a class="sidebar-nav-item" data-dom-id="nav-memory" href="../pages/memory.html">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <ellipse cx="12" cy="5" rx="9" ry="3"/>
+              <path d="M3 5V19A9 3 0 0 0 21 19V5"/>
+              <path d="M3 12A9 3 0 0 0 21 12"/>
+            </svg>
+            <span>记忆</span>
+          </a>
+          <a class="sidebar-nav-item" data-dom-id="nav-tasks" href="../pages/tasks.html">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="5" width="6" height="6" rx="1"/>
+              <path d="m3 17 2 2 4-4"/>
+              <path d="M13 6h8"/>
+              <path d="M13 12h8"/>
+              <path d="M13 18h8"/>
+            </svg>
+            <span>任务</span>
+          </a>
+          <a class="sidebar-nav-item" data-dom-id="nav-radio" href="../pages/radio.html">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"/>
+              <path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"/>
+              <circle cx="12" cy="12" r="2"/>
+              <path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"/>
+              <path d="M19.1 4.9C23 8.8 23 15.2 19.1 19.1"/>
+            </svg>
+            <span>Radio</span>
+          </a>
+          <a class="sidebar-nav-item active" data-dom-id="nav-workflows" href="../pages/workflows.html">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect width="8" height="8" x="3" y="3" rx="2"/>
+              <path d="M7 11v4a2 2 0 0 0 2 2h4"/>
+              <rect width="8" height="8" x="13" y="13" rx="2"/>
+            </svg>
+            <span>工作流</span>
+          </a>
+
+          <!-- Group: 运维 -->
+          <div class="sidebar-nav-group-label">运维</div>
+          <a class="sidebar-nav-item" data-dom-id="nav-dispatch" href="#">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3.5"/>
+              <path d="M16 2v4"/>
+              <path d="M8 2v4"/>
+              <path d="M3 10h5"/>
+              <circle cx="17.5" cy="17.5" r="4.5"/>
+              <path d="M17.5 14v2l1.5 1"/>
+            </svg>
+            <span>调度</span>
+          </a>
+          <a class="sidebar-nav-item" data-dom-id="nav-analytics" href="#">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 3v18h18"/>
+              <path d="M18 17V9"/>
+              <path d="M13 17V5"/>
+              <path d="M8 17v-3"/>
+            </svg>
+            <span>分析</span>
+          </a>
+          <a class="sidebar-nav-item" data-dom-id="nav-backups" href="#">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect width="20" height="5" x="2" y="3" rx="1"/>
+              <path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/>
+              <path d="M10 12h4"/>
+            </svg>
+            <span>备份</span>
+          </a>
+          <a class="sidebar-nav-item" data-dom-id="nav-search" href="#">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"/>
+              <path d="m21 21-4.3-4.3"/>
+            </svg>
+            <span>搜索</span>
+          </a>
+
+          <!-- Group: 系统 -->
+          <div class="sidebar-nav-group-label">系统</div>
+          <a class="sidebar-nav-item" data-dom-id="nav-tools" href="../pages/tools.html">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+            </svg>
+            <span>工具</span>
+          </a>
+          <a class="sidebar-nav-item" data-dom-id="nav-projects" href="#">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/>
+              <path d="M8 10v4"/>
+              <path d="M12 10v4"/>
+              <path d="M16 10v4"/>
+            </svg>
+            <span>项目</span>
+          </a>
+          <a class="sidebar-nav-item" data-dom-id="nav-health" href="#">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/>
+            </svg>
+            <span>健康</span>
+          </a>
+          <a class="sidebar-nav-item" data-dom-id="nav-settings" href="#">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+            <span>设置</span>
+          </a>
+          <a class="sidebar-nav-item" data-dom-id="nav-chat" href="#">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+            <span>对话</span>
+          </a>
+
+        </nav>
+
+        <!-- --- Bottom section --- -->
+        <div class="sidebar-bottom">
+          <div class="sidebar-connection">
+            <span class="sidebar-connection-dot"></span>
+            <span class="sidebar-connection-text">Hub 已连接</span>
+            <span class="sidebar-version">v2.1.0</span>
+          </div>
+          <div class="sidebar-user">
+            <div class="sidebar-user-avatar">A</div>
+            <span class="sidebar-user-name">Admin</span>
+            <button class="sidebar-user-btn" aria-label="用户设置" data-dom-id="sidebar-user-settings">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+      </aside>
+
+      <!-- ================================================================ -->
+      <!-- MAIN AREA — Header + Content                                     -->
+      <!-- ================================================================ -->
+      <div class="shell-main">
+
+        <!-- --- Header (56px) --- -->
+        <header class="shell-header">
+          <!-- Left: breadcrumb + subtitle -->
+          <div class="header-left">
+            <div class="header-breadcrumb">
+              <span class="header-breadcrumb-root">AI Memory Hub</span>
+              <svg class="header-breadcrumb-sep" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m9 18 6-6-6-6"/>
+              </svg>
+              <span class="header-breadcrumb-current">工作流</span>
+            </div>
+            <span class="header-subtitle">多角色协作链路</span>
+          </div>
+
+          <!-- Right: actions + divider + lang + refresh + connection -->
+          <div class="header-right">
+            <button class="amh-btn-primary" aria-label="新建工作流" data-dom-id="header-new-workflow">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M5 12h14"/>
+                <path d="M12 5v14"/>
+              </svg>
+              新建工作流
+            </button>
+            <div class="header-divider"></div>
+            <button class="header-lang-btn" aria-label="切换语言" data-dom-id="header-lang">中</button>
+            <button class="header-icon-btn" aria-label="刷新" data-dom-id="header-refresh">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+                <path d="M21 3v5h-5"/>
+                <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+                <path d="M8 16H3v5"/>
+              </svg>
+            </button>
+            <div class="header-conn">
+              <span class="header-conn-dot"></span>
+              <span class="header-conn-text">已连接</span>
+            </div>
+          </div>
+        </header>
+
+        <!-- --- Content area --- -->
+        <main class="shell-content">
+
+          <!-- ============ Section 1: Metric Cards Row ============ -->
+          <section class="wf-metrics" aria-label="工作流指标">
+            <!-- Metric 1: 总工作流 -->
+            <div class="wf-metric-card">
+              <div class="wf-metric-header">
+                <div class="wf-metric-icon">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <rect width="8" height="8" x="3" y="3" rx="2"/>
+                    <path d="M7 11v4a2 2 0 0 0 2 2h4"/>
+                    <rect width="8" height="8" x="13" y="13" rx="2"/>
+                  </svg>
+                </div>
+              </div>
+              <div class="wf-metric-value">12</div>
+              <div class="wf-metric-bottom">
+                <span class="wf-metric-label">总工作流</span>
+              </div>
+            </div>
+
+            <!-- Metric 2: 进行中 -->
+            <div class="wf-metric-card">
+              <div class="wf-metric-header">
+                <div class="wf-metric-icon">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/>
+                  </svg>
+                </div>
+                <span class="wf-metric-tag success">
+                  <span class="dot" style="width:5px;height:5px;border-radius:9999px;background:var(--amh-state-success);"></span>
+                  运行中
+                </span>
+              </div>
+              <div class="wf-metric-value">3</div>
+              <div class="wf-metric-bottom">
+                <span class="wf-metric-label">进行中</span>
+              </div>
+            </div>
+
+            <!-- Metric 3: 已完成 -->
+            <div class="wf-metric-card">
+              <div class="wf-metric-header">
+                <div class="wf-metric-icon">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21.801 10A10 10 0 1 1 17 3.335"/>
+                    <path d="m9 11 3 3L22 4"/>
+                  </svg>
+                </div>
+              </div>
+              <div class="wf-metric-value">8</div>
+              <div class="wf-metric-bottom">
+                <span class="wf-metric-label">已完成</span>
+                <span class="wf-metric-tag tertiary">本周</span>
+              </div>
+            </div>
+
+            <!-- Metric 4: 平均耗时 -->
+            <div class="wf-metric-card">
+              <div class="wf-metric-header">
+                <div class="wf-metric-icon">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <polyline points="12 6 12 12 16 14"/>
+                  </svg>
+                </div>
+                <span class="wf-metric-tag success">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="m6 9 6-6 6 6"/>
+                    <path d="M12 3v18"/>
+                  </svg>
+                  -18%
+                </span>
+              </div>
+              <div class="wf-metric-value">4.2m</div>
+              <div class="wf-metric-bottom">
+                <span class="wf-metric-label">平均耗时</span>
+              </div>
+            </div>
+          </section>
+
+          <!-- ============ Section 2: Filter Bar ============ -->
+          <section class="wf-filter-bar" aria-label="工作流筛选">
+            <button class="wf-filter-btn" aria-label="全部状态">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="m8 12 2 2 4-4"/>
+              </svg>
+              全部状态
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m6 9 6 6 6-6"/>
+              </svg>
+            </button>
+            <button class="wf-filter-btn" aria-label="全部角色">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+                <circle cx="9" cy="7" r="4"/>
+                <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+              </svg>
+              全部角色
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m6 9 6 6 6-6"/>
+              </svg>
+            </button>
+            <div class="wf-search">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8"/>
+                <path d="m21 21-4.3-4.3"/>
+              </svg>
+              <input type="text" placeholder="搜索工作流…" aria-label="搜索工作流">
+            </div>
+            <button class="wf-filter-btn" aria-label="最近更新">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+                <path d="M21 3v5h-5"/>
+                <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+                <path d="M8 16H3v5"/>
+              </svg>
+              最近更新
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m6 9 6 6 6-6"/>
+              </svg>
+            </button>
+          </section>
+
+          <!-- ============ Section 3: Workflow Card List ============ -->
+          <section class="wf-list" aria-label="工作流列表">
+
+            <!-- ===== Workflow Card 1: 代码审查与重构 ===== -->
+            <article class="wf-card">
+              <!-- Header row -->
+              <div class="wf-card-header">
+                <div class="wf-card-header-left">
+                  <span class="wf-card-title">代码审查与重构</span>
+                  <span class="wf-status-pill warning"><span class="dot"></span>进行中</span>
+                </div>
+                <button class="wf-expand-btn" aria-label="展开详情">
+                  展开
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="m6 9 6 6 6-6"/>
+                  </svg>
+                </button>
+              </div>
+
+              <!-- Info row -->
+              <div class="wf-card-info">
+                <span class="wf-project-tag">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/>
+                  </svg>
+                  ai-memory-hub
+                </span>
+                <span class="wf-role-badge">
+                  <span class="wf-role-avatar">C</span>规划: Claude Code
+                </span>
+                <span class="wf-role-badge">
+                  <span class="wf-role-avatar">X</span>执行: Codex
+                </span>
+                <span class="wf-role-badge">
+                  <span class="wf-role-avatar">G</span>审核: Gemini
+                </span>
+              </div>
+
+              <!-- Stepper: stage 2 current (计划→执行→审核→完成) -->
+              <div class="wf-stepper">
+                <div class="wf-step completed">
+                  <div class="wf-step-circle">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M20 6 9 17l-5-5"/>
+                    </svg>
+                  </div>
+                  <span class="wf-step-label">计划</span>
+                </div>
+                <div class="wf-step-connector completed"></div>
+                <div class="wf-step current">
+                  <div class="wf-step-circle">2</div>
+                  <span class="wf-step-label">执行</span>
+                </div>
+                <div class="wf-step-connector"></div>
+                <div class="wf-step pending">
+                  <div class="wf-step-circle">3</div>
+                  <span class="wf-step-label">审核</span>
+                </div>
+                <div class="wf-step-connector"></div>
+                <div class="wf-step pending">
+                  <div class="wf-step-circle">4</div>
+                  <span class="wf-step-label">完成</span>
+                </div>
+              </div>
+
+              <!-- Progress bar -->
+              <div class="wf-progress-row">
+                <div class="wf-progress-bar">
+                  <div class="wf-progress-fill" style="width: 50%;"></div>
+                </div>
+                <span class="wf-progress-text">50%</span>
+              </div>
+
+              <!-- Footer -->
+              <div class="wf-card-footer">
+                <span class="wf-footer-item">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <polyline points="12 6 12 12 16 14"/>
+                  </svg>
+                  创建于 2 小时前
+                </span>
+                <span class="wf-footer-item">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+                    <path d="M21 3v5h-5"/>
+                    <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+                    <path d="M8 16H3v5"/>
+                  </svg>
+                  最后更新 5 分钟前
+                </span>
+              </div>
+            </article>
+
+            <!-- ===== Workflow Card 2: API 文档生成 ===== -->
+            <article class="wf-card">
+              <div class="wf-card-header">
+                <div class="wf-card-header-left">
+                  <span class="wf-card-title">API 文档生成</span>
+                  <span class="wf-status-pill warning"><span class="dot"></span>进行中</span>
+                </div>
+                <button class="wf-expand-btn" aria-label="展开详情">
+                  展开
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="m6 9 6 6 6-6"/>
+                  </svg>
+                </button>
+              </div>
+
+              <div class="wf-card-info">
+                <span class="wf-project-tag">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/>
+                  </svg>
+                  docs
+                </span>
+                <span class="wf-role-badge">
+                  <span class="wf-role-avatar">G</span>规划: Gemini
+                </span>
+                <span class="wf-role-badge">
+                  <span class="wf-role-avatar">C</span>执行: Claude Code
+                </span>
+                <span class="wf-role-badge">
+                  <span class="wf-role-avatar">X</span>审核: Codex
+                </span>
+              </div>
+
+              <!-- Stepper: stage 3 current -->
+              <div class="wf-stepper">
+                <div class="wf-step completed">
+                  <div class="wf-step-circle">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M20 6 9 17l-5-5"/>
+                    </svg>
+                  </div>
+                  <span class="wf-step-label">计划</span>
+                </div>
+                <div class="wf-step-connector completed"></div>
+                <div class="wf-step completed">
+                  <div class="wf-step-circle">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M20 6 9 17l-5-5"/>
+                    </svg>
+                  </div>
+                  <span class="wf-step-label">执行</span>
+                </div>
+                <div class="wf-step-connector completed"></div>
+                <div class="wf-step current">
+                  <div class="wf-step-circle">3</div>
+                  <span class="wf-step-label">审核</span>
+                </div>
+                <div class="wf-step-connector"></div>
+                <div class="wf-step pending">
+                  <div class="wf-step-circle">4</div>
+                  <span class="wf-step-label">完成</span>
+                </div>
+              </div>
+
+              <div class="wf-progress-row">
+                <div class="wf-progress-bar">
+                  <div class="wf-progress-fill" style="width: 75%;"></div>
+                </div>
+                <span class="wf-progress-text">75%</span>
+              </div>
+
+              <div class="wf-card-footer">
+                <span class="wf-footer-item">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <polyline points="12 6 12 12 16 14"/>
+                  </svg>
+                  创建于 4 小时前
+                </span>
+                <span class="wf-footer-item">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+                    <path d="M21 3v5h-5"/>
+                    <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+                    <path d="M8 16H3v5"/>
+                  </svg>
+                  最后更新 20 分钟前
+                </span>
+              </div>
+            </article>
+
+            <!-- ===== Workflow Card 3: 依赖升级与测试 ===== -->
+            <article class="wf-card">
+              <div class="wf-card-header">
+                <div class="wf-card-header-left">
+                  <span class="wf-card-title">依赖升级与测试</span>
+                  <span class="wf-status-pill warning"><span class="dot"></span>进行中</span>
+                </div>
+                <button class="wf-expand-btn" aria-label="展开详情">
+                  展开
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="m6 9 6 6 6-6"/>
+                  </svg>
+                </button>
+              </div>
+
+              <div class="wf-card-info">
+                <span class="wf-project-tag">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/>
+                  </svg>
+                  devops
+                </span>
+                <span class="wf-role-badge">
+                  <span class="wf-role-avatar">C</span>规划: Claude Code
+                </span>
+                <span class="wf-role-badge">
+                  <span class="wf-role-avatar">T</span>执行: Trae
+                </span>
+                <span class="wf-role-badge">
+                  <span class="wf-role-avatar">X</span>审核: Codex
+                </span>
+              </div>
+
+              <!-- Stepper: stage 2 current -->
+              <div class="wf-stepper">
+                <div class="wf-step completed">
+                  <div class="wf-step-circle">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M20 6 9 17l-5-5"/>
+                    </svg>
+                  </div>
+                  <span class="wf-step-label">计划</span>
+                </div>
+                <div class="wf-step-connector completed"></div>
+                <div class="wf-step current">
+                  <div class="wf-step-circle">2</div>
+                  <span class="wf-step-label">执行</span>
+                </div>
+                <div class="wf-step-connector"></div>
+                <div class="wf-step pending">
+                  <div class="wf-step-circle">3</div>
+                  <span class="wf-step-label">审核</span>
+                </div>
+                <div class="wf-step-connector"></div>
+                <div class="wf-step pending">
+                  <div class="wf-step-circle">4</div>
+                  <span class="wf-step-label">完成</span>
+                </div>
+              </div>
+
+              <div class="wf-progress-row">
+                <div class="wf-progress-bar">
+                  <div class="wf-progress-fill" style="width: 40%;"></div>
+                </div>
+                <span class="wf-progress-text">40%</span>
+              </div>
+
+              <div class="wf-card-footer">
+                <span class="wf-footer-item">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <polyline points="12 6 12 12 16 14"/>
+                  </svg>
+                  创建于 6 小时前
+                </span>
+                <span class="wf-footer-item">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+                    <path d="M21 3v5h-5"/>
+                    <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+                    <path d="M8 16H3v5"/>
+                  </svg>
+                  最后更新 1 小时前
+                </span>
+              </div>
+            </article>
+
+            <!-- ===== Workflow Card 4: 用户权限系统设计 (Completed) ===== -->
+            <article class="wf-card">
+              <div class="wf-card-header">
+                <div class="wf-card-header-left">
+                  <span class="wf-card-title">用户权限系统设计</span>
+                  <span class="wf-status-pill success"><span class="dot"></span>已完成</span>
+                </div>
+                <button class="wf-expand-btn" aria-label="展开详情">
+                  展开
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="m6 9 6 6 6-6"/>
+                  </svg>
+                </button>
+              </div>
+
+              <div class="wf-card-info">
+                <span class="wf-project-tag">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/>
+                  </svg>
+                  backend
+                </span>
+                <span class="wf-role-badge">
+                  <span class="wf-role-avatar">G</span>规划: Gemini
+                </span>
+                <span class="wf-role-badge">
+                  <span class="wf-role-avatar">W</span>执行: Windsurf
+                </span>
+                <span class="wf-role-badge">
+                  <span class="wf-role-avatar">C</span>审核: Claude Code
+                </span>
+              </div>
+
+              <!-- Stepper: all 4 completed -->
+              <div class="wf-stepper">
+                <div class="wf-step completed">
+                  <div class="wf-step-circle">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M20 6 9 17l-5-5"/>
+                    </svg>
+                  </div>
+                  <span class="wf-step-label">计划</span>
+                </div>
+                <div class="wf-step-connector completed"></div>
+                <div class="wf-step completed">
+                  <div class="wf-step-circle">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M20 6 9 17l-5-5"/>
+                    </svg>
+                  </div>
+                  <span class="wf-step-label">执行</span>
+                </div>
+                <div class="wf-step-connector completed"></div>
+                <div class="wf-step completed">
+                  <div class="wf-step-circle">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M20 6 9 17l-5-5"/>
+                    </svg>
+                  </div>
+                  <span class="wf-step-label">审核</span>
+                </div>
+                <div class="wf-step-connector completed"></div>
+                <div class="wf-step completed">
+                  <div class="wf-step-circle">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M20 6 9 17l-5-5"/>
+                    </svg>
+                  </div>
+                  <span class="wf-step-label">完成</span>
+                </div>
+              </div>
+
+              <div class="wf-progress-row">
+                <div class="wf-progress-bar">
+                  <div class="wf-progress-fill complete" style="width: 100%;"></div>
+                </div>
+                <span class="wf-progress-text">100%</span>
+              </div>
+
+              <div class="wf-card-footer">
+                <span class="wf-footer-item">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <polyline points="12 6 12 12 16 14"/>
+                  </svg>
+                  创建于 1 天前
+                </span>
+                <span class="wf-footer-item">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+                    <path d="M21 3v5h-5"/>
+                    <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+                    <path d="M8 16H3v5"/>
+                  </svg>
+                  最后更新 12 小时前
+                </span>
+              </div>
+            </article>
+
+            <!-- ===== Workflow Card 5: 生产环境部署 (Blocked) ===== -->
+            <article class="wf-card">
+              <div class="wf-card-header">
+                <div class="wf-card-header-left">
+                  <span class="wf-card-title">生产环境部署</span>
+                  <span class="wf-status-pill error"><span class="dot"></span>已阻塞</span>
+                </div>
+                <button class="wf-expand-btn" aria-label="展开详情">
+                  展开
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="m6 9 6 6 6-6"/>
+                  </svg>
+                </button>
+              </div>
+
+              <div class="wf-card-info">
+                <span class="wf-project-tag">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/>
+                  </svg>
+                  devops
+                </span>
+                <span class="wf-role-badge">
+                  <span class="wf-role-avatar">C</span>规划: Claude Code
+                </span>
+                <span class="wf-role-badge">
+                  <span class="wf-role-avatar">T</span>执行: Trae
+                </span>
+                <span class="wf-role-badge">
+                  <span class="wf-role-avatar">G</span>审核: Gemini
+                </span>
+                <span class="wf-block-badge">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="12" x2="12" y1="8" y2="12"/>
+                    <line x1="12" x2="12.01" y1="16" y2="16"/>
+                  </svg>
+                  等待 CI 配置
+                </span>
+              </div>
+
+              <!-- Stepper: stage 3 blocked -->
+              <div class="wf-stepper">
+                <div class="wf-step completed">
+                  <div class="wf-step-circle">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M20 6 9 17l-5-5"/>
+                    </svg>
+                  </div>
+                  <span class="wf-step-label">计划</span>
+                </div>
+                <div class="wf-step-connector completed"></div>
+                <div class="wf-step completed">
+                  <div class="wf-step-circle">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M20 6 9 17l-5-5"/>
+                    </svg>
+                  </div>
+                  <span class="wf-step-label">执行</span>
+                </div>
+                <div class="wf-step-connector completed"></div>
+                <div class="wf-step blocked">
+                  <div class="wf-step-circle">3</div>
+                  <span class="wf-step-label">审核</span>
+                </div>
+                <div class="wf-step-connector"></div>
+                <div class="wf-step pending">
+                  <div class="wf-step-circle">4</div>
+                  <span class="wf-step-label">完成</span>
+                </div>
+              </div>
+
+              <div class="wf-progress-row">
+                <div class="wf-progress-bar">
+                  <div class="wf-progress-fill" style="width: 60%;"></div>
+                </div>
+                <span class="wf-progress-text">60%</span>
+              </div>
+
+              <div class="wf-card-footer">
+                <span class="wf-footer-item">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <polyline points="12 6 12 12 16 14"/>
+                  </svg>
+                  创建于 1 天前
+                </span>
+                <span class="wf-footer-item">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+                    <path d="M21 3v5h-5"/>
+                    <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+                    <path d="M8 16H3v5"/>
+                  </svg>
+                  最后更新 3 小时前
+                </span>
+              </div>
+            </article>
+
+          </section>
+
+        </main>
+
+      </div>
+    </div>
+    <script>lucide.createIcons();</script>
+
+    <style id="shell-styles">
+      /* ===== Shell Layout Frame ===== */
+      .shell-layout {
+        height: 100vh;
+        display: flex;
+        overflow: hidden;
+      }
+
+      /* ===== Sidebar ===== */
+      .shell-sidebar {
+        width: var(--amh-sidebar-width);
+        flex-shrink: 0;
+        height: 100%;
+        border-right: 1px solid var(--amh-border);
+        background: var(--amh-bg-surface);
+        display: flex;
+        flex-direction: column;
+      }
+
+      /* --- Logo area --- */
+      .sidebar-logo {
+        height: var(--amh-header-height);
+        display: flex;
+        align-items: center;
+        gap: var(--amh-space-2);
+        padding: 0 var(--amh-space-4);
+        border-bottom: 1px solid var(--amh-border-subtle);
+        flex-shrink: 0;
+      }
+      .sidebar-logo-mark {
+        width: 32px;
+        height: 32px;
+        border-radius: var(--amh-radius-md);
+        background: linear-gradient(135deg, var(--amh-primary) 0%, var(--amh-primary-active) 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        color: #ffffff;
+      }
+      .sidebar-logo-text {
+        font-size: var(--amh-font-size-lg);
+        font-weight: 600;
+        color: var(--amh-text);
+        flex: 1;
+        white-space: nowrap;
+      }
+      .sidebar-logo-toggle {
+        width: 28px;
+        height: 28px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: none;
+        background: transparent;
+        color: var(--amh-text-tertiary);
+        border-radius: var(--amh-radius-md);
+        cursor: pointer;
+        transition: background var(--amh-transition-fast), color var(--amh-transition-fast);
+        flex-shrink: 0;
+      }
+      .sidebar-logo-toggle:hover {
+        background: var(--amh-bg-hover);
+        color: var(--amh-text-secondary);
+      }
+
+      /* --- Search bar --- */
+      .sidebar-search {
+        padding: var(--amh-space-3) var(--amh-space-4);
+        border-bottom: 1px solid var(--amh-border-subtle);
+        flex-shrink: 0;
+      }
+      .sidebar-search-wrap {
+        position: relative;
+        display: flex;
+        align-items: center;
+        height: 32px;
+        background: var(--amh-bg-input);
+        border: 1px solid var(--amh-border);
+        border-radius: var(--amh-radius-md);
+        transition: border-color var(--amh-transition-fast);
+      }
+      .sidebar-search-wrap:focus-within {
+        border-color: var(--amh-primary);
+      }
+      .sidebar-search-wrap > svg {
+        position: absolute;
+        left: 8px;
+        color: var(--amh-text-tertiary);
+        flex-shrink: 0;
+        pointer-events: none;
+      }
+      .sidebar-search-input {
+        flex: 1;
+        background: transparent;
+        border: none;
+        outline: none;
+        color: var(--amh-text);
+        font-size: var(--amh-font-size-sm);
+        font-family: var(--amh-font-sans);
+        padding: 0 var(--amh-space-2);
+        padding-left: 32px;
+        height: 100%;
+      }
+      .sidebar-search-input::placeholder {
+        color: var(--amh-text-tertiary);
+      }
+      .sidebar-search-kbd {
+        font-size: var(--amh-font-size-xs);
+        color: var(--amh-text-tertiary);
+        font-family: var(--amh-font-mono);
+        padding: 2px 5px;
+        border: 1px solid var(--amh-border);
+        border-radius: var(--amh-radius-sm);
+        margin-right: 6px;
+        line-height: 1;
+        white-space: nowrap;
+      }
+
+      /* --- Nav --- */
+      .sidebar-nav {
+        flex: 1;
+        overflow-y: auto;
+        padding-bottom: var(--amh-space-2);
+      }
+      .sidebar-nav-group-label {
+        font-size: var(--amh-font-size-xs);
+        color: var(--amh-text-tertiary);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        padding: var(--amh-space-4) var(--amh-space-4) 6px;
+        font-weight: 600;
+      }
+      .sidebar-nav-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        height: 36px;
+        padding: 0 var(--amh-space-3);
+        margin: 0 var(--amh-space-2);
+        border-radius: 6px;
+        color: var(--amh-text-secondary);
+        text-decoration: none;
+        font-size: var(--amh-font-size-base);
+        font-weight: 500;
+        transition: background var(--amh-transition-fast), color var(--amh-transition-fast);
+        border-left: 2px solid transparent;
+        cursor: pointer;
+      }
+      .sidebar-nav-item svg {
+        width: 18px;
+        height: 18px;
+        flex-shrink: 0;
+        color: var(--amh-text-secondary);
+        transition: color var(--amh-transition-fast);
+      }
+      .sidebar-nav-item:hover {
+        background: var(--amh-bg-hover);
+        color: var(--amh-text);
+      }
+      .sidebar-nav-item:hover svg {
+        color: var(--amh-text);
+      }
+      .sidebar-nav-item.active {
+        background: var(--amh-primary-muted);
+        color: var(--amh-primary);
+        font-weight: 600;
+        border-left: 2px solid var(--amh-primary);
+      }
+      .sidebar-nav-item.active svg {
+        color: var(--amh-primary);
+      }
+
+      /* --- Bottom section --- */
+      .sidebar-bottom {
+        border-top: 1px solid var(--amh-border-subtle);
+        padding: var(--amh-space-3) var(--amh-space-4);
+        flex-shrink: 0;
+      }
+      .sidebar-connection {
+        display: flex;
+        align-items: center;
+        gap: var(--amh-space-2);
+        margin-bottom: var(--amh-space-3);
+      }
+      .sidebar-connection-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: var(--amh-radius-full);
+        background: var(--amh-state-success);
+        flex-shrink: 0;
+      }
+      .sidebar-connection-text {
+        font-size: var(--amh-font-size-xs);
+        color: var(--amh-text-secondary);
+        flex: 1;
+      }
+      .sidebar-version {
+        font-size: var(--amh-font-size-xs);
+        color: var(--amh-text-tertiary);
+        font-family: var(--amh-font-mono);
+      }
+      .sidebar-user {
+        display: flex;
+        align-items: center;
+        gap: var(--amh-space-2);
+      }
+      .sidebar-user-avatar {
+        width: 28px;
+        height: 28px;
+        border-radius: var(--amh-radius-full);
+        background: var(--amh-primary-muted);
+        color: var(--amh-primary);
+        font-size: var(--amh-font-size-xs);
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+      }
+      .sidebar-user-name {
+        font-size: var(--amh-font-size-base);
+        color: var(--amh-text-secondary);
+        flex: 1;
+      }
+      .sidebar-user-btn {
+        width: 28px;
+        height: 28px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: none;
+        background: transparent;
+        color: var(--amh-text-tertiary);
+        border-radius: var(--amh-radius-md);
+        cursor: pointer;
+        transition: background var(--amh-transition-fast), color var(--amh-transition-fast);
+        flex-shrink: 0;
+      }
+      .sidebar-user-btn:hover {
+        background: var(--amh-bg-hover);
+        color: var(--amh-text-secondary);
+      }
+
+      /* ===== Main area ===== */
+      .shell-main {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        min-width: 0;
+      }
+
+      /* ===== Header ===== */
+      .shell-header {
+        height: var(--amh-header-height);
+        flex-shrink: 0;
+        border-bottom: 1px solid var(--amh-border);
+        background: var(--amh-bg-surface);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .header-left {
+        display: flex;
+        align-items: center;
+        gap: var(--amh-space-2);
+        padding-left: var(--amh-space-6);
+        min-width: 0;
+      }
+      .header-breadcrumb {
+        display: flex;
+        align-items: center;
+        gap: var(--amh-space-2);
+      }
+      .header-breadcrumb-root {
+        font-size: var(--amh-font-size-sm);
+        color: var(--amh-text-secondary);
+        white-space: nowrap;
+      }
+      .header-breadcrumb-sep {
+        color: var(--amh-text-tertiary);
+        flex-shrink: 0;
+      }
+      .header-breadcrumb-current {
+        font-size: var(--amh-font-size-md);
+        font-weight: 600;
+        color: var(--amh-text);
+        white-space: nowrap;
+      }
+      .header-subtitle {
+        font-size: var(--amh-font-size-xs);
+        color: var(--amh-text-tertiary);
+        padding-left: var(--amh-space-2);
+        border-left: 1px solid var(--amh-border);
+        white-space: nowrap;
+      }
+      .header-right {
+        display: flex;
+        align-items: center;
+        gap: var(--amh-space-2);
+        padding-right: var(--amh-space-6);
+        flex-shrink: 0;
+      }
+      .header-divider {
+        width: 1px;
+        height: 20px;
+        background: var(--amh-border);
+        flex-shrink: 0;
+      }
+      .header-icon-btn {
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid transparent;
+        background: transparent;
+        color: var(--amh-text-secondary);
+        border-radius: var(--amh-radius-md);
+        cursor: pointer;
+        transition: background var(--amh-transition-fast), color var(--amh-transition-fast);
+        flex-shrink: 0;
+      }
+      .header-icon-btn:hover {
+        background: var(--amh-bg-hover);
+        color: var(--amh-text);
+      }
+      .header-lang-btn {
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid var(--amh-border);
+        background: transparent;
+        color: var(--amh-text-secondary);
+        border-radius: var(--amh-radius-md);
+        cursor: pointer;
+        font-size: var(--amh-font-size-sm);
+        font-weight: 500;
+        font-family: var(--amh-font-sans);
+        transition: background var(--amh-transition-fast), color var(--amh-transition-fast);
+        flex-shrink: 0;
+      }
+      .header-lang-btn:hover {
+        background: var(--amh-bg-hover);
+        color: var(--amh-text);
+      }
+      .header-conn {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .header-conn-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: var(--amh-radius-full);
+        background: var(--amh-state-success);
+        flex-shrink: 0;
+      }
+      .header-conn-text {
+        font-size: var(--amh-font-size-xs);
+        color: var(--amh-text-tertiary);
+        white-space: nowrap;
+      }
+
+      /* ===== Content area ===== */
+      .shell-content {
+        flex: 1;
+        overflow-y: auto;
+        padding: var(--amh-space-6);
+        background: var(--amh-bg-canvas);
+      }
+
+      /* ===== Reduced motion ===== */
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after {
+          transition-duration: 0.01ms !important;
+        }
+      }
+    </style>
+    <style id="page-styles">
+      /* ===== Page-specific: Workflows ===== */
+
+      /* --- Primary CTA button (header action) --- */
+      .amh-btn-primary {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 36px;
+        padding: 0 var(--amh-space-4);
+        background: var(--amh-primary);
+        color: var(--amh-primary-foreground);
+        border: none;
+        border-radius: var(--amh-radius-md);
+        font-size: var(--amh-font-size-base);
+        font-weight: 600;
+        font-family: var(--amh-font-sans);
+        cursor: pointer;
+        transition: background var(--amh-transition-fast);
+        flex-shrink: 0;
+      }
+      .amh-btn-primary:hover {
+        background: var(--amh-primary-hover);
+      }
+      .amh-btn-primary:active {
+        background: var(--amh-primary-active);
+      }
+      .amh-btn-primary svg {
+        width: 16px;
+        height: 16px;
+        flex-shrink: 0;
+      }
+
+      /* --- Metric cards row --- */
+      .wf-metrics {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: var(--amh-space-4);
+        margin-bottom: var(--amh-space-5);
+      }
+      .wf-metric-card {
+        background: var(--amh-bg-surface);
+        border: 1px solid var(--amh-border);
+        border-radius: var(--amh-radius-lg);
+        padding: var(--amh-space-4);
+        display: flex;
+        flex-direction: column;
+        gap: var(--amh-space-3);
+      }
+      .wf-metric-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .wf-metric-icon {
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: var(--amh-radius-md);
+        background: var(--amh-primary-muted);
+        color: var(--amh-primary);
+        flex-shrink: 0;
+      }
+      .wf-metric-icon svg {
+        width: 16px;
+        height: 16px;
+      }
+      .wf-metric-value {
+        font-size: var(--amh-font-size-2xl);
+        font-weight: 600;
+        color: var(--amh-text);
+        line-height: 1.2;
+        font-variant-numeric: tabular-nums;
+      }
+      .wf-metric-label {
+        font-size: var(--amh-font-size-sm);
+        color: var(--amh-text-tertiary);
+      }
+      .wf-metric-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: var(--amh-font-size-xs);
+        font-weight: 500;
+        padding: 2px 8px;
+        border-radius: var(--amh-radius-sm);
+        white-space: nowrap;
+      }
+      .wf-metric-tag.success {
+        background: var(--amh-state-success-muted);
+        color: var(--amh-state-success);
+      }
+      .wf-metric-tag.tertiary {
+        color: var(--amh-text-tertiary);
+      }
+      .wf-metric-bottom {
+        display: flex;
+        align-items: center;
+        gap: var(--amh-space-2);
+      }
+
+      /* --- Filter bar --- */
+      .wf-filter-bar {
+        display: flex;
+        align-items: center;
+        gap: var(--amh-space-3);
+        margin-bottom: var(--amh-space-5);
+      }
+      .wf-filter-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 36px;
+        padding: 0 var(--amh-space-3);
+        background: transparent;
+        border: 1px solid var(--amh-border);
+        border-radius: var(--amh-radius-md);
+        color: var(--amh-text-secondary);
+        font-size: var(--amh-font-size-base);
+        font-weight: 500;
+        font-family: var(--amh-font-sans);
+        cursor: pointer;
+        transition: border-color var(--amh-transition-fast), color var(--amh-transition-fast);
+        white-space: nowrap;
+        flex-shrink: 0;
+      }
+      .wf-filter-btn:hover {
+        border-color: var(--amh-border-strong);
+        color: var(--amh-text);
+      }
+      .wf-filter-btn svg {
+        width: 14px;
+        height: 14px;
+        flex-shrink: 0;
+        color: var(--amh-text-tertiary);
+      }
+      .wf-search {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        gap: var(--amh-space-2);
+        height: 36px;
+        padding: 0 var(--amh-space-3);
+        background: var(--amh-bg-input);
+        border: 1px solid var(--amh-border);
+        border-radius: var(--amh-radius-md);
+        transition: border-color var(--amh-transition-fast);
+        min-width: 0;
+      }
+      .wf-search:focus-within {
+        border-color: var(--amh-primary);
+      }
+      .wf-search svg {
+        width: 14px;
+        height: 14px;
+        color: var(--amh-text-tertiary);
+        flex-shrink: 0;
+      }
+      .wf-search input {
+        flex: 1;
+        background: transparent;
+        border: none;
+        outline: none;
+        color: var(--amh-text);
+        font-size: var(--amh-font-size-base);
+        font-family: var(--amh-font-sans);
+        min-width: 0;
+      }
+      .wf-search input::placeholder {
+        color: var(--amh-text-tertiary);
+      }
+
+      /* --- Workflow card list --- */
+      .wf-list {
+        display: flex;
+        flex-direction: column;
+        gap: var(--amh-space-4);
+      }
+      .wf-card {
+        background: var(--amh-bg-surface);
+        border: 1px solid var(--amh-border);
+        border-radius: var(--amh-radius-lg);
+        padding: var(--amh-space-5);
+        transition: border-color var(--amh-transition-fast);
+      }
+      .wf-card:hover {
+        border-color: var(--amh-border-strong);
+      }
+
+      /* Card header row */
+      .wf-card-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: var(--amh-space-4);
+      }
+      .wf-card-header-left {
+        display: flex;
+        align-items: center;
+        gap: var(--amh-space-3);
+        min-width: 0;
+      }
+      .wf-card-title {
+        font-size: var(--amh-font-size-md);
+        font-weight: 600;
+        color: var(--amh-text);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      /* Status pill */
+      .wf-status-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: var(--amh-font-size-xs);
+        font-weight: 500;
+        padding: 3px 10px;
+        border-radius: var(--amh-radius-full);
+        white-space: nowrap;
+      }
+      .wf-status-pill .dot {
+        width: 6px;
+        height: 6px;
+        border-radius: var(--amh-radius-full);
+        flex-shrink: 0;
+      }
+      .wf-status-pill.warning {
+        background: var(--amh-state-warning-muted);
+        color: var(--amh-state-warning);
+      }
+      .wf-status-pill.warning .dot {
+        background: var(--amh-state-warning);
+      }
+      .wf-status-pill.success {
+        background: var(--amh-state-success-muted);
+        color: var(--amh-state-success);
+      }
+      .wf-status-pill.success .dot {
+        background: var(--amh-state-success);
+      }
+      .wf-status-pill.error {
+        background: var(--amh-state-error-muted);
+        color: var(--amh-state-error);
+      }
+      .wf-status-pill.error .dot {
+        background: var(--amh-state-error);
+      }
+
+      /* Expand button */
+      .wf-expand-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        height: 28px;
+        padding: 0 var(--amh-space-2);
+        background: transparent;
+        border: none;
+        color: var(--amh-text-tertiary);
+        font-size: var(--amh-font-size-sm);
+        font-weight: 500;
+        font-family: var(--amh-font-sans);
+        cursor: pointer;
+        border-radius: var(--amh-radius-sm);
+        transition: background var(--amh-transition-fast), color var(--amh-transition-fast);
+        flex-shrink: 0;
+      }
+      .wf-expand-btn:hover {
+        background: var(--amh-bg-hover);
+        color: var(--amh-text-secondary);
+      }
+      .wf-expand-btn svg {
+        width: 14px;
+        height: 14px;
+      }
+
+      /* Card info row */
+      .wf-card-info {
+        display: flex;
+        align-items: center;
+        gap: var(--amh-space-4);
+        margin-bottom: var(--amh-space-4);
+        flex-wrap: wrap;
+      }
+
+      /* Project tag */
+      .wf-project-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: var(--amh-font-size-xs);
+        font-weight: 500;
+        color: var(--amh-text-secondary);
+        background: var(--amh-bg-sunken);
+        border: 1px solid var(--amh-border-subtle);
+        padding: 3px 8px;
+        border-radius: var(--amh-radius-sm);
+        white-space: nowrap;
+      }
+      .wf-project-tag svg {
+        width: 12px;
+        height: 12px;
+        color: var(--amh-text-tertiary);
+      }
+
+      /* Role badge */
+      .wf-role-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: var(--amh-font-size-xs);
+        color: var(--amh-text-secondary);
+        background: var(--amh-bg-hover);
+        padding: 3px 8px;
+        border-radius: var(--amh-radius-sm);
+        white-space: nowrap;
+      }
+      .wf-role-avatar {
+        width: 16px;
+        height: 16px;
+        border-radius: var(--amh-radius-sm);
+        background: var(--amh-primary-muted);
+        color: var(--amh-primary);
+        font-size: 9px;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        font-family: var(--amh-font-mono);
+      }
+
+      /* Block reason badge */
+      .wf-block-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: var(--amh-font-size-xs);
+        font-weight: 500;
+        color: var(--amh-state-error);
+        background: var(--amh-state-error-muted);
+        padding: 3px 8px;
+        border-radius: var(--amh-radius-sm);
+        white-space: nowrap;
+      }
+      .wf-block-badge svg {
+        width: 12px;
+        height: 12px;
+      }
+
+      /* --- Stepper --- */
+      .wf-stepper {
+        display: flex;
+        align-items: flex-start;
+        margin-bottom: var(--amh-space-4);
+        gap: 0;
+      }
+      .wf-step {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        flex-shrink: 0;
+        width: 64px;
+      }
+      .wf-step-circle {
+        width: 20px;
+        height: 20px;
+        border-radius: var(--amh-radius-full);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+        font-weight: 600;
+        flex-shrink: 0;
+        font-family: var(--amh-font-sans);
+      }
+      .wf-step-circle svg {
+        width: 11px;
+        height: 11px;
+      }
+      .wf-step-label {
+        font-size: var(--amh-font-size-xs);
+        color: var(--amh-text-tertiary);
+        white-space: nowrap;
+      }
+
+      /* Stepper states */
+      .wf-step.completed .wf-step-circle {
+        background: var(--amh-primary);
+        color: var(--amh-primary-foreground);
+        border: none;
+      }
+      .wf-step.completed .wf-step-label {
+        color: var(--amh-text-secondary);
+      }
+      .wf-step.current .wf-step-circle {
+        background: var(--amh-primary-muted);
+        border: 2px solid var(--amh-primary);
+        color: var(--amh-primary);
+      }
+      .wf-step.current .wf-step-label {
+        color: var(--amh-text);
+        font-weight: 500;
+      }
+      .wf-step.pending .wf-step-circle {
+        background: var(--amh-bg-hover);
+        border: 1px solid var(--amh-border);
+        color: var(--amh-text-tertiary);
+      }
+      .wf-step.blocked .wf-step-circle {
+        background: var(--amh-state-error-muted);
+        border: 2px solid var(--amh-state-error);
+        color: var(--amh-state-error);
+      }
+      .wf-step.blocked .wf-step-label {
+        color: var(--amh-state-error);
+        font-weight: 500;
+      }
+
+      /* Stepper connector */
+      .wf-step-connector {
+        flex: 1;
+        height: 2px;
+        background: var(--amh-border);
+        margin-top: 9px;
+        min-width: 24px;
+        border-radius: var(--amh-radius-full);
+      }
+      .wf-step-connector.completed {
+        background: var(--amh-primary);
+      }
+
+      /* --- Progress bar --- */
+      .wf-progress-row {
+        display: flex;
+        align-items: center;
+        gap: var(--amh-space-3);
+        margin-bottom: var(--amh-space-2);
+      }
+      .wf-progress-bar {
+        flex: 1;
+        height: 4px;
+        background: var(--amh-bg-hover);
+        border-radius: var(--amh-radius-full);
+        overflow: hidden;
+      }
+      .wf-progress-fill {
+        height: 100%;
+        background: var(--amh-primary);
+        border-radius: var(--amh-radius-full);
+        transition: width var(--amh-transition-slow);
+      }
+      .wf-progress-fill.complete {
+        background: var(--amh-state-success);
+      }
+      .wf-progress-text {
+        font-size: var(--amh-font-size-xs);
+        color: var(--amh-text-secondary);
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+        min-width: 36px;
+        text-align: right;
+      }
+
+      /* --- Card footer --- */
+      .wf-card-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: var(--amh-font-size-xs);
+        color: var(--amh-text-tertiary);
+      }
+      .wf-footer-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+      }
+      .wf-footer-item svg {
+        width: 12px;
+        height: 12px;
+      }
+    </style>
+</body>
+</html>

@@ -1,0 +1,995 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Memory Hub — 概览</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style id="theme-vars">
+    :root {
+      --bg-canvas: #f8fafc;
+      --bg-surface: #ffffff;
+      --bg-elevated: #f1f5f9;
+      --bg-hover: #e2e8f0;
+      --bg-active: #cbd5e1;
+      --bg-input: #ffffff;
+
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --primary-active: #1e40af;
+      --primary-muted: rgba(37, 99, 235, 0.08);
+      --primary-subtle: rgba(37, 99, 235, 0.04);
+      --primary-foreground: #ffffff;
+
+      --text: #0f172a;
+      --text-secondary: #475569;
+      --text-tertiary: #94a3b8;
+      --text-disabled: #cbd5e1;
+
+      --border: #e2e8f0;
+      --border-strong: #cbd5e1;
+      --border-subtle: #f1f5f9;
+
+      --state-success: #16a34a;
+      --state-success-muted: rgba(22, 163, 74, 0.08);
+      --state-warning: #ca8a04;
+      --state-warning-muted: rgba(202, 138, 4, 0.08);
+      --state-error: #dc2626;
+      --state-error-muted: rgba(220, 38, 38, 0.08);
+      --state-info: #2563eb;
+      --state-info-muted: rgba(37, 99, 235, 0.08);
+
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 14px;
+      --radius-full: 9999px;
+
+      --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+      --font-mono: "JetBrains Mono", monospace;
+
+      --sidebar-width: 56px;
+      --header-height: 56px;
+    }
+  </style>
+  <script src="https://unpkg.com/@tailwindcss/browser@4"></script>
+  <style type="text/tailwindcss">
+    @theme inline {
+      --color-background: var(--bg-canvas);
+      --color-foreground: var(--text);
+      --color-primary: var(--primary);
+      --color-primary-foreground: var(--primary-foreground);
+      --color-border: var(--border);
+      --color-muted: var(--bg-elevated);
+      --color-muted-foreground: var(--text-secondary);
+      --color-accent: var(--primary);
+      --color-accent-foreground: var(--primary-foreground);
+      --color-destructive: var(--state-error);
+      --color-input: var(--bg-input);
+      --color-ring: var(--primary);
+    }
+    @layer base {
+      * { border-color: var(--border); }
+      body { background-color: var(--bg-canvas); color: var(--text); font-family: var(--font-sans); }
+    }
+  </style>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
+
+    /* Sidebar */
+    .sidebar {
+      width: var(--sidebar-width);
+      background: var(--bg-surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 12px 0;
+      flex-shrink: 0;
+      position: fixed;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      z-index: 50;
+    }
+    .logo {
+      width: 32px; height: 32px;
+      border-radius: var(--radius-lg);
+      background: linear-gradient(135deg, #2563eb, #1d4ed8);
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 16px;
+      flex-shrink: 0;
+    }
+    .nav-group { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+    .nav-item {
+      width: 36px; height: 36px;
+      border-radius: var(--radius-lg);
+      display: flex; align-items: center; justify-content: center;
+      color: var(--text-secondary);
+      cursor: pointer;
+      position: relative;
+      transition: background 0.15s, color 0.15s;
+    }
+    .nav-item:hover { background: var(--bg-elevated); }
+    .nav-item.active {
+      background: var(--primary-muted);
+      color: var(--primary);
+    }
+    .nav-item .tooltip {
+      position: absolute;
+      left: calc(100% + 12px);
+      top: 50%;
+      transform: translateY(-50%);
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+      padding: 4px 10px;
+      font-size: 12px;
+      white-space: nowrap;
+      color: var(--text);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.15s;
+      z-index: 100;
+    }
+    .nav-item:hover .tooltip { opacity: 1; }
+
+    .sidebar-bottom {
+      margin-top: auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+    .status-dot {
+      width: 8px; height: 8px;
+      border-radius: var(--radius-full);
+      background: var(--state-success);
+    }
+    .avatar {
+      width: 28px; height: 28px;
+      border-radius: var(--radius-full);
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      display: flex; align-items: center; justify-content: center;
+      color: white;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    /* Main layout */
+    .main {
+      margin-left: var(--sidebar-width);
+      min-height: 100vh;
+    }
+
+    /* Header */
+    .header {
+      height: var(--header-height);
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      position: sticky;
+      top: 0;
+      z-index: 40;
+    }
+    .header-left { display: flex; align-items: center; gap: 10px; }
+    .header-title { font-size: 18px; font-weight: 600; color: var(--text); }
+    .header-dot { width: 4px; height: 4px; border-radius: 50%; background: var(--text-tertiary); }
+    .header-subtitle { font-size: 14px; color: var(--text-tertiary); }
+    .header-right { display: flex; align-items: center; gap: 8px; }
+    .btn-ghost {
+      height: 36px;
+      padding: 0 14px;
+      border-radius: var(--radius-md);
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      display: flex; align-items: center; gap: 6px;
+      font-size: 13px; font-weight: 500; color: var(--text-secondary);
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-ghost:hover { background: var(--bg-hover); }
+    .btn-ghost.icon-only { padding: 0; width: 36px; justify-content: center; }
+    .btn-primary {
+      height: 36px;
+      padding: 0 14px;
+      border-radius: var(--radius-md);
+      background: var(--primary);
+      color: var(--primary-foreground);
+      border: none;
+      display: flex; align-items: center; gap: 6px;
+      font-size: 13px; font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .header-divider { width: 1px; height: 24px; background: var(--border); margin: 0 4px; }
+
+    /* Content */
+    .content { padding: 24px; }
+
+    /* Metric cards */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+    .metric-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .metric-top { display: flex; align-items: center; justify-content: space-between; }
+    .metric-badge {
+      width: 40px; height: 40px;
+      border-radius: var(--radius-md);
+      background: var(--primary-muted);
+      display: flex; align-items: center; justify-content: center;
+      color: var(--primary);
+    }
+    .trend-pill {
+      border-radius: var(--radius-full);
+      padding: 2px 10px;
+      font-size: 12px;
+      font-weight: 500;
+      display: flex; align-items: center; gap: 3px;
+    }
+    .trend-success { background: var(--state-success-muted); color: var(--state-success); }
+    .trend-info { background: var(--state-info-muted); color: var(--state-info); }
+    .trend-warning { background: var(--state-warning-muted); color: var(--state-warning); }
+    .trend-error { background: var(--state-error-muted); color: var(--state-error); }
+    .metric-middle { display: flex; flex-direction: column; gap: 4px; }
+    .metric-value { font-size: 30px; font-weight: 700; font-family: var(--font-mono); color: var(--text); line-height: 1.1; }
+    .metric-label { font-size: 13px; color: var(--text-secondary); }
+    .metric-sub-pills { display: flex; gap: 8px; margin-top: 2px; }
+    .sub-pill {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: var(--radius-full);
+      background: var(--bg-elevated);
+      color: var(--text-secondary);
+      font-weight: 500;
+    }
+    .metric-sparkline { width: 100%; height: 36px; }
+    .progress-bar {
+      width: 100%; height: 6px;
+      background: var(--bg-elevated);
+      border-radius: var(--radius-full);
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background: var(--primary);
+      border-radius: var(--radius-full);
+    }
+
+    /* Two column layout */
+    .two-col {
+      display: grid;
+      grid-template-columns: 1.5fr 1fr;
+      gap: 20px;
+      margin-top: 20px;
+    }
+
+    /* Panels */
+    .panel {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 24px;
+    }
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .panel-title { font-size: 15px; font-weight: 600; color: var(--text); }
+    .panel-link {
+      font-size: 13px;
+      color: var(--primary);
+      cursor: pointer;
+      font-weight: 500;
+    }
+    .panel-link:hover { text-decoration: underline; }
+
+    /* Table */
+    .task-table { width: 100%; }
+    .task-table thead th {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-tertiary);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      text-align: left;
+      padding: 0 12px 8px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .task-table thead th:first-child { padding-left: 0; }
+    .task-table thead th:last-child { padding-right: 0; text-align: right; }
+    .task-table tbody tr {
+      border-bottom: 1px solid var(--border-subtle);
+      transition: background 0.1s;
+    }
+    .task-table tbody tr:hover { background: var(--bg-elevated); }
+    .task-table tbody tr:last-child { border-bottom: none; }
+    .task-table tbody td {
+      padding: 0 12px;
+      height: 44px;
+      font-size: 13px;
+      color: var(--text);
+      vertical-align: middle;
+    }
+    .task-table tbody td:first-child { padding-left: 0; font-weight: 500; }
+    .task-table tbody td:last-child { padding-right: 0; text-align: right; color: var(--text-secondary); }
+
+    /* Status badges */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: var(--radius-full);
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .badge-success { background: var(--state-success-muted); color: var(--state-success); }
+    .badge-warning { background: var(--state-warning-muted); color: var(--state-warning); }
+    .badge-error { background: var(--state-error-muted); color: var(--state-error); }
+    .badge-info { background: var(--state-info-muted); color: var(--state-info); }
+    .badge-neutral { background: var(--bg-elevated); color: var(--text-secondary); }
+    .badge-primary { background: var(--primary-muted); color: var(--primary); }
+
+    .badge-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+    }
+
+    /* Tool grid */
+    .tool-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 12px;
+    }
+    .tool-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border-subtle);
+      transition: background 0.1s;
+    }
+    .tool-item:hover { background: var(--bg-elevated); }
+    .tool-avatar {
+      width: 32px; height: 32px;
+      border-radius: var(--radius-md);
+      background: var(--bg-elevated);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text-secondary);
+      flex-shrink: 0;
+    }
+    .tool-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .tool-name { font-size: 12px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .tool-meta { display: flex; align-items: center; gap: 4px; }
+    .tool-kind { font-size: 10px; color: var(--text-tertiary); }
+    .tool-status-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+    }
+    .tool-status-dot.ok { background: var(--state-success); }
+    .tool-status-dot.fail { background: var(--state-error); }
+
+    /* Messages */
+    .message-list { display: flex; flex-direction: column; gap: 8px; }
+    .message-item {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .message-item:last-child { border-bottom: none; }
+    .message-top { display: flex; align-items: center; gap: 8px; }
+    .message-sender { font-size: 13px; font-weight: 500; color: var(--text); }
+    .message-preview { font-size: 13px; color: var(--text-secondary); line-height: 1.4; }
+    .message-time { font-size: 12px; color: var(--text-tertiary); }
+
+    /* Failure items */
+    .failure-list { display: flex; flex-direction: column; gap: 12px; }
+    .failure-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 12px;
+      border-radius: var(--radius-md);
+      background: var(--bg-canvas);
+      border: 1px solid var(--border-subtle);
+    }
+    .failure-content { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+    .failure-top { display: flex; align-items: center; gap: 8px; }
+    .failure-msg { font-size: 13px; color: var(--text); }
+    .failure-time { font-size: 12px; color: var(--text-tertiary); }
+    .btn-retry {
+      height: 28px;
+      padding: 0 10px;
+      border-radius: var(--radius-sm);
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-shrink: 0;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .btn-retry:hover { background: var(--bg-elevated); border-color: var(--border-strong); }
+
+    .alert-icon-wrap {
+      display: flex; align-items: center; gap: 6px;
+      color: var(--state-error);
+    }
+  </style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<aside class="sidebar">
+  <div class="logo">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/>
+      <path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/>
+      <path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4"/>
+    </svg>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-item active">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+      <span class="tooltip">概览</span>
+    </div>
+    <div class="nav-item">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg>
+      <span class="tooltip">记忆</span>
+    </div>
+    <div class="nav-item">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></svg>
+      <span class="tooltip">任务</span>
+    </div>
+    <div class="nav-item">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"/><path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"/><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"/><path d="M19.1 4.9C23 8.8 23 15.2 19.1 19.1"/></svg>
+      <span class="tooltip">Radio</span>
+    </div>
+    <div class="nav-item">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect width="8" height="8" x="3" y="3" rx="2"/><path d="M7 11v4a2 2 0 0 1-2 2H4"/><rect width="8" height="8" x="13" y="13" rx="2"/><path d="M13 7h4a2 2 0 0 1 2 2v1"/></svg>
+      <span class="tooltip">工作流</span>
+    </div>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-item">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h5"/><path d="M17.5 21a3.5 3.5 0 0 0 0-7h-.5l-.5-1h-1l-.5 1h-.5a3.5 3.5 0 0 0 0 7"/><path d="M17.5 18.5v.01"/></svg>
+      <span class="tooltip">调度</span>
+    </div>
+    <div class="nav-item">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="20" y2="10"/><line x1="18" x2="18" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="16"/></svg>
+      <span class="tooltip">分析</span>
+    </div>
+    <div class="nav-item">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg>
+      <span class="tooltip">备份</span>
+    </div>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-item">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+      <span class="tooltip">工具</span>
+    </div>
+    <div class="nav-item">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16.5a4.5 4.5 0 0 1 .5-8.996V7.5a4.5 4.5 0 0 1 8.996.5A4.5 4.5 0 0 1 18 16.5"/><path d="M9 12h6"/><path d="M9 15h3"/></svg>
+      <span class="tooltip">项目</span>
+    </div>
+    <div class="nav-item">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></svg>
+      <span class="tooltip">健康</span>
+    </div>
+    <div class="nav-item">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+      <span class="tooltip">设置</span>
+    </div>
+    <div class="nav-item">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>
+      <span class="tooltip">对话</span>
+    </div>
+  </div>
+
+  <div class="sidebar-bottom">
+    <div class="status-dot" title="在线"></div>
+    <div class="avatar">中</div>
+  </div>
+</aside>
+
+<!-- Main -->
+<div class="main">
+  <!-- Header -->
+  <header class="header">
+    <div class="header-left">
+      <span class="header-title">概览</span>
+      <span class="header-dot"></span>
+      <span class="header-subtitle">本地多 Agent 协作状态</span>
+    </div>
+    <div class="header-right">
+      <button class="btn-ghost">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+        重建快照
+      </button>
+      <button class="btn-primary">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+        同步 Inbox
+      </button>
+      <div class="header-divider"></div>
+      <button class="btn-ghost icon-only">
+        <span style="font-size: 13px; font-weight: 600; color: var(--text);">中</span>
+      </button>
+      <button class="btn-ghost icon-only">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Content -->
+  <div class="content">
+    <!-- Section 1: Metric Cards -->
+    <div class="metrics-grid">
+
+      <!-- Card 1: 任务总数 -->
+      <div class="metric-card">
+        <div class="metric-top">
+          <div class="metric-badge">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></svg>
+          </div>
+          <span class="trend-pill trend-success">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6-6 6 6"/><path d="M12 3v18"/></svg>
+            +12%
+          </span>
+        </div>
+        <div class="metric-middle">
+          <div class="metric-value">247</div>
+          <div class="metric-label">任务总数</div>
+        </div>
+        <div class="metric-sparkline">
+          <svg width="100%" height="36" viewBox="0 0 100 36" preserveAspectRatio="none">
+            <polygon points="0,28 15,22 30,24 45,16 60,20 75,10 100,6 100,36 0,36" fill="var(--primary)" opacity="0.06"/>
+            <polyline points="0,28 15,22 30,24 45,16 60,20 75,10 100,6" fill="none" stroke="var(--primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+      </div>
+
+      <!-- Card 2: 活跃任务 -->
+      <div class="metric-card">
+        <div class="metric-top">
+          <div class="metric-badge">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></svg>
+          </div>
+          <span class="trend-pill trend-success">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6-6 6 6"/><path d="M12 3v18"/></svg>
+            +3
+          </span>
+        </div>
+        <div class="metric-middle">
+          <div class="metric-value">18</div>
+          <div class="metric-label">活跃任务</div>
+          <div class="metric-sub-pills">
+            <span class="sub-pill">执行中 5</span>
+            <span class="sub-pill">排队 13</span>
+          </div>
+        </div>
+        <div class="metric-sparkline">
+          <svg width="100%" height="36" viewBox="0 0 100 36" preserveAspectRatio="none">
+            <polygon points="0,30 15,28 30,26 45,8 60,24 75,20 100,18 100,36 0,36" fill="var(--primary)" opacity="0.06"/>
+            <polyline points="0,30 15,28 30,26 45,8 60,24 75,20 100,18" fill="none" stroke="var(--primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+      </div>
+
+      <!-- Card 3: 工作流 -->
+      <div class="metric-card">
+        <div class="metric-top">
+          <div class="metric-badge">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect width="8" height="8" x="3" y="3" rx="2"/><path d="M7 11v4a2 2 0 0 1-2 2H4"/><rect width="8" height="8" x="13" y="13" rx="2"/><path d="M13 7h4a2 2 0 0 1 2 2v1"/></svg>
+          </div>
+          <span class="trend-pill trend-info">3 活跃</span>
+        </div>
+        <div class="metric-middle">
+          <div class="metric-value">12</div>
+          <div class="metric-label">工作流</div>
+        </div>
+        <div class="metric-sparkline">
+          <svg width="100%" height="36" viewBox="0 0 100 36" preserveAspectRatio="none">
+            <polygon points="0,18 15,16 30,20 45,18 60,16 75,20 100,18 100,36 0,36" fill="var(--primary)" opacity="0.06"/>
+            <polyline points="0,18 15,16 30,20 45,18 60,16 75,20 100,18" fill="none" stroke="var(--primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+      </div>
+
+      <!-- Card 4: Relay 成功率 -->
+      <div class="metric-card">
+        <div class="metric-top">
+          <div class="metric-badge">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg>
+          </div>
+          <span class="trend-pill trend-success">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6-6 6 6"/><path d="M12 3v18"/></svg>
+            +2.1%
+          </span>
+        </div>
+        <div class="metric-middle">
+          <div class="metric-value">94.2%</div>
+          <div class="metric-label">Relay 成功率</div>
+        </div>
+        <div class="metric-sparkline">
+          <svg width="100%" height="36" viewBox="0 0 100 36" preserveAspectRatio="none">
+            <polygon points="0,26 15,24 30,20 45,22 60,16 75,12 100,8 100,36 0,36" fill="var(--primary)" opacity="0.06"/>
+            <polyline points="0,26 15,24 30,20 45,22 60,16 75,12 100,8" fill="none" stroke="var(--primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+      </div>
+
+      <!-- Card 5: 可自动执行工具 -->
+      <div class="metric-card">
+        <div class="metric-top">
+          <div class="metric-badge">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+          </div>
+          <span class="trend-pill trend-info">80%</span>
+        </div>
+        <div class="metric-middle">
+          <div class="metric-value">8/10</div>
+          <div class="metric-label">可自动执行工具</div>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill" style="width: 80%;"></div>
+        </div>
+      </div>
+
+      <!-- Card 6: 记忆记录 -->
+      <div class="metric-card">
+        <div class="metric-top">
+          <div class="metric-badge">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg>
+          </div>
+          <span class="trend-pill trend-success">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6-6 6 6"/><path d="M12 3v18"/></svg>
+            +23 今日
+          </span>
+        </div>
+        <div class="metric-middle">
+          <div class="metric-value">1,847</div>
+          <div class="metric-label">记忆记录</div>
+        </div>
+        <div class="metric-sparkline">
+          <svg width="100%" height="36" viewBox="0 0 100 36" preserveAspectRatio="none">
+            <polygon points="0,28 15,26 30,22 45,20 60,14 75,12 100,6 100,36 0,36" fill="var(--primary)" opacity="0.06"/>
+            <polyline points="0,28 15,26 30,22 45,20 60,14 75,12 100,6" fill="none" stroke="var(--primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Section 2: Two Column -->
+    <div class="two-col">
+      <!-- LEFT COLUMN -->
+      <div>
+        <!-- Panel A: 最近任务 -->
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">最近任务</span>
+            <span class="panel-link">查看全部</span>
+          </div>
+          <table class="task-table">
+            <thead>
+              <tr>
+                <th>任务</th>
+                <th>状态</th>
+                <th>优先级</th>
+                <th>工具</th>
+                <th>更新时间</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>分析代码结构并生成文档</td>
+                <td><span class="badge badge-warning"><span class="badge-dot" style="background: var(--state-warning);"></span>进行中</span></td>
+                <td><span class="badge badge-error">高</span></td>
+                <td style="color: var(--text-secondary);">Claude Code</td>
+                <td>2 分钟前</td>
+              </tr>
+              <tr>
+                <td>修复 TypeScript 类型错误</td>
+                <td><span class="badge badge-success"><span class="badge-dot" style="background: var(--state-success);"></span>已完成</span></td>
+                <td><span class="badge badge-warning">中</span></td>
+                <td style="color: var(--text-secondary);">Codex</td>
+                <td>15 分钟前</td>
+              </tr>
+              <tr>
+                <td>重构 API 认证模块</td>
+                <td><span class="badge badge-info"><span class="badge-dot" style="background: var(--state-info);"></span>待处理</span></td>
+                <td><span class="badge badge-error">高</span></td>
+                <td style="color: var(--text-secondary);">Gemini</td>
+                <td>32 分钟前</td>
+              </tr>
+              <tr>
+                <td>生成单元测试覆盖</td>
+                <td><span class="badge badge-warning"><span class="badge-dot" style="background: var(--state-warning);"></span>进行中</span></td>
+                <td><span class="badge badge-info">低</span></td>
+                <td style="color: var(--text-secondary);">Claude Code</td>
+                <td>1 小时前</td>
+              </tr>
+              <tr>
+                <td>代码审查 PR #42</td>
+                <td><span class="badge badge-error"><span class="badge-dot" style="background: var(--state-error);"></span>已阻塞</span></td>
+                <td><span class="badge badge-warning">中</span></td>
+                <td style="color: var(--text-secondary);">Codex</td>
+                <td>2 小时前</td>
+              </tr>
+              <tr>
+                <td>更新依赖版本</td>
+                <td><span class="badge badge-success"><span class="badge-dot" style="background: var(--state-success);"></span>已完成</span></td>
+                <td><span class="badge badge-info">低</span></td>
+                <td style="color: var(--text-secondary);">Gemini</td>
+                <td>3 小时前</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Panel B: 工具状态 -->
+        <div class="panel" style="margin-top: 20px;">
+          <div class="panel-header">
+            <span class="panel-title">工具状态</span>
+            <span class="panel-link">管理工具</span>
+          </div>
+          <div class="tool-grid">
+            <div class="tool-item">
+              <div class="tool-avatar">C</div>
+              <div class="tool-info">
+                <span class="tool-name">Claude Code</span>
+                <div class="tool-meta">
+                  <span class="tool-kind">CLI</span>
+                  <span class="tool-status-dot ok"></span>
+                </div>
+              </div>
+            </div>
+            <div class="tool-item">
+              <div class="tool-avatar">X</div>
+              <div class="tool-info">
+                <span class="tool-name">Codex</span>
+                <div class="tool-meta">
+                  <span class="tool-kind">CLI</span>
+                  <span class="tool-status-dot ok"></span>
+                </div>
+              </div>
+            </div>
+            <div class="tool-item">
+              <div class="tool-avatar">G</div>
+              <div class="tool-info">
+                <span class="tool-name">Gemini</span>
+                <div class="tool-meta">
+                  <span class="tool-kind">CLI</span>
+                  <span class="tool-status-dot ok"></span>
+                </div>
+              </div>
+            </div>
+            <div class="tool-item">
+              <div class="tool-avatar">T</div>
+              <div class="tool-info">
+                <span class="tool-name">Trae</span>
+                <div class="tool-meta">
+                  <span class="tool-kind">IDE</span>
+                  <span class="tool-status-dot ok"></span>
+                </div>
+              </div>
+            </div>
+            <div class="tool-item">
+              <div class="tool-avatar">W</div>
+              <div class="tool-info">
+                <span class="tool-name">Windsurf</span>
+                <div class="tool-meta">
+                  <span class="tool-kind">IDE</span>
+                  <span class="tool-status-dot ok"></span>
+                </div>
+              </div>
+            </div>
+            <div class="tool-item">
+              <div class="tool-avatar">K</div>
+              <div class="tool-info">
+                <span class="tool-name">Kilo Code</span>
+                <div class="tool-meta">
+                  <span class="tool-kind">Plugin</span>
+                  <span class="tool-status-dot ok"></span>
+                </div>
+              </div>
+            </div>
+            <div class="tool-item">
+              <div class="tool-avatar">R</div>
+              <div class="tool-info">
+                <span class="tool-name">Roo Code</span>
+                <div class="tool-meta">
+                  <span class="tool-kind">Plugin</span>
+                  <span class="tool-status-dot ok"></span>
+                </div>
+              </div>
+            </div>
+            <div class="tool-item">
+              <div class="tool-avatar">A</div>
+              <div class="tool-info">
+                <span class="tool-name">Auggie</span>
+                <div class="tool-meta">
+                  <span class="tool-kind">Agent</span>
+                  <span class="tool-status-dot fail"></span>
+                </div>
+              </div>
+            </div>
+            <div class="tool-item">
+              <div class="tool-avatar">D</div>
+              <div class="tool-info">
+                <span class="tool-name">DeepSeek</span>
+                <div class="tool-meta">
+                  <span class="tool-kind">API</span>
+                  <span class="tool-status-dot ok"></span>
+                </div>
+              </div>
+            </div>
+            <div class="tool-item">
+              <div class="tool-avatar">O</div>
+              <div class="tool-info">
+                <span class="tool-name">OpenAI</span>
+                <div class="tool-meta">
+                  <span class="tool-kind">API</span>
+                  <span class="tool-status-dot ok"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT COLUMN -->
+      <div>
+        <!-- Panel C: 最近消息 -->
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">最近消息</span>
+            <span class="panel-link">Radio</span>
+          </div>
+          <div class="message-list">
+            <div class="message-item">
+              <div class="message-top">
+                <span class="message-sender">Claude Code</span>
+                <span class="badge badge-info">广播</span>
+              </div>
+              <span class="message-preview">已完成代码结构分析，发现 3 个模块需要重构</span>
+              <span class="message-time">2 分钟前</span>
+            </div>
+            <div class="message-item">
+              <div class="message-top">
+                <span class="message-sender">Codex</span>
+                <span class="badge badge-primary">直接</span>
+              </div>
+              <span class="message-preview">类型错误已修复，等待审核</span>
+              <span class="message-time">15 分钟前</span>
+            </div>
+            <div class="message-item">
+              <div class="message-top">
+                <span class="message-sender">Gemini</span>
+                <span class="badge badge-neutral">系统</span>
+              </div>
+              <span class="message-preview">新任务已分配：重构 API 认证模块</span>
+              <span class="message-time">32 分钟前</span>
+            </div>
+            <div class="message-item">
+              <div class="message-top">
+                <span class="message-sender">Claude Code</span>
+                <span class="badge badge-info">广播</span>
+              </div>
+              <span class="message-preview">测试覆盖率已提升至 78%</span>
+              <span class="message-time">1 小时前</span>
+            </div>
+            <div class="message-item">
+              <div class="message-top">
+                <span class="message-sender">系统</span>
+                <span class="badge badge-error">警报</span>
+              </div>
+              <span class="message-preview">PR #42 审查阻塞，缺少 CI 配置</span>
+              <span class="message-time">2 小时前</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Panel D: 最近失败 -->
+        <div class="panel" style="margin-top: 20px;">
+          <div class="panel-header">
+            <div class="alert-icon-wrap">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+              <span class="panel-title">最近失败</span>
+            </div>
+          </div>
+          <div class="failure-list">
+            <div class="failure-item">
+              <div class="failure-content">
+                <div class="failure-top">
+                  <span class="badge badge-error">超时</span>
+                  <span class="failure-time">2 小时前</span>
+                </div>
+                <span class="failure-msg">Codex 执行代码审查超时（30s 限制）</span>
+              </div>
+              <button class="btn-retry">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+                重试
+              </button>
+            </div>
+            <div class="failure-item">
+              <div class="failure-content">
+                <div class="failure-top">
+                  <span class="badge badge-error">连接失败</span>
+                  <span class="failure-time">4 小时前</span>
+                </div>
+                <span class="failure-msg">Gemini API 调用失败：rate limit exceeded</span>
+              </div>
+              <button class="btn-retry">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+                重试
+              </button>
+            </div>
+            <div class="failure-item">
+              <div class="failure-content">
+                <div class="failure-top">
+                  <span class="badge badge-error">权限不足</span>
+                  <span class="failure-time">6 小时前</span>
+                </div>
+                <span class="failure-msg">Auggie 无法访问 /workspaces 目录</span>
+              </div>
+              <button class="btn-retry">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+                重试
+              </button>
+            </div>
+            <div class="failure-item">
+              <div class="failure-content">
+                <div class="failure-top">
+                  <span class="badge badge-error">解析错误</span>
+                  <span class="failure-time">1 天前</span>
+                </div>
+                <span class="failure-msg">工作流 'deploy-v2' 步骤配置无效</span>
+              </div>
+              <button class="btn-retry">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+                重试
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

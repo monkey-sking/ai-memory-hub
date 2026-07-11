@@ -1,0 +1,371 @@
+{
+  "data": [
+    {
+      "id": "page-overview",
+      "title": "概览",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1783603200000,
+      "canvasData": {
+        "x": 0,
+        "y": 0,
+        "group": 0
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/overview.html",
+        "interactions": [
+          {
+            "domId": "nav-tasks",
+            "targetPageId": "page-tasks"
+          },
+          {
+            "domId": "nav-workflows",
+            "targetPageId": "page-workflows"
+          },
+          {
+            "domId": "nav-tools",
+            "targetPageId": "page-tools"
+          },
+          {
+            "domId": "nav-memory",
+            "targetPageId": "page-memory"
+          },
+          {
+            "domId": "nav-radio",
+            "targetPageId": "page-radio"
+          },
+          {
+            "domId": "quick-tasks",
+            "targetPageId": "page-tasks",
+            "hideEdge": true
+          },
+          {
+            "domId": "nav-overview",
+            "targetPageId": "page-overview",
+            "hideEdge": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "page-tasks",
+      "title": "任务",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1783603200000,
+      "canvasData": {
+        "x": 620,
+        "y": 0,
+        "group": 0
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/tasks.html",
+        "interactions": [
+          {
+            "domId": "nav-overview",
+            "targetPageId": "page-overview",
+            "hideEdge": true
+          },
+          {
+            "domId": "nav-memory",
+            "targetPageId": "page-memory",
+            "hideEdge": true
+          },
+          {
+            "domId": "nav-radio",
+            "targetPageId": "page-radio",
+            "hideEdge": true
+          },
+          {
+            "domId": "nav-workflows",
+            "targetPageId": "page-workflows",
+            "hideEdge": true
+          },
+          {
+            "domId": "nav-tools",
+            "targetPageId": "page-tools",
+            "hideEdge": true
+          },
+          {
+            "domId": "nav-tasks",
+            "targetPageId": "page-tasks",
+            "hideEdge": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "page-workflows",
+      "title": "工作流",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1783603200000,
+      "canvasData": {
+        "x": 620,
+        "y": 377,
+        "group": 0
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/workflows.html",
+        "interactions": [
+          {
+            "domId": "nav-overview",
+            "targetPageId": "page-overview",
+            "hideEdge": true
+          },
+          {
+            "domId": "nav-tasks",
+            "targetPageId": "page-tasks",
+            "hideEdge": true
+          },
+          {
+            "domId": "nav-tools",
+            "targetPageId": "page-tools",
+            "hideEdge": true
+          },
+          {
+            "domId": "nav-memory",
+            "targetPageId": "page-memory",
+            "hideEdge": true
+          },
+          {
+            "domId": "nav-radio",
+            "targetPageId": "page-radio",
+            "hideEdge": true
+          },
+          {
+            "domId": "nav-workflows",
+            "targetPageId": "page-workflows",
+            "hideEdge": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "page-tools",
+      "title": "工具",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1783603200000,
+      "canvasData": {
+        "x": 620,
+        "y": 754,
+        "group": 0
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/tools.html",
+        "interactions": [
+          {
+            "domId": "nav-overview",
+            "targetPageId": "page-overview",
+            "hideEdge": true
+          },
+          {
+            "domId": "nav-tasks",
+            "targetPageId": "page-tasks",
+            "hideEdge": true
+          },
+          {
+            "domId": "nav-workflows",
+            "targetPageId": "page-workflows",
+            "hideEdge": true
+          },
+          {
+            "domId": "nav-memory",
+            "targetPageId": "page-memory",
+            "hideEdge": true
+          },
+          {
+            "domId": "nav-radio",
+            "targetPageId": "page-radio",
+            "hideEdge": true
+          },
+          {
+            "domId": "nav-tools",
+            "targetPageId": "page-tools",
+            "hideEdge": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "page-memory",
+      "title": "记忆",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1783603200000,
+      "canvasData": {
+        "x": 620,
+        "y": 1131,
+        "group": 0
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/memory.html",
+        "interactions": [
+          {
+            "domId": "nav-overview",
+            "targetPageId": "page-overview",
+            "hideEdge": true
+          },
+          {
+            "domId": "nav-tasks",
+            "targetPageId": "page-tasks",
+            "hideEdge": true
+          },
+          {
+            "domId": "nav-workflows",
+            "targetPageId": "page-workflows",
+            "hideEdge": true
+          },
+          {
+            "domId": "nav-tools",
+            "targetPageId": "page-tools",
+            "hideEdge": true
+          },
+          {
+            "domId": "nav-radio",
+            "targetPageId": "page-radio",
+            "hideEdge": true
+          },
+          {
+            "domId": "nav-memory",
+            "targetPageId": "page-memory",
+            "hideEdge": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "page-radio",
+      "title": "Radio",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1783603200000,
+      "canvasData": {
+        "x": 620,
+        "y": 1508,
+        "group": 0
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/radio.html",
+        "interactions": [
+          {
+            "domId": "nav-overview",
+            "targetPageId": "page-overview",
+            "hideEdge": true
+          },
+          {
+            "domId": "nav-tasks",
+            "targetPageId": "page-tasks",
+            "hideEdge": true
+          },
+          {
+            "domId": "nav-workflows",
+            "targetPageId": "page-workflows",
+            "hideEdge": true
+          },
+          {
+            "domId": "nav-tools",
+            "targetPageId": "page-tools",
+            "hideEdge": true
+          },
+          {
+            "domId": "nav-memory",
+            "targetPageId": "page-memory",
+            "hideEdge": true
+          },
+          {
+            "domId": "nav-radio",
+            "targetPageId": "page-radio",
+            "hideEdge": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "page-variant-blue-purple",
+      "title": "方案A · 蓝紫渐变",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1783749876453,
+      "canvasData": {
+        "x": 0,
+        "y": 1885,
+        "group": 1
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/variant-blue-purple.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-variant-warm-amber",
+      "title": "方案B · 暖橙金色",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1783749876453,
+      "canvasData": {
+        "x": 620,
+        "y": 1885,
+        "group": 1
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/variant-warm-amber.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-variant-cool-blue",
+      "title": "方案C · 冷蓝色系",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1783749876453,
+      "canvasData": {
+        "x": 1240,
+        "y": 1885,
+        "group": 1
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/variant-cool-blue.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-variant-zinc-neutral",
+      "title": "方案D · 中性深灰",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1783751000000,
+      "canvasData": {
+        "x": 1860,
+        "y": 1885,
+        "group": 1
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/variant-zinc-neutral.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-variant-light-clean",
+      "title": "方案E · 明亮白底",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1783751000000,
+      "canvasData": {
+        "x": 2480,
+        "y": 1885,
+        "group": 1
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/variant-light-clean.html",
+        "interactions": []
+      }
+    }
+  ],
+  "config": {
+    "autoLayout": true,
+    "deviceType": "desktop",
+    "projectName": "AI Memory Hub Dashboard 重构"
+  }
+}

@@ -1081,13 +1081,19 @@ function connectSendCommand(argv, defaultType) {
 function recordCommand(argv) {
   const text = positionalArgs(argv).join(" ").trim();
   if (!text) {
-    throw new Error("Usage: ai-memory-hub record <text> [--source tool] [--kind preference] [--project name] [--tags a,b]");
+    throw new Error("Usage: ai-memory-hub record <text> [--source tool] [--kind preference] [--project name] [--tags a,b] [--ttl days] [--priority high|normal|low]");
   }
 
   const config = loadConfig();
   ensureHub(config.memoryDir);
   const source = getOption(argv, "--source") || "manual";
   const kind = normalizeMemoryKind(getOption(argv, "--kind") || "note");
+  // OPC v1.1 P1: memory decay support
+  const ttlDays = getOption(argv, "--ttl") || "";
+  const priority = getOption(argv, "--priority") || "normal";
+  // OPC v1.1 P2: token counting support
+  const tokenCount = getOption(argv, "--tokens") || "";
+  const ttlDate = ttlDays ? new Date(Date.now() + parseInt(ttlDays, 10) * 86400000).toISOString() : "";
   const metadata = normalizeMemoryMetadata({
     kind,
     project: getOption(argv, "--project") || "",
@@ -1095,6 +1101,9 @@ function recordCommand(argv) {
     scope: getOption(argv, "--scope") || "",
     confidence: getOption(argv, "--confidence") || ""
   });
+  // Add decay fields
+  metadata.priority = ["high", "normal", "low"].includes(priority) ? priority : "normal";
+  if (ttlDate) metadata.expiresAt = ttlDate;
 
   const event = {
     id: createId(text),
@@ -1102,7 +1111,8 @@ function recordCommand(argv) {
     device: os.hostname(),
     source,
     text,
-    metadata
+    metadata,
+    tokens: tokenCount ? parseInt(tokenCount, 10) : 0
   };
 
   appendJsonl(path.join(config.memoryDir, "inbox", "events.jsonl"), event);
@@ -2291,8 +2301,14 @@ function taskCommand(argv) {
       return taskPurgeCommand(actionArgs);
     case "archive":
       return taskArchiveCommand(actionArgs);
+    case "fail":
+      return taskFailCommand(actionArgs);
+    case "budget":
+      return taskBudgetCommand(actionArgs);
+    case "tokens":
+      return taskTokensCommand(actionArgs);
     default:
-      throw new Error("Usage: ai-memory-hub task <add|list|claim|status|update|note|done|purge|archive> ...");
+      throw new Error("Usage: ai-memory-hub task <add|list|claim|status|update|note|done|purge|archive|fail|budget|tokens> ...");
   }
 }
 
@@ -2606,12 +2622,28 @@ function taskNoteCommand(argv) {
 function taskDoneCommand(argv) {
   const id = getOption(argv, "--id") || positionalArgs(argv)[0] || "";
   const by = getOption(argv, "--by") || getOption(argv, "--from") || "manual";
+  const force = hasFlag(argv, "--force");
   if (!id) {
-    throw new Error("Usage: ai-memory-hub task done --id <task-id> [--by codex]");
+    throw new Error("Usage: ai-memory-hub task done --id <task-id> [--by codex] [--force]");
   }
   const config = loadConfig();
   ensureHub(config.memoryDir);
   return withHubLock(config.memoryDir, "task-done", () => {
+    // OPC v1.1 P0: Check evaluation signals before allowing done
+    if (!force) {
+      const tasks = readTasks(config.memoryDir);
+      const taskIdx = findTaskIndex(tasks, id);
+      if (taskIdx !== -1) {
+        const currentTask = tasks[taskIdx];
+        const signals = currentTask.evaluationSignals || [];
+        if (signals.length > 0) {
+          const failedSignals = signals.filter(s => s.signalStatus === "fail");
+          if (failedSignals.length > 0) {
+            throw new Error("Cannot mark task done: " + failedSignals.length + " evaluation signal(s) failed: " + failedSignals.map(s => s.signalType || "unknown").join(", ") + ". Use --force to override.");
+          }
+        }
+      }
+    }
     const task = updateTask(config.memoryDir, id, (current) => ({
       ...current,
       status: "done",
@@ -2620,7 +2652,7 @@ function taskDoneCommand(argv) {
       assignee: current.assignee || by,
       notes: [
         ...(current.notes || []),
-        createTaskNote(by, `Completed by ${by}.`)
+        createTaskNote(by, `Completed by ${by}.` + (force ? " (forced, signals bypassed)" : ""))
       ]
     }));
     console.log(JSON.stringify(task, null, 2));
@@ -2808,6 +2840,318 @@ function taskArchiveCommand(argv) {
   
   console.log(`Successfully archived ${tasksToArchive.length} task(s).`);
   console.log(`Active task events left: ${keepEvents.length}.`);
+}
+
+
+// ─── OPC v1.1 P2: Token counting - task tokens summary ───
+function taskTokensCommand(argv) {
+  const id = getOption(argv, "--id") || positionalArgs(argv)[0] || "";
+  if (!id) {
+    throw new Error("Usage: ai-memory-hub task tokens --id <task-id> [--add <n>]");
+  }
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const addTokens = getOption(argv, "--add") || "";
+
+  return withHubLock(config.memoryDir, "task-tokens", () => {
+    const task = updateTask(config.memoryDir, id, (current) => {
+      if (!addTokens) return current;
+      const add = parseInt(addTokens, 10) || 0;
+      const budget = current.budget || {};
+      const currentTokens = budget.tokensConsumed || 0;
+      return {
+        ...current,
+        budget: {
+          ...budget,
+          tokensConsumed: currentTokens + add
+        },
+        updatedAt: new Date().toISOString()
+      };
+    });
+
+    const b = task.budget || {};
+    const consumed = b.tokensConsumed || 0;
+    const max = b.maxTokens || 0;
+    const pct = max > 0 ? Math.round(consumed / max * 100) : 0;
+    console.log(JSON.stringify({
+      taskId: id,
+      tokensConsumed: consumed,
+      maxTokens: max,
+      utilization: pct + "%",
+      remaining: max > 0 ? Math.max(0, max - consumed) : "unlimited"
+    }, null, 2));
+  }, config.sync.lockStaleMs);
+}
+
+// ─── OPC v1.1 P2: Memory versioning via Git ───
+function memoryVersionCommand(argv) {
+  const action = argv[0] || "status";
+  const rest = argv.slice(1);
+  if (action === "status") return memoryVersionStatusCommand(rest);
+  if (action === "commit") return memoryVersionCommitCommand(rest);
+  if (action === "rollback") return memoryVersionRollbackCommand(rest);
+  if (action === "log") return memoryVersionLogCommand(rest);
+  throw new Error("Usage: ai-memory-hub memory version <status|commit|rollback|log> [options]");
+}
+
+function memoryVersionStatusCommand(argv) {
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  try {
+
+    const dir = config.memoryDir;
+    const isRepo = execSync("git rev-parse --is-inside-work-tree", { cwd: dir, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+    if (isRepo !== "true") {
+      console.log(JSON.stringify({ gitRepo: false, message: "Memory dir is not a Git repo. Run: git init in " + dir }));
+      return;
+    }
+    const head = execSync("git rev-parse HEAD", { cwd: dir, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+    const status = execSync("git status --porcelain", { cwd: dir, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+    console.log(JSON.stringify({ gitRepo: true, head, hasChanges: status.length > 0, changedFiles: status.split("\n").filter(Boolean).length }));
+  } catch (e) {
+    console.log(JSON.stringify({ gitRepo: false, error: e.message }));
+  }
+}
+
+function memoryVersionCommitCommand(argv) {
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const message = getOption(argv, "--message") || positionalArgs(argv).join(" ") || "AMH memory snapshot";
+  try {
+
+    const dir = config.memoryDir;
+    execSync("git add -A", { cwd: dir, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] });
+    const result = execSync("git commit -m " + JSON.stringify(message), { cwd: dir, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+    const head = execSync("git rev-parse HEAD", { cwd: dir, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+    console.log(JSON.stringify({ ok: true, commit: head, message }));
+  } catch (e) {
+    console.log(JSON.stringify({ ok: false, error: e.message }));
+  }
+}
+
+function memoryVersionRollbackCommand(argv) {
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const target = getOption(argv, "--to") || positionalArgs(argv)[0] || "";
+  if (!target) {
+    throw new Error("Usage: ai-memory-hub memory version rollback --to <commit-hash>");
+  }
+  try {
+
+    const dir = config.memoryDir;
+    execSync("git stash", { cwd: dir, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] });
+    execSync("git checkout " + target + " -- .", { cwd: dir, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] });
+    console.log(JSON.stringify({ ok: true, rolledBackTo: target, message: "Memory rolled back. Stashed changes can be recovered." }));
+  } catch (e) {
+    console.log(JSON.stringify({ ok: false, error: e.message }));
+  }
+}
+
+function memoryVersionLogCommand(argv) {
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const limit = getOption(argv, "--limit") || "10";
+  try {
+
+    const dir = config.memoryDir;
+    const log = execSync("git log --oneline -" + limit, { cwd: dir, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+    const lines = log.split("\n").map(line => {
+      const [hash, ...msgParts] = line.split(" ");
+      return { commit: hash, message: msgParts.join(" ") };
+    });
+    console.log(JSON.stringify(lines, null, 2));
+  } catch (e) {
+    console.log(JSON.stringify({ error: e.message }));
+  }
+}
+
+// ─── OPC v1.1 P0: task fail --type (6-class failure routing) ───
+function taskFailCommand(argv) {
+  const FAILURE_TYPES = {
+    temporal:    { label: "temporal",    strategy: "retry(max3)",       route: "in_progress",          block: false },
+    param:       { label: "param",       strategy: "fix-params",        route: "in_progress",          block: false },
+    permission:  { label: "permission",  strategy: "request-auth",      route: "blocked",              block: true  },
+    evidence:    { label: "evidence",    strategy: "back-to-observe",   route: "needs_verification",   block: false },
+    conflict:    { label: "conflict",    strategy: "report-conflict",   route: "blocked",              block: true  },
+    risk:        { label: "risk",        strategy: "force-confirm",     route: "blocked",              block: true  },
+  };
+  const id = getOption(argv, "--id") || positionalArgs(argv)[0] || "";
+  const failType = getOption(argv, "--type") || positionalArgs(argv)[1] || "";
+  const by = getOption(argv, "--by") || getOption(argv, "--from") || "manual";
+  const detail = getOption(argv, "--detail") || "";
+  if (!id || !failType) {
+    throw new Error("Usage: ai-memory-hub task fail --id <task-id> --type <temporal|param|permission|evidence|conflict|risk> [--by codex] [--detail]");
+  }
+  const ft = FAILURE_TYPES[failType];
+  if (!ft) {
+    throw new Error("Invalid failure type: " + failType + ". Valid: " + Object.keys(FAILURE_TYPES).join("|"));
+  }
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+
+  return withHubLock(config.memoryDir, "task-fail", () => {
+    const task = updateTask(config.memoryDir, id, (current) => {
+      const failCount = (current.failCount || 0) + 1;
+      const noteText = "Failure type: " + failType + " (" + ft.label + "). Strategy: " + ft.strategy + ". Attempt #" + failCount + "." + (detail ? " Detail: " + detail : "");
+      return {
+        ...current,
+        status: ft.route,
+        failType,
+        failCount,
+        lastFailAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        notes: [
+          ...(current.notes || []),
+          createTaskNote(by, noteText)
+        ]
+      };
+    });
+
+    // Record correction memory event
+    const correctionText = "Failure on task " + id + ": type=" + failType + " (" + ft.label + "), strategy=" + ft.strategy + ", attempt #" + task.failCount + (detail ? ", detail: " + detail : "");
+    appendJsonl(path.join(config.memoryDir, "inbox", "events.jsonl"), {
+      id: createId("correction:" + id + ":" + failType + ":" + Date.now()),
+      ts: new Date().toISOString(),
+      source: by,
+      kind: "correction",
+      project: task.project || "",
+      text: correctionText,
+      tags: ["opc", "failure-routing", failType]
+    });
+
+    // Radio notify for blocking failures
+    if (ft.block) {
+      const radioMsg = createRadioMessage({
+        from: by,
+        to: "operator",
+        type: "review",
+        text: "Task " + id + " blocked: " + ft.label + ". " + ft.strategy + ". " + (detail || "").trim(),
+        thread: id,
+        project: task.project || ""
+      });
+      appendJsonl(path.join(config.memoryDir, "radio", "messages.jsonl"), radioMsg);
+    }
+
+    console.log(JSON.stringify({
+      taskId: id,
+      failType,
+      label: ft.label,
+      strategy: ft.strategy,
+      route: ft.route,
+      blocked: ft.block,
+      attempt: task.failCount,
+      radioSent: ft.block
+    }, null, 2));
+  }, config.sync.lockStaleMs);
+}
+
+// ─── OPC v1.1 P0: task budget ───
+function taskBudgetCommand(argv) {
+  const DEFAULT_BUDGET = {
+    maxIterations: 6,
+    maxToolCalls: 20,
+    maxMinutes: 30,
+    maxTokens: 100000
+  };
+  const id = getOption(argv, "--id") || positionalArgs(argv)[0] || "";
+  const by = getOption(argv, "--by") || getOption(argv, "--from") || "manual";
+  const checkOnly = hasFlag(argv, "--check");
+  if (!id) {
+    throw new Error("Usage: ai-memory-hub task budget --id <task-id> [--max-iterations 6] [--max-tool-calls 20] [--max-minutes 30] [--max-tokens 100000] [--check] [--by codex]");
+  }
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+
+  return withHubLock(config.memoryDir, "task-budget", () => {
+    const task = updateTask(config.memoryDir, id, (current) => {
+      if (checkOnly) return current;
+      const existing = current.budget || {};
+      const budget = {
+        maxIterations: parseInt(getOption(argv, "--max-iterations") || existing.maxIterations || DEFAULT_BUDGET.maxIterations, 10),
+        maxToolCalls: parseInt(getOption(argv, "--max-tool-calls") || existing.maxToolCalls || DEFAULT_BUDGET.maxToolCalls, 10),
+        maxMinutes: parseInt(getOption(argv, "--max-minutes") || existing.maxMinutes || DEFAULT_BUDGET.maxMinutes, 10),
+        maxTokens: parseInt(getOption(argv, "--max-tokens") || existing.maxTokens || DEFAULT_BUDGET.maxTokens, 10),
+        iterations: existing.iterations || 0,
+        toolCalls: existing.toolCalls || 0,
+        tokensConsumed: existing.tokensConsumed || 0,
+        setAt: new Date().toISOString()
+      };
+      return {
+        ...current,
+        budget,
+        updatedAt: new Date().toISOString(),
+        notes: [
+          ...(current.notes || []),
+          createTaskNote(by, "Budget set: iterations=" + budget.maxIterations + ", toolCalls=" + budget.maxToolCalls + ", minutes=" + budget.maxMinutes + ", tokens=" + budget.maxTokens)
+        ]
+      };
+    });
+
+    const b = task.budget || {};
+    const elapsed = task.createdAt ? (Date.now() - new Date(task.createdAt).getTime()) / 60000 : 0;
+    const violations = [];
+    if (b.maxIterations && (b.iterations || 0) >= b.maxIterations) {
+      violations.push("iterations " + (b.iterations || 0) + "/" + b.maxIterations);
+    }
+    if (b.maxToolCalls && (b.toolCalls || 0) >= b.maxToolCalls) {
+      violations.push("toolCalls " + (b.toolCalls || 0) + "/" + b.maxToolCalls);
+    }
+    if (b.maxMinutes && elapsed >= b.maxMinutes) {
+      violations.push("minutes " + elapsed.toFixed(1) + "/" + b.maxMinutes);
+    }
+    if (b.maxTokens && (b.tokensConsumed || 0) >= b.maxTokens) {
+      violations.push("tokens " + (b.tokensConsumed || 0) + "/" + b.maxTokens);
+    }
+
+    // OPC v1.1 P2: Auto stop-condition check (success/fail/risk/budget)
+    const stopReasons = [];
+    // Budget stop
+    if (violations.length > 0) stopReasons.push("budget");
+    // Risk stop: check if task has risk tag
+    if (task.tags && task.tags.includes("risk")) stopReasons.push("risk");
+    // Fail stop: failCount >= 3
+    if ((task.failCount || 0) >= 3) stopReasons.push("fail");
+
+    if (stopReasons.length > 0 && task.status !== "done" && task.status !== "cancelled") {
+      updateTask(config.memoryDir, id, (current) => ({
+        ...current,
+        status: "blocked",
+        updatedAt: new Date().toISOString(),
+        notes: [
+          ...(current.notes || []),
+          createTaskNote("amh", "Stop condition triggered: " + stopReasons.join(", ") + ". Violations: " + violations.join(", ") + ". Task auto-blocked.")
+        ]
+      }));
+      const radioMsg = createRadioMessage({
+        from: "amh",
+        to: "operator",
+        type: "review",
+        text: "Task " + id + " stop condition: " + stopReasons.join(", ") + ". Violations: " + violations.join(", ") + ". Auto-blocked.",
+        thread: id,
+        project: task.project || ""
+      });
+      appendJsonl(path.join(config.memoryDir, "radio", "messages.jsonl"), radioMsg);
+      console.log(JSON.stringify({
+        taskId: id,
+        budget: b,
+        elapsedMinutes: elapsed.toFixed(1),
+        violations,
+        status: "blocked",
+        radioSent: true
+      }, null, 2));
+    } else {
+      console.log(JSON.stringify({
+        taskId: id,
+        budget: b,
+        elapsedMinutes: elapsed.toFixed(1),
+        iterations: b.iterations || 0,
+        toolCalls: b.toolCalls || 0,
+        tokensConsumed: b.tokensConsumed || 0,
+        status: violations.length === 0 ? "ok" : "exceeded",
+        violations
+      }, null, 2));
+    }
+  }, config.sync.lockStaleMs);
 }
 
 function radioArchiveCommand(argv) {
@@ -5514,7 +5858,202 @@ function memoryCommand(argv) {
   if (subcommand === "snapshot") {
     return snapshotCommand(rest);
   }
-  throw new Error("Usage: ai-memory-hub memory <search|snapshot> [options]");
+  if (subcommand === "archive") {
+    return memoryArchiveCommand(rest);
+  }
+  if (subcommand === "hook") {
+    return memoryHookCommand(rest);
+  }
+  if (subcommand === "version") {
+    return memoryVersionCommand(rest);
+  }
+  throw new Error("Usage: ai-memory-hub memory <search|snapshot|archive|hook|version> [options]");
+}
+
+// ─── OPC v1.1 P1: Memory decay - archive expired/low-priority memories ───
+function memoryArchiveCommand(argv) {
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const dryRun = hasFlag(argv, "--dry-run");
+  const byPriority = getOption(argv, "--priority") || "";
+  const expiredOnly = hasFlag(argv, "--expired-only");
+
+  const ledger = readLedger(config.memoryDir);
+  const now = new Date();
+  const toArchive = [];
+  const toKeep = [];
+
+  for (const record of ledger) {
+    const meta = record.metadata || {};
+    const expiresAt = meta.expiresAt || "";
+    const priority = meta.priority || "normal";
+    let shouldArchive = false;
+
+    if (expiredOnly && expiresAt) {
+      if (new Date(expiresAt) < now) shouldArchive = true;
+    } else if (byPriority && priority === byPriority) {
+      shouldArchive = true;
+    } else if (!expiredOnly && !byPriority) {
+      if (expiresAt && new Date(expiresAt) < now) {
+        shouldArchive = true;
+      } else if (priority === "low") {
+        const age = record.ts ? (now - new Date(record.ts)) / 86400000 : 0;
+        if (age > 30) shouldArchive = true;
+      }
+    }
+
+    if (shouldArchive && record.kind !== "correction") {
+      toArchive.push(record);
+    } else {
+      toKeep.push(record);
+    }
+  }
+
+  if (toArchive.length === 0) {
+    console.log("No memories to archive.");
+    return;
+  }
+
+  console.log("Archiving " + toArchive.length + " memory record(s)..." + (dryRun ? " (dry-run)" : ""));
+
+  if (dryRun) {
+    for (const r of toArchive) {
+      const reason = r.metadata?.expiresAt ? "expired" : "low-priority";
+      console.log("  [" + reason + "] " + r.id + " ts=" + r.ts);
+    }
+    return;
+  }
+
+  const archiveFile = path.join(config.memoryDir, "memories", "ledger-archive.jsonl");
+  ensureDir(path.dirname(archiveFile));
+  fs.appendFileSync(archiveFile, toArchive.map(r => JSON.stringify(r)).join("\n") + "\n", "utf8");
+  writeLedger(config.memoryDir, toKeep);
+  console.log("Archived " + toArchive.length + ", kept " + toKeep.length + ".");
+}
+
+// ─── OPC v1.1 P1: Lifecycle hooks - auto-capture memory events ───
+function memoryHookCommand(argv) {
+  const action = argv[0] || "list";
+  const rest = argv.slice(1);
+  if (action === "register") return memoryHookRegisterCommand(rest);
+  if (action === "list") return memoryHookListCommand(rest);
+  if (action === "emit") return memoryHookEmitCommand(rest);
+  if (action === "remove") return memoryHookRemoveCommand(rest);
+  throw new Error("Usage: ai-memory-hub memory hook <register|list|emit|remove> [options]");
+}
+
+function memoryHookRegisterCommand(argv) {
+  const event = getOption(argv, "--event") || "";
+  const tool = getOption(argv, "--tool") || "";
+  const template = getOption(argv, "--template") || "";
+  if (!event || !tool) {
+    throw new Error("Usage: ai-memory-hub memory hook register --event <session_start|session_end|tool_call|prompt> --tool <name> [--template text]");
+  }
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const hooksFile = path.join(config.memoryDir, "hooks", "hooks.jsonl");
+  ensureDir(path.dirname(hooksFile));
+  const hook = {
+    id: createId("hook:" + event + ":" + tool + ":" + Date.now()),
+    event, tool,
+    template: template || "Auto-captured: {event} from {tool} at {ts}",
+    active: true,
+    createdAt: new Date().toISOString()
+  };
+  appendJsonl(hooksFile, hook);
+  console.log(JSON.stringify(hook, null, 2));
+}
+
+function memoryHookListCommand(argv) {
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const hooksFile = path.join(config.memoryDir, "hooks", "hooks.jsonl");
+  if (!fs.existsSync(hooksFile)) { console.log("[]"); return; }
+  const hooks = readEvents(hooksFile).filter(h => h.active !== false);
+  console.log(JSON.stringify(hooks, null, 2));
+}
+
+function memoryHookEmitCommand(argv) {
+  const event = getOption(argv, "--event") || "";
+  const tool = getOption(argv, "--tool") || getOption(argv, "--source") || "manual";
+  const data = getOption(argv, "--data") || "";
+  if (!event) {
+    throw new Error("Usage: ai-memory-hub memory hook emit --event <event> [--tool name] [--data text]");
+  }
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const hooksFile = path.join(config.memoryDir, "hooks", "hooks.jsonl");
+  let hooks = [];
+  if (fs.existsSync(hooksFile)) {
+    hooks = readEvents(hooksFile).filter(h => h.active !== false && h.event === event && (!h.tool || h.tool === tool));
+  }
+  if (hooks.length === 0) {
+    console.log(JSON.stringify({ event, tool, hooksMatched: 0 }));
+    return;
+  }
+  const ts = new Date().toISOString();
+  for (const hook of hooks) {
+    const text = hook.template.replace("{event}", event).replace("{tool}", tool).replace("{ts}", ts).replace("{data}", data || "");
+    const memoryEvent = {
+      id: createId("hook:" + hook.id + ":" + ts),
+      ts, device: os.hostname(), source: tool, text,
+      metadata: normalizeMemoryMetadata({ kind: "workflow", project: "", tags: ["opc", "lifecycle-hook", event], scope: "", confidence: "" })
+    };
+    appendJsonl(path.join(config.memoryDir, "inbox", "events.jsonl"), memoryEvent);
+  }
+  console.log(JSON.stringify({ event, tool, hooksMatched: hooks.length, emitted: hooks.length }));
+}
+
+function memoryHookRemoveCommand(argv) {
+  const id = getOption(argv, "--id") || "";
+  if (!id) throw new Error("Usage: ai-memory-hub memory hook remove --id <hook-id>");
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const hooksFile = path.join(config.memoryDir, "hooks", "hooks.jsonl");
+  if (!fs.existsSync(hooksFile)) { console.log("No hooks found."); return; }
+  const hooks = readEvents(hooksFile);
+  const updated = hooks.map(h => h.id === id ? { ...h, active: false, removedAt: new Date().toISOString() } : h);
+  fs.writeFileSync(hooksFile, updated.map(h => JSON.stringify(h)).join("\n") + "\n", "utf8");
+  console.log(JSON.stringify({ ok: true, removed: id }));
+}
+
+// ─── OPC v1.1 P1: TF-IDF semantic search (zero external dependencies) ───
+function semanticSearch(records, query, limit) {
+  if (records.length === 0) return [];
+  const STOPWORDS = new Set(["the", "a", "an", "is", "are", "was", "were", "be", "been", "being", "have", "has", "had", "do", "does", "did", "will", "would", "could", "should", "may", "might", "must", "can", "of", "in", "to", "for", "with", "on", "at", "from", "by", "as", "and", "or", "not", "but", "if", "then", "else", "when", "up", "out", "about", "into", "over", "after"]);
+  function tokenize(text) {
+    const words = String(text || "").toLowerCase().match(/[a-z0-9\u4e00-\u9fff]+/g) || [];
+    return words.filter(w => w.length > 1 && !STOPWORDS.has(w));
+  }
+  const df = new Map();
+  const docTokens = records.map(r => {
+    const tokens = tokenize(r.text + " " + (r.metadata?.tags || []).join(" ") + " " + (r.metadata?.project || ""));
+    for (const t of new Set(tokens)) df.set(t, (df.get(t) || 0) + 1);
+    return tokens;
+  });
+  const N = records.length;
+  function idf(term) { const freq = df.get(term) || 0; return Math.log((N + 1) / (freq + 1)) + 1; }
+  const queryTokens = tokenize(query);
+  const queryVector = new Map();
+  for (const t of queryTokens) queryVector.set(t, (queryVector.get(t) || 0) + 1);
+  for (const [t, tf] of queryVector) queryVector.set(t, tf * idf(t));
+  const queryNorm = Math.sqrt([...queryVector.values()].reduce((s, v) => s + v * v, 0));
+  if (queryNorm === 0) return [];
+  const scored = records.map((r, i) => {
+    const tokens = docTokens[i];
+    const tfMap = new Map();
+    for (const t of tokens) tfMap.set(t, (tfMap.get(t) || 0) + 1);
+    let dotProduct = 0, docNorm = 0;
+    for (const [t, tf] of tfMap) {
+      const weight = tf * idf(t);
+      docNorm += weight * weight;
+      if (queryVector.has(t)) dotProduct += weight * queryVector.get(t);
+    }
+    docNorm = Math.sqrt(docNorm);
+    const score = docNorm > 0 ? dotProduct / (queryNorm * docNorm) : 0;
+    return { ...r, score };
+  });
+  return scored.filter(r => r.score > 0).sort((a, b) => b.score - a.score).slice(0, limit);
 }
 
 function searchCommand(argv) {
@@ -5536,8 +6075,10 @@ function searchCommand(argv) {
   const filters = parseMemoryFilters(argv);
   const hasFilter = hasMemoryFilters(filters);
   const trackAccess = !hasFlag(argv, "--no-track") && !hasFlag(argv, "--no-access-track");
+  // OPC v1.1 P1: semantic search mode
+  const mode = getOption(argv, "--mode") || "fts";
   if (!query && !hasFilter) {
-    throw new Error("Usage: ai-memory-hub search [query] [--limit 10] [--type memory|task|radio|workflow|prompt] [--legacy] [--no-track]");
+    throw new Error("Usage: ai-memory-hub search [query] [--limit 10] [--type memory|task|radio|workflow|prompt] [--legacy] [--no-track] [--mode fts|semantic]");
   }
 
   // Try FTS5 search first
@@ -5556,6 +6097,27 @@ function searchCommand(argv) {
       }
       db.close();
     } catch { /* fallback to legacy */ }
+  }
+
+  // OPC v1.1 P1: Semantic search (TF-IDF cosine similarity, no external deps)
+  if (query && mode === "semantic") {
+    try {
+      const ledger = readLedger(config.memoryDir);
+      if (ledger.length > 0) {
+        const results = semanticSearch(ledger, query, limit);
+        if (results.length > 0) {
+          if (trackAccess) {
+            const updated = recordMemoryAccess(ledger, results);
+            if (updated.updated > 0) writeLedger(config.memoryDir, updated.ledger);
+          }
+          for (const item of results) {
+            const preview = item.text ? item.text.slice(0, 120) : "";
+            console.log("[" + item.score.toFixed(3) + "] [semantic] " + item.id + " " + (item.metadata?.project ? "project=" + item.metadata.project + " " : "") + preview);
+          }
+          return;
+        }
+      }
+    } catch (e) { /* fallback to FTS */ }
   }
 
   // Legacy search fallback
@@ -8192,8 +8754,20 @@ function workflowSignalCommand(argv) {
   const args = positionalArgs(argv);
   const text = getOption(argv, "--text") || (getOption(argv, "--id") ? args.join(" ") : args.slice(1).join(" ")).trim();
   const by = getOption(argv, "--by") || getOption(argv, "--from") || "manual";
-  if (!id || !to || !text) {
-    throw new Error("Usage: ai-memory-hub workflow signal --id <workflow-id> --to <tool-or-role> <text> [--by codex]");
+  // OPC v1.1 P0: standardized signal type and status
+  const signalType = getOption(argv, "--type") || "";
+  const signalStatus = getOption(argv, "--status") || "";
+  const signalScore = getOption(argv, "--score") || "";
+  const VALID_SIGNAL_TYPES = ["build", "lint", "test", "dry-run", "design-check", "doc-check", "custom"];
+  const VALID_SIGNAL_STATUSES = ["pass", "fail", "warn", "skip"];
+  if (signalType && !VALID_SIGNAL_TYPES.includes(signalType)) {
+    throw new Error("Invalid signal --type: " + signalType + ". Valid: " + VALID_SIGNAL_TYPES.join("|"));
+  }
+  if (signalStatus && !VALID_SIGNAL_STATUSES.includes(signalStatus)) {
+    throw new Error("Invalid signal --status: " + signalStatus + ". Valid: " + VALID_SIGNAL_STATUSES.join("|"));
+  }
+  if (!id || !to || (!text && !signalType)) {
+    throw new Error("Usage: ai-memory-hub workflow signal --id <workflow-id> --to <tool-or-role> <text> [--by codex] [--type build|lint|test|dry-run] [--status pass|fail|warn|skip] [--score <number>]");
   }
   const config = loadConfig();
   ensureHub(config.memoryDir);
@@ -10444,6 +11018,16 @@ function normalizeTask(task) {
   }
   if (isPlainObject(task.recipeStep)) {
     normalized.recipeStep = normalizeRecipeStepMetadata(task.recipeStep);
+  }
+  // OPC v1.1: preserve custom fields
+  if (isPlainObject(task.budget)) {
+    normalized.budget = task.budget;
+  }
+  if (task.failType) normalized.failType = task.failType;
+  if (task.failCount) normalized.failCount = task.failCount;
+  if (task.lastFailAt) normalized.lastFailAt = task.lastFailAt;
+  if (Array.isArray(task.evaluationSignals)) {
+    normalized.evaluationSignals = task.evaluationSignals;
   }
   return normalized;
 }

@@ -1,0 +1,1290 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1440, initial-scale=1.0">
+<title>AI Memory Hub · 概览</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style id="theme-vars">
+  :root {
+    --bg-canvas: #0d0a08;
+    --bg-surface: #161210;
+    --bg-elevated: #1e1a16;
+    --bg-hover: #26201a;
+    --bg-active: #2e2820;
+    --bg-input: #100c0a;
+
+    --primary: #f59e0b;
+    --primary-hover: #fbb034;
+    --primary-active: #d97f06;
+    --primary-muted: rgba(245, 158, 11, 0.12);
+    --primary-subtle: rgba(245, 158, 11, 0.06);
+    --primary-glow: rgba(245, 158, 11, 0.25);
+    --primary-foreground: #ffffff;
+
+    --accent-orange: #fb923c;
+    --accent-orange-muted: rgba(251, 146, 60, 0.12);
+
+    --text: #f5ede0;
+    --text-secondary: #b8a890;
+    --text-tertiary: #786850;
+    --text-disabled: #4a3e30;
+
+    --border: #2a2218;
+    --border-strong: #3a3024;
+    --border-subtle: #1e1814;
+
+    --state-success: #34d399;
+    --state-success-muted: rgba(52, 211, 153, 0.12);
+    --state-warning: #fbbf24;
+    --state-warning-muted: rgba(251, 191, 36, 0.12);
+    --state-error: #f87171;
+    --state-error-muted: rgba(248, 113, 113, 0.12);
+    --state-info: #60a5fa;
+    --state-info-muted: rgba(96, 165, 250, 0.12);
+
+    --radius-sm: 4px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --radius-full: 9999px;
+
+    --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", monospace;
+
+    --sidebar-width: 56px;
+    --header-height: 52px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    width: 1440px;
+    height: 900px;
+    overflow: hidden;
+    font-family: var(--font-sans);
+    background: var(--bg-canvas);
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* ===== App Shell ===== */
+  .app {
+    display: grid;
+    grid-template-columns: var(--sidebar-width) 1fr;
+    grid-template-rows: var(--header-height) 1fr;
+    height: 100vh;
+    width: 100vw;
+  }
+
+  /* ===== Sidebar (Narrow Icon Rail) ===== */
+  .sidebar {
+    grid-row: 1 / 3;
+    width: var(--sidebar-width);
+    background: var(--bg-surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 10px 0;
+    gap: 8px;
+    position: relative;
+    z-index: 50;
+  }
+
+  .logo {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, var(--primary) 0%, var(--accent-orange) 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    flex-shrink: 0;
+    box-shadow: 0 2px 8px var(--primary-glow);
+    margin-bottom: 4px;
+  }
+  .logo svg { width: 18px; height: 18px; }
+
+  .sidebar-divider {
+    width: 24px;
+    height: 1px;
+    background: var(--border);
+    margin: 4px 0;
+  }
+
+  .nav-group {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .nav-item {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    position: relative;
+    transition: background 0.15s ease, color 0.15s ease;
+    flex-shrink: 0;
+  }
+  .nav-item svg { width: 18px; height: 18px; stroke-width: 1.5; }
+  .nav-item:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+  }
+  .nav-item.active {
+    background: var(--primary-muted);
+    color: var(--primary);
+    box-shadow: inset 2px 0 0 var(--primary), 0 0 12px var(--primary-glow);
+  }
+
+  /* Tooltip */
+  .nav-item .tooltip {
+    position: absolute;
+    left: calc(100% + 10px);
+    top: 50%;
+    transform: translateY(-50%);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 12px;
+    color: var(--text);
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.12s ease;
+    z-index: 100;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  }
+  .nav-item:hover .tooltip { opacity: 1; }
+
+  .sidebar-spacer { flex: 1; }
+
+  .sidebar-bottom {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding-top: 8px;
+  }
+
+  .conn-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--state-success);
+    box-shadow: 0 0 6px rgba(52, 211, 153, 0.6);
+    position: relative;
+  }
+  .conn-dot::after {
+    content: "";
+    position: absolute;
+    inset: -3px;
+    border-radius: 50%;
+    border: 1px solid var(--state-success-muted);
+  }
+
+  .avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #d97f06, #fb923c);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 600;
+    border: 1px solid var(--border-strong);
+  }
+
+  /* ===== Header ===== */
+  .header {
+    grid-column: 2;
+    grid-row: 1;
+    height: var(--header-height);
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+  }
+
+  .header-left {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+  .header-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .header-dot {
+    color: var(--text-tertiary);
+    font-size: 12px;
+  }
+  .header-subtitle {
+    font-size: 13px;
+    color: var(--text-tertiary);
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: background 0.15s ease, border-color 0.15s ease;
+    font-family: var(--font-sans);
+    white-space: nowrap;
+  }
+  .btn svg { width: 14px; height: 14px; stroke-width: 1.8; }
+  .btn-ghost {
+    background: transparent;
+    color: var(--text-secondary);
+    border-color: var(--border);
+  }
+  .btn-ghost:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+    border-color: var(--border-strong);
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
+    color: var(--primary-foreground);
+    box-shadow: 0 1px 4px var(--primary-glow);
+  }
+  .btn-primary:hover { background: linear-gradient(135deg, var(--primary-hover) 0%, var(--accent-orange) 100%); }
+
+  .header-divider {
+    width: 1px;
+    height: 20px;
+    background: var(--border);
+    margin: 0 4px;
+  }
+
+  .lang-toggle {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s ease;
+  }
+  .lang-toggle:hover { background: var(--bg-hover); color: var(--text); }
+
+  .icon-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s ease;
+  }
+  .icon-btn:hover { background: var(--bg-hover); color: var(--text); }
+  .icon-btn svg { width: 15px; height: 15px; stroke-width: 1.8; }
+
+  /* ===== Content ===== */
+  .content {
+    grid-column: 2;
+    grid-row: 2;
+    background: var(--bg-canvas);
+    overflow-y: auto;
+    padding: 24px;
+  }
+  .content::-webkit-scrollbar { width: 8px; }
+  .content::-webkit-scrollbar-track { background: transparent; }
+  .content::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
+
+  /* ===== Metric Cards ===== */
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+
+  .metric-card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    transition: border-color 0.15s ease;
+  }
+  .metric-card:hover { border-color: var(--border-strong); }
+
+  .metric-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .metric-badge {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, var(--primary-muted), var(--accent-orange-muted));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--primary);
+    border: 1px solid var(--primary-muted);
+  }
+  .metric-badge svg { width: 18px; height: 18px; stroke-width: 1.8; }
+
+  .trend-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 9999px;
+    font-family: var(--font-mono);
+  }
+  .trend-pill svg { width: 11px; height: 11px; stroke-width: 2; }
+  .trend-success { color: var(--state-success); background: var(--state-success-muted); }
+  .trend-info { color: var(--state-info); background: var(--state-info-muted); }
+  .trend-warning { color: var(--state-warning); background: var(--state-warning-muted); }
+
+  .metric-mid {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .metric-value {
+    font-family: var(--font-mono);
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1.1;
+    letter-spacing: -0.5px;
+  }
+  .metric-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  .metric-sub {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .sub-pill {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 9999px;
+    background: var(--bg-elevated);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+  }
+  .sub-pill.info { color: var(--state-info); background: var(--state-info-muted); border-color: transparent; }
+
+  .progress-wrap {
+    margin-top: 2px;
+  }
+  .progress-bar {
+    width: 100%;
+    height: 6px;
+    background: var(--bg-elevated);
+    border-radius: 9999px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary), var(--accent-orange));
+    border-radius: 9999px;
+  }
+
+  .sparkline { height: 32px; width: 100%; display: block; }
+
+  /* ===== Two Column ===== */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1.4fr 0.8fr;
+    gap: 16px;
+  }
+
+  .col { display: flex; flex-direction: column; gap: 16px; }
+
+  .panel {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .panel-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .panel-title svg { width: 16px; height: 16px; color: var(--primary); stroke-width: 1.8; }
+  .panel-action {
+    font-size: 12px;
+    color: var(--text-tertiary);
+    cursor: pointer;
+  }
+  .panel-action:hover { color: var(--primary); }
+
+  /* Table */
+  .task-table { width: 100%; border-collapse: collapse; }
+  .task-table th {
+    text-align: left;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-tertiary);
+    padding: 8px 18px;
+    background: var(--bg-elevated);
+    border-bottom: 1px solid var(--border);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .task-table td {
+    padding: 11px 18px;
+    font-size: 13px;
+    border-bottom: 1px solid var(--border-subtle);
+    color: var(--text);
+    vertical-align: middle;
+  }
+  .task-table tr:last-child td { border-bottom: none; }
+  .task-table tbody tr:hover { background: var(--bg-hover); }
+
+  .task-name { font-weight: 500; }
+
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    font-weight: 500;
+    padding: 2px 9px;
+    border-radius: 9999px;
+  }
+  .status-badge::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+  .st-warning { color: var(--state-warning); background: var(--state-warning-muted); }
+  .st-success { color: var(--state-success); background: var(--state-success-muted); }
+  .st-info { color: var(--state-info); background: var(--state-info-muted); }
+  .st-error { color: var(--state-error); background: var(--state-error-muted); }
+  .st-neutral { color: var(--text-secondary); background: var(--bg-elevated); }
+
+  .priority {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .priority-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+  }
+
+  .agent-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+  }
+  .agent-tag .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--primary);
+  }
+
+  .time-cell {
+    font-size: 12px;
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+  }
+
+  /* Tools grid */
+  .tools-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 10px;
+    padding: 16px 18px;
+  }
+  .tool-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 10px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 12px;
+  }
+  .tool-mark {
+    width: 22px;
+    height: 22px;
+    border-radius: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    font-family: var(--font-mono);
+    color: #fff;
+    flex-shrink: 0;
+  }
+  .tool-info {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.2;
+    min-width: 0;
+    flex: 1;
+  }
+  .tool-name {
+    color: var(--text);
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tool-type {
+    color: var(--text-tertiary);
+    font-size: 10px;
+  }
+  .tool-status {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .tool-status svg { width: 14px; height: 14px; stroke-width: 2.5; }
+
+  /* Messages */
+  .msg-list { padding: 6px 0; }
+  .msg-item {
+    padding: 11px 18px;
+    border-bottom: 1px solid var(--border-subtle);
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .msg-item:last-child { border-bottom: none; }
+  .msg-item:hover { background: var(--bg-hover); }
+
+  .msg-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 7px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    color: #fff;
+    flex-shrink: 0;
+    font-family: var(--font-mono);
+  }
+
+  .msg-body { flex: 1; min-width: 0; }
+  .msg-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 3px;
+  }
+  .msg-source {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .msg-type {
+    font-size: 10px;
+    padding: 1px 7px;
+    border-radius: 9999px;
+    font-weight: 500;
+  }
+  .mt-info { color: var(--state-info); background: var(--state-info-muted); }
+  .mt-primary { color: var(--primary); background: var(--primary-muted); }
+  .mt-neutral { color: var(--text-secondary); background: var(--bg-elevated); }
+  .mt-error { color: var(--state-error); background: var(--state-error-muted); }
+  .msg-text {
+    font-size: 12.5px;
+    color: var(--text-secondary);
+    line-height: 1.45;
+  }
+  .msg-time {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    white-space: nowrap;
+    flex-shrink: 0;
+    align-self: flex-start;
+    padding-top: 1px;
+  }
+
+  /* Failures */
+  .fail-list { padding: 6px 0; }
+  .fail-item {
+    padding: 11px 18px;
+    border-bottom: 1px solid var(--border-subtle);
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .fail-item:last-child { border-bottom: none; }
+  .fail-item:hover { background: var(--bg-hover); }
+
+  .fail-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 7px;
+    background: var(--state-error-muted);
+    color: var(--state-error);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .fail-icon svg { width: 15px; height: 15px; stroke-width: 1.8; }
+
+  .fail-body { flex: 1; min-width: 0; }
+  .fail-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 2px;
+  }
+  .fail-type {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .fail-time {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+  }
+  .fail-text {
+    font-size: 12.5px;
+    color: var(--text-secondary);
+    line-height: 1.45;
+  }
+
+  /* color helpers for tool marks */
+  .tm-amber { background: linear-gradient(135deg, #f59e0b, #d97f06); }
+  .tm-orange { background: linear-gradient(135deg, #fb923c, #ea580c); }
+  .tm-gold { background: linear-gradient(135deg, #fbbf24, #d97706); }
+  .tm-copper { background: linear-gradient(135deg, #d97706, #92400e); }
+  .tm-bronze { background: linear-gradient(135deg, #b45309, #78350f); }
+  .tm-red { background: linear-gradient(135deg, #ef4444, #b91c1c); }
+  .tm-rose { background: linear-gradient(135deg, #f43f5e, #be123c); }
+  .tm-warm { background: linear-gradient(135deg, #f97316, #c2410c); }
+  .tm-sand { background: linear-gradient(135deg, #d4a373, #a16207); }
+  .tm-amber2 { background: linear-gradient(135deg, #fcd34d, #f59e0b); }
+
+</style>
+<script src="https://unpkg.com/@tailwindcss/browser@4"></script>
+<style type="text/tailwindcss">@theme inline { --color-background: var(--bg-canvas); --color-foreground: var(--text); --color-primary: var(--primary); --color-primary-foreground: var(--primary-foreground); --color-border: var(--border); --color-muted: var(--bg-surface); --color-muted-foreground: var(--text-secondary); --color-accent: var(--primary); --color-accent-foreground: var(--primary-foreground); --color-destructive: var(--state-error); --color-input: var(--bg-input); --color-ring: var(--primary); }
+@layer base { * { border-color: var(--border); } body { background-color: var(--bg-canvas); color: var(--text); font-family: var(--font-sans); } }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ===== Sidebar ===== -->
+  <aside class="sidebar">
+    <div class="logo" title="AI Memory Hub">
+      <!-- Brain icon -->
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/>
+        <path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/>
+        <path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4"/>
+      </svg>
+    </div>
+
+    <div class="sidebar-divider"></div>
+
+    <!-- Group 1 -->
+    <div class="nav-group">
+      <div class="nav-item active">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+        <span class="tooltip">概览</span>
+      </div>
+      <div class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg>
+        <span class="tooltip">记忆</span>
+      </div>
+      <div class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h15v4H3z"/><path d="M3 9h15v4H3z"/><path d="M3 15h15v4H3z"/><path d="M18 7l3 3-3 3"/></svg>
+        <span class="tooltip">任务</span>
+      </div>
+      <div class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"/><path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"/><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"/><path d="M19.1 4.9C23 8.8 23 15.2 19.1 19.1"/></svg>
+        <span class="tooltip">Radio</span>
+      </div>
+      <div class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect width="8" height="8" x="3" y="3" rx="2"/><path d="M7 11v4a2 2 0 0 0 2 2h4"/><rect width="8" height="8" x="13" y="13" rx="2"/></svg>
+        <span class="tooltip">工作流</span>
+      </div>
+    </div>
+
+    <div class="sidebar-divider"></div>
+
+    <!-- Group 2 -->
+    <div class="nav-group">
+      <div class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M21.775 13.475A2 2 0 0 0 20 11h-3.5l-1.5 6.5L13 6l-2 9-1.5-4.5L8.5 11H4a2 2 0 0 0-1.775.875"/><circle cx="12" cy="12" r="10"/></svg>
+        <span class="tooltip">调度</span>
+      </div>
+      <div class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="18" y2="20"/><line x1="5.2" x2="5.2" y1="18" y2="20"/><line x1="18.8" x2="18.8" y1="18" y2="20"/><rect width="20" height="10" x="2" y="5" rx="2"/></svg>
+        <span class="tooltip">分析</span>
+      </div>
+      <div class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg>
+        <span class="tooltip">备份</span>
+      </div>
+    </div>
+
+    <div class="sidebar-divider"></div>
+
+    <!-- Group 3 -->
+    <div class="nav-group">
+      <div class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+        <span class="tooltip">工具</span>
+      </div>
+      <div class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M6 5h11a3 3 0 0 1 3 3v0a3 3 0 0 1-3 3h-7a3 3 0 0 0-3 3v0a3 3 0 0 0 3 3h8"/><path d="M3 8v0a3 3 0 0 1 3-3"/></svg>
+        <span class="tooltip">项目</span>
+      </div>
+      <div class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        <span class="tooltip">健康</span>
+      </div>
+      <div class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+        <span class="tooltip">设置</span>
+      </div>
+      <div class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <span class="tooltip">对话</span>
+      </div>
+    </div>
+
+    <div class="sidebar-spacer"></div>
+
+    <div class="sidebar-bottom">
+      <div class="conn-dot" title="已连接"></div>
+      <div class="avatar">R</div>
+    </div>
+  </aside>
+
+  <!-- ===== Header ===== -->
+  <header class="header">
+    <div class="header-left">
+      <span class="header-title">概览</span>
+      <span class="header-dot">·</span>
+      <span class="header-subtitle">本地多 Agent 协作状态</span>
+    </div>
+    <div class="header-right">
+      <button class="btn btn-ghost">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+        重建快照
+      </button>
+      <button class="btn btn-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M21 3l-7 7"/><path d="M3 3l7 7"/><path d="M16 21h5v-5"/><path d="M8 21H3v-5"/><path d="M21 21l-7-7"/><path d="M3 21l7-7"/></svg>
+        同步 Inbox
+      </button>
+      <div class="header-divider"></div>
+      <button class="lang-toggle">中</button>
+      <button class="icon-btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- ===== Content ===== -->
+  <main class="content">
+
+    <!-- Section 1: Metric Cards -->
+    <div class="metrics-grid">
+
+      <!-- Card 1: 任务总数 -->
+      <div class="metric-card">
+        <div class="metric-top">
+          <div class="metric-badge">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h15v4H3z"/><path d="M3 9h15v4H3z"/><path d="M3 15h15v4H3z"/><path d="M18 7l3 3-3 3"/></svg>
+          </div>
+          <span class="trend-pill trend-success">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6-6 6 6"/><path d="M12 3v18"/></svg>
+            +12%
+          </span>
+        </div>
+        <div class="metric-mid">
+          <div class="metric-value">247</div>
+          <div class="metric-label">任务总数</div>
+        </div>
+        <svg class="sparkline" viewBox="0 0 100 32" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="sg1" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" stop-color="#f59e0b" stop-opacity="0.4"/>
+              <stop offset="100%" stop-color="#f59e0b" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+          <path d="M0,24 L12,20 L24,22 L36,16 L48,18 L60,12 L72,14 L84,8 L100,10 L100,32 L0,32 Z" fill="url(#sg1)"/>
+          <path d="M0,24 L12,20 L24,22 L36,16 L48,18 L60,12 L72,14 L84,8 L100,10" fill="none" stroke="#f59e0b" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+
+      <!-- Card 2: 活跃任务 -->
+      <div class="metric-card">
+        <div class="metric-top">
+          <div class="metric-badge">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+          </div>
+          <span class="trend-pill trend-success">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6-6 6 6"/><path d="M12 3v18"/></svg>
+            +3
+          </span>
+        </div>
+        <div class="metric-mid">
+          <div class="metric-value">18</div>
+          <div class="metric-label">活跃任务</div>
+        </div>
+        <div class="metric-sub">
+          <span class="sub-pill info">执行中 5</span>
+          <span class="sub-pill">排队 13</span>
+        </div>
+      </div>
+
+      <!-- Card 3: 工作流 -->
+      <div class="metric-card">
+        <div class="metric-top">
+          <div class="metric-badge">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect width="8" height="8" x="3" y="3" rx="2"/><path d="M7 11v4a2 2 0 0 0 2 2h4"/><rect width="8" height="8" x="13" y="13" rx="2"/></svg>
+          </div>
+          <span class="trend-pill trend-info">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 10v6"/></svg>
+            3 活跃
+          </span>
+        </div>
+        <div class="metric-mid">
+          <div class="metric-value">12</div>
+          <div class="metric-label">工作流</div>
+        </div>
+        <svg class="sparkline" viewBox="0 0 100 32" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="sg3" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" stop-color="#f59e0b" stop-opacity="0.4"/>
+              <stop offset="100%" stop-color="#f59e0b" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+          <path d="M0,18 L14,14 L28,16 L42,10 L56,14 L70,8 L84,12 L100,6 L100,32 L0,32 Z" fill="url(#sg3)"/>
+          <path d="M0,18 L14,14 L28,16 L42,10 L56,14 L70,8 L84,12 L100,6" fill="none" stroke="#f59e0b" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+
+      <!-- Card 4: Relay 成功率 -->
+      <div class="metric-card">
+        <div class="metric-top">
+          <div class="metric-badge">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg>
+          </div>
+          <span class="trend-pill trend-success">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6-6 6 6"/><path d="M12 3v18"/></svg>
+            +2.1%
+          </span>
+        </div>
+        <div class="metric-mid">
+          <div class="metric-value">94.2%</div>
+          <div class="metric-label">Relay 成功率</div>
+        </div>
+        <div class="metric-sub">
+          <span class="sub-pill">本周 1,203 次</span>
+        </div>
+      </div>
+
+      <!-- Card 5: 可自动执行工具 -->
+      <div class="metric-card">
+        <div class="metric-top">
+          <div class="metric-badge">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+          </div>
+          <span class="trend-pill trend-info">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+            80%
+          </span>
+        </div>
+        <div class="metric-mid">
+          <div class="metric-value">8/10</div>
+          <div class="metric-label">可自动执行工具</div>
+        </div>
+        <div class="progress-wrap">
+          <div class="progress-bar"><div class="progress-fill" style="width:80%"></div></div>
+        </div>
+      </div>
+
+      <!-- Card 6: 记忆记录 -->
+      <div class="metric-card">
+        <div class="metric-top">
+          <div class="metric-badge">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg>
+          </div>
+          <span class="trend-pill trend-success">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6-6 6 6"/><path d="M12 3v18"/></svg>
+            +23 今日
+          </span>
+        </div>
+        <div class="metric-mid">
+          <div class="metric-value">1,847</div>
+          <div class="metric-label">记忆记录</div>
+        </div>
+        <svg class="sparkline" viewBox="0 0 100 32" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="sg6" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" stop-color="#f59e0b" stop-opacity="0.4"/>
+              <stop offset="100%" stop-color="#f59e0b" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+          <path d="M0,22 L12,18 L24,20 L36,14 L48,16 L60,10 L72,12 L84,6 L100,8 L100,32 L0,32 Z" fill="url(#sg6)"/>
+          <path d="M0,22 L12,18 L24,20 L36,14 L48,16 L60,10 L72,12 L84,6 L100,8" fill="none" stroke="#f59e0b" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+
+    </div>
+
+    <!-- Section 2: Two Column -->
+    <div class="two-col">
+
+      <!-- LEFT COLUMN -->
+      <div class="col">
+
+        <!-- 最近任务 -->
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h15v4H3z"/><path d="M3 9h15v4H3z"/><path d="M3 15h15v4H3z"/></svg>
+              最近任务
+            </div>
+            <span class="panel-action">查看全部 →</span>
+          </div>
+          <table class="task-table">
+            <thead>
+              <tr>
+                <th>任务</th>
+                <th>状态</th>
+                <th>优先级</th>
+                <th>来源</th>
+                <th>时间</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="task-name">分析代码结构并生成文档</td>
+                <td><span class="status-badge st-warning">进行中</span></td>
+                <td><span class="priority"><span class="priority-dot" style="background:#f87171"></span>高</span></td>
+                <td><span class="agent-tag"><span class="dot"></span>Claude Code</span></td>
+                <td class="time-cell">2 分钟前</td>
+              </tr>
+              <tr>
+                <td class="task-name">修复 TypeScript 类型错误</td>
+                <td><span class="status-badge st-success">已完成</span></td>
+                <td><span class="priority"><span class="priority-dot" style="background:#fbbf24"></span>中</span></td>
+                <td><span class="agent-tag"><span class="dot"></span>Codex</span></td>
+                <td class="time-cell">15 分钟前</td>
+              </tr>
+              <tr>
+                <td class="task-name">重构 API 认证模块</td>
+                <td><span class="status-badge st-info">待处理</span></td>
+                <td><span class="priority"><span class="priority-dot" style="background:#f87171"></span>高</span></td>
+                <td><span class="agent-tag"><span class="dot"></span>Gemini</span></td>
+                <td class="time-cell">32 分钟前</td>
+              </tr>
+              <tr>
+                <td class="task-name">生成单元测试覆盖</td>
+                <td><span class="status-badge st-warning">进行中</span></td>
+                <td><span class="priority"><span class="priority-dot" style="background:#60a5fa"></span>低</span></td>
+                <td><span class="agent-tag"><span class="dot"></span>Claude Code</span></td>
+                <td class="time-cell">1 小时前</td>
+              </tr>
+              <tr>
+                <td class="task-name">代码审查 PR #42</td>
+                <td><span class="status-badge st-error">已阻塞</span></td>
+                <td><span class="priority"><span class="priority-dot" style="background:#fbbf24"></span>中</span></td>
+                <td><span class="agent-tag"><span class="dot"></span>Codex</span></td>
+                <td class="time-cell">2 小时前</td>
+              </tr>
+              <tr>
+                <td class="task-name">更新依赖版本</td>
+                <td><span class="status-badge st-success">已完成</span></td>
+                <td><span class="priority"><span class="priority-dot" style="background:#60a5fa"></span>低</span></td>
+                <td><span class="agent-tag"><span class="dot"></span>Gemini</span></td>
+                <td class="time-cell">3 小时前</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 工具状态 -->
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+              工具状态
+            </div>
+            <span class="panel-action">管理 →</span>
+          </div>
+          <div class="tools-grid">
+            <div class="tool-item">
+              <div class="tool-mark tm-amber">C</div>
+              <div class="tool-info"><span class="tool-name">Claude Code</span><span class="tool-type">CLI</span></div>
+              <div class="tool-status" style="color:var(--state-success)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>
+            </div>
+            <div class="tool-item">
+              <div class="tool-mark tm-orange">X</div>
+              <div class="tool-info"><span class="tool-name">Codex</span><span class="tool-type">CLI</span></div>
+              <div class="tool-status" style="color:var(--state-success)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>
+            </div>
+            <div class="tool-item">
+              <div class="tool-mark tm-gold">G</div>
+              <div class="tool-info"><span class="tool-name">Gemini</span><span class="tool-type">CLI</span></div>
+              <div class="tool-status" style="color:var(--state-success)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>
+            </div>
+            <div class="tool-item">
+              <div class="tool-mark tm-copper">T</div>
+              <div class="tool-info"><span class="tool-name">Trae</span><span class="tool-type">IDE</span></div>
+              <div class="tool-status" style="color:var(--state-success)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>
+            </div>
+            <div class="tool-item">
+              <div class="tool-mark tm-bronze">W</div>
+              <div class="tool-info"><span class="tool-name">Windsurf</span><span class="tool-type">IDE</span></div>
+              <div class="tool-status" style="color:var(--state-success)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>
+            </div>
+            <div class="tool-item">
+              <div class="tool-mark tm-warm">K</div>
+              <div class="tool-info"><span class="tool-name">Kilo Code</span><span class="tool-type">Plugin</span></div>
+              <div class="tool-status" style="color:var(--state-success)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>
+            </div>
+            <div class="tool-item">
+              <div class="tool-mark tm-red">R</div>
+              <div class="tool-info"><span class="tool-name">Roo Code</span><span class="tool-type">Plugin</span></div>
+              <div class="tool-status" style="color:var(--state-success)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>
+            </div>
+            <div class="tool-item">
+              <div class="tool-mark tm-rose">A</div>
+              <div class="tool-info"><span class="tool-name">Auggie</span><span class="tool-type">Agent</span></div>
+              <div class="tool-status" style="color:var(--state-error)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg></div>
+            </div>
+            <div class="tool-item">
+              <div class="tool-mark tm-sand">D</div>
+              <div class="tool-info"><span class="tool-name">DeepSeek</span><span class="tool-type">API</span></div>
+              <div class="tool-status" style="color:var(--state-success)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>
+            </div>
+            <div class="tool-item">
+              <div class="tool-mark tm-amber2">O</div>
+              <div class="tool-info"><span class="tool-name">OpenAI</span><span class="tool-type">API</span></div>
+              <div class="tool-status" style="color:var(--state-success)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- RIGHT COLUMN -->
+      <div class="col">
+
+        <!-- 最近消息 -->
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+              最近消息
+            </div>
+            <span class="panel-action">全部 →</span>
+          </div>
+          <div class="msg-list">
+            <div class="msg-item">
+              <div class="msg-avatar tm-amber">C</div>
+              <div class="msg-body">
+                <div class="msg-meta">
+                  <span class="msg-source">Claude Code</span>
+                  <span class="msg-type mt-info">广播</span>
+                </div>
+                <div class="msg-text">已完成代码结构分析，发现 3 个模块需要重构</div>
+              </div>
+              <div class="msg-time">2 分钟前</div>
+            </div>
+            <div class="msg-item">
+              <div class="msg-avatar tm-orange">X</div>
+              <div class="msg-body">
+                <div class="msg-meta">
+                  <span class="msg-source">Codex</span>
+                  <span class="msg-type mt-primary">直接</span>
+                </div>
+                <div class="msg-text">类型错误已修复，等待审核</div>
+              </div>
+              <div class="msg-time">15 分钟前</div>
+            </div>
+            <div class="msg-item">
+              <div class="msg-avatar tm-gold">G</div>
+              <div class="msg-body">
+                <div class="msg-meta">
+                  <span class="msg-source">Gemini</span>
+                  <span class="msg-type mt-neutral">系统</span>
+                </div>
+                <div class="msg-text">新任务已分配：重构 API 认证模块</div>
+              </div>
+              <div class="msg-time">32 分钟前</div>
+            </div>
+            <div class="msg-item">
+              <div class="msg-avatar tm-amber">C</div>
+              <div class="msg-body">
+                <div class="msg-meta">
+                  <span class="msg-source">Claude Code</span>
+                  <span class="msg-type mt-info">广播</span>
+                </div>
+                <div class="msg-text">测试覆盖率已提升至 78%</div>
+              </div>
+              <div class="msg-time">1 小时前</div>
+            </div>
+            <div class="msg-item">
+              <div class="msg-avatar tm-copper">S</div>
+              <div class="msg-body">
+                <div class="msg-meta">
+                  <span class="msg-source">系统</span>
+                  <span class="msg-type mt-error">警报</span>
+                </div>
+                <div class="msg-text">PR #42 审查阻塞，缺少 CI 配置</div>
+              </div>
+              <div class="msg-time">2 小时前</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 最近失败 -->
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>
+              最近失败
+            </div>
+            <span class="panel-action">日志 →</span>
+          </div>
+          <div class="fail-list">
+            <div class="fail-item">
+              <div class="fail-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+              </div>
+              <div class="fail-body">
+                <div class="fail-top">
+                  <span class="fail-type">超时</span>
+                  <span class="fail-time">2 小时前</span>
+                </div>
+                <div class="fail-text">Codex 执行代码审查超时（30s 限制）</div>
+              </div>
+            </div>
+            <div class="fail-item">
+              <div class="fail-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+              </div>
+              <div class="fail-body">
+                <div class="fail-top">
+                  <span class="fail-type">连接失败</span>
+                  <span class="fail-time">4 小时前</span>
+                </div>
+                <div class="fail-text">Gemini API 调用失败：rate limit exceeded</div>
+              </div>
+            </div>
+            <div class="fail-item">
+              <div class="fail-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4"/><path d="M12 3a6 6 0 0 0-9 5.4c0 2.4 1.5 4.5 3 6 .9.9 1.5 1.5 1.5 2.6v.5a2 2 0 0 0 2 2h5a2 2 0 0 0 2-2v-.5c0-1.1.6-1.7 1.5-2.6 1.5-1.5 3-3.6 3-6A6 6 0 0 0 12 3z"/></svg>
+              </div>
+              <div class="fail-body">
+                <div class="fail-top">
+                  <span class="fail-type">权限不足</span>
+                  <span class="fail-time">6 小时前</span>
+                </div>
+                <div class="fail-text">Auggie 无法访问 /workspaces 目录</div>
+              </div>
+            </div>
+            <div class="fail-item">
+              <div class="fail-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M16 18l6-6-6-6"/><path d="M8 6l-6 6 6 6"/></svg>
+              </div>
+              <div class="fail-body">
+                <div class="fail-top">
+                  <span class="fail-type">解析错误</span>
+                  <span class="fail-time">1 天前</span>
+                </div>
+                <div class="fail-text">工作流 'deploy-v2' 步骤配置无效</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+  </main>
+</div>
+</body>
+</html>

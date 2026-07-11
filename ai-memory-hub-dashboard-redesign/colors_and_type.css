@@ -1,0 +1,178 @@
+/* ==========================================================================
+   AI Memory Hub Dashboard — Light Clean Theme
+   Brand prefix: amh
+   ========================================================================== */
+
+/* ---------- Design Tokens ---------- */
+:root {
+  /* --- Background surfaces (light layered) --- */
+  --amh-bg-canvas: #f8fafc;
+  --amh-bg-surface: #ffffff;
+  --amh-bg-elevated: #f1f5f9;
+  --amh-bg-hover: #e2e8f0;
+  --amh-bg-active: #cbd5e1;
+  --amh-bg-input: #ffffff;
+  --amh-bg-sunken: #f1f5f9;
+
+  /* --- Primary brand hue (blue) --- */
+  --amh-primary: #2563eb;
+  --amh-primary-hover: #1d4ed8;
+  --amh-primary-active: #1e40af;
+  --amh-primary-muted: rgba(37, 99, 235, 0.08);
+  --amh-primary-subtle: rgba(37, 99, 235, 0.04);
+  --amh-primary-foreground: #ffffff;
+
+  /* --- Text hierarchy --- */
+  --amh-text: #0f172a;
+  --amh-text-secondary: #475569;
+  --amh-text-tertiary: #94a3b8;
+  --amh-text-disabled: #cbd5e1;
+
+  /* --- Borders --- */
+  --amh-border: #e2e8f0;
+  --amh-border-strong: #cbd5e1;
+  --amh-border-subtle: #f1f5f9;
+  --amh-border-primary: rgba(37, 99, 235, 0.3);
+
+  /* --- State colors (semantic only) --- */
+  --amh-state-success: #16a34a;
+  --amh-state-success-muted: rgba(22, 163, 74, 0.08);
+  --amh-state-warning: #ca8a04;
+  --amh-state-warning-muted: rgba(202, 138, 4, 0.08);
+  --amh-state-error: #dc2626;
+  --amh-state-error-muted: rgba(220, 38, 38, 0.08);
+  --amh-state-info: #2563eb;
+  --amh-state-info-muted: rgba(37, 99, 235, 0.08);
+
+  /* --- Radius scale --- */
+  --amh-radius-sm: 6px;
+  --amh-radius-md: 10px;
+  --amh-radius-lg: 14px;
+  --amh-radius-full: 9999px;
+
+  /* --- Typography --- */
+  --amh-font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  --amh-font-mono: "JetBrains Mono", "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  --amh-font-size-xs: 11px;
+  --amh-font-size-sm: 12px;
+  --amh-font-size-base: 13px;
+  --amh-font-size-md: 14px;
+  --amh-font-size-lg: 16px;
+  --amh-font-size-xl: 18px;
+  --amh-font-size-2xl: 22px;
+  --amh-font-size-3xl: 30px;
+
+  /* --- Spacing --- */
+  --amh-space-1: 4px;
+  --amh-space-2: 8px;
+  --amh-space-3: 12px;
+  --amh-space-4: 16px;
+  --amh-space-5: 20px;
+  --amh-space-6: 24px;
+  --amh-space-8: 32px;
+
+  /* --- Shadows (light theme needs more visible shadows) --- */
+  --amh-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --amh-shadow-md: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --amh-shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.08);
+  --amh-shadow-xl: 0 8px 32px rgba(0, 0, 0, 0.10);
+
+  /* --- Transitions --- */
+  --amh-transition-fast: 120ms cubic-bezier(0.4, 0, 0.2, 1);
+  --amh-transition-normal: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  --amh-transition-slow: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* --- Layout --- */
+  --amh-sidebar-width: 56px;
+  --amh-sidebar-collapsed-width: 56px;
+  --amh-header-height: 56px;
+}
+
+/* ---------- Light theme is the default ---------- */
+html {
+  background: var(--amh-bg-canvas);
+  color: var(--amh-text);
+  font-family: var(--amh-font-sans);
+  font-size: var(--amh-font-size-base);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  margin: 0;
+  background: var(--amh-bg-canvas);
+  color: var(--amh-text);
+}
+
+/* ---------- Typography classes ---------- */
+.amh-text-xs { font-size: var(--amh-font-size-xs); }
+.amh-text-sm { font-size: var(--amh-font-size-sm); }
+.amh-text-base { font-size: var(--amh-font-size-base); }
+.amh-text-md { font-size: var(--amh-font-size-md); }
+.amh-text-lg { font-size: var(--amh-font-size-lg); }
+.amh-text-xl { font-size: var(--amh-font-size-xl); }
+.amh-text-2xl { font-size: var(--amh-font-size-2xl); }
+.amh-text-3xl { font-size: var(--amh-font-size-3xl); }
+
+.amh-font-medium { font-weight: 500; }
+.amh-font-semibold { font-weight: 600; }
+.amh-font-bold { font-weight: 700; }
+
+.amh-text-primary { color: var(--amh-text); }
+.amh-text-secondary { color: var(--amh-text-secondary); }
+.amh-text-tertiary { color: var(--amh-text-tertiary); }
+.amh-text-disabled { color: var(--amh-text-disabled); }
+
+.amh-font-mono { font-family: var(--amh-font-mono); }
+
+/* ---------- Surface utilities ---------- */
+.amh-surface {
+  background: var(--amh-bg-surface);
+  border: 1px solid var(--amh-border);
+  border-radius: var(--amh-radius-lg);
+}
+
+.amh-surface-elevated {
+  background: var(--amh-bg-elevated);
+  border: 1px solid var(--amh-border);
+  border-radius: var(--amh-radius-lg);
+}
+
+.amh-surface-sunken {
+  background: var(--amh-bg-sunken);
+  border: 1px solid var(--amh-border-subtle);
+  border-radius: var(--amh-radius-md);
+}
+
+/* ---------- Scrollbar styling ---------- */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--amh-border-strong);
+  border-radius: var(--amh-radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--amh-text-tertiary);
+}
+
+/* ---------- Selection ---------- */
+::selection {
+  background: var(--amh-primary-muted);
+  color: var(--amh-primary);
+}
+
+/* ---------- Focus ring ---------- */
+*:focus-visible {
+  outline: 2px solid var(--amh-primary);
+  outline-offset: 2px;
+}

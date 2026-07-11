@@ -1,0 +1,1390 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Radio — AI Memory Hub</title>
+    <style id="theme-vars">
+/* ==========================================================================
+   AI Memory Hub Dashboard — Refined Dark Theme
+   Brand prefix: amh
+   ========================================================================== */
+
+/* ---------- Design Tokens ---------- */
+:root {
+  /* --- Background surfaces (layered depth) --- */
+  --amh-bg-canvas: #080c16;
+  --amh-bg-surface: #0e1422;
+  --amh-bg-elevated: #141c2e;
+  --amh-bg-hover: #1a2438;
+  --amh-bg-active: #1f2b44;
+  --amh-bg-input: #0b111e;
+  --amh-bg-sunken: #060a12;
+
+  /* --- Primary brand hue (teal) --- */
+  --amh-primary: #3fb7a3;
+  --amh-primary-hover: #4dc9b4;
+  --amh-primary-active: #36a592;
+  --amh-primary-muted: rgba(63, 183, 163, 0.12);
+  --amh-primary-subtle: rgba(63, 183, 163, 0.06);
+  --amh-primary-foreground: #ffffff;
+
+  /* --- Text hierarchy --- */
+  --amh-text: #e8edf7;
+  --amh-text-secondary: #9aa8c2;
+  --amh-text-tertiary: #5f6e8a;
+  --amh-text-disabled: #3d4860;
+
+  /* --- Borders --- */
+  --amh-border: #1e2840;
+  --amh-border-strong: #2a3756;
+  --amh-border-subtle: #161e30;
+  --amh-border-primary: rgba(63, 183, 163, 0.3);
+
+  /* --- State colors (semantic only) --- */
+  --amh-state-success: #34d399;
+  --amh-state-success-muted: rgba(52, 211, 153, 0.12);
+  --amh-state-warning: #fbbf24;
+  --amh-state-warning-muted: rgba(251, 191, 36, 0.12);
+  --amh-state-error: #f87171;
+  --amh-state-error-muted: rgba(248, 113, 113, 0.12);
+  --amh-state-info: #60a5fa;
+  --amh-state-info-muted: rgba(96, 165, 250, 0.12);
+
+  /* --- Radius scale --- */
+  --amh-radius-sm: 4px;
+  --amh-radius-md: 8px;
+  --amh-radius-lg: 12px;
+  --amh-radius-full: 9999px;
+
+  /* --- Typography --- */
+  --amh-font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  --amh-font-mono: "JetBrains Mono", "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  --amh-font-size-xs: 11px;
+  --amh-font-size-sm: 12px;
+  --amh-font-size-base: 13px;
+  --amh-font-size-md: 14px;
+  --amh-font-size-lg: 16px;
+  --amh-font-size-xl: 18px;
+  --amh-font-size-2xl: 22px;
+  --amh-font-size-3xl: 28px;
+
+  /* --- Spacing --- */
+  --amh-space-1: 4px;
+  --amh-space-2: 8px;
+  --amh-space-3: 12px;
+  --amh-space-4: 16px;
+  --amh-space-5: 20px;
+  --amh-space-6: 24px;
+  --amh-space-8: 32px;
+
+  /* --- Shadows (restrained: static surfaces border-led) --- */
+  --amh-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --amh-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.04);
+  --amh-shadow-lg: 0 8px 28px rgba(0, 0, 0, 0.12);
+  --amh-shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.16);
+
+  /* --- Transitions --- */
+  --amh-transition-fast: 120ms cubic-bezier(0.4, 0, 0.2, 1);
+  --amh-transition-normal: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  --amh-transition-slow: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* --- Layout --- */
+  --amh-sidebar-width: 240px;
+  --amh-sidebar-collapsed-width: 56px;
+  --amh-header-height: 56px;
+}
+
+/* ---------- Dark theme is the default ---------- */
+html {
+  background: var(--amh-bg-canvas);
+  color: var(--amh-text);
+  font-family: var(--amh-font-sans);
+  font-size: var(--amh-font-size-base);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  margin: 0;
+  background: var(--amh-bg-canvas);
+  color: var(--amh-text);
+}
+
+/* ---------- Typography classes ---------- */
+.amh-text-xs { font-size: var(--amh-font-size-xs); }
+.amh-text-sm { font-size: var(--amh-font-size-sm); }
+.amh-text-base { font-size: var(--amh-font-size-base); }
+.amh-text-md { font-size: var(--amh-font-size-md); }
+.amh-text-lg { font-size: var(--amh-font-size-lg); }
+.amh-text-xl { font-size: var(--amh-font-size-xl); }
+.amh-text-2xl { font-size: var(--amh-font-size-2xl); }
+.amh-text-3xl { font-size: var(--amh-font-size-3xl); }
+
+.amh-font-medium { font-weight: 500; }
+.amh-font-semibold { font-weight: 600; }
+.amh-font-bold { font-weight: 700; }
+
+.amh-text-primary { color: var(--amh-text); }
+.amh-text-secondary { color: var(--amh-text-secondary); }
+.amh-text-tertiary { color: var(--amh-text-tertiary); }
+.amh-text-disabled { color: var(--amh-text-disabled); }
+
+.amh-font-mono { font-family: var(--amh-font-mono); }
+
+/* ---------- Surface utilities ---------- */
+.amh-surface {
+  background: var(--amh-bg-surface);
+  border: 1px solid var(--amh-border);
+  border-radius: var(--amh-radius-lg);
+}
+
+.amh-surface-elevated {
+  background: var(--amh-bg-elevated);
+  border: 1px solid var(--amh-border);
+  border-radius: var(--amh-radius-lg);
+}
+
+.amh-surface-sunken {
+  background: var(--amh-bg-sunken);
+  border: 1px solid var(--amh-border-subtle);
+  border-radius: var(--amh-radius-md);
+}
+
+/* ---------- Scrollbar styling ---------- */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--amh-border-strong);
+  border-radius: var(--amh-radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--amh-text-tertiary);
+}
+
+/* ---------- Selection ---------- */
+::selection {
+  background: var(--amh-primary-muted);
+  color: var(--amh-primary-hover);
+}
+
+/* ---------- Focus ring ---------- */
+*:focus-visible {
+  outline: 2px solid var(--amh-primary);
+  outline-offset: 2px;
+}
+
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.1/dist/index.global.js"></script>
+    <script src="https://unpkg.com/lucide@1.8.0/dist/umd/lucide.min.js"></script>
+    <style type="text/tailwindcss">
+  @theme inline {
+    --color-primary: var(--amh-primary);
+    --color-primary-foreground: var(--amh-primary-foreground);
+    --color-border: var(--amh-border);
+  }
+  @layer base {
+    body { background: var(--amh-background); color: var(--amh-foreground); }
+    td, th { @apply break-words; word-break: break-all; word-break: auto-phrase; }
+    th { @apply whitespace-nowrap; }
+  }
+    </style>
+    <style>
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      [data-icon] {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        -webkit-mask-size: contain;
+        mask-size: contain;
+        -webkit-mask-repeat: no-repeat;
+        mask-repeat: no-repeat;
+        -webkit-mask-position: center;
+        mask-position: center;
+        background-color: currentColor;
+      }
+    </style>
+</head>
+<body class="min-h-screen font-sans antialiased">
+    <!-- ===== Project Shell: AI Memory Hub Dashboard ===== -->
+    <!-- Node: gen-project-shell | Kind: project-shell -->
+    <!-- This file is the shared template. Leaf pages copy this file and fill the SLOT markers. -->
+    <div class="shell-layout">
+
+      <!-- ================================================================ -->
+      <!-- SIDEBAR (240px) — Shared region, do NOT modify in leaf pages     -->
+      <!-- ================================================================ -->
+      <aside class="shell-sidebar">
+
+        <!-- --- Logo area (56px) --- -->
+        <div class="sidebar-logo">
+          <div class="sidebar-logo-mark">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"/>
+              <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"/>
+            </svg>
+          </div>
+          <span class="sidebar-logo-text">AI Memory Hub</span>
+          <button class="sidebar-logo-toggle" aria-label="折叠侧边栏" data-dom-id="sidebar-toggle">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect width="18" height="18" x="3" y="3" rx="2"/>
+              <path d="M9 3v18"/>
+              <path d="m15 9-3 3 3 3"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- --- Search bar --- -->
+        <div class="sidebar-search">
+          <div class="sidebar-search-wrap">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"/>
+              <path d="m21 21-4.3-4.3"/>
+            </svg>
+            <input type="text" class="sidebar-search-input" placeholder="搜索…" aria-label="搜索">
+            <span class="sidebar-search-kbd">⌘K</span>
+          </div>
+        </div>
+
+        <!-- --- Nav groups (scrollable) --- -->
+        <nav class="sidebar-nav" aria-label="主导航">
+
+          <!-- Group: 工作区 -->
+          <div class="sidebar-nav-group-label">工作区</div>
+          <!-- SLOT: activeNavItem --><a class="sidebar-nav-item" data-dom-id="nav-overview" href="../pages/overview.html">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect width="7" height="9" x="3" y="3" rx="1"/>
+              <rect width="7" height="5" x="14" y="3" rx="1"/>
+              <rect width="7" height="9" x="14" y="12" rx="1"/>
+              <rect width="7" height="5" x="3" y="16" rx="1"/>
+            </svg>
+            <span>概览</span>
+          </a>
+          <!-- SLOT: activeNavItem --><a class="sidebar-nav-item" data-dom-id="nav-memory" href="../pages/memory.html">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <ellipse cx="12" cy="5" rx="9" ry="3"/>
+              <path d="M3 5V19A9 3 0 0 0 21 19V5"/>
+              <path d="M3 12A9 3 0 0 0 21 12"/>
+            </svg>
+            <span>记忆</span>
+          </a>
+          <!-- SLOT: activeNavItem --><a class="sidebar-nav-item" data-dom-id="nav-tasks" href="../pages/tasks.html">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="5" width="6" height="6" rx="1"/>
+              <path d="m3 17 2 2 4-4"/>
+              <path d="M13 6h8"/>
+              <path d="M13 12h8"/>
+              <path d="M13 18h8"/>
+            </svg>
+            <span>任务</span>
+          </a>
+          <!-- SLOT: activeNavItem --><a class="sidebar-nav-item active" data-dom-id="nav-radio" href="../pages/radio.html">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"/>
+              <path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"/>
+              <circle cx="12" cy="12" r="2"/>
+              <path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"/>
+              <path d="M19.1 4.9C23 8.8 23 15.2 19.1 19.1"/>
+            </svg>
+            <span>Radio</span>
+          </a>
+          <!-- SLOT: activeNavItem --><a class="sidebar-nav-item" data-dom-id="nav-workflows" href="../pages/workflows.html">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect width="8" height="8" x="3" y="3" rx="2"/>
+              <path d="M7 11v4a2 2 0 0 0 2 2h4"/>
+              <rect width="8" height="8" x="13" y="13" rx="2"/>
+            </svg>
+            <span>工作流</span>
+          </a>
+
+          <!-- Group: 运维 -->
+          <div class="sidebar-nav-group-label">运维</div>
+          <!-- SLOT: activeNavItem --><a class="sidebar-nav-item" data-dom-id="nav-dispatch" href="#">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3.5"/>
+              <path d="M16 2v4"/>
+              <path d="M8 2v4"/>
+              <path d="M3 10h5"/>
+              <circle cx="17.5" cy="17.5" r="4.5"/>
+              <path d="M17.5 14v2l1.5 1"/>
+            </svg>
+            <span>调度</span>
+          </a>
+          <!-- SLOT: activeNavItem --><a class="sidebar-nav-item" data-dom-id="nav-analytics" href="#">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 3v18h18"/>
+              <path d="M18 17V9"/>
+              <path d="M13 17V5"/>
+              <path d="M8 17v-3"/>
+            </svg>
+            <span>分析</span>
+          </a>
+          <!-- SLOT: activeNavItem --><a class="sidebar-nav-item" data-dom-id="nav-backups" href="#">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect width="20" height="5" x="2" y="3" rx="1"/>
+              <path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/>
+              <path d="M10 12h4"/>
+            </svg>
+            <span>备份</span>
+          </a>
+          <!-- SLOT: activeNavItem --><a class="sidebar-nav-item" data-dom-id="nav-search" href="#">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"/>
+              <path d="m21 21-4.3-4.3"/>
+            </svg>
+            <span>搜索</span>
+          </a>
+
+          <!-- Group: 系统 -->
+          <div class="sidebar-nav-group-label">系统</div>
+          <!-- SLOT: activeNavItem --><a class="sidebar-nav-item" data-dom-id="nav-tools" href="../pages/tools.html">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+            </svg>
+            <span>工具</span>
+          </a>
+          <!-- SLOT: activeNavItem --><a class="sidebar-nav-item" data-dom-id="nav-projects" href="#">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/>
+              <path d="M8 10v4"/>
+              <path d="M12 10v4"/>
+              <path d="M16 10v4"/>
+            </svg>
+            <span>项目</span>
+          </a>
+          <!-- SLOT: activeNavItem --><a class="sidebar-nav-item" data-dom-id="nav-health" href="#">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/>
+            </svg>
+            <span>健康</span>
+          </a>
+          <!-- SLOT: activeNavItem --><a class="sidebar-nav-item" data-dom-id="nav-settings" href="#">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+            <span>设置</span>
+          </a>
+          <!-- SLOT: activeNavItem --><a class="sidebar-nav-item" data-dom-id="nav-chat" href="#">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+            <span>对话</span>
+          </a>
+
+        </nav>
+
+        <!-- --- Bottom section --- -->
+        <div class="sidebar-bottom">
+          <div class="sidebar-connection">
+            <span class="sidebar-connection-dot"></span>
+            <span class="sidebar-connection-text">Hub 已连接</span>
+            <span class="sidebar-version">v2.1.0</span>
+          </div>
+          <div class="sidebar-user">
+            <div class="sidebar-user-avatar">A</div>
+            <span class="sidebar-user-name">Admin</span>
+            <button class="sidebar-user-btn" aria-label="用户设置" data-dom-id="sidebar-user-settings">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+      </aside>
+
+      <!-- ================================================================ -->
+      <!-- MAIN AREA — Header + Content                                     -->
+      <!-- ================================================================ -->
+      <div class="shell-main">
+
+        <!-- --- Header (56px) --- -->
+        <header class="shell-header">
+          <!-- Left: breadcrumb + subtitle -->
+          <div class="header-left">
+            <div class="header-breadcrumb">
+              <span class="header-breadcrumb-root">AI Memory Hub</span>
+              <svg class="header-breadcrumb-sep" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m9 18 6-6-6-6"/>
+              </svg>
+              <!-- SLOT: pageTitle --><span class="header-breadcrumb-current">Radio</span>
+            </div>
+            <!-- SLOT: pageSubtitle --><span class="header-subtitle">跨工具消息中继</span>
+          </div>
+
+          <!-- Right: actions + divider + lang + refresh + connection -->
+          <div class="header-right">
+            <!-- SLOT: headerActions -->
+            <button class="header-ghost-btn" aria-label="清空消息" data-dom-id="header-clear-messages">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 6h18"/>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>
+                <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                <line x1="10" x2="10" y1="11" y2="17"/>
+                <line x1="14" x2="14" y1="11" y2="17"/>
+              </svg>
+              <span>清空消息</span>
+            </button>
+            <div class="header-divider"></div>
+            <button class="header-lang-btn" aria-label="切换语言" data-dom-id="header-lang">中</button>
+            <button class="header-icon-btn" aria-label="刷新" data-dom-id="header-refresh">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+                <path d="M21 3v5h-5"/>
+                <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+                <path d="M8 16H3v5"/>
+              </svg>
+            </button>
+            <div class="header-conn">
+              <span class="header-conn-dot"></span>
+              <span class="header-conn-text">已连接</span>
+            </div>
+          </div>
+        </header>
+
+        <!-- --- Content area --- -->
+        <main class="shell-content">
+          <!-- ===== Radio Page ===== -->
+          <!-- Node: gen-page-radio | Kind: page-leaf -->
+          <div class="radio-page">
+
+            <!-- ===== Filter Bar ===== -->
+            <div class="radio-filter-bar">
+              <button class="radio-dropdown" type="button" aria-label="筛选发送者">
+                <span>全部发送者</span>
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="m6 9 6 6 6-6"/>
+                </svg>
+              </button>
+              <button class="radio-dropdown" type="button" aria-label="筛选消息类型">
+                <span>全部类型</span>
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="m6 9 6 6 6-6"/>
+                </svg>
+              </button>
+              <div class="radio-search">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="11" cy="11" r="8"/>
+                  <path d="m21 21-4.3-4.3"/>
+                </svg>
+                <input type="text" placeholder="搜索消息…" aria-label="搜索消息">
+              </div>
+              <button class="radio-toggle" type="button" data-active="true" aria-label="自动滚动" aria-pressed="true">
+                <span>自动滚动</span>
+                <span class="toggle-track"><span class="toggle-thumb"></span></span>
+              </button>
+            </div>
+
+            <!-- ===== Message Stream ===== -->
+            <div class="radio-messages">
+              <div class="radio-messages-inner">
+
+                <!-- Message 1: Claude Code — 广播 (LEFT) -->
+                <div class="msg-row msg-left">
+                  <div class="msg-avatar">C</div>
+                  <div class="msg-bubble">
+                    <div class="msg-header">
+                      <span class="msg-sender">Claude Code</span>
+                      <span class="msg-badge msg-badge-info">广播</span>
+                      <span class="msg-time">2 分钟前</span>
+                    </div>
+                    <div class="msg-content">已完成 ai-memory-hub 项目代码结构分析。发现 3 个主要模块需要重构：Dashboard 组件、API 层、认证模块。建议优先处理 Dashboard UI 一致性问题。</div>
+                  </div>
+                </div>
+
+                <!-- Message 2: 系统 — 系统 (RIGHT) -->
+                <div class="msg-row msg-right">
+                  <div class="msg-avatar msg-avatar-system">S</div>
+                  <div class="msg-bubble">
+                    <div class="msg-header">
+                      <span class="msg-sender">系统</span>
+                      <span class="msg-badge msg-badge-neutral">系统</span>
+                      <span class="msg-time">2 分钟前</span>
+                    </div>
+                    <div class="msg-content">新任务已创建：重构 Dashboard UI。已分配给 Claude Code 执行，Codex 审核。</div>
+                  </div>
+                </div>
+
+                <!-- Message 3: Codex — 直接 (LEFT) -->
+                <div class="msg-row msg-left">
+                  <div class="msg-avatar">X</div>
+                  <div class="msg-bubble">
+                    <div class="msg-header">
+                      <span class="msg-sender">Codex</span>
+                      <span class="msg-badge msg-badge-primary">直接</span>
+                      <span class="msg-time">15 分钟前</span>
+                    </div>
+                    <div class="msg-content">TypeScript 类型错误已全部修复。共修复 23 处类型不匹配，涵盖 API 响应类型和组件 Props 定义。等待代码审核。</div>
+                  </div>
+                </div>
+
+                <!-- Message 4: Gemini — 广播 (LEFT) -->
+                <div class="msg-row msg-left">
+                  <div class="msg-avatar">G</div>
+                  <div class="msg-bubble">
+                    <div class="msg-header">
+                      <span class="msg-sender">Gemini</span>
+                      <span class="msg-badge msg-badge-info">广播</span>
+                      <span class="msg-time">32 分钟前</span>
+                    </div>
+                    <div class="msg-content">已分析项目依赖关系。发现 3 个过时依赖需要升级：react-router v6→v7, zod v3→v4, date-fns v3→v4。升级风险评估：低。</div>
+                  </div>
+                </div>
+
+                <!-- Message 5: Trae — 直接 (LEFT) -->
+                <div class="msg-row msg-left">
+                  <div class="msg-avatar">T</div>
+                  <div class="msg-bubble">
+                    <div class="msg-header">
+                      <span class="msg-sender">Trae</span>
+                      <span class="msg-badge msg-badge-primary">直接</span>
+                      <span class="msg-time">1 小时前</span>
+                    </div>
+                    <div class="msg-content">工作流 'deploy-v2' 在审核阶段被阻塞。缺少 CI/CD 配置文件 .github/workflows/ci.yml。需要先创建该文件。</div>
+                  </div>
+                </div>
+
+                <!-- Message 6: 系统 — 警报 (RIGHT) -->
+                <div class="msg-row msg-right">
+                  <div class="msg-avatar msg-avatar-system">S</div>
+                  <div class="msg-bubble">
+                    <div class="msg-header">
+                      <span class="msg-sender">系统</span>
+                      <span class="msg-badge msg-badge-error">警报</span>
+                      <span class="msg-time">1 小时前</span>
+                    </div>
+                    <div class="msg-content">工作流阻塞警报：deploy-v2 无法继续。阻塞原因：CI 配置缺失。请处理后再重试。</div>
+                  </div>
+                </div>
+
+                <!-- Message 7: Claude Code — 广播 (LEFT) -->
+                <div class="msg-row msg-left">
+                  <div class="msg-avatar">C</div>
+                  <div class="msg-bubble">
+                    <div class="msg-header">
+                      <span class="msg-sender">Claude Code</span>
+                      <span class="msg-badge msg-badge-info">广播</span>
+                      <span class="msg-time">1 小时前</span>
+                    </div>
+                    <div class="msg-content">单元测试覆盖率已从 45% 提升至 78%。新增 156 个测试用例，覆盖 Dashboard、API、认证模块。剩余 22% 主要是边缘情况。</div>
+                  </div>
+                </div>
+
+                <!-- Message 8: Windsurf — 广播 (LEFT) -->
+                <div class="msg-row msg-left">
+                  <div class="msg-avatar">W</div>
+                  <div class="msg-bubble">
+                    <div class="msg-header">
+                      <span class="msg-sender">Windsurf</span>
+                      <span class="msg-badge msg-badge-info">广播</span>
+                      <span class="msg-time">2 小时前</span>
+                    </div>
+                    <div class="msg-content">已完成用户权限系统设计文档。采用 RBAC 模型，支持 5 种角色：admin, developer, reviewer, viewer, guest。权限粒度到资源级别。</div>
+                  </div>
+                </div>
+
+                <!-- Message 9: Codex — 直接 (LEFT) -->
+                <div class="msg-row msg-left">
+                  <div class="msg-avatar">X</div>
+                  <div class="msg-bubble">
+                    <div class="msg-header">
+                      <span class="msg-sender">Codex</span>
+                      <span class="msg-badge msg-badge-primary">直接</span>
+                      <span class="msg-time">3 小时前</span>
+                    </div>
+                    <div class="msg-content">PR #42 代码审查完成。发现 2 个潜在问题：1) API 密钥硬编码风险 2) 错误处理不够完善。建议修复后合并。</div>
+                  </div>
+                </div>
+
+                <!-- Message 10: Gemini — 广播 (LEFT) -->
+                <div class="msg-row msg-left">
+                  <div class="msg-avatar">G</div>
+                  <div class="msg-bubble">
+                    <div class="msg-header">
+                      <span class="msg-sender">Gemini</span>
+                      <span class="msg-badge msg-badge-info">广播</span>
+                      <span class="msg-time">4 小时前</span>
+                    </div>
+                    <div class="msg-content">数据库查询性能优化完成。主要改动：添加 3 个索引，优化 5 个慢查询。平均查询时间从 240ms 降至 45ms，提升 81%。</div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+            <!-- ===== Send Form ===== -->
+            <form class="radio-send-form" onsubmit="return false">
+              <button class="radio-dropdown" type="button" aria-label="选择消息类型">
+                <span>广播</span>
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="m6 9 6 6 6-6"/>
+                </svg>
+              </button>
+              <input class="radio-send-input" type="text" placeholder="输入消息…" aria-label="输入消息">
+              <button class="radio-send-btn" type="submit">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"/>
+                  <path d="m21.854 2.147-10.94 10.939"/>
+                </svg>
+                <span>发送</span>
+              </button>
+            </form>
+
+          </div>
+        </main>
+
+      </div>
+    </div>
+    <script>lucide.createIcons();</script>
+
+    <style id="shell-styles">
+      /* ===== Shell Layout Frame ===== */
+      .shell-layout {
+        height: 100vh;
+        display: flex;
+        overflow: hidden;
+      }
+
+      /* ===== Sidebar ===== */
+      .shell-sidebar {
+        width: var(--amh-sidebar-width);
+        flex-shrink: 0;
+        height: 100%;
+        border-right: 1px solid var(--amh-border);
+        background: var(--amh-bg-surface);
+        display: flex;
+        flex-direction: column;
+      }
+
+      /* --- Logo area --- */
+      .sidebar-logo {
+        height: var(--amh-header-height);
+        display: flex;
+        align-items: center;
+        gap: var(--amh-space-2);
+        padding: 0 var(--amh-space-4);
+        border-bottom: 1px solid var(--amh-border-subtle);
+        flex-shrink: 0;
+      }
+      .sidebar-logo-mark {
+        width: 32px;
+        height: 32px;
+        border-radius: var(--amh-radius-md);
+        background: linear-gradient(135deg, var(--amh-primary) 0%, var(--amh-primary-active) 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        color: #ffffff;
+      }
+      .sidebar-logo-text {
+        font-size: var(--amh-font-size-lg);
+        font-weight: 600;
+        color: var(--amh-text);
+        flex: 1;
+        white-space: nowrap;
+      }
+      .sidebar-logo-toggle {
+        width: 28px;
+        height: 28px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: none;
+        background: transparent;
+        color: var(--amh-text-tertiary);
+        border-radius: var(--amh-radius-md);
+        cursor: pointer;
+        transition: background var(--amh-transition-fast), color var(--amh-transition-fast);
+        flex-shrink: 0;
+      }
+      .sidebar-logo-toggle:hover {
+        background: var(--amh-bg-hover);
+        color: var(--amh-text-secondary);
+      }
+
+      /* --- Search bar --- */
+      .sidebar-search {
+        padding: var(--amh-space-3) var(--amh-space-4);
+        border-bottom: 1px solid var(--amh-border-subtle);
+        flex-shrink: 0;
+      }
+      .sidebar-search-wrap {
+        position: relative;
+        display: flex;
+        align-items: center;
+        height: 32px;
+        background: var(--amh-bg-input);
+        border: 1px solid var(--amh-border);
+        border-radius: var(--amh-radius-md);
+        transition: border-color var(--amh-transition-fast);
+      }
+      .sidebar-search-wrap:focus-within {
+        border-color: var(--amh-primary);
+      }
+      .sidebar-search-wrap > svg {
+        position: absolute;
+        left: 8px;
+        color: var(--amh-text-tertiary);
+        flex-shrink: 0;
+        pointer-events: none;
+      }
+      .sidebar-search-input {
+        flex: 1;
+        background: transparent;
+        border: none;
+        outline: none;
+        color: var(--amh-text);
+        font-size: var(--amh-font-size-sm);
+        font-family: var(--amh-font-sans);
+        padding: 0 var(--amh-space-2);
+        padding-left: 32px;
+        height: 100%;
+      }
+      .sidebar-search-input::placeholder {
+        color: var(--amh-text-tertiary);
+      }
+      .sidebar-search-kbd {
+        font-size: var(--amh-font-size-xs);
+        color: var(--amh-text-tertiary);
+        font-family: var(--amh-font-mono);
+        padding: 2px 5px;
+        border: 1px solid var(--amh-border);
+        border-radius: var(--amh-radius-sm);
+        margin-right: 6px;
+        line-height: 1;
+        white-space: nowrap;
+      }
+
+      /* --- Nav --- */
+      .sidebar-nav {
+        flex: 1;
+        overflow-y: auto;
+        padding-bottom: var(--amh-space-2);
+      }
+      .sidebar-nav-group-label {
+        font-size: var(--amh-font-size-xs);
+        color: var(--amh-text-tertiary);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        padding: var(--amh-space-4) var(--amh-space-4) 6px;
+        font-weight: 600;
+      }
+      .sidebar-nav-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        height: 36px;
+        padding: 0 var(--amh-space-3);
+        margin: 0 var(--amh-space-2);
+        border-radius: 6px;
+        color: var(--amh-text-secondary);
+        text-decoration: none;
+        font-size: var(--amh-font-size-base);
+        font-weight: 500;
+        transition: background var(--amh-transition-fast), color var(--amh-transition-fast);
+        border-left: 2px solid transparent;
+        cursor: pointer;
+      }
+      .sidebar-nav-item svg {
+        width: 18px;
+        height: 18px;
+        flex-shrink: 0;
+        color: var(--amh-text-secondary);
+        transition: color var(--amh-transition-fast);
+      }
+      .sidebar-nav-item:hover {
+        background: var(--amh-bg-hover);
+        color: var(--amh-text);
+      }
+      .sidebar-nav-item:hover svg {
+        color: var(--amh-text);
+      }
+      .sidebar-nav-item.active {
+        background: var(--amh-primary-muted);
+        color: var(--amh-primary);
+        font-weight: 600;
+        border-left: 2px solid var(--amh-primary);
+      }
+      .sidebar-nav-item.active svg {
+        color: var(--amh-primary);
+      }
+
+      /* --- Bottom section --- */
+      .sidebar-bottom {
+        border-top: 1px solid var(--amh-border-subtle);
+        padding: var(--amh-space-3) var(--amh-space-4);
+        flex-shrink: 0;
+      }
+      .sidebar-connection {
+        display: flex;
+        align-items: center;
+        gap: var(--amh-space-2);
+        margin-bottom: var(--amh-space-3);
+      }
+      .sidebar-connection-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: var(--amh-radius-full);
+        background: var(--amh-state-success);
+        flex-shrink: 0;
+      }
+      .sidebar-connection-text {
+        font-size: var(--amh-font-size-xs);
+        color: var(--amh-text-secondary);
+        flex: 1;
+      }
+      .sidebar-version {
+        font-size: var(--amh-font-size-xs);
+        color: var(--amh-text-tertiary);
+        font-family: var(--amh-font-mono);
+      }
+      .sidebar-user {
+        display: flex;
+        align-items: center;
+        gap: var(--amh-space-2);
+      }
+      .sidebar-user-avatar {
+        width: 28px;
+        height: 28px;
+        border-radius: var(--amh-radius-full);
+        background: var(--amh-primary-muted);
+        color: var(--amh-primary);
+        font-size: var(--amh-font-size-xs);
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+      }
+      .sidebar-user-name {
+        font-size: var(--amh-font-size-base);
+        color: var(--amh-text-secondary);
+        flex: 1;
+      }
+      .sidebar-user-btn {
+        width: 28px;
+        height: 28px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: none;
+        background: transparent;
+        color: var(--amh-text-tertiary);
+        border-radius: var(--amh-radius-md);
+        cursor: pointer;
+        transition: background var(--amh-transition-fast), color var(--amh-transition-fast);
+        flex-shrink: 0;
+      }
+      .sidebar-user-btn:hover {
+        background: var(--amh-bg-hover);
+        color: var(--amh-text-secondary);
+      }
+
+      /* ===== Main area ===== */
+      .shell-main {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        min-width: 0;
+      }
+
+      /* ===== Header ===== */
+      .shell-header {
+        height: var(--amh-header-height);
+        flex-shrink: 0;
+        border-bottom: 1px solid var(--amh-border);
+        background: var(--amh-bg-surface);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .header-left {
+        display: flex;
+        align-items: center;
+        gap: var(--amh-space-2);
+        padding-left: var(--amh-space-6);
+        min-width: 0;
+      }
+      .header-breadcrumb {
+        display: flex;
+        align-items: center;
+        gap: var(--amh-space-2);
+      }
+      .header-breadcrumb-root {
+        font-size: var(--amh-font-size-sm);
+        color: var(--amh-text-secondary);
+        white-space: nowrap;
+      }
+      .header-breadcrumb-sep {
+        color: var(--amh-text-tertiary);
+        flex-shrink: 0;
+      }
+      .header-breadcrumb-current {
+        font-size: var(--amh-font-size-md);
+        font-weight: 600;
+        color: var(--amh-text);
+        white-space: nowrap;
+      }
+      .header-subtitle {
+        font-size: var(--amh-font-size-xs);
+        color: var(--amh-text-tertiary);
+        padding-left: var(--amh-space-2);
+        border-left: 1px solid var(--amh-border);
+        white-space: nowrap;
+      }
+      .header-right {
+        display: flex;
+        align-items: center;
+        gap: var(--amh-space-2);
+        padding-right: var(--amh-space-6);
+        flex-shrink: 0;
+      }
+      .header-divider {
+        width: 1px;
+        height: 20px;
+        background: var(--amh-border);
+        flex-shrink: 0;
+      }
+      .header-icon-btn {
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid transparent;
+        background: transparent;
+        color: var(--amh-text-secondary);
+        border-radius: var(--amh-radius-md);
+        cursor: pointer;
+        transition: background var(--amh-transition-fast), color var(--amh-transition-fast);
+        flex-shrink: 0;
+      }
+      .header-icon-btn:hover {
+        background: var(--amh-bg-hover);
+        color: var(--amh-text);
+      }
+      .header-lang-btn {
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid var(--amh-border);
+        background: transparent;
+        color: var(--amh-text-secondary);
+        border-radius: var(--amh-radius-md);
+        cursor: pointer;
+        font-size: var(--amh-font-size-sm);
+        font-weight: 500;
+        font-family: var(--amh-font-sans);
+        transition: background var(--amh-transition-fast), color var(--amh-transition-fast);
+        flex-shrink: 0;
+      }
+      .header-lang-btn:hover {
+        background: var(--amh-bg-hover);
+        color: var(--amh-text);
+      }
+      .header-conn {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .header-conn-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: var(--amh-radius-full);
+        background: var(--amh-state-success);
+        flex-shrink: 0;
+      }
+      .header-conn-text {
+        font-size: var(--amh-font-size-xs);
+        color: var(--amh-text-tertiary);
+        white-space: nowrap;
+      }
+
+      /* ===== Content area ===== */
+      .shell-content {
+        flex: 1;
+        overflow-y: auto;
+        padding: var(--amh-space-6);
+        background: var(--amh-bg-canvas);
+      }
+
+      /* ===== Reduced motion ===== */
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after {
+          transition-duration: 0.01ms !important;
+        }
+      }
+    </style>
+    <style id="page-styles">
+      /* ===== Radio Page — Chat Layout ===== */
+
+      /* Override shell-content for full-height chat layout */
+      main.shell-content {
+        overflow: hidden;
+        padding: var(--amh-space-4);
+        display: flex;
+        flex-direction: column;
+      }
+
+      /* Radio page wrapper */
+      .radio-page {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        gap: var(--amh-space-4);
+      }
+
+      /* ===== Filter Bar ===== */
+      .radio-filter-bar {
+        display: flex;
+        align-items: center;
+        gap: var(--amh-space-3);
+        flex-shrink: 0;
+      }
+
+      /* Dropdown (ghost select) */
+      .radio-dropdown {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        height: 36px;
+        padding: 0 var(--amh-space-3);
+        border: 1px solid var(--amh-border);
+        background: transparent;
+        color: var(--amh-text-secondary);
+        border-radius: var(--amh-radius-md);
+        cursor: pointer;
+        font-size: var(--amh-font-size-sm);
+        font-weight: 500;
+        font-family: var(--amh-font-sans);
+        white-space: nowrap;
+        transition: background var(--amh-transition-fast), color var(--amh-transition-fast), border-color var(--amh-transition-fast);
+      }
+      .radio-dropdown:hover {
+        background: var(--amh-bg-hover);
+        color: var(--amh-text);
+        border-color: var(--amh-border-strong);
+      }
+      .radio-dropdown svg {
+        width: 14px;
+        height: 14px;
+        flex-shrink: 0;
+        color: var(--amh-text-tertiary);
+      }
+
+      /* Search input */
+      .radio-search {
+        flex: 1;
+        position: relative;
+        display: flex;
+        align-items: center;
+        height: 36px;
+        background: var(--amh-bg-input);
+        border: 1px solid var(--amh-border);
+        border-radius: var(--amh-radius-md);
+        transition: border-color var(--amh-transition-fast);
+      }
+      .radio-search:focus-within {
+        border-color: var(--amh-primary);
+      }
+      .radio-search > svg {
+        position: absolute;
+        left: 10px;
+        color: var(--amh-text-tertiary);
+        flex-shrink: 0;
+        pointer-events: none;
+      }
+      .radio-search input {
+        flex: 1;
+        background: transparent;
+        border: none;
+        outline: none;
+        color: var(--amh-text);
+        font-size: var(--amh-font-size-sm);
+        font-family: var(--amh-font-sans);
+        padding: 0 var(--amh-space-3);
+        padding-left: 32px;
+        height: 100%;
+      }
+      .radio-search input::placeholder {
+        color: var(--amh-text-tertiary);
+      }
+
+      /* Auto-scroll toggle */
+      .radio-toggle {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        height: 36px;
+        padding: 0 var(--amh-space-3);
+        border: 1px solid var(--amh-border);
+        background: transparent;
+        color: var(--amh-text-secondary);
+        border-radius: var(--amh-radius-md);
+        cursor: pointer;
+        font-size: var(--amh-font-size-sm);
+        font-weight: 500;
+        font-family: var(--amh-font-sans);
+        white-space: nowrap;
+        transition: background var(--amh-transition-fast), color var(--amh-transition-fast), border-color var(--amh-transition-fast);
+      }
+      .radio-toggle:hover {
+        background: var(--amh-bg-hover);
+        color: var(--amh-text);
+        border-color: var(--amh-border-strong);
+      }
+      .toggle-track {
+        width: 28px;
+        height: 16px;
+        border-radius: var(--amh-radius-full);
+        background: var(--amh-bg-active);
+        position: relative;
+        flex-shrink: 0;
+        transition: background var(--amh-transition-fast);
+      }
+      .toggle-thumb {
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 12px;
+        height: 12px;
+        border-radius: var(--amh-radius-full);
+        background: var(--amh-text-tertiary);
+        transition: transform var(--amh-transition-fast), background var(--amh-transition-fast);
+      }
+      .radio-toggle[data-active="true"] {
+        color: var(--amh-primary);
+      }
+      .radio-toggle[data-active="true"] .toggle-track {
+        background: var(--amh-primary);
+      }
+      .radio-toggle[data-active="true"] .toggle-thumb {
+        transform: translateX(12px);
+        background: var(--amh-primary-foreground);
+      }
+
+      /* ===== Message Stream ===== */
+      .radio-messages {
+        flex: 1;
+        overflow-y: auto;
+        min-height: 0;
+        padding: var(--amh-space-1) 0;
+      }
+      .radio-messages-inner {
+        display: flex;
+        flex-direction: column;
+        gap: var(--amh-space-4);
+      }
+
+      /* Message row */
+      .msg-row {
+        display: flex;
+        align-items: flex-start;
+      }
+      .msg-row.msg-right {
+        flex-direction: row-reverse;
+      }
+
+      /* Avatar */
+      .msg-avatar {
+        width: 32px;
+        height: 32px;
+        border-radius: var(--amh-radius-full);
+        background: var(--amh-primary-muted);
+        color: var(--amh-primary);
+        font-size: var(--amh-font-size-sm);
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+      }
+      .msg-avatar.msg-avatar-system {
+        background: var(--amh-bg-hover);
+        color: var(--amh-text-tertiary);
+      }
+
+      /* Bubble */
+      .msg-bubble {
+        max-width: 65%;
+        margin: 0 var(--amh-space-3);
+      }
+
+      /* Header */
+      .msg-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 6px;
+      }
+      .msg-right .msg-header {
+        flex-direction: row-reverse;
+      }
+      .msg-sender {
+        font-size: var(--amh-font-size-sm);
+        font-weight: 600;
+        color: var(--amh-text);
+        white-space: nowrap;
+      }
+
+      /* Badges */
+      .msg-badge {
+        font-size: var(--amh-font-size-xs);
+        padding: 1px 6px;
+        border-radius: var(--amh-radius-sm);
+        font-weight: 500;
+        line-height: 1.5;
+        white-space: nowrap;
+      }
+      .msg-badge-info {
+        background: var(--amh-state-info-muted);
+        color: var(--amh-state-info);
+      }
+      .msg-badge-primary {
+        background: var(--amh-primary-muted);
+        color: var(--amh-primary);
+      }
+      .msg-badge-neutral {
+        background: var(--amh-bg-hover);
+        color: var(--amh-text-tertiary);
+      }
+      .msg-badge-error {
+        background: var(--amh-state-error-muted);
+        color: var(--amh-state-error);
+      }
+
+      /* Timestamp */
+      .msg-time {
+        font-size: var(--amh-font-size-xs);
+        color: var(--amh-text-tertiary);
+        margin-left: auto;
+        white-space: nowrap;
+      }
+
+      /* Content */
+      .msg-content {
+        font-size: var(--amh-font-size-base);
+        color: var(--amh-text-secondary);
+        line-height: 1.5;
+        padding: 10px 14px;
+        background: var(--amh-bg-surface);
+        border: 1px solid var(--amh-border);
+        border-radius: 12px 12px 12px 4px;
+        word-break: break-word;
+      }
+      .msg-right .msg-content {
+        background: var(--amh-primary-muted);
+        border-color: var(--amh-border-primary);
+        border-radius: 12px 12px 4px 12px;
+      }
+
+      /* ===== Send Form ===== */
+      .radio-send-form {
+        display: flex;
+        align-items: center;
+        gap: var(--amh-space-3);
+        padding-top: var(--amh-space-4);
+        border-top: 1px solid var(--amh-border);
+        flex-shrink: 0;
+      }
+
+      /* Send input */
+      .radio-send-input {
+        flex: 1;
+        height: 36px;
+        background: var(--amh-bg-input);
+        border: 1px solid var(--amh-border);
+        border-radius: var(--amh-radius-md);
+        padding: 0 var(--amh-space-3);
+        color: var(--amh-text);
+        font-size: var(--amh-font-size-sm);
+        font-family: var(--amh-font-sans);
+        outline: none;
+        transition: border-color var(--amh-transition-fast);
+      }
+      .radio-send-input::placeholder {
+        color: var(--amh-text-tertiary);
+      }
+      .radio-send-input:focus {
+        border-color: var(--amh-primary);
+      }
+
+      /* Send button */
+      .radio-send-btn {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        height: 36px;
+        padding: 0 var(--amh-space-4);
+        border: none;
+        background: var(--amh-primary);
+        color: var(--amh-primary-foreground);
+        border-radius: var(--amh-radius-md);
+        cursor: pointer;
+        font-size: var(--amh-font-size-sm);
+        font-weight: 600;
+        font-family: var(--amh-font-sans);
+        white-space: nowrap;
+        transition: background var(--amh-transition-fast);
+      }
+      .radio-send-btn:hover {
+        background: var(--amh-primary-hover);
+      }
+      .radio-send-btn:active {
+        background: var(--amh-primary-active);
+      }
+      .radio-send-btn svg {
+        width: 14px;
+        height: 14px;
+        flex-shrink: 0;
+      }
+
+      /* Header ghost button (for headerActions slot) */
+      .header-ghost-btn {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        height: 32px;
+        padding: 0 var(--amh-space-3);
+        border: 1px solid var(--amh-border);
+        background: transparent;
+        color: var(--amh-text-secondary);
+        border-radius: var(--amh-radius-md);
+        cursor: pointer;
+        font-size: var(--amh-font-size-sm);
+        font-weight: 500;
+        font-family: var(--amh-font-sans);
+        white-space: nowrap;
+        transition: background var(--amh-transition-fast), color var(--amh-transition-fast), border-color var(--amh-transition-fast);
+      }
+      .header-ghost-btn:hover {
+        background: var(--amh-bg-hover);
+        color: var(--amh-text);
+        border-color: var(--amh-border-strong);
+      }
+      .header-ghost-btn svg {
+        width: 14px;
+        height: 14px;
+        flex-shrink: 0;
+      }
+    </style>
+</body>
+</html>

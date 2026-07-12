@@ -2,6 +2,7 @@
   width: min(100%, 1180px);
   min-height: calc(100vh - 48px);
   margin: 0 auto;
+  padding: 28px 28px 48px;
   color: var(--text);
 }
 
@@ -37,8 +38,8 @@
   min-height: calc(100vh - 128px);
   overflow: hidden;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  background: rgba(17, 24, 42, 0.9);
+  border-radius: 12px;
+  background: #ffffff;
   box-shadow: var(--shadow);
 }
 
@@ -48,7 +49,7 @@
   gap: 12px;
   padding: 14px;
   border-bottom: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.02);
+  background: #f8fafc;
 }
 
 .chat-toolbar label {
@@ -83,7 +84,7 @@
   height: 38px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: #0b1020;
+  background: #ffffff;
   color: var(--text);
   outline: none;
 }
@@ -96,7 +97,8 @@
 .chat-toolbar input:focus,
 .chat-toolbar select:focus,
 .chat-input input:focus {
-  border-color: rgba(96, 210, 189, 0.72);
+  border-color: rgba(37, 99, 235, 0.5);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
 }
 
 .chat-messages {
@@ -113,14 +115,14 @@
   gap: 6px;
   padding: 12px 14px;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.04);
+  border-radius: 10px;
+  background: #f8fafc;
 }
 
 .message.user {
   justify-self: end;
-  border-color: rgba(96, 210, 189, 0.34);
-  background: var(--accent-soft);
+  border-color: rgba(37, 99, 235, 0.18);
+  background: rgba(37, 99, 235, 0.06);
 }
 
 .message.system {
@@ -153,7 +155,7 @@
   gap: 10px;
   padding: 14px;
   border-top: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.02);
+  background: #f8fafc;
 }
 
 .chat-input input {
@@ -163,16 +165,17 @@
 .chat-input button {
   min-height: 38px;
   padding: 0 14px;
-  border: 1px solid rgba(96, 210, 189, 0.42);
+  border: 1px solid rgba(37, 99, 235, 0.28);
   border-radius: 8px;
-  background: var(--accent-soft);
-  color: var(--accent-strong);
+  background: var(--accent);
+  color: #ffffff;
   font-weight: 760;
   cursor: pointer;
+  transition: background 0.15s ease;
 }
 
 .chat-input button:hover:not(:disabled) {
-  border-color: rgba(96, 210, 189, 0.72);
+  background: var(--accent-strong);
 }
 
 .chat-input button:disabled {

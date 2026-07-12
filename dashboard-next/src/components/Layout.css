@@ -1,25 +1,18 @@
 .app-layout {
   min-height: 100vh;
-  background:
-    radial-gradient(circle at 20% 0%, rgba(63, 183, 163, 0.08), transparent 28rem),
-    linear-gradient(180deg, #0b1020 0%, #0d1322 100%);
+  background: var(--bg);
 }
 
 .main-content {
   min-height: 100vh;
-  margin-left: var(--sidebar-width);
-  padding: 24px;
+  margin-left: 56px;
+  padding: 0;
   transition: margin-left 0.2s ease;
 }
 
-.sidebar-is-collapsed .main-content {
-  margin-left: var(--sidebar-collapsed-width);
-}
-
-@media (max-width: 900px) {
-  .main-content,
-  .sidebar-is-collapsed .main-content {
+@media (max-width: 768px) {
+  .main-content {
     margin-left: 0;
-    padding: 76px 14px 18px;
+    padding: 0 0 64px 0;
   }
 }

@@ -27,32 +27,43 @@
 
 #### 2. 多工具协作
 - **消息总线 (Radio)** - 工具间实时消息传递，支持 replyTo 双向追踪
-- **任务管理** - 共享任务队列（open/claimed/in_progress/blocked/done/cancelled），支持认领、进展记录、完成
+- **任务管理** - 共享任务队列（open/claimed/in_progress/blocked/done/cancelled），支持认领、进展记录、完成、物理删除
+- **工作流节点系统** - 节点级执行历史、自动创建节点、状态自动更新、工作流状态从节点派生
 - **工作流系统** - 多角色协作（planner/executor/reviewer/observer），支持 result/review/signal 交互
 - **Shared Skill Layer** - 为 Codex/Claude/Gemini/QClaw/OpenClaw/OpenCode/MiMo Code/Marvis 等工具安装统一协作流程
 - **Capability Registry** - 汇总工具能力、接入方式、自动执行状态和安全权限边界
 - **Session 切换** - 跨工具上下文传递
 - **Connect** - 跨工具连接管理，发送 request/review/handoff 消息
 
-#### 3. 调度与分发
+#### 3. 权限策略与审批门禁
+- **Permission Policy Layer** - 三阶段实现：数据层+解析器+CLI → Dashboard 集成 → 调度预检执行
+- **Approval Gates** - 机器可读的审批门禁，自动执行调度前检查
+- **Quality Gate Rules** - `minimalImplementation`（最小实现完整性）和 `dependencyBudget`（依赖预算）规则
+- **Policy Packs** - 可附加的执行 persona，集成到工作流角色中
+
+#### 4. 调度与分发
 - **Dispatch Relay** - 异步状态机管理 7 种投递状态（pending/dispatched/acked/retrying/failed/completed/abandoned）
-- **Daemon** - 后台守护进程，自动轮询分发任务到目标 CLI 工具，支持 recipe 依赖顺序
+- **Event-Driven Daemon** - 事件驱动守护进程，心跳监控，cycle-start 心跳，自动化质量门禁执行
 - **Worktree 隔离** - `--isolate-worktree` 在独立 Git worktree 中运行分发任务，不影响当前工作区
 - **Progress 上报** - 长时间运行的任务通过 heartbeat 报告进度百分比和状态
 - **Dispatch Retry** - 自动重试超时/失败的分发，支持 recipe 修复次数上限
 
-#### 4. 工作流自动化
+#### 5. 工作流自动化
 - **Recipe 模板** - JSON 驱动的协作模板，内置 `frontend-feature`、`backend-service`、`fullstack-feature`、`lights-out-local`
 - **QualityGate** - 机器可读的质量门禁（验证命令、review 要求、最大修复次数、停止条件、允许/禁止动作）
 - **Scheduler 队列** - 优先级调度和自动重试
 - **Metrics 统计** - 成功率、持续时间、失败原因分析
 
-#### 5. 运维与诊断
-- **Dashboard Web UI** - `ai-memory-hub app` 启动本地 Web 面板，可视化管理记忆、任务、工作流、分发、项目
+#### 6. 运维与诊断
+- **Dashboard Web UI** - `ai-memory-hub app` 启动本地 Web 面板（React + shadcn/ui + Tailwind v4），可视化管理记忆、任务、工作流、分发、项目
+- **CDP Bridge** - Chrome DevTools Protocol 桥接，连接非 CLI 工具（VS Code、浏览器）
+- **VS Code Extension** - 自动生成 VS Code 扩展，集成状态栏、同步、任务查看
 - **Health Report** - `ai-memory-hub health` 生成健康报告（存储、损坏记录、增长趋势、建议操作）
 - **Doctor 诊断** - `ai-memory-hub doctor` 检查工具 runner 兼容性（shim 类型、prompt 模式、版本探测）
-- **Backup 系统** - 本地备份 + GitHub 数据备份，支持定时任务、敏感数据扫描、保留策略
+- **Backup 系统** - 本地备份 + GitHub 数据备份，支持自动剪枝、敏感数据扫描、保留策略
 - **Watch 定时同步** - `ai-memory-hub watch` 后台自动索引 inbox 事件
+- **Prompt Templates** - 可复用的 prompt 模板
+- **FTS5 Search** - 基于 SQLite FTS5 的快速全文搜索
 - **自动更新** - 一键检查和更新到最新版本
 
 ### 📁 本地目录结构
@@ -409,6 +420,13 @@ ai-memory-hub pull                                # 从账本重建 MEMORY.md
 
 ```bash
 ai-memory-hub app --port 38787                    # 启动本地仪表盘
+ai-memory-hub app --host 0.0.0.0 --port 38787    # 监听所有接口
+```
+
+#### CDP Bridge
+
+```bash
+node src/cdp-bridge.js                            # 启动 CDP 桥接服务
 ```
 
 #### Task-Spec
@@ -433,6 +451,7 @@ ai-memory-hub task-spec run <name>                # 运行任务命令
 - ✅ **Marvis** - 腾讯 AI 助手
 - ✅ **OpenCode** - 代码辅助工具
 - ✅ **MiMo Code** - 小米 MiMo 团队基于 OpenCode 构建的终端编程 Agent
+- ✅ **Coze** - Coze AI 平台集成
 
 #### 预配置支持（待安装）
 - 🔵 VS Code + Continue/Cline
@@ -447,7 +466,7 @@ ai-memory-hub task-spec run <name>                # 运行任务命令
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                    AI 工具层                              │
-│  Claude  Codex  Gemini  Marvis  QClaw  VS Code  ...     │
+│  Claude  Codex  Gemini  Marvis  QClaw  VS Code  Coze    │
 └────────────────────┬────────────────────────────────────┘
                      │
         ┌────────────┴────────────┐
@@ -456,10 +475,13 @@ ai-memory-hub task-spec run <name>                # 运行任务命令
         │  • 记忆系统              │
         │  • 消息总线              │
         │  • 任务管理              │
-        │  • 工作流引擎            │
+        │  • 工作流引擎 + 节点系统  │
         │  • RPC 通信              │
+        │  • 权限策略层            │
+        │  • 审批门禁              │
         │  • 调度队列              │
-        │  • 守护进程              │
+        │  • 事件驱动守护进程       │
+        │  • CDP Bridge           │
         │  • Dashboard Web UI     │
         │  • 备份系统              │
         └─────────────────────────┘
@@ -472,17 +494,19 @@ ai-memory-hub task-spec run <name>                # 运行任务命令
 
 #### 核心组件
 
-1. **Memory System** - 记忆持久化和检索
+1. **Memory System** - 记忆持久化和检索（FTS5 全文搜索）
 2. **Radio Bus** - 消息传递
 3. **Task Queue** - 任务管理和调度
-4. **Workflow Engine** - 多角色协作
+4. **Workflow Engine** - 多角色协作 + 节点级执行历史
 5. **RPC Layer** - 同步通信
 6. **Notification Bus** - 跨平台通知
 7. **Context Packer** - 上下文打包
-8. **Dispatch Scheduler** - 工作派发和 Worktree 隔离
-9. **Daemon** - 后台守护进程，自动调度
-10. **Dashboard** - Web UI 可视化管理
-11. **Backup System** - 备份、保留策略、恢复
+8. **Permission Policy** - 权限策略层和审批门禁
+9. **Dispatch Scheduler** - 工作派发和 Worktree 隔离
+10. **Daemon** - 事件驱动守护进程，心跳监控
+11. **CDP Bridge** - Chrome DevTools Protocol 桥接
+12. **Dashboard** - React + shadcn/ui Web UI 可视化管理
+13. **Backup System** - 备份、自动剪枝、保留策略、恢复
 
 ### 📖 更多文档
 
@@ -494,6 +518,13 @@ ai-memory-hub task-spec run <name>                # 运行任务命令
 - [CLI 命令参考](docs/CLI.md) - 完整命令文档
 - [项目注册表](docs/project-registry.md) - 项目元数据和管理
 - [Dashboard UI 设计](docs/dashboard-ui-redesign-plan.md) - 仪表盘界面设计
+- [权限策略层设计](docs/permission-policy-layer-design.md) - 权限策略和审批门禁
+- [审批门禁设计](docs/approval-gates-design.md) - 调度审批门禁
+- [质量门禁规则](docs/quality-gate-rules.md) - minimalImplementation 和 dependencyBudget
+- [执行策略集成](docs/execution-policy-workflow-integration.md) - 工作流角色与执行策略
+- [CDP Bridge](docs/cdp-bridge-usage.md) - Chrome DevTools Protocol 桥接使用指南
+- [安全检查报告](docs/SECURITY-CHECK.md) - 安全审计报告
+- [功能清单](docs/FEATURE-LIST.md) - 完整功能清单
 
 ### 🤝 贡献指南
 
@@ -518,9 +549,7 @@ npm link
 
 ### 📝 许可证
 
-MIT License - 详见 [LICENSE](LICENSE)
-
-### 🌟 Star History
+Apache License 2.0 - 详见 [LICENSE](LICENSE)
 
 如果觉得有用，请给个 Star！
 
@@ -540,18 +569,21 @@ MIT License - 详见 [LICENSE](LICENSE)
 
 ### 🚀 Features
 
-- **Shared Memory** - Persistent cross-tool memory with smart snapshots
+- **Shared Memory** - Persistent cross-tool memory with smart snapshots and FTS5 search
 - **Message Bus** - Real-time inter-tool messaging (Radio)
-- **Task Management** - Shared task queue and status tracking
+- **Task Management** - Shared task queue with status tracking, purge, and archiving
+- **Workflow Node System** - Node-level execution history, auto-create, auto-update, status derivation
 - **Workflow System** - Multi-role collaboration templates
 - **Shared Skill Layer** - Common startup, memory, task, workflow, and review instructions for native tool adapters
 - **Capability Registry** - Tool capability, integration mode, automation readiness, and safety policy summaries
+- **Permission Policy Layer** - Policy rules, approval gates, dispatch preflight enforcement
 - **RPC Communication** - Synchronous request-response
 - **Priority Scheduler** - Task scheduling and retry control
 - **Dispatch** - Dispatch pending Radio/Task work to verified CLI runners (with Worktree isolation)
-- **Daemon** - Background process for automatic scheduling
-- **Dashboard Web UI** - Vite + React + TypeScript local dashboard for monitoring tasks, workflows, Radio, and dispatch
-- **Backup** - Hub file backups, retention management, GitHub data backup
+- **Event-Driven Daemon** - Background process with heartbeat monitoring and skill self-improvement
+- **CDP Bridge** - Chrome DevTools Protocol bridge for non-CLI tools
+- **Dashboard Web UI** - React + shadcn/ui + Tailwind v4 local dashboard
+- **Backup** - Hub file backups, auto-pruning, retention management, GitHub data backup
 - **Health & Doctor** - Health report generation and AI tool diagnostics
 - **Connect** - Check tool connections, send requests/reviews/handoff to other tools
 - **Install** - Apply per-tool instruction snippets (supports --local for project directory)
@@ -559,8 +591,9 @@ MIT License - 详见 [LICENSE](LICENSE)
 - **Auto-Watch** - Periodically index pending inbox events
 - **Pull** - Rebuild MEMORY.md from the local memory ledger
 - **Metrics Dashboard** - Success rates, durations, failures
+- **Prompt Templates** - Reusable prompt templates for common workflows
+- **VS Code Extension** - Auto-generated editor integration
 - **Auto-Update** - One-click updates
-- **VS Code Extension** - Editor integration
 
 ### 📦 Installation
 
@@ -607,7 +640,13 @@ ai-memory-hub backup --reason manual
 - [CLI Reference](docs/CLI.md)
 - [Project Registry](docs/project-registry.md)
 - [Dashboard UI Plan](docs/dashboard-ui-redesign-plan.md)
+- [Permission Policy Design](docs/permission-policy-layer-design.md)
+- [Approval Gates](docs/approval-gates-design.md)
+- [Quality Gate Rules](docs/quality-gate-rules.md)
+- [CDP Bridge](docs/cdp-bridge-usage.md)
+- [Security Report](docs/SECURITY-CHECK.md)
+- [Feature List](docs/FEATURE-LIST.md)
 
 ### 📝 License
 
-MIT License
+Apache License 2.0

@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom'
 import type { AppLanguage } from '../lib/i18n'
+import './Sidebar.css'
 import {
   LayoutDashboard,
   Brain,
@@ -14,8 +15,7 @@ import {
   Activity,
   Settings,
   MessageSquare,
-  Zap,
-  SeparatorHorizontal
+  Zap
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 

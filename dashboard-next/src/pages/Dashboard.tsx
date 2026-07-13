@@ -125,7 +125,7 @@ export default function Dashboard({ section }: DashboardProps) {
   const viewModel = useMemo(() => buildViewModel(data), [data])
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="dashboard-page">
       <DashboardHeader
         title={dashboardTitles[language][section]}
         subtitle={dashboardSubtitles[language][section]}

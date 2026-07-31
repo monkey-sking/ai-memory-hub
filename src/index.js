@@ -23,6 +23,16 @@ import { createDashboardSearchApi } from "./dashboard/search.js";
 import { createDashboardTasksApi } from "./dashboard/tasks.js";
 import { createDashboardToolsApi } from "./dashboard/tools.js";
 import { createDashboardWorkflowsApi } from "./dashboard/workflows.js";
+import { evaluateDaemonHeartbeat } from "./daemon-health.js";
+import { buildWorkflowSharedState } from "./workflow-context.js";
+import { applyCandidateDecision, mineSkillCandidates } from "./skill-mining.js";
+import { normalizeGithubLinks } from "./github-links.js";
+import {
+  normalizeAdversarialVerifier,
+  normalizeReviewDimensions,
+  validateAdversarialVerifier,
+  validateReviewDimensions
+} from "./review-config.js";
 
 // Permission policy layer (P0: capability permission matrix) — defined at the
 // top so they are initialized before dashboard module initialization.
@@ -100,6 +110,7 @@ const LOOP_CHECKPOINT_FILE = "loop-checkpoint.json";
 const DAEMON_HEARTBEAT_FILE = "daemon-heartbeat.json";
 const DAEMON_HEARTBEAT_STALE_MS = 30000; // 30 seconds without heartbeat = stale
 const SKILL_DELTA_FILE = "skill-deltas.jsonl";
+const SKILL_CANDIDATE_FILE = "skill-candidates.jsonl";
 const TOOL_CAPABILITY_REGISTRY_VERSION = 1;
 let toolDetectionCache = null;
 
@@ -138,6 +149,7 @@ const dashboardWorkflows = createDashboardWorkflowsApi({
   getRadioMessagesFile: (memoryDir) => path.join(memoryDir, "radio", "messages.jsonl"),
   getWorkflowEventStoreDefinition,
   normalizePriority,
+  normalizeReviewDimensions,
   normalizeWorkflowRole,
   notifyWorkflowRoles,
   readWorkflows,
@@ -421,8 +433,8 @@ const ASYNC_CALL_TRANSITIONS = {
   "abandoned": []
 };
 
-const RECIPE_GATE_STRING_ARRAY_FIELDS = ["stopWhen", "allowedActions", "forbiddenActions"];
-const RECIPE_GATE_FIELDS = ["verifyCommands", ...RECIPE_GATE_STRING_ARRAY_FIELDS, "reviewRequired", "maxRepairAttempts", "minimalImplementation", "dependencyBudget"];
+const RECIPE_GATE_STRING_ARRAY_FIELDS = ["stopWhen", "allowedActions", "forbiddenActions", "reviewDimensions"];
+const RECIPE_GATE_FIELDS = ["verifyCommands", ...RECIPE_GATE_STRING_ARRAY_FIELDS, "reviewRequired", "maxRepairAttempts", "minimalImplementation", "dependencyBudget", "adversarialVerifier"];
 
 const rawArgs = process.argv.slice(2);
 const parsedArgs = parseCliArgs(rawArgs);
@@ -502,6 +514,9 @@ async function main() {
     case "skill-delta":
     case "skilldelta":
       return skillDeltaCommand(rest);
+    case "skill-candidate":
+    case "skillcandidate":
+      return skillCandidateCommand(rest);
     case "sync":
       return syncCommand(rest);
     case "index":
@@ -2655,7 +2670,8 @@ function taskDoneCommand(argv) {
         createTaskNote(by, `Completed by ${by}.` + (force ? " (forced, signals bypassed)" : ""))
       ]
     }));
-    console.log(JSON.stringify(task, null, 2));
+    const minedCandidates = appendSkillCandidates(config.memoryDir, mineSkillCandidates(task));
+    console.log(JSON.stringify({ ...task, minedSkillCandidates: minedCandidates }, null, 2));
   }, config.sync.lockStaleMs);
 }
 
@@ -5246,6 +5262,15 @@ function renderDispatchQualityGate(job) {
   if (Array.isArray(gate.forbiddenActions) && gate.forbiddenActions.length > 0) {
     lines.push(`- Forbidden actions: ${gate.forbiddenActions.join("; ")}`);
   }
+  if (Array.isArray(gate.reviewDimensions) && gate.reviewDimensions.length > 0) {
+    lines.push(`- Review dimensions: ${gate.reviewDimensions.join("; ")}`);
+  }
+  if (gate.adversarialVerifier?.enabled) {
+    lines.push("- Adversarial verifier: enabled; actively try to find a counterexample before reporting success.");
+    if (gate.adversarialVerifier.checks.length > 0) {
+      lines.push(`- Adversarial checks: ${gate.adversarialVerifier.checks.join("; ")}`);
+    }
+  }
   if (Array.isArray(gate.verifyCommands) && gate.verifyCommands.length > 0) {
     lines.push("- Verification commands:");
     for (const command of gate.verifyCommands) {
@@ -6731,7 +6756,93 @@ function daemonCommand(argv) {
   }
 }
 
-// Skill delta system (self-improvement)
+// Skill candidate mining and skill delta system (self-improvement)
+
+function getSkillCandidatesFile(memoryDir) {
+  return path.join(memoryDir, "prompts", SKILL_CANDIDATE_FILE);
+}
+
+function readSkillCandidates(memoryDir) {
+  const file = getSkillCandidatesFile(memoryDir);
+  return fs.existsSync(file) ? readEvents(file) : [];
+}
+
+function appendSkillCandidates(memoryDir, candidates) {
+  if (!Array.isArray(candidates) || candidates.length === 0) return [];
+  const existing = readSkillCandidates(memoryDir);
+  const existingIds = new Set(existing.map((candidate) => candidate.id));
+  const fresh = candidates.filter((candidate) => !existingIds.has(candidate.id));
+  if (fresh.length === 0) return [];
+  const file = getSkillCandidatesFile(memoryDir);
+  ensureDir(path.dirname(file));
+  fs.appendFileSync(file, fresh.map((candidate) => JSON.stringify(candidate)).join("\n") + "\n", "utf8");
+  return fresh;
+}
+
+function updateSkillCandidate(memoryDir, id, updater) {
+  const candidates = readSkillCandidates(memoryDir);
+  const index = candidates.findIndex((candidate) => candidate.id === id || candidate.id.startsWith(id));
+  if (index === -1) throw new Error(`Skill candidate not found: ${id}`);
+  candidates[index] = updater(candidates[index]);
+  const file = getSkillCandidatesFile(memoryDir);
+  ensureDir(path.dirname(file));
+  fs.writeFileSync(file, candidates.map((candidate) => JSON.stringify(candidate)).join("\n") + "\n", "utf8");
+  return candidates[index];
+}
+
+function skillCandidateCommand(argv) {
+  const action = argv[0] || "list";
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+
+  switch (action) {
+    case "list": {
+      const status = getOption(argv, "--status") || "";
+      const candidates = readSkillCandidates(config.memoryDir).filter((candidate) => !status || candidate.status === status);
+      console.log(JSON.stringify(candidates, null, 2));
+      break;
+    }
+    case "approve":
+    case "reject": {
+      const id = getOption(argv, "--id") || positionalArgs(argv)[1] || "";
+      const reviewer = getOption(argv, "--by") || "human";
+      const note = getOption(argv, "--reason") || getOption(argv, "--note") || "";
+      if (!id) throw new Error(`Usage: ai-memory-hub skill-candidate ${action} --id <id> [--by reviewer] [--note text]`);
+      const candidate = updateSkillCandidate(config.memoryDir, id, (current) => applyCandidateDecision(
+        current,
+        { status: action === "approve" ? "approved" : "rejected", reviewer, note }
+      ));
+      console.log(JSON.stringify(candidate, null, 2));
+      break;
+    }
+    case "promote": {
+      const id = getOption(argv, "--id") || positionalArgs(argv)[1] || "";
+      const tool = getOption(argv, "--tool") || "";
+      const section = getOption(argv, "--section") || "";
+      const original = getOption(argv, "--original") || "";
+      const proposed = getOption(argv, "--proposed") || "";
+      if (!id || !tool || !original || !proposed) {
+        throw new Error("Usage: ai-memory-hub skill-candidate promote --id <id> --tool <tool> --section <section> --original <text> --proposed <text>");
+      }
+      const candidate = readSkillCandidates(config.memoryDir).find((item) => item.id === id || item.id.startsWith(id));
+      if (!candidate) throw new Error(`Skill candidate not found: ${id}`);
+      if (candidate.status !== "approved") throw new Error(`Skill candidate must be approved before promotion. Current status: ${candidate.status}`);
+      const delta = createSkillDelta({ tool, section, original, proposed, reason: candidate.text, createdBy: candidate.reviewedBy || "reviewer" });
+      const deltas = readSkillDeltas(config.memoryDir);
+      deltas.push(delta);
+      writeSkillDeltas(config.memoryDir, deltas);
+      const updated = updateSkillCandidate(config.memoryDir, candidate.id, (current) => ({
+        ...current,
+        promotedDeltaId: delta.id,
+        promotedAt: new Date().toISOString()
+      }));
+      console.log(JSON.stringify({ candidate: updated, delta }, null, 2));
+      break;
+    }
+    default:
+      throw new Error("Usage: ai-memory-hub skill-candidate list|approve|reject|promote");
+  }
+}
 
 function getSkillDeltasFile(memoryDir) {
   return path.join(memoryDir, "prompts", SKILL_DELTA_FILE);
@@ -7085,20 +7196,12 @@ function readDaemonHeartbeat(memoryDir) {
 
 function checkDaemonHeartbeat(memoryDir) {
   const heartbeat = readDaemonHeartbeat(memoryDir);
-  if (!heartbeat || !heartbeat.ts) {
-    return { alive: false, reason: "No heartbeat file found", stale: false };
-  }
-  const age = Date.now() - new Date(heartbeat.ts).getTime();
-  const stale = age > DAEMON_HEARTBEAT_STALE_MS;
-  return {
-    alive: !stale,
-    stale,
-    ageMs: age,
-    pid: heartbeat.pid,
-    cycle: heartbeat.cycle,
-    lastTs: heartbeat.ts,
-    reason: stale ? `Heartbeat is ${Math.round(age / 1000)}s old (threshold: ${DAEMON_HEARTBEAT_STALE_MS / 1000}s)` : "OK"
-  };
+  const processAlive = heartbeat?.pid ? checkProcessLiveness(heartbeat.pid).running : true;
+  return evaluateDaemonHeartbeat({
+    heartbeat,
+    staleMs: DAEMON_HEARTBEAT_STALE_MS,
+    processAlive
+  });
 }
 
 function readDaemonStatus(memoryDir) {
@@ -8524,7 +8627,11 @@ function workflowCreateCommand(argv) {
       reviewer: getOption(argv, "--reviewer") || "",
       observer: getOption(argv, "--observer") || "",
       plan: getOption(argv, "--plan") || "",
-      acceptance: getOption(argv, "--acceptance") || ""
+       acceptance: getOption(argv, "--acceptance") || "",
+       githubLinks: normalizeGithubLinks({
+         issue: getOption(argv, "--github-issue"),
+         pullRequest: getOption(argv, "--github-pr")
+       })
     });
     workflows.push(workflow);
     writeWorkflows(config.memoryDir, workflows);
@@ -8555,8 +8662,10 @@ function taskUpdateCommand(argv) {
     ["--description", "description"],
     ["--handoff", "handoff"],
     ["--priority", "priority"],
-    ["--status", "status"],
-    ["--project", "project"]
+      ["--status", "status"],
+      ["--project", "project"],
+      ["--github-issue", "githubIssue"],
+      ["--github-pr", "githubPr"]
   ]) {
     const value = getOption(argv, flag);
     if (value !== "") {
@@ -8580,6 +8689,13 @@ function taskUpdateCommand(argv) {
       return {
         ...task,
         ...patch,
+        ...(patch.githubIssue || patch.githubPr ? {
+          githubLinks: normalizeGithubLinks({
+            ...(task.githubLinks || {}),
+            issue: patch.githubIssue || task.githubLinks?.issue,
+            pullRequest: patch.githubPr || task.githubLinks?.pullRequest
+          })
+        } : {}),
         updatedAt: now,
         completedAt: patch.status === "done" ? now : patch.status && patch.status !== "done" ? "" : task.completedAt || "",
         assignee: patch.status && !["open", "cancelled"].includes(patch.status) ? task.assignee || by : task.assignee || "",
@@ -8691,6 +8807,7 @@ function workflowAppendCommand(argv, field) {
   const text = getOption(argv, "--text") || (getOption(argv, "--id") ? args.join(" ") : args.slice(1).join(" ")).trim();
   const by = getOption(argv, "--by") || getOption(argv, "--from") || "manual";
   const role = getOption(argv, "--role") || "";
+  const dimensions = normalizeReviewDimensions(getOption(argv, "--dimensions") || "");
   if (!id || !text) {
     throw new Error(`Usage: ai-memory-hub workflow ${field === "results" ? "result" : "review"} --id <workflow-id> [--role executor] <text> [--by codex]`);
   }
@@ -8703,7 +8820,15 @@ function workflowAppendCommand(argv, field) {
       updatedAt: new Date().toISOString(),
       [field]: [
         ...(current[field] || []),
-        { ts: new Date().toISOString(), by, role, text }
+        {
+          ts: new Date().toISOString(),
+          by,
+          role,
+          text,
+          ...(field === "reviews" && (dimensions.length > 0 || current.qualityGate?.reviewDimensions?.length > 0)
+            ? { dimensions: dimensions.length > 0 ? dimensions : current.qualityGate.reviewDimensions }
+            : {})
+        }
       ]
     }));
 
@@ -10703,7 +10828,7 @@ function getSeedProjects() {
   ].map(normalizeProject);
 }
 
-function createWorkflow({ title, createdBy, project, priority, planner, executor, reviewer, observer, plan, acceptance, qualityGate }) {
+function createWorkflow({ title, createdBy, project, priority, planner, executor, reviewer, observer, plan, acceptance, qualityGate, githubLinks }) {
   const now = new Date().toISOString();
   const cleanTitle = String(title || "").trim();
   return {
@@ -10728,6 +10853,7 @@ function createWorkflow({ title, createdBy, project, priority, planner, executor
     reviews: [],
     linkedTasks: [],
     linkedRadio: [],
+    githubLinks: normalizeGithubLinks(githubLinks),
     notes: []
   };
 }
@@ -10921,6 +11047,8 @@ function normalizeWorkflow(workflow) {
     usesDerivedStatus: Boolean(workflow.usesDerivedStatus),
     derivedStatus: workflow.derivedStatus || ""
   };
+  const githubLinks = normalizeGithubLinks(workflow.githubLinks || workflow);
+  if (Object.keys(githubLinks).length > 0) normalized.githubLinks = githubLinks;
   if (isPlainObject(workflow.recipe)) {
     normalized.recipe = normalizeRecipeMetadata(workflow.recipe);
   }
@@ -11013,6 +11141,8 @@ function normalizeTask(task) {
       text: String(note.text || "")
     })).filter((note) => note.text) : []
   };
+  const githubLinks = normalizeGithubLinks(task.githubLinks || task);
+  if (Object.keys(githubLinks).length > 0) normalized.githubLinks = githubLinks;
   if (isPlainObject(task.recipe)) {
     normalized.recipe = normalizeRecipeMetadata(task.recipe);
   }
@@ -11302,6 +11432,7 @@ function createContextPack({ taskId, workflowId, project, query }) {
     workflow: null,
     relevantMemories: [],
     recentRadio: [],
+    sharedState: null,
     projectPath: process.cwd(),
     constraints: [],
     acceptanceCriteria: []
@@ -11316,6 +11447,15 @@ function createContextPack({ taskId, workflowId, project, query }) {
   if (workflowId) {
     const workflows = readWorkflows(memoryDir);
     pack.workflow = workflows.find((w) => w.id === workflowId || w.id.startsWith(workflowId));
+    if (pack.workflow) {
+      pack.sharedState = buildWorkflowSharedState({
+        workflow: pack.workflow,
+        nodes: readWorkflowNodes(memoryDir, pack.workflow.id),
+        tasks: readTasks(memoryDir),
+        radio: readRadioMessages(memoryDir),
+        updatedAt: pack.workflow.updatedAt
+      });
+    }
   }
 
   // Search relevant memories
@@ -11552,6 +11692,12 @@ function normalizeQualityGate(source) {
       }
     }
   }
+  if (extracted.reviewDimensions !== undefined) {
+    const reviewDimensions = normalizeReviewDimensions(extracted.reviewDimensions);
+    if (reviewDimensions.length > 0) {
+      gate.reviewDimensions = reviewDimensions;
+    }
+  }
   if (typeof extracted.reviewRequired === "boolean") {
     gate.reviewRequired = extracted.reviewRequired;
   }
@@ -11564,6 +11710,12 @@ function normalizeQualityGate(source) {
   }
   if (isPlainObject(extracted.dependencyBudget)) {
     gate.dependencyBudget = normalizeDependencyBudget(extracted.dependencyBudget);
+  }
+  if (extracted.adversarialVerifier !== undefined) {
+    const adversarialVerifier = normalizeAdversarialVerifier(extracted.adversarialVerifier);
+    if (adversarialVerifier.enabled || adversarialVerifier.checks.length > 0) {
+      gate.adversarialVerifier = adversarialVerifier;
+    }
   }
   return gate;
 }
@@ -11598,6 +11750,12 @@ function validateQualityGateFields(source, label) {
       }
     }
   }
+  if (hasOwnField(source, "reviewDimensions")) {
+    const validation = validateReviewDimensions(source.reviewDimensions);
+    if (!validation.valid) {
+      return { valid: false, error: `${label}.${validation.error}` };
+    }
+  }
   if (hasOwnField(source, "reviewRequired") && typeof source.reviewRequired !== "boolean") {
     return { valid: false, error: `${label}.reviewRequired must be a boolean` };
   }
@@ -11614,6 +11772,12 @@ function validateQualityGateFields(source, label) {
     const validation = validateDependencyBudget(source.dependencyBudget, `${label}.dependencyBudget`);
     if (!validation.valid) {
       return validation;
+    }
+  }
+  if (hasOwnField(source, "adversarialVerifier")) {
+    const validation = validateAdversarialVerifier(source.adversarialVerifier);
+    if (!validation.valid) {
+      return { valid: false, error: `${label}.${validation.error}` };
     }
   }
   return { valid: true };
@@ -12920,7 +13084,7 @@ function renderMemorySnapshot(index, config, options = {}) {
     .filter((item) => item.layer === "core" && !startupKeys.has(getMemoryRecordStableKey(item)))
     .sort(sortByImportance);
   const allRecent = [...visibleRecords]
-    .filter((item) => item.layer === "working" && !startupKeys.has(getMemoryRecordStableKey(item)))
+    .filter((item) => (options.filterSummary || item.layer === "working") && !startupKeys.has(getMemoryRecordStableKey(item)))
     .sort((a, b) => String(b.ts || "").localeCompare(String(a.ts || "")));
   let core = allCore.slice(0, coreLimit);
   let recent = allRecent.slice(0, recentLimit);

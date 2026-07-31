@@ -10,6 +10,7 @@ export function createDashboardWorkflowsApi({
   getRadioMessagesFile,
   getWorkflowEventStoreDefinition,
   normalizePriority,
+  normalizeReviewDimensions = (value) => Array.isArray(value) ? value : [],
   normalizeWorkflowRole,
   notifyWorkflowRoles,
   readWorkflows,
@@ -167,13 +168,20 @@ export function createDashboardWorkflowsApi({
       }));
     }
     const field = action === "review" ? "reviews" : "results";
+    const dimensions = normalizeReviewDimensions(body.dimensions);
     return updateWorkflow(memoryDir, id, (current) => ({
       ...current,
       status: action === "review" && !["done", "cancelled"].includes(current.status) ? "review" : current.status,
       updatedAt: now,
       [field]: [
         ...(current[field] || []),
-        { ts: now, by, role, text }
+        {
+          ts: now,
+          by,
+          role,
+          text,
+          ...(field === "reviews" && dimensions.length > 0 ? { dimensions } : {})
+        }
       ]
     }));
   }

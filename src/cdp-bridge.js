@@ -2,8 +2,8 @@
 // CDP Bridge Server - WebSocket bridge for non-CLI tools
 
 import { WebSocketServer } from 'ws';
-import { appendFileSync } from 'fs';
-import { join } from 'path';
+import { appendFileSync, existsSync, mkdirSync, watch, writeFileSync } from 'fs';
+import { dirname, join } from 'path';
 import { execSync } from 'child_process';
 import os from 'os';
 
@@ -11,11 +11,15 @@ const CDP_PORT = process.env.AMH_CDP_PORT || 9222;
 const MEMORY_DIR = process.env.AMH_MEMORY_DIR || join(os.homedir(), '.ai-memory');
 
 class CDPBridge {
-  constructor(port = CDP_PORT) {
+  constructor(port = CDP_PORT, memoryDir = MEMORY_DIR) {
     this.port = port;
+    this.memoryDir = memoryDir;
     this.clients = new Map();
     this.messageId = 0;
     this.pendingRequests = new Map();
+    this.fileWatchers = [];
+    this.fileChangeTimers = new Map();
+    this.fileEventSequence = 0;
   }
 
   start() {
@@ -46,7 +50,58 @@ class CDPBridge {
       });
     });
 
+    this.startFileWatchers();
     console.log(`[CDP Bridge] Listening on ws://localhost:${this.port}`);
+  }
+
+  getWatchedFiles() {
+    return [
+      'radio/messages.jsonl',
+      'tasks/events.jsonl',
+      'inbox/events.jsonl'
+    ];
+  }
+
+  getWatchedFileKind(relativePath) {
+    if (relativePath === 'radio/messages.jsonl') return 'radio';
+    if (relativePath === 'tasks/events.jsonl') return 'task';
+    if (relativePath === 'inbox/events.jsonl') return 'memory';
+    return null;
+  }
+
+  createFileChangeEvent(relativePath, eventType, ts = new Date().toISOString()) {
+    return {
+      type: 'amh.file-change',
+      kind: this.getWatchedFileKind(relativePath),
+      source: relativePath,
+      eventType,
+      sequence: ++this.fileEventSequence,
+      ts
+    };
+  }
+
+  startFileWatchers() {
+    for (const relativePath of this.getWatchedFiles()) {
+      const filePath = join(this.memoryDir, relativePath);
+      try {
+        mkdirSync(dirname(filePath), { recursive: true });
+        if (!existsSync(filePath)) writeFileSync(filePath, '', 'utf8');
+        const watcher = watch(filePath, { persistent: false }, (eventType) => {
+          if (eventType !== 'change' && eventType !== 'rename') return;
+          clearTimeout(this.fileChangeTimers.get(relativePath));
+          const timer = setTimeout(() => {
+            this.fileChangeTimers.delete(relativePath);
+            this.broadcast(this.createFileChangeEvent(relativePath, eventType));
+          }, 100);
+          timer.unref?.();
+          this.fileChangeTimers.set(relativePath, timer);
+        });
+        watcher.on('error', () => {});
+        this.fileWatchers.push(watcher);
+      } catch (error) {
+        console.warn(`[CDP Bridge] Cannot watch ${relativePath}: ${error.message}`);
+      }
+    }
   }
 
   generateClientId() {
@@ -386,6 +441,10 @@ class CDPBridge {
   }
 
   stop() {
+    for (const timer of this.fileChangeTimers.values()) clearTimeout(timer);
+    this.fileChangeTimers.clear();
+    for (const watcher of this.fileWatchers) watcher.close();
+    this.fileWatchers = [];
     this.wss.close();
     console.log('[CDP Bridge] Server stopped');
   }

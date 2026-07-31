@@ -57,6 +57,15 @@ function formatDate(value: string): string {
   })
 }
 
+const KANBAN_COLUMNS = [
+  { status: 'open', label: '待处理' },
+  { status: 'claimed', label: '已认领' },
+  { status: 'in_progress', label: '进行中' },
+  { status: 'needs_verification', label: '待验证' },
+  { status: 'blocked', label: '阻塞' },
+  { status: 'done', label: '已完成' }
+] as const
+
 export function TasksPanel({ tasks, visibleProjects, copy, onMutate }: TasksPanelProps) {
   const [projectFilter, setProjectFilter] = useState('')
   const [priorityFilter, setPriorityFilter] = useState('')
@@ -243,6 +252,33 @@ export function TasksPanel({ tasks, visibleProjects, copy, onMutate }: TasksPane
               <p className="text-sm text-destructive">{error}</p>
             </div>
           )}
+
+          <div className="grid grid-cols-1 gap-3 overflow-x-auto pb-2 md:grid-cols-3 xl:grid-cols-6">
+            {KANBAN_COLUMNS.map(column => {
+              const columnTasks = filteredTasks.filter(task => textOf(task.status, 'open') === column.status)
+              return (
+                <div key={column.status} className="min-w-[190px] rounded-lg border bg-muted/20 p-3">
+                  <div className="mb-3 flex items-center justify-between">
+                    <span className="text-sm font-semibold">{column.label}</span>
+                    <Badge variant="secondary">{columnTasks.length}</Badge>
+                  </div>
+                  <div className="space-y-2">
+                    {columnTasks.slice(0, 8).map(task => (
+                      <div key={textOf(task.id, textOf(task.title, 'task'))} className="rounded-md border bg-background p-2 shadow-sm">
+                        <p className="line-clamp-2 text-sm font-medium">{textOf(task.title, '-')}</p>
+                        <p className="mt-1 truncate text-xs text-muted-foreground">
+                          {textOf(task.assignee || task.createdBy, '未分配')} · {textOf(task.project, '无项目')}
+                        </p>
+                      </div>
+                    ))}
+                    {columnTasks.length > 8 && (
+                      <p className="text-xs text-muted-foreground">还有 {columnTasks.length - 8} 个任务</p>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
 
           {/* Tasks Table */}
           <div className="rounded-md border">

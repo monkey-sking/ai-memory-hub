@@ -361,6 +361,24 @@ const RUNNER_PROFILES = {
     probeArgs: ["--help"],
     capabilities: ["direct-dispatch", "argv-prompt", "text-output", "opencode-compatible"]
   },
+  grok: {
+    tool: "grok",
+    commandCandidates: [
+      path.join(os.homedir(), ".grok", "bin", "grok"),
+      path.join(os.homedir(), ".grok", "bin", "grok.exe"),
+      path.join(os.homedir(), ".local", "bin", "grok"),
+      "grok.cmd",
+      "grok"
+    ],
+    args: ["--always-approve", "-p"],
+    promptMode: "argv",
+    outputMode: "text",
+    compactPrompt: true,
+    preview: "grok --always-approve -p <prompt>",
+    versionArgs: ["--version"],
+    probeArgs: ["--help"],
+    capabilities: ["direct-dispatch", "argv-prompt", "text-output"]
+  },
   marvis: {
     tool: "marvis",
     sharedStateOnly: true,
@@ -7814,6 +7832,7 @@ function defaultConfig(memoryDir) {
       openclaw: { enabled: true },
       opencode: { enabled: true },
       mimocode: { enabled: true },
+      grok: { enabled: true },
       cursor: { enabled: true },
       windsurf: { enabled: true },
       vscode: { enabled: true },
@@ -8175,6 +8194,11 @@ function detectTools(memoryDir = resolveMemoryDir()) {
       name: "mimocode",
       kind: "skill-config",
       dir: path.join(home, ".config", "mimocode")
+    },
+    {
+      name: "grok",
+      kind: "cli-config",
+      dir: path.join(home, ".grok")
     },
     {
       name: "cursor",
@@ -9135,6 +9159,11 @@ function getLocalInstallTargets(cwd, memoryDir) {
       template: readTemplate("MIMOCODE_SKILL.md")
     },
     {
+      tool: "grok",
+      file: path.join(cwd, "AGENTS.md"),
+      template: readTemplate("AGENTS.md")
+    },
+    {
       tool: "vscode",
       file: path.join(cwd, ".github", "copilot-instructions.md"),
       template: readTemplate("shared-instructions.md")
@@ -9229,6 +9258,21 @@ function getInstallTargets(memoryDir) {
       tool: "mimocode",
       file: path.join(home, ".config", "mimocode", "skills", "ai-memory-hub", "SKILL.md"),
       template: readTemplate("MIMOCODE_SKILL.md")
+    },
+    {
+      tool: "grok",
+      file: path.join(home, ".grok", "AGENTS.md"),
+      template: readTemplate("AGENTS.md")
+    },
+    {
+      tool: "grok",
+      file: path.join(home, ".grok", "skills", "ai-memory-hub", "SKILL.md"),
+      template: readTemplate("GROK_SKILL.md")
+    },
+    {
+      tool: "grok",
+      file: path.join(memoryDir, "tools", "grok-shared-memory.md"),
+      template: readTemplate("shared-instructions.md")
     },
     ...[
       "claude-desktop",
@@ -9332,6 +9376,7 @@ function getDirectResolveCandidates(normalizedQuery, config, fromFile = "") {
     path.join(home, ".codex"),
     path.join(home, ".claude"),
     path.join(home, ".gemini"),
+    path.join(home, ".grok"),
     config.memoryDir,
     path.join(config.memoryDir, "tools"),
     projectRoot()
@@ -13994,7 +14039,7 @@ function scoreImportance(memory, topics, ordinal, total, access = {}) {
   if (["project", "lesson"].includes(kind)) score += 30;
   if (["reference", "raw", "note"].includes(kind)) score += 10;
   if (/must|always|never|必须|不要|偏好|规范|规则|纠错|红线|合规|错误|lesson/i.test(text)) score += 18;
-  if (/github|git|lark|feishu|qclaw|coze|扣子|claude|codex|opencode|mimocode|mimo code|memory|飞书|微信|小游戏/i.test(text)) score += 8;
+  if (/github|git|lark|feishu|qclaw|coze|扣子|claude|codex|opencode|mimocode|mimo code|grok|xai|memory|飞书|微信|小游戏/i.test(text)) score += 8;
   if (topics.length > 0) score += Math.min(10, topics.length * 2);
   const recency = total > 0 ? ordinal / total : 0;
   score += Math.round(recency * 8);
@@ -14049,7 +14094,7 @@ function inferTopics(memory) {
   const text = `${memory.text || ""} ${memory.project || memory.metadata?.project || ""} ${tags.join(" ")}`.toLowerCase();
   const topics = [];
   const rules = [
-    ["ai-memory-hub", /ai-memory|shared memory|memory hub|agent radio|opencode|mimocode|mimo code|qclaw|coze|扣子|claude|codex|gemini|共享记忆|本地记忆/],
+    ["ai-memory-hub", /ai-memory|shared memory|memory hub|agent radio|opencode|mimocode|mimo code|grok|xai|qclaw|coze|扣子|claude|codex|gemini|共享记忆|本地记忆/],
     ["game", /game|unity|mahjong|match|西游|麻将|小游戏|策划|关卡|体力|广告|分享/],
     ["wechat-mini-game", /wechat|微信|小游戏|wx\.|sendgift|红包|开放能力/],
     ["lark-feishu", /lark|feishu|飞书|多维表格|任务|文档|lark-cli/],

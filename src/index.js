@@ -190,6 +190,8 @@ const dashboardTools = createDashboardToolsApi({
   readTasks,
   refreshDetectedTools,
   resolvePermission,
+  readToolDeclarationByTool,
+  readDiscoveredModels,
   POLICY_OPERATIONS
 });
 
@@ -301,6 +303,7 @@ const RUNNER_PROFILES = {
     preview: "codex exec --sandbox danger-full-access --skip-git-repo-check <stdin>",
     versionArgs: ["--version"],
     probeArgs: ["--help"],
+    modelArgs: (model) => ["--model", model],
     capabilities: ["direct-dispatch", "stdin-prompt", "text-output"]
   },
   claude: {
@@ -314,6 +317,7 @@ const RUNNER_PROFILES = {
     versionArgs: ["--version"],
     probeArgs: ["--help"],
     resumeArgs: (sessionId) => ["--resume", sessionId],
+    modelArgs: (model) => ["--model", model],
     capabilities: ["direct-dispatch", "stdin-prompt", "json-output", "session-resume"]
   },
   gemini: {
@@ -325,6 +329,7 @@ const RUNNER_PROFILES = {
     preview: "gemini <stdin>",
     versionArgs: ["--version"],
     probeArgs: ["--help"],
+    modelArgs: (model) => ["--model", model],
     capabilities: ["direct-dispatch", "stdin-prompt", "text-output", "warning-filter"]
   },
   "qoder-cn": {
@@ -336,6 +341,7 @@ const RUNNER_PROFILES = {
     preview: "qoder-cn - <stdin>",
     versionArgs: ["--version"],
     probeArgs: ["--help"],
+    modelArgs: (model) => ["--model", model],
     capabilities: ["direct-dispatch", "stdin-prompt", "text-output"]
   },
   opencode: {
@@ -347,6 +353,9 @@ const RUNNER_PROFILES = {
     preview: "opencode - <stdin>",
     versionArgs: ["--version"],
     probeArgs: ["--help"],
+    modelArgs: (model) => ["--model", model],
+    modelsCommand: ["models"],
+    modelListFormat: "provider-model",
     capabilities: ["direct-dispatch", "stdin-prompt", "text-output"]
   },
   mimocode: {
@@ -359,6 +368,9 @@ const RUNNER_PROFILES = {
     preview: "mimo run <prompt>",
     versionArgs: ["--version"],
     probeArgs: ["--help"],
+    modelArgs: (model) => ["--model", model],
+    modelsCommand: ["models"],
+    modelListFormat: "provider-model",
     capabilities: ["direct-dispatch", "argv-prompt", "text-output", "opencode-compatible"]
   },
   grok: {
@@ -377,6 +389,9 @@ const RUNNER_PROFILES = {
     preview: "grok --always-approve -p <prompt>",
     versionArgs: ["--version"],
     probeArgs: ["--help"],
+    modelArgs: (model) => ["--model", model],
+    modelsCommand: ["models"],
+    modelListFormat: "grok",
     capabilities: ["direct-dispatch", "argv-prompt", "text-output"]
   },
   marvis: {
@@ -462,6 +477,11 @@ async function main() {
     case "capability":
     case "capabilities":
       return capabilitiesCommand(rest);
+    case "declare":
+    case "declaration":
+      return declareCommand(rest);
+    case "models":
+      return modelsCommand(rest);
     case "policy":
       return policyCommand(rest);
     case "status":
@@ -645,6 +665,287 @@ function capabilitiesCommand(argv) {
     return;
   }
   console.log(JSON.stringify(registry, null, 2));
+}
+
+function getToolDeclarationsFile(memoryDir) {
+  return path.join(memoryDir, "state", "tool-declarations.jsonl");
+}
+
+function readToolDeclarations(memoryDir) {
+  const file = getToolDeclarationsFile(memoryDir);
+  if (!fs.existsSync(file)) {
+    return [];
+  }
+  try {
+    return readEvents(file);
+  } catch {
+    return [];
+  }
+}
+
+function readToolDeclarationByTool(memoryDir, tool) {
+  const name = normalizeToolName(tool);
+  const entries = readToolDeclarations(memoryDir);
+  const sorted = entries
+    .filter((entry) => normalizeToolName(entry.tool) === name)
+    .sort((a, b) => String(a.updatedAt || "").localeCompare(String(b.updatedAt || "")));
+  return sorted[sorted.length - 1] || null;
+}
+
+function readDiscoveredModels(memoryDir, tool) {
+  const cacheFile = path.join(memoryDir, "state", "tool-models.json");
+  if (!fs.existsSync(cacheFile)) {
+    return [];
+  }
+  try {
+    const cache = JSON.parse(fs.readFileSync(cacheFile, "utf8"));
+    const name = normalizeToolName(tool);
+    return Array.isArray(cache[name]?.models) ? cache[name].models : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeToolDeclaration(memoryDir, declaration) {
+  const file = getToolDeclarationsFile(memoryDir);
+  ensureDir(path.dirname(file));
+  const existing = readToolDeclarations(memoryDir);
+  const name = normalizeToolName(declaration.tool);
+  const updated = existing.filter((entry) => normalizeToolName(entry.tool) !== name);
+  updated.push(declaration);
+  fs.writeFileSync(file, updated.map((entry) => JSON.stringify(entry)).join("\n") + "\n", "utf8");
+  return declaration;
+}
+
+function removeToolDeclaration(memoryDir, tool) {
+  const file = getToolDeclarationsFile(memoryDir);
+  const name = normalizeToolName(tool);
+  const existing = readToolDeclarations(memoryDir);
+  const remaining = existing.filter((entry) => normalizeToolName(entry.tool) !== name);
+  if (remaining.length === existing.length) {
+    return false;
+  }
+  fs.writeFileSync(file, remaining.map((entry) => JSON.stringify(entry)).join("\n") + "\n", "utf8");
+  return true;
+}
+
+function parseDeclaredList(raw) {
+  return [...new Set(String(raw || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean))];
+}
+
+function declareCommand(argv) {
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const action = argv[0] || "set";
+  const actionArgs = argv.slice(1);
+  switch (action) {
+    case "set":
+    case "upsert":
+    case "add":
+      return declareSetCommand(config, actionArgs);
+    case "list":
+    case "ls":
+      return declareListCommand(config, actionArgs);
+    case "show":
+    case "get":
+      return declareShowCommand(config, actionArgs);
+    case "remove":
+    case "rm":
+    case "delete":
+      return declareRemoveCommand(config, actionArgs);
+    default:
+      throw new Error("Usage: ai-memory-hub declare <set|list|show|remove> [--tool <tool>] [--models a,b] [--strengths 'x,y'] [--note '...'] [--by <tool>]");
+  }
+}
+
+function declareSetCommand(config, actionArgs) {
+  const tool = getOption(actionArgs, "--tool") || "";
+  const by = getOption(actionArgs, "--by") || tool;
+  if (!tool) {
+    throw new Error("declare set requires --tool <tool>");
+  }
+  return withHubLock(config.memoryDir, "tool-declaration", () => {
+    const previous = readToolDeclarationByTool(config.memoryDir, tool);
+    const models = parseDeclaredList(getOption(actionArgs, "--models"));
+    const strengths = parseDeclaredList(getOption(actionArgs, "--strengths"));
+    const note = getOption(actionArgs, "--note");
+    if (models.length === 0 && strengths.length === 0 && !note) {
+      throw new Error("declare set needs at least one of --models, --strengths, or --note.");
+    }
+    const declaration = {
+      tool: normalizeToolName(tool),
+      by: normalizeToolName(by || tool) || "unknown",
+      models,
+      strengths,
+      note: note || "",
+      updatedAt: new Date().toISOString(),
+      previous: previous ? previous.updatedAt : ""
+    };
+    const saved = writeToolDeclaration(config.memoryDir, declaration);
+    console.log(JSON.stringify({
+      ok: true,
+      declaration: saved,
+      message: `Declared ${saved.models.length} model(s) and ${saved.strengths.length} strength area(s) for ${saved.tool}.`
+    }, null, 2));
+  }, config.sync.lockStaleMs);
+}
+
+function declareListCommand(config, actionArgs) {
+  const entries = readToolDeclarations(config.memoryDir)
+    .sort((a, b) => String(a.updatedAt || "").localeCompare(String(b.updatedAt || "")));
+  console.log(JSON.stringify({ ok: true, declarations: entries }, null, 2));
+}
+
+function declareShowCommand(config, actionArgs) {
+  const tool = getOption(actionArgs, "--tool") || positionalArgs(actionArgs)[0] || "";
+  if (!tool) {
+    throw new Error("declare show requires --tool <tool>");
+  }
+  const declaration = readToolDeclarationByTool(config.memoryDir, tool);
+  console.log(JSON.stringify({
+    ok: true,
+    tool: normalizeToolName(tool),
+    declaration
+  }, null, 2));
+}
+
+function declareRemoveCommand(config, actionArgs) {
+  const tool = getOption(actionArgs, "--tool") || positionalArgs(actionArgs)[0] || "";
+  if (!tool) {
+    throw new Error("declare remove requires --tool <tool>");
+  }
+  return withHubLock(config.memoryDir, "tool-declaration", () => {
+    const removed = removeToolDeclaration(config.memoryDir, tool);
+    console.log(JSON.stringify({ ok: true, removed, tool: normalizeToolName(tool) }, null, 2));
+  }, config.sync.lockStaleMs);
+}
+
+function fetchToolModels(memoryDir, tool) {
+  const runner = getToolRunner(tool);
+  if (!runner.available || !Array.isArray(runner.modelsCommand) || runner.modelsCommand.length === 0) {
+    return { tool: normalizeToolName(tool), supported: false, models: [], error: runner.reason || "No model list command for this runner." };
+  }
+  const completed = invokeRunnerCommand(runner, runner.modelsCommand, "", 15000);
+  if (completed.status !== 0) {
+    return {
+      tool: normalizeToolName(tool),
+      supported: true,
+      models: [],
+      error: completed.error?.message || normalizeRunnerStderr(tool, completed.stderr).stderr || `models command exited ${completed.status}`
+    };
+  }
+  const parsed = parseRunnerModelList(tool, runner, completed.stdout);
+  return {
+    tool: normalizeToolName(tool),
+    supported: true,
+    models: parsed,
+    fetchedAt: new Date().toISOString()
+  };
+}
+
+function parseRunnerModelList(tool, runner, stdout) {
+  const format = runner.modelListFormat || "";
+  const text = String(stdout || "");
+  const seen = new Set();
+  const models = [];
+  const add = (value) => {
+    const clean = String(value || "").trim().replace(/\s*\(default\)\s*$/i, "");
+    if (clean && !seen.has(clean)) {
+      seen.add(clean);
+      models.push(clean);
+    }
+  };
+  if (format === "grok") {
+    for (const line of text.split("\n")) {
+      const clean = line.trim();
+      const defaultMatch = clean.match(/^Default model:\s*([A-Za-z0-9._/:@-]+)/i);
+      if (defaultMatch) {
+        add(defaultMatch[1]);
+        continue;
+      }
+      const bulletMatch = clean.match(/^\*+\s*([A-Za-z0-9._/:@-]+)/);
+      if (bulletMatch) {
+        add(bulletMatch[1]);
+        continue;
+      }
+    }
+  } else if (format === "provider-model") {
+    for (const line of text.split("\n")) {
+      const clean = line.trim();
+      if (clean && !clean.startsWith("(") && /^[A-Za-z0-9._-]+(\/|:)[A-Za-z0-9._:/@-]+$/.test(clean)) {
+        add(clean);
+      }
+    }
+  } else {
+    for (const line of text.split("\n")) {
+      const clean = line.trim();
+      if (clean && /^[A-Za-z0-9._:/@-]+$/.test(clean) && !clean.includes(" ")) {
+        add(clean);
+      }
+    }
+  }
+  return models;
+}
+
+function modelsCommand(argv) {
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const tool = getOption(argv, "--tool") || getOption(argv, "--to") || positionalArgs(argv)[0] || "";
+  const refresh = hasFlag(argv, "--refresh") || hasFlag(argv, "--fetch");
+  const cacheFile = path.join(config.memoryDir, "state", "tool-models.json");
+  let cache = {};
+  if (fs.existsSync(cacheFile)) {
+    try {
+      cache = JSON.parse(fs.readFileSync(cacheFile, "utf8"));
+    } catch {
+      cache = {};
+    }
+  }
+  const targets = tool ? [normalizeToolName(tool)] : Object.keys(RUNNER_PROFILES);
+  const results = [];
+  for (const name of targets) {
+    const runner = getToolRunner(name);
+    const supportsList = Array.isArray(runner.modelsCommand) && runner.modelsCommand.length > 0;
+    const declaration = readToolDeclarationByTool(config.memoryDir, name);
+    const cached = cache[name] || null;
+    const cachedAgeMs = cached?.fetchedAt ? Date.now() - new Date(cached.fetchedAt).getTime() : null;
+    const staleMs = 24 * 60 * 60 * 1000;
+    const fetch = supportsList && (refresh || !cached || cachedAgeMs === null || cachedAgeMs > staleMs);
+    let discovered = cached?.models || [];
+    let fetchError = "";
+    if (fetch) {
+      const fetched = fetchToolModels(config.memoryDir, name);
+      if (fetched.supported) {
+        if (fetched.models.length > 0) {
+          discovered = fetched.models;
+          cache[name] = { models: fetched.models, fetchedAt: fetched.fetchedAt };
+        } else {
+          fetchError = fetched.error || "Models command returned an empty list.";
+        }
+      }
+    }
+    results.push({
+      tool: name,
+      supported: supportsList,
+      declared: declaration?.models || [],
+      discovered,
+      discoveredAt: cached?.fetchedAt || "",
+      stale: cachedAgeMs !== null && cachedAgeMs > staleMs,
+      fetchError,
+      strengths: declaration?.strengths || [],
+      note: declaration?.note || ""
+    });
+  }
+  fs.writeFileSync(cacheFile, JSON.stringify(cache, null, 2), "utf8");
+  console.log(JSON.stringify({
+    ok: true,
+    generatedAt: new Date().toISOString(),
+    refreshed: refresh,
+    tools: results
+  }, null, 2));
 }
 
 function policyCommand(argv) {
@@ -1082,6 +1383,7 @@ function connectSendCommand(argv, defaultType) {
       to,
       project,
       limit: Number(getOption(argv, "--limit") || 5),
+      model: getOption(argv, "--model") || "",
       isolateWorktree: hasFlag(argv, "--isolate-worktree"),
       worktreeRoot: getOption(argv, "--worktree-root") || ""
     })
@@ -3239,13 +3541,14 @@ function dispatchCommand(argv) {
   const to = getOption(argv, "--to") || "";
   const project = getOption(argv, "--project") || "";
   const limit = Number(getOption(argv, "--limit") || 10);
+  const model = getOption(argv, "--model") || "";
   const respectRecipeDependencies = hasFlag(argv, "--respect-recipe-dependencies");
   const isolateWorktree = hasFlag(argv, "--isolate-worktree");
   const worktreeRoot = getOption(argv, "--worktree-root") || "";
   const config = loadConfig();
   ensureHub(config.memoryDir);
 
-  const results = executeDispatch(config.memoryDir, { run, force, to, project, limit, respectRecipeDependencies, isolateWorktree, worktreeRoot });
+  const results = executeDispatch(config.memoryDir, { run, force, to, project, limit, model, respectRecipeDependencies, isolateWorktree, worktreeRoot });
   if (results.length === 0) {
     console.log(JSON.stringify({ run, jobs: [], message: "No undispatched radio messages or active tasks matched." }, null, 2));
     return;
@@ -3645,13 +3948,14 @@ function dispatchRetryCommand(argv) {
   const to = getOption(argv, "--to") || "";
   const project = getOption(argv, "--project") || "";
   const limit = Number(getOption(argv, "--limit") || 10);
+  const model = getOption(argv, "--model") || "";
   const respectRecipeDependencies = hasFlag(argv, "--respect-recipe-dependencies");
   const isolateWorktree = hasFlag(argv, "--isolate-worktree");
   const worktreeRoot = getOption(argv, "--worktree-root") || "";
   const config = loadConfig();
   ensureHub(config.memoryDir);
 
-  const results = executeDispatchRetry(config.memoryDir, { run, to, project, limit, respectRecipeDependencies, isolateWorktree, worktreeRoot });
+  const results = executeDispatchRetry(config.memoryDir, { run, to, project, limit, model, respectRecipeDependencies, isolateWorktree, worktreeRoot });
   if (results.length === 0) {
     console.log(JSON.stringify({ run, jobs: [], message: "No failed relay jobs are eligible for retry." }, null, 2));
     return;
@@ -3669,6 +3973,7 @@ function executeDispatch(memoryDir, {
   to = "",
   project = "",
   limit = 10,
+  model = "",
   respectRecipeDependencies = false,
   isolateWorktree = false,
   worktreeRoot = ""
@@ -3677,6 +3982,15 @@ function executeDispatch(memoryDir, {
   const results = [];
   const relayState = readLatestRelayStatusBySource(memoryDir);
   for (const job of jobs) {
+    if (model) {
+      job.model = model;
+      const declared = readToolDeclarationByTool(memoryDir, job.tool)?.models || [];
+      const discovered = readDiscoveredModels(memoryDir, job.tool);
+      const knownModels = [...new Set([...declared, ...discovered])];
+      if (knownModels.length > 0 && !knownModels.includes(model) && !knownModels.some((known) => known.endsWith(`/${model}`) || known.endsWith(`:${model}`))) {
+        job.modelNote = `Requested model "${model}" is not in ${job.tool}'s declared/discovered list. Available: ${knownModels.length} model(s). Use "ai-memory-hub models --to ${job.tool} --refresh" to refresh from the provider.`;
+      }
+    }
     const runner = getToolRunner(job.tool);
     if (!runner.available) {
       const result = {
@@ -3934,6 +4248,7 @@ function executeDispatchRetry(memoryDir, {
   to = "",
   project = "",
   limit = 10,
+  model = "",
   respectRecipeDependencies = false,
   isolateWorktree = false,
   worktreeRoot = ""
@@ -3945,6 +4260,15 @@ function executeDispatchRetry(memoryDir, {
   const jobs = buildRetryDispatchJobs(memoryDir, relayState, { to, project, limit, respectRecipeDependencies });
   const results = [...timeoutResults];
   for (const job of jobs) {
+    if (model) {
+      job.model = model;
+      const declared = readToolDeclarationByTool(memoryDir, job.tool)?.models || [];
+      const discovered = readDiscoveredModels(memoryDir, job.tool);
+      const knownModels = [...new Set([...declared, ...discovered])];
+      if (knownModels.length > 0 && !knownModels.includes(model) && !knownModels.some((known) => known.endsWith(`/${model}`) || known.endsWith(`:${model}`))) {
+        job.modelNote = `Requested model "${model}" is not in ${job.tool}'s declared/discovered list. Available: ${knownModels.length} model(s). Use "ai-memory-hub models --to ${job.tool} --refresh" to refresh from the provider.`;
+      }
+    }
     const runner = getToolRunner(job.tool);
     const maxRetries = getDispatchJobMaxRetries(job, job.maxRetries);
     if (!runner.available) {
@@ -5044,6 +5368,7 @@ function runDispatchJob(memoryDir, job, runner, options = {}) {
     sourceId: job.refId || "",
     tool: job.tool || "",
     project: job.project || "",
+    model: job.model || "",
     command: invocation.command,
     commandArgs: invocation.args,
     commandLine: invocation.commandLine,
@@ -5154,7 +5479,12 @@ function isKnownGeminiWarning(line) {
 }
 
 function buildRunnerArgs(memoryDir, job, runner, prompt) {
-  const args = [...(runner.args || [])];
+  let args = [...(runner.args || [])];
+  const model = job.model || "";
+  if (model && typeof runner.modelArgs === "function") {
+    args = stripExistingModelArgs(args);
+    args.push(...runner.modelArgs(model));
+  }
   const sessionId = runner.capabilities?.includes("session-resume")
     ? readClaudeSessionState(memoryDir)[getDispatchThreadKey(job)] || ""
     : "";
@@ -5165,6 +5495,22 @@ function buildRunnerArgs(memoryDir, job, runner, prompt) {
     args.push(prompt);
   }
   return args;
+}
+
+function stripExistingModelArgs(args) {
+  const out = [];
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = String(args[i]);
+    if (arg === "--model" && i + 1 < args.length && !String(args[i + 1]).startsWith("-")) {
+      i += 1;
+      continue;
+    }
+    if (arg.startsWith("--model=")) {
+      continue;
+    }
+    out.push(args[i]);
+  }
+  return out;
 }
 
 function parseRunnerOutput(memoryDir, job, runner, stdout) {
@@ -7663,6 +8009,8 @@ Commands:
   detect     Detect installed AI tools.
   capabilities
              Show the cross-tool capability registry and safety policy.
+  declare    Declare an agent's models and strengths, or list/remove declarations.
+  models     Show or refresh the model catalog for each tool (pulled from the provider where supported).
   status     Show hub and tool status.
   record     Append a local memory event.
   radio      Send, list, and promote cross-agent radio messages.
@@ -7729,6 +8077,9 @@ Examples:
   ${APP_NAME} connect
   ${APP_NAME} connect --apply
   ${APP_NAME} capabilities --tool claude
+  ${APP_NAME} declare --tool opencode --models "grok-4.5,claude-sonnet-4" --strengths "前端开发,代码审查" --by opencode
+  ${APP_NAME} declare list
+  ${APP_NAME} models --to opencode --refresh
   ${APP_NAME} connect request --from gemini --to codex --project ai-memory-hub --text "Please inspect the current task list." --task
   ${APP_NAME} doctor --tool claude
   ${APP_NAME} workflow create "Review dashboard changes" --from codex --project ai-memory-hub --planner codex --executor opencode --reviewer qclaw --spawn-tasks --notify
@@ -7744,6 +8095,7 @@ Examples:
   ${APP_NAME} project add my-app --name "My App" --status active --type tool
   ${APP_NAME} dispatch --project ai-memory-hub
   ${APP_NAME} dispatch --to codex --run
+  ${APP_NAME} dispatch --to codex --run --model gpt-5.2
   ${APP_NAME} dispatch --to codex --run --isolate-worktree
   ${APP_NAME} dispatch status --thread <thread-id> --project ai-memory-hub
   ${APP_NAME} dispatch status --recent 10 --project ai-memory-hub

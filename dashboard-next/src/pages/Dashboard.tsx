@@ -1201,6 +1201,10 @@ function DispatchPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewMode
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
+  const modelOptions = [...new Set(
+    model.tools.flatMap(tool => asArray<string>(asRecord(tool.models).all))
+  )].sort().slice(0, 500)
+
   const trigger = async () => {
     setBusy(true)
     setError('')
@@ -1228,7 +1232,10 @@ function DispatchPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewMode
           </label>
           <label className="field">
             <span>{copy.model}</span>
-            <input type="text" value={modelName} onChange={event => setModelName(event.target.value)} placeholder={copy.modelPlaceholder} />
+            <input type="text" list="amh-model-options" value={modelName} onChange={event => setModelName(event.target.value)} placeholder={copy.modelPlaceholder} />
+            <datalist id="amh-model-options">
+              {modelOptions.map(option => <option key={option} value={option} />)}
+            </datalist>
           </label>
           <div className="form-actions">
             <button className="btn" type="button" onClick={() => void trigger()} disabled={busy}>

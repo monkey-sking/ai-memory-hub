@@ -101,6 +101,7 @@ const DAEMON_HEARTBEAT_FILE = "daemon-heartbeat.json";
 const DAEMON_HEARTBEAT_STALE_MS = 30000; // 30 seconds without heartbeat = stale
 const SKILL_DELTA_FILE = "skill-deltas.jsonl";
 const TOOL_CAPABILITY_REGISTRY_VERSION = 1;
+const MODEL_CACHE_STALE_MS = 24 * 60 * 60 * 1000;
 let toolDetectionCache = null;
 
 const dashboardMemory = createDashboardMemoryApi({
@@ -890,20 +891,60 @@ function parseRunnerModelList(tool, runner, stdout) {
   return models;
 }
 
+function getModelsCacheFile(memoryDir) {
+  return path.join(memoryDir, "state", "tool-models.json");
+}
+
+function readModelsCache(memoryDir) {
+  const cacheFile = getModelsCacheFile(memoryDir);
+  if (!fs.existsSync(cacheFile)) {
+    return {};
+  }
+  try {
+    return JSON.parse(fs.readFileSync(cacheFile, "utf8"));
+  } catch {
+    return {};
+  }
+}
+
+function writeModelsCache(memoryDir, cache) {
+  fs.writeFileSync(getModelsCacheFile(memoryDir), JSON.stringify(cache, null, 2), "utf8");
+}
+
+function refreshModelsIfStale(memoryDir, { tool = "", force = false } = {}) {
+  const cache = readModelsCache(memoryDir);
+  const targets = tool ? [normalizeToolName(tool)] : Object.keys(RUNNER_PROFILES);
+  const refreshed = [];
+  for (const name of targets) {
+    const runner = getToolRunner(name);
+    const supportsList = Array.isArray(runner.modelsCommand) && runner.modelsCommand.length > 0;
+    const cached = cache[name] || null;
+    const cachedAgeMs = cached?.fetchedAt ? Date.now() - new Date(cached.fetchedAt).getTime() : null;
+    const stale = !cached || cachedAgeMs === null || cachedAgeMs > MODEL_CACHE_STALE_MS;
+    if (!supportsList || (!force && !stale)) {
+      continue;
+    }
+    const fetched = fetchToolModels(memoryDir, name);
+    if (fetched.supported && fetched.models.length > 0) {
+      cache[name] = { models: fetched.models, fetchedAt: fetched.fetchedAt };
+      refreshed.push({ tool: name, models: fetched.models.length });
+    }
+  }
+  if (refreshed.length > 0) {
+    writeModelsCache(memoryDir, cache);
+  }
+  return refreshed;
+}
+
 function modelsCommand(argv) {
   const config = loadConfig();
   ensureHub(config.memoryDir);
   const tool = getOption(argv, "--tool") || getOption(argv, "--to") || positionalArgs(argv)[0] || "";
   const refresh = hasFlag(argv, "--refresh") || hasFlag(argv, "--fetch");
-  const cacheFile = path.join(config.memoryDir, "state", "tool-models.json");
-  let cache = {};
-  if (fs.existsSync(cacheFile)) {
-    try {
-      cache = JSON.parse(fs.readFileSync(cacheFile, "utf8"));
-    } catch {
-      cache = {};
-    }
+  if (refresh) {
+    refreshModelsIfStale(config.memoryDir, { tool, force: true });
   }
+  const cache = readModelsCache(config.memoryDir);
   const targets = tool ? [normalizeToolName(tool)] : Object.keys(RUNNER_PROFILES);
   const results = [];
   for (const name of targets) {
@@ -912,34 +953,18 @@ function modelsCommand(argv) {
     const declaration = readToolDeclarationByTool(config.memoryDir, name);
     const cached = cache[name] || null;
     const cachedAgeMs = cached?.fetchedAt ? Date.now() - new Date(cached.fetchedAt).getTime() : null;
-    const staleMs = 24 * 60 * 60 * 1000;
-    const fetch = supportsList && (refresh || !cached || cachedAgeMs === null || cachedAgeMs > staleMs);
-    let discovered = cached?.models || [];
-    let fetchError = "";
-    if (fetch) {
-      const fetched = fetchToolModels(config.memoryDir, name);
-      if (fetched.supported) {
-        if (fetched.models.length > 0) {
-          discovered = fetched.models;
-          cache[name] = { models: fetched.models, fetchedAt: fetched.fetchedAt };
-        } else {
-          fetchError = fetched.error || "Models command returned an empty list.";
-        }
-      }
-    }
     results.push({
       tool: name,
       supported: supportsList,
       declared: declaration?.models || [],
-      discovered,
+      discovered: Array.isArray(cached?.models) ? cached.models : [],
       discoveredAt: cached?.fetchedAt || "",
-      stale: cachedAgeMs !== null && cachedAgeMs > staleMs,
-      fetchError,
+      stale: cachedAgeMs !== null && cachedAgeMs > MODEL_CACHE_STALE_MS,
+      fetchError: "",
       strengths: declaration?.strengths || [],
       note: declaration?.note || ""
     });
   }
-  fs.writeFileSync(cacheFile, JSON.stringify(cache, null, 2), "utf8");
   console.log(JSON.stringify({
     ok: true,
     generatedAt: new Date().toISOString(),
@@ -6928,6 +6953,16 @@ function daemonCommand(argv) {
       cycle: iteration,
       toolResults: "running"
     });
+
+    // Refresh provider model catalogs when they go stale (default: every 24h)
+    try {
+      const modelRefresh = refreshModelsIfStale(config.memoryDir);
+      if (modelRefresh.length > 0) {
+        console.log(`  -> Refreshed model catalog for ${modelRefresh.map((item) => item.tool).join(", ")}`);
+      }
+    } catch (err) {
+      console.error(`  Model catalog refresh error: ${err.message}`);
+    }
 
     try {
       const tools = daemonTools;

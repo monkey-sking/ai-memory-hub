@@ -859,9 +859,10 @@ test("task-spec validate rejects missing commands", async () => {
 
 test("memory search filters by thread-aware references", async () => {
   await withHub(async (memoryDir) => {
+    const now = new Date().toISOString();
     await appendJsonl(path.join(memoryDir, "inbox", "events.jsonl"), {
       id: "event-threaded-memory",
-      ts: "2026-06-09T10:00:00.000Z",
+      ts: now,
       source: "codex",
       text: "Relay lifecycle workflow status is reviewed and ready.",
       metadata: {
@@ -878,7 +879,7 @@ test("memory search filters by thread-aware references", async () => {
     });
     await appendJsonl(path.join(memoryDir, "inbox", "events.jsonl"), {
       id: "event-unrelated-memory",
-      ts: "2026-06-09T10:01:00.000Z",
+      ts: now,
       source: "gemini",
       text: "Dashboard telemetry has a separate review thread.",
       metadata: {
@@ -892,7 +893,7 @@ test("memory search filters by thread-aware references", async () => {
     });
     await appendJsonl(path.join(memoryDir, "inbox", "events.jsonl"), {
       id: "event-other-project-memory",
-      ts: "2026-06-09T10:02:00.000Z",
+      ts: now,
       source: "claude",
       text: "Relay lifecycle belongs to another project.",
       metadata: {

@@ -9765,7 +9765,8 @@ function extractFilesystemPathCandidates(text) {
   const source = String(text || "");
   const matches = [
     ...(source.match(/[A-Za-z]:\\[^\s`'")\]}，。；;]+/g) || []),
-    ...(source.match(/~[\\/][^\s`'")\]}，。；;]+/g) || [])
+    ...(source.match(/~[\\/][^\s`'")\]}，。；;]+/g) || []),
+    ...(source.match(/\/[^\s`'")\]}，。；;]+/g) || [])
   ];
   return matches.map((item) => item.replace(/[.,，。；;:]+$/g, ""));
 }
@@ -16347,7 +16348,7 @@ function resolveCommandPaths(commandName) {
       .map((line) => line.trim())
       .filter(Boolean);
   }
-  const result = spawnSync("sh", ["-lc", `command -v ${shellQuote(name)}`], {
+  const result = spawnSync("sh", ["-c", `command -v ${shellQuote(name)}`], {
     encoding: "utf8",
     windowsHide: true
   });

@@ -58,6 +58,9 @@
     },
     "qclaw": {
       "enabled": true
+    },
+    "grok": {
+      "enabled": true
     }
   }
 }

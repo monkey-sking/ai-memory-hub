@@ -200,6 +200,7 @@ export function createDashboardActionsApi({
       to: body.to || "",
       project: body.project || "",
       limit: Number(body.limit || 10),
+      model: body.model || "",
       isolateWorktree: Boolean(body.isolateWorktree),
       worktreeRoot: body.worktreeRoot || ""
     });

@@ -38,4 +38,17 @@ This adapter implements the same AI Memory Hub workflow contract for `{{TOOL}}`.
 
 - `ai-memory-hub detect` and `ai-memory-hub connect status` should show this adapter as configured.
 - `ai-memory-hub doctor --tool {{TOOL}}` should report runner health separately from shared-state skill installation.
+
+### Declare Capabilities
+
+Declare the models you can run and what you are best at so other agents can pick the right tool for dispatch:
+
+```bash
+ai-memory-hub declare --tool {{TOOL}} --models "model-a,model-b" --strengths "frontend,code-review" --note "short description" --by {{TOOL}}
+ai-memory-hub declare list
+ai-memory-hub models --to {{TOOL}} --refresh
+```
+
+- Use `declare` for models that require explicit membership (e.g. `grok-4.5`), and `models --refresh` to pull the provider's latest catalog where the CLI supports it.
+- Keep strengths short and concrete so dispatch callers can route work accurately.
 <!-- /AI_MEMORY_HUB_SHARED_SKILL_LAYER -->

@@ -69,6 +69,17 @@ Goal: turn the Dashboard from a task list into an Agent execution center.
 
 ## Phase 2 — Collaboration controls (P1)
 
+### Status: implemented (2026-08-03)
+
+The collaboration control surface is live through the Dashboard API and CLI:
+`/api/agent/follow-up`, `/api/session/follow-up`, `/api/reviews`,
+`/api/reviews/request`, `/api/collaboration`, and `/api/unread/read`, plus
+`amh agent`, `amh review`, `amh session inspect|follow-up`, and
+`amh worktree`. Follow-ups append linked radio events; review requests update
+the existing task/workflow projections; unread state is an append-only read
+receipt stream. `amh notify execution` bridges terminal/blocked/stale events
+to the existing notification bus without duplicating notifications.
+
 Goal: make execution state actionable from AMH.
 
 - Agent follow-up that creates a linked radio/task event.
@@ -87,6 +98,15 @@ Goal: make execution state actionable from AMH.
 - Dashboard actions must go through existing approval/policy gates for push, delete, install, and other destructive operations.
 
 ## Phase 3 — External execution and companion surfaces (P2)
+
+### Status: implemented as explicit metadata adapters (2026-08-03)
+
+`/api/execution-adapters` and worktree projections expose GitHub issue/PR/check
+links, branch and merge-readiness metadata, remote SSH host/path/reconnect
+state, and validated port-forward references. These adapters are intentionally
+metadata-only: they do not connect, execute remote commands, open tunnels, or
+merge/push/delete worktrees. Execution notifications reuse the existing
+notification channels and can be delivered through existing adapters.
 
 Goal: extend visibility without moving AMH's source of truth.
 

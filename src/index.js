@@ -27,6 +27,7 @@ import { createDashboardAgentSessionsApi } from "./dashboard/agent-sessions-api.
 import { createDashboardWorktreesApi } from "./dashboard/worktrees-api.js";
 import { createDashboardCollaborationApi } from "./dashboard/collaboration.js";
 import { buildExecutionAdapters } from "./execution-adapters.js";
+import { buildWorktreeSnapshot } from "./worktree-snapshot.js";
 import { evaluateDaemonHeartbeat } from "./daemon-health.js";
 import { buildWorkflowSharedState } from "./workflow-context.js";
 import { applyCandidateDecision, mineSkillCandidates } from "./skill-mining.js";
@@ -210,6 +211,7 @@ const dashboardWorktrees = createDashboardWorktreesApi({
   readLatestRelayStatusByThread,
   readDispatchRuns,
   inspect: inspectDashboardWorktree,
+  snapshot: snapshotDashboardWorktree,
   buildAdapters: ({ worktree, remote }) => buildExecutionAdapters({ worktree, remote })
 });
 
@@ -1865,7 +1867,15 @@ function reviewCommand(argv) {
     console.log(JSON.stringify(dashboardCollaboration.getDashboardCollaboration(config.memoryDir).reviews, null, 2));
     return;
   }
-  if (action !== "request") throw new Error("Usage: ai-memory-hub review list|request --task <id> [--to <agent>] [--text <text>]");
+  if (action === "result") {
+    const taskId = getOption(argv.slice(1), "--task") || "";
+    const decision = getOption(argv.slice(1), "--decision") || "";
+    if (!taskId || !["approved", "rejected"].includes(decision)) throw new Error("Usage: ai-memory-hub review result --task <id> --decision approved|rejected [--reopen]");
+    const result = dashboardActions.reviewDashboardTask(loadConfig(), { id: taskId, decision, reopen: hasFlag(argv.slice(1), "--reopen"), by: getOption(argv.slice(1), "--by") || "manual", note: getOption(argv.slice(1), "--note") || "" });
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+  if (action !== "request") throw new Error("Usage: ai-memory-hub review list|request|result --task <id> [--to <agent>] [--text <text>]");
   const taskId = getOption(argv.slice(1), "--task") || "";
   const workflowId = getOption(argv.slice(1), "--workflow") || "";
   const sessionId = getOption(argv.slice(1), "--session") || "";
@@ -5397,6 +5407,16 @@ function inspectDashboardWorktree(worktree) {
   };
 }
 
+function snapshotDashboardWorktree(worktree) {
+  if (!worktree?.path || !fs.existsSync(worktree.path)) {
+    return buildWorktreeSnapshot(worktree, { exists: false });
+  }
+  return buildWorktreeSnapshot(worktree, {
+    exists: true,
+    runGit: (command) => runGitCommand(worktree.path, command.split(" "), { allowFailure: true }).stdout
+  });
+}
+
 function normalizeDispatchWorktreeMetadata(worktree) {
   if (!isPlainObject(worktree)) {
     return null;
@@ -8036,6 +8056,15 @@ function appCommand(argv) {
         if (!body.taskId && !body.workflowId && !body.sessionId) return sendJson(res, { error: "taskId, workflowId, or sessionId is required" }, 400);
         const result = withHubLock(config.memoryDir, "review-request", () => dashboardCollaboration.requestReview(config.memoryDir, body), config.sync.lockStaleMs);
         broadcastDashboardUpdate("review:request");
+        return sendJson(res, { ok: true, ...result });
+      }
+      if (req.method === "POST" && url.pathname === "/api/reviews/result") {
+        const body = await readRequestJson(req);
+        const taskId = body.taskId || body.id || "";
+        const decision = String(body.decision || "").toLowerCase();
+        if (!taskId || !["approved", "rejected"].includes(decision)) return sendJson(res, { error: "taskId and decision approved|rejected are required" }, 400);
+        const result = dashboardActions.reviewDashboardTask(config, { ...body, id: taskId, decision });
+        broadcastDashboardUpdate("review:result");
         return sendJson(res, { ok: true, ...result });
       }
       if (req.method === "GET" && url.pathname === "/api/execution-adapters") {

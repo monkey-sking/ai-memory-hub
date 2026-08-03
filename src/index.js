@@ -32,6 +32,7 @@ import { evaluateDaemonHeartbeat } from "./daemon-health.js";
 import { buildWorkflowSharedState } from "./workflow-context.js";
 import { applyCandidateDecision, mineSkillCandidates } from "./skill-mining.js";
 import { normalizeGithubLinks } from "./github-links.js";
+import { syncGithubLifecycle } from "./github-lifecycle.js";
 import { addPack, listPacks, setPackEnabled, validateRegisteredPack } from "./domain-packs.js";
 import { listSkills, searchSkills } from "./skill-registry.js";
 import {
@@ -627,6 +628,9 @@ async function main() {
       return mergeCommand(rest);
     case "backup":
       return backupCommand(rest);
+    case "gh":
+    case "github":
+      return githubCommand(rest);
     case "watch":
       return watchCommand(rest);
     case "daemon":
@@ -652,6 +656,25 @@ function parseCliArgs(argv) {
     command,
     rest: args.slice(1)
   };
+}
+
+function githubCommand(argv) {
+  const action = argv[0] || "sync";
+  if (action !== "sync") throw new Error("Usage: ai-memory-hub gh sync --data <pull-requests.json> [--apply]");
+  const dataFile = getOption(argv.slice(1), "--data") || "";
+  if (!dataFile) throw new Error("Usage: ai-memory-hub gh sync --data <pull-requests.json> [--apply]");
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const input = readJson(path.resolve(dataFile));
+  const pullRequests = Array.isArray(input) ? input : (input.pullRequests || input.pulls || []);
+  const tasks = readTasks(config.memoryDir);
+  const result = syncGithubLifecycle(tasks, pullRequests);
+  if (hasFlag(argv, "--apply")) {
+    const updated = withHubLock(config.memoryDir, "github-sync", () => result.changes.map((change) => updateTask(config.memoryDir, change.id, (current) => ({ ...current, ...change.patch, updatedAt: new Date().toISOString(), notes: [...(current.notes || []), createTaskNote("github-sync", `GitHub PR merged: ${change.pullRequest.url || change.pullRequest.html_url || ""}`)] }))), config.sync.lockStaleMs);
+    console.log(JSON.stringify({ ...result, applied: updated }, null, 2));
+    return;
+  }
+  console.log(JSON.stringify({ ...result, apply: false, hint: "Pass --apply to update linked tasks." }, null, 2));
 }
 
 function resolveMemoryDir(argv = rawArgs) {
@@ -8464,6 +8487,7 @@ Commands:
   pull       Rebuild MEMORY.md from the local memory ledger.
   merge      Merge local memory with backup data or resolve Git conflicts.
   backup     Back up hub files, inspect/prune retention, and manage GitHub data backups.
+  gh         Sync linked task state from an explicit GitHub PR export.
   watch      Periodically index pending inbox events.
   daemon     Run or inspect the local dispatch daemon.
   app        Start the local dashboard app.

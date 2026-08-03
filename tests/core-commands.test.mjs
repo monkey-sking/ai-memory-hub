@@ -859,9 +859,10 @@ test("task-spec validate rejects missing commands", async () => {
 
 test("memory search filters by thread-aware references", async () => {
   await withHub(async (memoryDir) => {
+    const now = new Date().toISOString();
     await appendJsonl(path.join(memoryDir, "inbox", "events.jsonl"), {
       id: "event-threaded-memory",
-      ts: "2026-06-09T10:00:00.000Z",
+      ts: now,
       source: "codex",
       text: "Relay lifecycle workflow status is reviewed and ready.",
       metadata: {
@@ -878,7 +879,7 @@ test("memory search filters by thread-aware references", async () => {
     });
     await appendJsonl(path.join(memoryDir, "inbox", "events.jsonl"), {
       id: "event-unrelated-memory",
-      ts: "2026-06-09T10:01:00.000Z",
+      ts: now,
       source: "gemini",
       text: "Dashboard telemetry has a separate review thread.",
       metadata: {
@@ -892,7 +893,7 @@ test("memory search filters by thread-aware references", async () => {
     });
     await appendJsonl(path.join(memoryDir, "inbox", "events.jsonl"), {
       id: "event-other-project-memory",
-      ts: "2026-06-09T10:02:00.000Z",
+      ts: now,
       source: "claude",
       text: "Relay lifecycle belongs to another project.",
       metadata: {
@@ -1882,5 +1883,107 @@ test("radio list recovers nul-interleaved raw JSON messages", async () => {
     assert.equal(messages[0].project, "ai-memory-hub");
     assert.equal(messages[0].deliveryState, "delivered");
     assert.equal(messages[0].promoted, true);
+  });
+});
+
+test("declare set/list/show/remove round-trips agent model and strength declarations", async () => {
+  await withHub(async (memoryDir) => {
+    const declared = parseJson(runCli(memoryDir, [
+      "declare", "set",
+      "--tool", "opencode",
+      "--models", "grok-4.5, claude-sonnet-4",
+      "--strengths", "前端开发, 代码审查",
+      "--note", "web tasks",
+      "--by", "opencode"
+    ]));
+    assert.equal(declared.ok, true);
+    assert.deepEqual(declared.declaration.models, ["grok-4.5", "claude-sonnet-4"]);
+    assert.deepEqual(declared.declaration.strengths, ["前端开发", "代码审查"]);
+    assert.equal(declared.declaration.tool, "opencode");
+
+    const list = parseJson(runCli(memoryDir, ["declare", "list"]));
+    assert.equal(list.declarations.length, 1);
+
+    const shown = parseJson(runCli(memoryDir, ["declare", "show", "--tool", "opencode"]));
+    assert.equal(shown.declaration.models[0], "grok-4.5");
+
+    const removed = parseJson(runCli(memoryDir, ["declare", "remove", "--tool", "opencode"]));
+    assert.equal(removed.removed, true);
+    const after = parseJson(runCli(memoryDir, ["declare", "show", "--tool", "opencode"]));
+    assert.equal(after.declaration, null);
+  });
+});
+
+test("declare set replaces the previous declaration for the same tool", async () => {
+  await withHub(async (memoryDir) => {
+    parseJson(runCli(memoryDir, [
+      "declare", "set", "--tool", "grok", "--models", "grok-4.5", "--strengths", "web", "--by", "grok"
+    ]));
+    parseJson(runCli(memoryDir, [
+      "declare", "set", "--tool", "grok", "--models", "grok-4.6", "--strengths", "web,research", "--by", "grok"
+    ]));
+    const shown = parseJson(runCli(memoryDir, ["declare", "show", "--tool", "grok"]));
+    assert.deepEqual(shown.declaration.models, ["grok-4.6"]);
+    assert.ok(shown.declaration.previous, "expected a previous updatedAt reference");
+
+    const list = parseJson(runCli(memoryDir, ["declare", "list"]));
+    assert.equal(list.declarations.length, 1);
+  });
+});
+
+test("capabilities registry exposes declared models and strengths for a tool", async () => {
+  await withHub(async (memoryDir) => {
+    parseJson(runCli(memoryDir, [
+      "declare", "set", "--tool", "claude", "--models", "opus-4.6", "--strengths", "backend", "--by", "claude"
+    ]));
+    const registry = parseJson(runCli(memoryDir, ["capabilities", "--tool", "claude"]));
+    const entry = registry.tools.find((tool) => tool.name === "claude");
+    assert.ok(entry, "expected claude entry");
+    assert.deepEqual(entry.declared.models, ["opus-4.6"]);
+    assert.deepEqual(entry.declared.strengths, ["backend"]);
+    assert.ok(entry.models.all.includes("opus-4.6"));
+    assert.ok(entry.strengths.all.includes("backend"));
+  });
+});
+
+test("dispatch --model warns when model is not in declared/discovered list", async () => {
+  await withHub(async (memoryDir) => {
+    parseJson(runCli(memoryDir, [
+      "declare", "set", "--tool", "claude", "--models", "opus-4.6", "--by", "claude"
+    ]));
+    await appendJsonl(path.join(memoryDir, "radio", "messages.jsonl"), {
+      id: "radio-model-warn",
+      ts: new Date().toISOString(),
+      from: "codex",
+      to: "claude",
+      type: "note",
+      text: "run a test",
+      project: "demo"
+    });
+    const payload = parseJson(runCli(memoryDir, [
+      "dispatch", "--to", "claude", "--project", "demo", "--model", "bogus-model-999", "--limit", "1"
+    ]));
+    const job = payload.results[0];
+    assert.ok(job.modelNote, "expected a model warning note");
+    assert.match(job.modelNote, /bogus-model-999/);
+
+    const clean = parseJson(runCli(memoryDir, [
+      "dispatch", "--to", "claude", "--project", "demo", "--model", "opus-4.6", "--limit", "1"
+    ]));
+    assert.equal(clean.results[0].modelNote, undefined);
+  });
+});
+
+test("models command reports supported tools and declared models", async () => {
+  await withHub(async (memoryDir) => {
+    parseJson(runCli(memoryDir, [
+      "declare", "set", "--tool", "opencode", "--models", "opencode-go/deepseek-v4-flash", "--by", "opencode"
+    ]));
+    const result = parseJson(runCli(memoryDir, ["models", "--to", "opencode"]));
+    assert.equal(result.ok, true);
+    const entry = result.tools.find((tool) => tool.tool === "opencode");
+    assert.ok(entry, "expected opencode entry");
+    assert.equal(entry.supported, true);
+    assert.ok(entry.declared.includes("opencode-go/deepseek-v4-flash"));
   });
 });

@@ -21,6 +21,9 @@ tmp/
 C*Users<user>.ai-memoryinboxevents.jsonl
 **/C*Users<user>.ai-memoryinboxevents.jsonl
 
+# Local runtime config (machine-specific paths; use config.example.json as template)
+config.json
+
 # Local AI Memory Hub target rule files (environment-specific instructions)
 CLAUDE.md
 GEMINI.md

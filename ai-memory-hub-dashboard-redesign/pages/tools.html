@@ -1,1546 +1,991 @@
 <!DOCTYPE html>
-<html lang="zh-CN" class="dark">
+<html lang="zh-CN" class="light">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Memory Hub</title>
-    <style id="theme-vars">
-/* ==========================================================================
-   AI Memory Hub Dashboard — Refined Dark Theme
-   Brand prefix: amh
-   ========================================================================== */
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Memory Hub — 工具</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style id="theme-vars">
+    :root {
+      --bg-canvas: #f8fafc;
+      --bg-surface: #ffffff;
+      --bg-elevated: #f1f5f9;
+      --bg-hover: #e2e8f0;
+      --bg-active: #cbd5e1;
+      --bg-input: #ffffff;
 
-/* ---------- Design Tokens ---------- */
-:root {
-  /* --- Background surfaces (layered depth) --- */
-  --amh-bg-canvas: #080c16;
-  --amh-bg-surface: #0e1422;
-  --amh-bg-elevated: #141c2e;
-  --amh-bg-hover: #1a2438;
-  --amh-bg-active: #1f2b44;
-  --amh-bg-input: #0b111e;
-  --amh-bg-sunken: #060a12;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --primary-active: #1e40af;
+      --primary-muted: rgba(37, 99, 235, 0.08);
+      --primary-subtle: rgba(37, 99, 235, 0.04);
+      --primary-foreground: #ffffff;
 
-  /* --- Primary brand hue (teal) --- */
-  --amh-primary: #3fb7a3;
-  --amh-primary-hover: #4dc9b4;
-  --amh-primary-active: #36a592;
-  --amh-primary-muted: rgba(63, 183, 163, 0.12);
-  --amh-primary-subtle: rgba(63, 183, 163, 0.06);
-  --amh-primary-foreground: #ffffff;
+      --text: #0f172a;
+      --text-secondary: #475569;
+      --text-tertiary: #94a3b8;
+      --text-disabled: #cbd5e1;
 
-  /* --- Text hierarchy --- */
-  --amh-text: #e8edf7;
-  --amh-text-secondary: #9aa8c2;
-  --amh-text-tertiary: #5f6e8a;
-  --amh-text-disabled: #3d4860;
+      --border: #e2e8f0;
+      --border-strong: #cbd5e1;
+      --border-subtle: #f1f5f9;
 
-  /* --- Borders --- */
-  --amh-border: #1e2840;
-  --amh-border-strong: #2a3756;
-  --amh-border-subtle: #161e30;
-  --amh-border-primary: rgba(63, 183, 163, 0.3);
+      --state-success: #16a34a;
+      --state-success-muted: rgba(22, 163, 74, 0.08);
+      --state-warning: #ca8a04;
+      --state-warning-muted: rgba(202, 138, 4, 0.08);
+      --state-error: #dc2626;
+      --state-error-muted: rgba(220, 38, 38, 0.08);
+      --state-info: #2563eb;
+      --state-info-muted: rgba(37, 99, 235, 0.08);
 
-  /* --- State colors (semantic only) --- */
-  --amh-state-success: #34d399;
-  --amh-state-success-muted: rgba(52, 211, 153, 0.12);
-  --amh-state-warning: #fbbf24;
-  --amh-state-warning-muted: rgba(251, 191, 36, 0.12);
-  --amh-state-error: #f87171;
-  --amh-state-error-muted: rgba(248, 113, 113, 0.12);
-  --amh-state-info: #60a5fa;
-  --amh-state-info-muted: rgba(96, 165, 250, 0.12);
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 14px;
+      --radius-full: 9999px;
 
-  /* --- Radius scale --- */
-  --amh-radius-sm: 4px;
-  --amh-radius-md: 8px;
-  --amh-radius-lg: 12px;
-  --amh-radius-full: 9999px;
+      --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+      --font-mono: "JetBrains Mono", monospace;
 
-  /* --- Typography --- */
-  --amh-font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
-  --amh-font-mono: "JetBrains Mono", "Cascadia Code", "SFMono-Regular", Consolas, monospace;
-  --amh-font-size-xs: 11px;
-  --amh-font-size-sm: 12px;
-  --amh-font-size-base: 13px;
-  --amh-font-size-md: 14px;
-  --amh-font-size-lg: 16px;
-  --amh-font-size-xl: 18px;
-  --amh-font-size-2xl: 22px;
-  --amh-font-size-3xl: 28px;
+      --sidebar-width: 56px;
+      --header-height: 56px;
+    }
+  </style>
+  <script src="https://unpkg.com/@tailwindcss/browser@4"></script>
+  <style type="text/tailwindcss">
+    @theme inline {
+      --color-background: var(--bg-canvas);
+      --color-foreground: var(--text);
+      --color-primary: var(--primary);
+      --color-primary-foreground: var(--primary-foreground);
+      --color-border: var(--border);
+      --color-muted: var(--bg-elevated);
+      --color-muted-foreground: var(--text-secondary);
+      --color-accent: var(--primary);
+      --color-accent-foreground: var(--primary-foreground);
+      --color-destructive: var(--state-error);
+      --color-input: var(--bg-input);
+      --color-ring: var(--primary);
+    }
+    @layer base {
+      * { border-color: var(--border); }
+      body { background-color: var(--bg-canvas); color: var(--text); font-family: var(--font-sans); }
+    }
+  </style>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
 
-  /* --- Spacing --- */
-  --amh-space-1: 4px;
-  --amh-space-2: 8px;
-  --amh-space-3: 12px;
-  --amh-space-4: 16px;
-  --amh-space-5: 20px;
-  --amh-space-6: 24px;
-  --amh-space-8: 32px;
+    /* Sidebar */
+    .sidebar {
+      width: var(--sidebar-width);
+      background: var(--bg-surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 12px 0;
+      flex-shrink: 0;
+      position: fixed;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      z-index: 50;
+    }
+    .logo {
+      width: 32px; height: 32px;
+      border-radius: var(--radius-lg);
+      background: linear-gradient(135deg, #2563eb, #1d4ed8);
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 16px;
+      flex-shrink: 0;
+    }
+    .nav-group { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+    .nav-item {
+      width: 36px; height: 36px;
+      border-radius: var(--radius-lg);
+      display: flex; align-items: center; justify-content: center;
+      color: var(--text-secondary);
+      cursor: pointer;
+      position: relative;
+      transition: background 0.15s, color 0.15s;
+    }
+    .nav-item:hover { background: var(--bg-elevated); }
+    .nav-item.active {
+      background: var(--primary-muted);
+      color: var(--primary);
+    }
+    .nav-item .tooltip {
+      position: absolute;
+      left: calc(100% + 12px);
+      top: 50%;
+      transform: translateY(-50%);
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+      padding: 4px 10px;
+      font-size: 12px;
+      white-space: nowrap;
+      color: var(--text);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.15s;
+      z-index: 100;
+    }
+    .nav-item:hover .tooltip { opacity: 1; }
 
-  /* --- Shadows (restrained: static surfaces border-led) --- */
-  --amh-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
-  --amh-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.04);
-  --amh-shadow-lg: 0 8px 28px rgba(0, 0, 0, 0.12);
-  --amh-shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.16);
+    .sidebar-bottom {
+      margin-top: auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+    .status-dot {
+      width: 8px; height: 8px;
+      border-radius: var(--radius-full);
+      background: var(--state-success);
+    }
+    .avatar {
+      width: 28px; height: 28px;
+      border-radius: var(--radius-full);
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      display: flex; align-items: center; justify-content: center;
+      color: white;
+      font-size: 11px;
+      font-weight: 600;
+    }
 
-  /* --- Transitions --- */
-  --amh-transition-fast: 120ms cubic-bezier(0.4, 0, 0.2, 1);
-  --amh-transition-normal: 200ms cubic-bezier(0.4, 0, 0.2, 1);
-  --amh-transition-slow: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+    /* Main layout */
+    .main {
+      margin-left: var(--sidebar-width);
+      min-height: 100vh;
+    }
 
-  /* --- Layout --- */
-  --amh-sidebar-width: 240px;
-  --amh-sidebar-collapsed-width: 56px;
-  --amh-header-height: 56px;
-}
+    /* Header */
+    .header {
+      height: var(--header-height);
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      position: sticky;
+      top: 0;
+      z-index: 40;
+    }
+    .header-left { display: flex; align-items: center; gap: 10px; }
+    .header-title { font-size: 18px; font-weight: 600; color: var(--text); }
+    .header-dot { width: 4px; height: 4px; border-radius: 50%; background: var(--text-tertiary); }
+    .header-subtitle { font-size: 14px; color: var(--text-tertiary); }
+    .header-right { display: flex; align-items: center; gap: 8px; }
+    .btn-ghost {
+      height: 36px;
+      padding: 0 14px;
+      border-radius: var(--radius-md);
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      display: flex; align-items: center; gap: 6px;
+      font-size: 13px; font-weight: 500; color: var(--text-secondary);
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-ghost:hover { background: var(--bg-hover); }
+    .btn-ghost.icon-only { padding: 0; width: 36px; justify-content: center; }
+    .btn-primary {
+      height: 36px;
+      padding: 0 14px;
+      border-radius: var(--radius-md);
+      background: var(--primary);
+      color: var(--primary-foreground);
+      border: none;
+      display: flex; align-items: center; gap: 6px;
+      font-size: 13px; font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .header-divider { width: 1px; height: 24px; background: var(--border); margin: 0 4px; }
 
-/* ---------- Dark theme is the default ---------- */
-html {
-  background: var(--amh-bg-canvas);
-  color: var(--amh-text);
-  font-family: var(--amh-font-sans);
-  font-size: var(--amh-font-size-base);
-  line-height: 1.5;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
-}
+    /* Content */
+    .content { padding: 24px; }
 
-body {
-  margin: 0;
-  background: var(--amh-bg-canvas);
-  color: var(--amh-text);
-}
+    /* Capability summary cards */
+    .cap-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+    .cap-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 24px;
+    }
+    .cap-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .cap-title {
+      font-size: 14px;
+      color: var(--text-secondary);
+      font-weight: 500;
+    }
+    .cap-value {
+      font-size: 22px;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      color: var(--text);
+    }
+    .progress-bar {
+      width: 100%; height: 6px;
+      background: var(--bg-elevated);
+      border-radius: var(--radius-full);
+      overflow: hidden;
+      margin-top: 16px;
+    }
+    .progress-fill {
+      height: 100%;
+      background: var(--primary);
+      border-radius: var(--radius-full);
+    }
+    .cap-label {
+      font-size: 12px;
+      color: var(--text-tertiary);
+      margin-top: 8px;
+    }
 
-/* ---------- Typography classes ---------- */
-.amh-text-xs { font-size: var(--amh-font-size-xs); }
-.amh-text-sm { font-size: var(--amh-font-size-sm); }
-.amh-text-base { font-size: var(--amh-font-size-base); }
-.amh-text-md { font-size: var(--amh-font-size-md); }
-.amh-text-lg { font-size: var(--amh-font-size-lg); }
-.amh-text-xl { font-size: var(--amh-font-size-xl); }
-.amh-text-2xl { font-size: var(--amh-font-size-2xl); }
-.amh-text-3xl { font-size: var(--amh-font-size-3xl); }
+    /* Filter bar */
+    .filter-bar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .filter-select {
+      height: 36px;
+      padding: 0 32px 0 12px;
+      border-radius: var(--radius-md);
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      cursor: pointer;
+      position: relative;
+      white-space: nowrap;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .filter-select:hover { background: var(--bg-hover); border-color: var(--border-strong); }
+    .filter-select .chevron {
+      position: absolute;
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      pointer-events: none;
+      color: var(--text-tertiary);
+    }
+    .search-input {
+      flex: 1;
+      height: 36px;
+      padding: 0 12px 0 36px;
+      border-radius: var(--radius-md);
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      font-size: 13px;
+      color: var(--text);
+      outline: none;
+      position: relative;
+      transition: border-color 0.15s;
+    }
+    .search-input::placeholder { color: var(--text-tertiary); }
+    .search-input:focus { border-color: var(--primary); }
+    .search-wrap {
+      flex: 1;
+      position: relative;
+    }
+    .search-wrap .search-icon {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-tertiary);
+      pointer-events: none;
+    }
 
-.amh-font-medium { font-weight: 500; }
-.amh-font-semibold { font-weight: 600; }
-.amh-font-bold { font-weight: 700; }
-
-.amh-text-primary { color: var(--amh-text); }
-.amh-text-secondary { color: var(--amh-text-secondary); }
-.amh-text-tertiary { color: var(--amh-text-tertiary); }
-.amh-text-disabled { color: var(--amh-text-disabled); }
-
-.amh-font-mono { font-family: var(--amh-font-mono); }
-
-/* ---------- Surface utilities ---------- */
-.amh-surface {
-  background: var(--amh-bg-surface);
-  border: 1px solid var(--amh-border);
-  border-radius: var(--amh-radius-lg);
-}
-
-.amh-surface-elevated {
-  background: var(--amh-bg-elevated);
-  border: 1px solid var(--amh-border);
-  border-radius: var(--amh-radius-lg);
-}
-
-.amh-surface-sunken {
-  background: var(--amh-bg-sunken);
-  border: 1px solid var(--amh-border-subtle);
-  border-radius: var(--amh-radius-md);
-}
-
-/* ---------- Scrollbar styling ---------- */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--amh-border-strong);
-  border-radius: var(--amh-radius-full);
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--amh-text-tertiary);
-}
-
-/* ---------- Selection ---------- */
-::selection {
-  background: var(--amh-primary-muted);
-  color: var(--amh-primary-hover);
-}
-
-/* ---------- Focus ring ---------- */
-*:focus-visible {
-  outline: 2px solid var(--amh-primary);
-  outline-offset: 2px;
-}
-
-    </style>
-    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.1/dist/index.global.js"></script>
-    <script src="https://unpkg.com/lucide@1.8.0/dist/umd/lucide.min.js"></script>
-    <style type="text/tailwindcss">
-  @theme inline {
-    --color-primary: var(--amh-primary);
-    --color-primary-foreground: var(--amh-primary-foreground);
-    --color-border: var(--amh-border);
-  }
-  @layer base {
-    body { background: var(--amh-background); color: var(--amh-foreground); }
-    td, th { @apply break-words; word-break: break-all; word-break: auto-phrase; }
-    th { @apply whitespace-nowrap; }
-  }
-    </style>
-    <style>
-      .no-scrollbar::-webkit-scrollbar { display: none; }
-      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-      [data-icon] {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        -webkit-mask-size: contain;
-        mask-size: contain;
-        -webkit-mask-repeat: no-repeat;
-        mask-repeat: no-repeat;
-        -webkit-mask-position: center;
-        mask-position: center;
-        background-color: currentColor;
-      }
-    </style>
+    /* Tool card grid */
+    .tool-card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 20px;
+    }
+    .tool-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 20px;
+      transition: border-color 0.12s, box-shadow 0.12s;
+    }
+    .tool-card:hover {
+      border-color: var(--border-strong);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+    .tool-card-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .tool-avatar {
+      width: 40px; height: 40px;
+      border-radius: var(--radius-md);
+      background: var(--primary-muted);
+      color: var(--primary);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .tool-avatar.muted {
+      background: var(--bg-elevated);
+      color: var(--text-tertiary);
+    }
+    .tool-card-header-info {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 0;
+    }
+    .tool-card-name {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .tool-kind-badge {
+      font-size: 12px;
+      color: var(--text-tertiary);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      padding: 1px 6px;
+      align-self: flex-start;
+      background: var(--bg-surface);
+    }
+    .tool-status-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .tool-status-left {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 14px;
+    }
+    .tool-status-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+    }
+    .tool-status-dot.ok { background: var(--state-success); }
+    .tool-status-dot.fail { background: var(--state-error); }
+    .tool-status-text.ok { color: var(--state-success); }
+    .tool-status-text.fail { color: var(--state-error); }
+    .tool-status-right {
+      font-size: 12px;
+      color: var(--text-tertiary);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .cap-flags {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .cap-flag {
+      font-size: 12px;
+      padding: 2px 8px;
+      border-radius: var(--radius-sm);
+    }
+    .cap-flag.on {
+      background: var(--primary-muted);
+      color: var(--primary);
+    }
+    .cap-flag.off {
+      background: var(--bg-elevated);
+      color: var(--text-disabled);
+    }
+    .tool-divider {
+      height: 1px;
+      background: var(--border-subtle);
+      margin: 16px 0;
+    }
+    .tool-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--text-tertiary);
+    }
+    .tool-version {
+      font-family: var(--font-mono);
+    }
+    .tool-config-link {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-weight: 500;
+      transition: color 0.15s;
+    }
+    .tool-config-link:hover { color: var(--text); }
+  </style>
 </head>
-<body class="min-h-screen font-sans antialiased">
-    <!-- ===== Project Shell: AI Memory Hub Dashboard ===== -->
-    <!-- Node: gen-project-shell | Kind: project-shell -->
-    <!-- This file is the shared template. Leaf pages copy this file and fill the SLOT markers. -->
-    <div class="shell-layout">
+<body>
 
-      <!-- ================================================================ -->
-      <!-- SIDEBAR (240px) — Shared region, do NOT modify in leaf pages     -->
-      <!-- ================================================================ -->
-      <aside class="shell-sidebar">
+<!-- Sidebar -->
+<aside class="sidebar">
+  <div class="logo">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/>
+      <path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/>
+      <path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4"/>
+    </svg>
+  </div>
 
-        <!-- --- Logo area (56px) --- -->
-        <div class="sidebar-logo">
-          <div class="sidebar-logo-mark">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"/>
-              <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"/>
-            </svg>
-          </div>
-          <span class="sidebar-logo-text">AI Memory Hub</span>
-          <button class="sidebar-logo-toggle" aria-label="折叠侧边栏" data-dom-id="sidebar-toggle">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <rect width="18" height="18" x="3" y="3" rx="2"/>
-              <path d="M9 3v18"/>
-              <path d="m15 9-3 3 3 3"/>
-            </svg>
-          </button>
+  <div class="nav-group">
+    <div class="nav-item" data-dom-id="nav-overview">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+      <span class="tooltip">概览</span>
+    </div>
+    <div class="nav-item" data-dom-id="nav-memory">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg>
+      <span class="tooltip">记忆</span>
+    </div>
+    <div class="nav-item" data-dom-id="nav-tasks">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></svg>
+      <span class="tooltip">任务</span>
+    </div>
+    <div class="nav-item" data-dom-id="nav-radio">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"/><path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"/><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"/><path d="M19.1 4.9C23 8.8 23 15.2 19.1 19.1"/></svg>
+      <span class="tooltip">Radio</span>
+    </div>
+    <div class="nav-item" data-dom-id="nav-workflows">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect width="8" height="8" x="3" y="3" rx="2"/><path d="M7 11v4a2 2 0 0 1-2 2H4"/><rect width="8" height="8" x="13" y="13" rx="2"/><path d="M13 7h4a2 2 0 0 1 2 2v1"/></svg>
+      <span class="tooltip">工作流</span>
+    </div>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-item" data-dom-id="nav-schedule">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h5"/><path d="M17.5 21a3.5 3.5 0 0 0 0-7h-.5l-.5-1h-1l-.5 1h-.5a3.5 3.5 0 0 0 0 7"/><path d="M17.5 18.5v.01"/></svg>
+      <span class="tooltip">调度</span>
+    </div>
+    <div class="nav-item" data-dom-id="nav-analytics">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="20" y2="10"/><line x1="18" x2="18" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="16"/></svg>
+      <span class="tooltip">分析</span>
+    </div>
+    <div class="nav-item" data-dom-id="nav-backup">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg>
+      <span class="tooltip">备份</span>
+    </div>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-item active" data-dom-id="nav-tools">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+      <span class="tooltip">工具</span>
+    </div>
+    <div class="nav-item" data-dom-id="nav-projects">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16.5a4.5 4.5 0 0 1 .5-8.996V7.5a4.5 4.5 0 0 1 8.996.5A4.5 4.5 0 0 1 18 16.5"/><path d="M9 12h6"/><path d="M9 15h3"/></svg>
+      <span class="tooltip">项目</span>
+    </div>
+    <div class="nav-item" data-dom-id="nav-health">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></svg>
+      <span class="tooltip">健康</span>
+    </div>
+    <div class="nav-item" data-dom-id="nav-settings">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+      <span class="tooltip">设置</span>
+    </div>
+    <div class="nav-item" data-dom-id="nav-chat">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>
+      <span class="tooltip">对话</span>
+    </div>
+  </div>
+
+  <div class="sidebar-bottom">
+    <div class="status-dot" title="在线"></div>
+    <div class="avatar">中</div>
+  </div>
+</aside>
+
+<!-- Main -->
+<div class="main">
+  <!-- Header -->
+  <header class="header">
+    <div class="header-left">
+      <span class="header-title">工具</span>
+      <span class="header-dot"></span>
+      <span class="header-subtitle">AI 工具连接与能力管理</span>
+    </div>
+    <div class="header-right">
+      <button class="btn-primary">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+        注册工具
+      </button>
+      <div class="header-divider"></div>
+      <button class="btn-ghost icon-only">
+        <span style="font-size: 13px; font-weight: 600; color: var(--text);">中</span>
+      </button>
+      <button class="btn-ghost icon-only">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Content -->
+  <div class="content">
+
+    <!-- Section 1: Capability Summary -->
+    <div class="cap-grid">
+      <!-- Card 1: 连接就绪 -->
+      <div class="cap-card">
+        <div class="cap-top">
+          <span class="cap-title">连接就绪</span>
+          <span class="cap-value">9/10</span>
         </div>
-
-        <!-- --- Search bar --- -->
-        <div class="sidebar-search">
-          <div class="sidebar-search-wrap">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="11" cy="11" r="8"/>
-              <path d="m21 21-4.3-4.3"/>
-            </svg>
-            <input type="text" class="sidebar-search-input" placeholder="搜索…" aria-label="搜索">
-            <span class="sidebar-search-kbd">⌘K</span>
-          </div>
+        <div class="progress-bar">
+          <div class="progress-fill" style="width: 90%;"></div>
         </div>
+        <div class="cap-label">9 / 10 已连接</div>
+      </div>
 
-        <!-- --- Nav groups (scrollable) --- -->
-        <nav class="sidebar-nav" aria-label="主导航">
-
-          <!-- Group: 工作区 -->
-          <div class="sidebar-nav-group-label">工作区</div>
-          <!-- SLOT: activeNavItem --><a class="sidebar-nav-item" data-dom-id="nav-overview" href="#">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <rect width="7" height="9" x="3" y="3" rx="1"/>
-              <rect width="7" height="5" x="14" y="3" rx="1"/>
-              <rect width="7" height="9" x="14" y="12" rx="1"/>
-              <rect width="7" height="5" x="3" y="16" rx="1"/>
-            </svg>
-            <span>概览</span>
-          </a>
-          <!-- SLOT: activeNavItem --><a class="sidebar-nav-item" data-dom-id="nav-memory" href="#">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <ellipse cx="12" cy="5" rx="9" ry="3"/>
-              <path d="M3 5V19A9 3 0 0 0 21 19V5"/>
-              <path d="M3 12A9 3 0 0 0 21 12"/>
-            </svg>
-            <span>记忆</span>
-          </a>
-          <!-- SLOT: activeNavItem --><a class="sidebar-nav-item" data-dom-id="nav-tasks" href="#">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="5" width="6" height="6" rx="1"/>
-              <path d="m3 17 2 2 4-4"/>
-              <path d="M13 6h8"/>
-              <path d="M13 12h8"/>
-              <path d="M13 18h8"/>
-            </svg>
-            <span>任务</span>
-          </a>
-          <!-- SLOT: activeNavItem --><a class="sidebar-nav-item" data-dom-id="nav-radio" href="#">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"/>
-              <path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"/>
-              <circle cx="12" cy="12" r="2"/>
-              <path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"/>
-              <path d="M19.1 4.9C23 8.8 23 15.2 19.1 19.1"/>
-            </svg>
-            <span>Radio</span>
-          </a>
-          <!-- SLOT: activeNavItem --><a class="sidebar-nav-item" data-dom-id="nav-workflows" href="#">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <rect width="8" height="8" x="3" y="3" rx="2"/>
-              <path d="M7 11v4a2 2 0 0 0 2 2h4"/>
-              <rect width="8" height="8" x="13" y="13" rx="2"/>
-            </svg>
-            <span>工作流</span>
-          </a>
-
-          <!-- Group: 运维 -->
-          <div class="sidebar-nav-group-label">运维</div>
-          <!-- SLOT: activeNavItem --><a class="sidebar-nav-item" data-dom-id="nav-dispatch" href="#">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3.5"/>
-              <path d="M16 2v4"/>
-              <path d="M8 2v4"/>
-              <path d="M3 10h5"/>
-              <circle cx="17.5" cy="17.5" r="4.5"/>
-              <path d="M17.5 14v2l1.5 1"/>
-            </svg>
-            <span>调度</span>
-          </a>
-          <!-- SLOT: activeNavItem --><a class="sidebar-nav-item" data-dom-id="nav-analytics" href="#">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M3 3v18h18"/>
-              <path d="M18 17V9"/>
-              <path d="M13 17V5"/>
-              <path d="M8 17v-3"/>
-            </svg>
-            <span>分析</span>
-          </a>
-          <!-- SLOT: activeNavItem --><a class="sidebar-nav-item" data-dom-id="nav-backups" href="#">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <rect width="20" height="5" x="2" y="3" rx="1"/>
-              <path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/>
-              <path d="M10 12h4"/>
-            </svg>
-            <span>备份</span>
-          </a>
-          <!-- SLOT: activeNavItem --><a class="sidebar-nav-item" data-dom-id="nav-search" href="#">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="11" cy="11" r="8"/>
-              <path d="m21 21-4.3-4.3"/>
-            </svg>
-            <span>搜索</span>
-          </a>
-
-          <!-- Group: 系统 -->
-          <div class="sidebar-nav-group-label">系统</div>
-          <!-- SLOT: activeNavItem --><a class="sidebar-nav-item active" data-dom-id="nav-tools" href="#">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
-            </svg>
-            <span>工具</span>
-          </a>
-          <!-- SLOT: activeNavItem --><a class="sidebar-nav-item" data-dom-id="nav-projects" href="#">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/>
-              <path d="M8 10v4"/>
-              <path d="M12 10v4"/>
-              <path d="M16 10v4"/>
-            </svg>
-            <span>项目</span>
-          </a>
-          <!-- SLOT: activeNavItem --><a class="sidebar-nav-item" data-dom-id="nav-health" href="#">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/>
-            </svg>
-            <span>健康</span>
-          </a>
-          <!-- SLOT: activeNavItem --><a class="sidebar-nav-item" data-dom-id="nav-settings" href="#">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
-              <circle cx="12" cy="12" r="3"/>
-            </svg>
-            <span>设置</span>
-          </a>
-          <!-- SLOT: activeNavItem --><a class="sidebar-nav-item" data-dom-id="nav-chat" href="#">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-            </svg>
-            <span>对话</span>
-          </a>
-
-        </nav>
-
-        <!-- --- Bottom section --- -->
-        <div class="sidebar-bottom">
-          <div class="sidebar-connection">
-            <span class="sidebar-connection-dot"></span>
-            <span class="sidebar-connection-text">Hub 已连接</span>
-            <span class="sidebar-version">v2.1.0</span>
-          </div>
-          <div class="sidebar-user">
-            <div class="sidebar-user-avatar">A</div>
-            <span class="sidebar-user-name">Admin</span>
-            <button class="sidebar-user-btn" aria-label="用户设置" data-dom-id="sidebar-user-settings">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="3"/>
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-              </svg>
-            </button>
-          </div>
+      <!-- Card 2: 可自动执行 -->
+      <div class="cap-card">
+        <div class="cap-top">
+          <span class="cap-title">可自动执行</span>
+          <span class="cap-value">8/10</span>
         </div>
+        <div class="progress-bar">
+          <div class="progress-fill" style="width: 80%;"></div>
+        </div>
+        <div class="cap-label">8 / 10 支持自动执行</div>
+      </div>
 
-      </aside>
-
-      <!-- ================================================================ -->
-      <!-- MAIN AREA — Header + Content                                     -->
-      <!-- ================================================================ -->
-      <div class="shell-main">
-
-        <!-- --- Header (56px) --- -->
-        <header class="shell-header">
-          <!-- Left: breadcrumb + subtitle -->
-          <div class="header-left">
-            <div class="header-breadcrumb">
-              <span class="header-breadcrumb-root">AI Memory Hub</span>
-              <svg class="header-breadcrumb-sep" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="m9 18 6-6-6-6"/>
-              </svg>
-              <!-- SLOT: pageTitle --><span class="header-breadcrumb-current">工具</span>
-            </div>
-            <!-- SLOT: pageSubtitle --><span class="header-subtitle">AI 工具连接与能力管理</span>
-          </div>
-
-          <!-- Right: actions + divider + lang + refresh + connection -->
-          <div class="header-right">
-            <!-- SLOT: headerActions -->
-            <button class="header-primary-btn" data-dom-id="header-register-tool">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M5 12h14"/><path d="M12 5v14"/>
-              </svg>
-              <span>注册工具</span>
-            </button>
-            <div class="header-divider"></div>
-            <button class="header-lang-btn" aria-label="切换语言" data-dom-id="header-lang">中</button>
-            <button class="header-icon-btn" aria-label="刷新" data-dom-id="header-refresh">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
-                <path d="M21 3v5h-5"/>
-                <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
-                <path d="M8 16H3v5"/>
-              </svg>
-            </button>
-            <div class="header-conn">
-              <span class="header-conn-dot"></span>
-              <span class="header-conn-text">已连接</span>
-            </div>
-          </div>
-        </header>
-
-        <!-- --- Content area --- -->
-        <main class="shell-content">
-          <!-- SLOT: pageContent -->
-
-          <!-- ===== Section 1: Capability Summary ===== -->
-          <div class="tools-capability-grid">
-            <div class="amh-surface tools-capability-card">
-              <div class="tools-capability-header">
-                <span class="tools-capability-title">连接就绪</span>
-                <span class="tools-capability-value">9/10</span>
-              </div>
-              <div class="tools-progress-bar">
-                <div class="tools-progress-fill" style="width: 90%;"></div>
-              </div>
-              <div class="tools-capability-label">9 / 10 已连接</div>
-            </div>
-            <div class="amh-surface tools-capability-card">
-              <div class="tools-capability-header">
-                <span class="tools-capability-title">可自动执行</span>
-                <span class="tools-capability-value">8/10</span>
-              </div>
-              <div class="tools-progress-bar">
-                <div class="tools-progress-fill" style="width: 80%;"></div>
-              </div>
-              <div class="tools-capability-label">8 / 10 支持自动执行</div>
-            </div>
-            <div class="amh-surface tools-capability-card">
-              <div class="tools-capability-header">
-                <span class="tools-capability-title">Relay 支持</span>
-                <span class="tools-capability-value">7/10</span>
-              </div>
-              <div class="tools-progress-bar">
-                <div class="tools-progress-fill" style="width: 70%;"></div>
-              </div>
-              <div class="tools-capability-label">7 / 10 支持中继</div>
-            </div>
-          </div>
-
-          <!-- ===== Section 2: Filter Bar ===== -->
-          <div class="tools-filter-bar">
-            <button class="tools-filter-dropdown" data-dom-id="tools-filter-kind">
-              <span>全部类型</span>
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="m6 9 6 6 6-6"/>
-              </svg>
-            </button>
-            <button class="tools-filter-dropdown" data-dom-id="tools-filter-status">
-              <span>全部状态</span>
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="m6 9 6 6 6-6"/>
-              </svg>
-            </button>
-            <div class="tools-search">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="11" cy="11" r="8"/>
-                <path d="m21 21-4.3-4.3"/>
-              </svg>
-              <input type="text" placeholder="搜索工具…" aria-label="搜索工具" data-dom-id="tools-search-input">
-            </div>
-            <button class="tools-filter-dropdown" data-dom-id="tools-filter-sort">
-              <span>按名称</span>
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="m6 9 6 6 6-6"/>
-              </svg>
-            </button>
-          </div>
-
-          <!-- ===== Section 3: Tool Card Grid ===== -->
-          <div class="tools-grid">
-
-            <!-- Tool 1: Claude Code -->
-            <div class="amh-surface tool-card">
-              <div class="tool-card-header">
-                <div class="tool-avatar">C</div>
-                <div class="tool-card-name-row">
-                  <div class="tool-name">Claude Code</div>
-                  <span class="tool-kind-badge">CLI</span>
-                </div>
-              </div>
-              <div class="tool-status-row">
-                <div class="tool-status-left">
-                  <span class="tool-status-dot connected"></span>
-                  <span class="tool-status-text connected">已连接</span>
-                </div>
-                <span class="tool-last-active">最后活跃 2 分钟前</span>
-              </div>
-              <div class="tool-capability-flags">
-                <span class="tool-flag supported">自动执行</span>
-                <span class="tool-flag supported">Relay</span>
-                <span class="tool-flag supported">广播</span>
-                <span class="tool-flag supported">记忆</span>
-              </div>
-              <hr class="tool-divider">
-              <div class="tool-footer">
-                <span class="tool-version">版本 v1.2.0</span>
-                <a class="tool-config-link" href="#">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="2" x2="6" y1="14" y2="14"/><line x1="10" x2="14" y1="8" y2="8"/><line x1="18" x2="22" y1="16" y2="16"/></svg>
-                  <span>配置</span>
-                </a>
-              </div>
-            </div>
-
-            <!-- Tool 2: Codex CLI -->
-            <div class="amh-surface tool-card">
-              <div class="tool-card-header">
-                <div class="tool-avatar">C</div>
-                <div class="tool-card-name-row">
-                  <div class="tool-name">Codex CLI</div>
-                  <span class="tool-kind-badge">CLI</span>
-                </div>
-              </div>
-              <div class="tool-status-row">
-                <div class="tool-status-left">
-                  <span class="tool-status-dot connected"></span>
-                  <span class="tool-status-text connected">已连接</span>
-                </div>
-                <span class="tool-last-active">最后活跃 5 分钟前</span>
-              </div>
-              <div class="tool-capability-flags">
-                <span class="tool-flag supported">自动执行</span>
-                <span class="tool-flag supported">Relay</span>
-                <span class="tool-flag supported">广播</span>
-                <span class="tool-flag unsupported">记忆</span>
-              </div>
-              <hr class="tool-divider">
-              <div class="tool-footer">
-                <span class="tool-version">版本 v1.0.5</span>
-                <a class="tool-config-link" href="#">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="2" x2="6" y1="14" y2="14"/><line x1="10" x2="14" y1="8" y2="8"/><line x1="18" x2="22" y1="16" y2="16"/></svg>
-                  <span>配置</span>
-                </a>
-              </div>
-            </div>
-
-            <!-- Tool 3: Gemini CLI -->
-            <div class="amh-surface tool-card">
-              <div class="tool-card-header">
-                <div class="tool-avatar">G</div>
-                <div class="tool-card-name-row">
-                  <div class="tool-name">Gemini CLI</div>
-                  <span class="tool-kind-badge">CLI</span>
-                </div>
-              </div>
-              <div class="tool-status-row">
-                <div class="tool-status-left">
-                  <span class="tool-status-dot connected"></span>
-                  <span class="tool-status-text connected">已连接</span>
-                </div>
-                <span class="tool-last-active">最后活跃 1 分钟前</span>
-              </div>
-              <div class="tool-capability-flags">
-                <span class="tool-flag supported">自动执行</span>
-                <span class="tool-flag supported">Relay</span>
-                <span class="tool-flag unsupported">广播</span>
-                <span class="tool-flag supported">记忆</span>
-              </div>
-              <hr class="tool-divider">
-              <div class="tool-footer">
-                <span class="tool-version">版本 v1.1.0</span>
-                <a class="tool-config-link" href="#">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="2" x2="6" y1="14" y2="14"/><line x1="10" x2="14" y1="8" y2="8"/><line x1="18" x2="22" y1="16" y2="16"/></svg>
-                  <span>配置</span>
-                </a>
-              </div>
-            </div>
-
-            <!-- Tool 4: Trae -->
-            <div class="amh-surface tool-card">
-              <div class="tool-card-header">
-                <div class="tool-avatar">T</div>
-                <div class="tool-card-name-row">
-                  <div class="tool-name">Trae</div>
-                  <span class="tool-kind-badge">IDE</span>
-                </div>
-              </div>
-              <div class="tool-status-row">
-                <div class="tool-status-left">
-                  <span class="tool-status-dot connected"></span>
-                  <span class="tool-status-text connected">已连接</span>
-                </div>
-                <span class="tool-last-active">最后活跃 3 分钟前</span>
-              </div>
-              <div class="tool-capability-flags">
-                <span class="tool-flag supported">自动执行</span>
-                <span class="tool-flag supported">Relay</span>
-                <span class="tool-flag supported">广播</span>
-                <span class="tool-flag supported">记忆</span>
-              </div>
-              <hr class="tool-divider">
-              <div class="tool-footer">
-                <span class="tool-version">版本 v0.8.2</span>
-                <a class="tool-config-link" href="#">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="2" x2="6" y1="14" y2="14"/><line x1="10" x2="14" y1="8" y2="8"/><line x1="18" x2="22" y1="16" y2="16"/></svg>
-                  <span>配置</span>
-                </a>
-              </div>
-            </div>
-
-            <!-- Tool 5: Windsurf -->
-            <div class="amh-surface tool-card">
-              <div class="tool-card-header">
-                <div class="tool-avatar">W</div>
-                <div class="tool-card-name-row">
-                  <div class="tool-name">Windsurf</div>
-                  <span class="tool-kind-badge">IDE</span>
-                </div>
-              </div>
-              <div class="tool-status-row">
-                <div class="tool-status-left">
-                  <span class="tool-status-dot connected"></span>
-                  <span class="tool-status-text connected">已连接</span>
-                </div>
-                <span class="tool-last-active">最后活跃 8 分钟前</span>
-              </div>
-              <div class="tool-capability-flags">
-                <span class="tool-flag unsupported">自动执行</span>
-                <span class="tool-flag supported">Relay</span>
-                <span class="tool-flag supported">广播</span>
-                <span class="tool-flag unsupported">记忆</span>
-              </div>
-              <hr class="tool-divider">
-              <div class="tool-footer">
-                <span class="tool-version">版本 v1.5.0</span>
-                <a class="tool-config-link" href="#">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="2" x2="6" y1="14" y2="14"/><line x1="10" x2="14" y1="8" y2="8"/><line x1="18" x2="22" y1="16" y2="16"/></svg>
-                  <span>配置</span>
-                </a>
-              </div>
-            </div>
-
-            <!-- Tool 6: Kilo Code -->
-            <div class="amh-surface tool-card">
-              <div class="tool-card-header">
-                <div class="tool-avatar">K</div>
-                <div class="tool-card-name-row">
-                  <div class="tool-name">Kilo Code</div>
-                  <span class="tool-kind-badge">Plugin</span>
-                </div>
-              </div>
-              <div class="tool-status-row">
-                <div class="tool-status-left">
-                  <span class="tool-status-dot connected"></span>
-                  <span class="tool-status-text connected">已连接</span>
-                </div>
-                <span class="tool-last-active">最后活跃 12 分钟前</span>
-              </div>
-              <div class="tool-capability-flags">
-                <span class="tool-flag supported">自动执行</span>
-                <span class="tool-flag unsupported">Relay</span>
-                <span class="tool-flag supported">广播</span>
-                <span class="tool-flag supported">记忆</span>
-              </div>
-              <hr class="tool-divider">
-              <div class="tool-footer">
-                <span class="tool-version">版本 v0.3.1</span>
-                <a class="tool-config-link" href="#">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="2" x2="6" y1="14" y2="14"/><line x1="10" x2="14" y1="8" y2="8"/><line x1="18" x2="22" y1="16" y2="16"/></svg>
-                  <span>配置</span>
-                </a>
-              </div>
-            </div>
-
-            <!-- Tool 7: Roo Code -->
-            <div class="amh-surface tool-card">
-              <div class="tool-card-header">
-                <div class="tool-avatar">R</div>
-                <div class="tool-card-name-row">
-                  <div class="tool-name">Roo Code</div>
-                  <span class="tool-kind-badge">Plugin</span>
-                </div>
-              </div>
-              <div class="tool-status-row">
-                <div class="tool-status-left">
-                  <span class="tool-status-dot connected"></span>
-                  <span class="tool-status-text connected">已连接</span>
-                </div>
-                <span class="tool-last-active">最后活跃 15 分钟前</span>
-              </div>
-              <div class="tool-capability-flags">
-                <span class="tool-flag supported">自动执行</span>
-                <span class="tool-flag supported">Relay</span>
-                <span class="tool-flag unsupported">广播</span>
-                <span class="tool-flag supported">记忆</span>
-              </div>
-              <hr class="tool-divider">
-              <div class="tool-footer">
-                <span class="tool-version">版本 v0.2.8</span>
-                <a class="tool-config-link" href="#">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="2" x2="6" y1="14" y2="14"/><line x1="10" x2="14" y1="8" y2="8"/><line x1="18" x2="22" y1="16" y2="16"/></svg>
-                  <span>配置</span>
-                </a>
-              </div>
-            </div>
-
-            <!-- Tool 8: Auggie (offline) -->
-            <div class="amh-surface tool-card">
-              <div class="tool-card-header">
-                <div class="tool-avatar offline">A</div>
-                <div class="tool-card-name-row">
-                  <div class="tool-name">Auggie</div>
-                  <span class="tool-kind-badge">Agent</span>
-                </div>
-              </div>
-              <div class="tool-status-row">
-                <div class="tool-status-left">
-                  <span class="tool-status-dot disconnected"></span>
-                  <span class="tool-status-text disconnected">离线</span>
-                </div>
-                <span class="tool-last-active">最后活跃 3 天前</span>
-              </div>
-              <div class="tool-capability-flags">
-                <span class="tool-flag unsupported">自动执行</span>
-                <span class="tool-flag unsupported">Relay</span>
-                <span class="tool-flag unsupported">广播</span>
-                <span class="tool-flag unsupported">记忆</span>
-              </div>
-              <hr class="tool-divider">
-              <div class="tool-footer">
-                <span class="tool-version">版本 v0.1.0</span>
-                <a class="tool-config-link" href="#">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="2" x2="6" y1="14" y2="14"/><line x1="10" x2="14" y1="8" y2="8"/><line x1="18" x2="22" y1="16" y2="16"/></svg>
-                  <span>配置</span>
-                </a>
-              </div>
-            </div>
-
-            <!-- Tool 9: DeepSeek -->
-            <div class="amh-surface tool-card">
-              <div class="tool-card-header">
-                <div class="tool-avatar">D</div>
-                <div class="tool-card-name-row">
-                  <div class="tool-name">DeepSeek</div>
-                  <span class="tool-kind-badge">API</span>
-                </div>
-              </div>
-              <div class="tool-status-row">
-                <div class="tool-status-left">
-                  <span class="tool-status-dot connected"></span>
-                  <span class="tool-status-text connected">已连接</span>
-                </div>
-                <span class="tool-last-active">最后活跃 6 分钟前</span>
-              </div>
-              <div class="tool-capability-flags">
-                <span class="tool-flag supported">自动执行</span>
-                <span class="tool-flag supported">Relay</span>
-                <span class="tool-flag unsupported">广播</span>
-                <span class="tool-flag unsupported">记忆</span>
-              </div>
-              <hr class="tool-divider">
-              <div class="tool-footer">
-                <span class="tool-version">版本 v2.0.0</span>
-                <a class="tool-config-link" href="#">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="2" x2="6" y1="14" y2="14"/><line x1="10" x2="14" y1="8" y2="8"/><line x1="18" x2="22" y1="16" y2="16"/></svg>
-                  <span>配置</span>
-                </a>
-              </div>
-            </div>
-
-            <!-- Tool 10: OpenAI -->
-            <div class="amh-surface tool-card">
-              <div class="tool-card-header">
-                <div class="tool-avatar">O</div>
-                <div class="tool-card-name-row">
-                  <div class="tool-name">OpenAI</div>
-                  <span class="tool-kind-badge">API</span>
-                </div>
-              </div>
-              <div class="tool-status-row">
-                <div class="tool-status-left">
-                  <span class="tool-status-dot connected"></span>
-                  <span class="tool-status-text connected">已连接</span>
-                </div>
-                <span class="tool-last-active">最后活跃 1 分钟前</span>
-              </div>
-              <div class="tool-capability-flags">
-                <span class="tool-flag supported">自动执行</span>
-                <span class="tool-flag supported">Relay</span>
-                <span class="tool-flag supported">广播</span>
-                <span class="tool-flag supported">记忆</span>
-              </div>
-              <hr class="tool-divider">
-              <div class="tool-footer">
-                <span class="tool-version">版本 v1.0.0</span>
-                <a class="tool-config-link" href="#">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="2" x2="6" y1="14" y2="14"/><line x1="10" x2="14" y1="8" y2="8"/><line x1="18" x2="22" y1="16" y2="16"/></svg>
-                  <span>配置</span>
-                </a>
-              </div>
-            </div>
-
-          </div>
-        </main>
-
+      <!-- Card 3: Relay 支持 -->
+      <div class="cap-card">
+        <div class="cap-top">
+          <span class="cap-title">Relay 支持</span>
+          <span class="cap-value">7/10</span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill" style="width: 70%;"></div>
+        </div>
+        <div class="cap-label">7 / 10 支持中继</div>
       </div>
     </div>
-    <script>lucide.createIcons();</script>
 
-    <style id="shell-styles">
-      /* ===== Shell Layout Frame ===== */
-      .shell-layout {
-        height: 100vh;
-        display: flex;
-        overflow: hidden;
-      }
+    <!-- Section 2: Filter Bar -->
+    <div class="filter-bar">
+      <div class="filter-select">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M7 12h10"/><path d="M10 18h4"/></svg>
+        全部类型
+        <span class="chevron">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+        </span>
+      </div>
+      <div class="filter-select">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
+        全部状态
+        <span class="chevron">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+        </span>
+      </div>
+      <div class="search-wrap">
+        <span class="search-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        </span>
+        <input type="text" class="search-input" placeholder="搜索工具…">
+      </div>
+      <div class="filter-select">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5h10"/><path d="M11 9h7"/><path d="M11 13h4"/><path d="m3 17 3 3 3-3"/><path d="M6 18V4"/></svg>
+        按名称
+        <span class="chevron">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+        </span>
+      </div>
+    </div>
 
-      /* ===== Sidebar ===== */
-      .shell-sidebar {
-        width: var(--amh-sidebar-width);
-        flex-shrink: 0;
-        height: 100%;
-        border-right: 1px solid var(--amh-border);
-        background: var(--amh-bg-surface);
-        display: flex;
-        flex-direction: column;
-      }
+    <!-- Section 3: Tool Card Grid -->
+    <div class="tool-card-grid">
 
-      /* --- Logo area --- */
-      .sidebar-logo {
-        height: var(--amh-header-height);
-        display: flex;
-        align-items: center;
-        gap: var(--amh-space-2);
-        padding: 0 var(--amh-space-4);
-        border-bottom: 1px solid var(--amh-border-subtle);
-        flex-shrink: 0;
-      }
-      .sidebar-logo-mark {
-        width: 32px;
-        height: 32px;
-        border-radius: var(--amh-radius-md);
-        background: linear-gradient(135deg, var(--amh-primary) 0%, var(--amh-primary-active) 100%);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        flex-shrink: 0;
-        color: #ffffff;
-      }
-      .sidebar-logo-text {
-        font-size: var(--amh-font-size-lg);
-        font-weight: 600;
-        color: var(--amh-text);
-        flex: 1;
-        white-space: nowrap;
-      }
-      .sidebar-logo-toggle {
-        width: 28px;
-        height: 28px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border: none;
-        background: transparent;
-        color: var(--amh-text-tertiary);
-        border-radius: var(--amh-radius-md);
-        cursor: pointer;
-        transition: background var(--amh-transition-fast), color var(--amh-transition-fast);
-        flex-shrink: 0;
-      }
-      .sidebar-logo-toggle:hover {
-        background: var(--amh-bg-hover);
-        color: var(--amh-text-secondary);
-      }
+      <!-- Tool 1: Claude Code -->
+      <div class="tool-card">
+        <div class="tool-card-header">
+          <div class="tool-avatar">C</div>
+          <div class="tool-card-header-info">
+            <span class="tool-card-name">Claude Code</span>
+            <span class="tool-kind-badge">CLI</span>
+          </div>
+        </div>
+        <div class="tool-status-row">
+          <div class="tool-status-left">
+            <span class="tool-status-dot ok"></span>
+            <span class="tool-status-text ok">已连接</span>
+          </div>
+          <div class="tool-status-right">
+            <span>最后活跃</span>
+            <span>2 分钟前</span>
+          </div>
+        </div>
+        <div class="cap-flags">
+          <span class="cap-flag on">自动执行</span>
+          <span class="cap-flag on">Relay</span>
+          <span class="cap-flag on">广播</span>
+          <span class="cap-flag on">记忆</span>
+        </div>
+        <div class="tool-divider"></div>
+        <div class="tool-footer">
+          <span class="tool-version">版本 v1.2.0</span>
+          <span class="tool-config-link">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+            配置
+          </span>
+        </div>
+      </div>
 
-      /* --- Search bar --- */
-      .sidebar-search {
-        padding: var(--amh-space-3) var(--amh-space-4);
-        border-bottom: 1px solid var(--amh-border-subtle);
-        flex-shrink: 0;
-      }
-      .sidebar-search-wrap {
-        position: relative;
-        display: flex;
-        align-items: center;
-        height: 32px;
-        background: var(--amh-bg-input);
-        border: 1px solid var(--amh-border);
-        border-radius: var(--amh-radius-md);
-        transition: border-color var(--amh-transition-fast);
-      }
-      .sidebar-search-wrap:focus-within {
-        border-color: var(--amh-primary);
-      }
-      .sidebar-search-wrap > svg {
-        position: absolute;
-        left: 8px;
-        color: var(--amh-text-tertiary);
-        flex-shrink: 0;
-        pointer-events: none;
-      }
-      .sidebar-search-input {
-        flex: 1;
-        background: transparent;
-        border: none;
-        outline: none;
-        color: var(--amh-text);
-        font-size: var(--amh-font-size-sm);
-        font-family: var(--amh-font-sans);
-        padding: 0 var(--amh-space-2);
-        padding-left: 32px;
-        height: 100%;
-      }
-      .sidebar-search-input::placeholder {
-        color: var(--amh-text-tertiary);
-      }
-      .sidebar-search-kbd {
-        font-size: var(--amh-font-size-xs);
-        color: var(--amh-text-tertiary);
-        font-family: var(--amh-font-mono);
-        padding: 2px 5px;
-        border: 1px solid var(--amh-border);
-        border-radius: var(--amh-radius-sm);
-        margin-right: 6px;
-        line-height: 1;
-        white-space: nowrap;
-      }
+      <!-- Tool 2: Codex CLI -->
+      <div class="tool-card">
+        <div class="tool-card-header">
+          <div class="tool-avatar">C</div>
+          <div class="tool-card-header-info">
+            <span class="tool-card-name">Codex CLI</span>
+            <span class="tool-kind-badge">CLI</span>
+          </div>
+        </div>
+        <div class="tool-status-row">
+          <div class="tool-status-left">
+            <span class="tool-status-dot ok"></span>
+            <span class="tool-status-text ok">已连接</span>
+          </div>
+          <div class="tool-status-right">
+            <span>最后活跃</span>
+            <span>15 分钟前</span>
+          </div>
+        </div>
+        <div class="cap-flags">
+          <span class="cap-flag on">自动执行</span>
+          <span class="cap-flag on">Relay</span>
+          <span class="cap-flag on">广播</span>
+          <span class="cap-flag off">记忆</span>
+        </div>
+        <div class="tool-divider"></div>
+        <div class="tool-footer">
+          <span class="tool-version">版本 v1.0.5</span>
+          <span class="tool-config-link">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+            配置
+          </span>
+        </div>
+      </div>
 
-      /* --- Nav --- */
-      .sidebar-nav {
-        flex: 1;
-        overflow-y: auto;
-        padding-bottom: var(--amh-space-2);
-      }
-      .sidebar-nav-group-label {
-        font-size: var(--amh-font-size-xs);
-        color: var(--amh-text-tertiary);
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-        padding: var(--amh-space-4) var(--amh-space-4) 6px;
-        font-weight: 600;
-      }
-      .sidebar-nav-item {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        height: 36px;
-        padding: 0 var(--amh-space-3);
-        margin: 0 var(--amh-space-2);
-        border-radius: 6px;
-        color: var(--amh-text-secondary);
-        text-decoration: none;
-        font-size: var(--amh-font-size-base);
-        font-weight: 500;
-        transition: background var(--amh-transition-fast), color var(--amh-transition-fast);
-        border-left: 2px solid transparent;
-        cursor: pointer;
-      }
-      .sidebar-nav-item svg {
-        width: 18px;
-        height: 18px;
-        flex-shrink: 0;
-        color: var(--amh-text-secondary);
-        transition: color var(--amh-transition-fast);
-      }
-      .sidebar-nav-item:hover {
-        background: var(--amh-bg-hover);
-        color: var(--amh-text);
-      }
-      .sidebar-nav-item:hover svg {
-        color: var(--amh-text);
-      }
-      .sidebar-nav-item.active {
-        background: var(--amh-primary-muted);
-        color: var(--amh-primary);
-        font-weight: 600;
-        border-left: 2px solid var(--amh-primary);
-      }
-      .sidebar-nav-item.active svg {
-        color: var(--amh-primary);
-      }
+      <!-- Tool 3: Gemini CLI -->
+      <div class="tool-card">
+        <div class="tool-card-header">
+          <div class="tool-avatar">G</div>
+          <div class="tool-card-header-info">
+            <span class="tool-card-name">Gemini CLI</span>
+            <span class="tool-kind-badge">CLI</span>
+          </div>
+        </div>
+        <div class="tool-status-row">
+          <div class="tool-status-left">
+            <span class="tool-status-dot ok"></span>
+            <span class="tool-status-text ok">已连接</span>
+          </div>
+          <div class="tool-status-right">
+            <span>最后活跃</span>
+            <span>32 分钟前</span>
+          </div>
+        </div>
+        <div class="cap-flags">
+          <span class="cap-flag on">自动执行</span>
+          <span class="cap-flag on">Relay</span>
+          <span class="cap-flag off">广播</span>
+          <span class="cap-flag on">记忆</span>
+        </div>
+        <div class="tool-divider"></div>
+        <div class="tool-footer">
+          <span class="tool-version">版本 v1.1.0</span>
+          <span class="tool-config-link">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+            配置
+          </span>
+        </div>
+      </div>
 
-      /* --- Bottom section --- */
-      .sidebar-bottom {
-        border-top: 1px solid var(--amh-border-subtle);
-        padding: var(--amh-space-3) var(--amh-space-4);
-        flex-shrink: 0;
-      }
-      .sidebar-connection {
-        display: flex;
-        align-items: center;
-        gap: var(--amh-space-2);
-        margin-bottom: var(--amh-space-3);
-      }
-      .sidebar-connection-dot {
-        width: 6px;
-        height: 6px;
-        border-radius: var(--amh-radius-full);
-        background: var(--amh-state-success);
-        flex-shrink: 0;
-      }
-      .sidebar-connection-text {
-        font-size: var(--amh-font-size-xs);
-        color: var(--amh-text-secondary);
-        flex: 1;
-      }
-      .sidebar-version {
-        font-size: var(--amh-font-size-xs);
-        color: var(--amh-text-tertiary);
-        font-family: var(--amh-font-mono);
-      }
-      .sidebar-user {
-        display: flex;
-        align-items: center;
-        gap: var(--amh-space-2);
-      }
-      .sidebar-user-avatar {
-        width: 28px;
-        height: 28px;
-        border-radius: var(--amh-radius-full);
-        background: var(--amh-primary-muted);
-        color: var(--amh-primary);
-        font-size: var(--amh-font-size-xs);
-        font-weight: 600;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        flex-shrink: 0;
-      }
-      .sidebar-user-name {
-        font-size: var(--amh-font-size-base);
-        color: var(--amh-text-secondary);
-        flex: 1;
-      }
-      .sidebar-user-btn {
-        width: 28px;
-        height: 28px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border: none;
-        background: transparent;
-        color: var(--amh-text-tertiary);
-        border-radius: var(--amh-radius-md);
-        cursor: pointer;
-        transition: background var(--amh-transition-fast), color var(--amh-transition-fast);
-        flex-shrink: 0;
-      }
-      .sidebar-user-btn:hover {
-        background: var(--amh-bg-hover);
-        color: var(--amh-text-secondary);
-      }
+      <!-- Tool 4: Trae -->
+      <div class="tool-card">
+        <div class="tool-card-header">
+          <div class="tool-avatar">T</div>
+          <div class="tool-card-header-info">
+            <span class="tool-card-name">Trae</span>
+            <span class="tool-kind-badge">IDE</span>
+          </div>
+        </div>
+        <div class="tool-status-row">
+          <div class="tool-status-left">
+            <span class="tool-status-dot ok"></span>
+            <span class="tool-status-text ok">已连接</span>
+          </div>
+          <div class="tool-status-right">
+            <span>最后活跃</span>
+            <span>1 小时前</span>
+          </div>
+        </div>
+        <div class="cap-flags">
+          <span class="cap-flag on">自动执行</span>
+          <span class="cap-flag on">Relay</span>
+          <span class="cap-flag on">广播</span>
+          <span class="cap-flag on">记忆</span>
+        </div>
+        <div class="tool-divider"></div>
+        <div class="tool-footer">
+          <span class="tool-version">版本 v0.8.2</span>
+          <span class="tool-config-link">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+            配置
+          </span>
+        </div>
+      </div>
 
-      /* ===== Main area ===== */
-      .shell-main {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
-        min-width: 0;
-      }
+      <!-- Tool 5: Windsurf -->
+      <div class="tool-card">
+        <div class="tool-card-header">
+          <div class="tool-avatar">W</div>
+          <div class="tool-card-header-info">
+            <span class="tool-card-name">Windsurf</span>
+            <span class="tool-kind-badge">IDE</span>
+          </div>
+        </div>
+        <div class="tool-status-row">
+          <div class="tool-status-left">
+            <span class="tool-status-dot ok"></span>
+            <span class="tool-status-text ok">已连接</span>
+          </div>
+          <div class="tool-status-right">
+            <span>最后活跃</span>
+            <span>3 小时前</span>
+          </div>
+        </div>
+        <div class="cap-flags">
+          <span class="cap-flag off">自动执行</span>
+          <span class="cap-flag on">Relay</span>
+          <span class="cap-flag on">广播</span>
+          <span class="cap-flag off">记忆</span>
+        </div>
+        <div class="tool-divider"></div>
+        <div class="tool-footer">
+          <span class="tool-version">版本 v1.5.0</span>
+          <span class="tool-config-link">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+            配置
+          </span>
+        </div>
+      </div>
 
-      /* ===== Header ===== */
-      .shell-header {
-        height: var(--amh-header-height);
-        flex-shrink: 0;
-        border-bottom: 1px solid var(--amh-border);
-        background: var(--amh-bg-surface);
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-      }
-      .header-left {
-        display: flex;
-        align-items: center;
-        gap: var(--amh-space-2);
-        padding-left: var(--amh-space-6);
-        min-width: 0;
-      }
-      .header-breadcrumb {
-        display: flex;
-        align-items: center;
-        gap: var(--amh-space-2);
-      }
-      .header-breadcrumb-root {
-        font-size: var(--amh-font-size-sm);
-        color: var(--amh-text-secondary);
-        white-space: nowrap;
-      }
-      .header-breadcrumb-sep {
-        color: var(--amh-text-tertiary);
-        flex-shrink: 0;
-      }
-      .header-breadcrumb-current {
-        font-size: var(--amh-font-size-md);
-        font-weight: 600;
-        color: var(--amh-text);
-        white-space: nowrap;
-      }
-      .header-subtitle {
-        font-size: var(--amh-font-size-xs);
-        color: var(--amh-text-tertiary);
-        padding-left: var(--amh-space-2);
-        border-left: 1px solid var(--amh-border);
-        white-space: nowrap;
-      }
-      .header-right {
-        display: flex;
-        align-items: center;
-        gap: var(--amh-space-2);
-        padding-right: var(--amh-space-6);
-        flex-shrink: 0;
-      }
-      .header-divider {
-        width: 1px;
-        height: 20px;
-        background: var(--amh-border);
-        flex-shrink: 0;
-      }
-      .header-icon-btn {
-        width: 32px;
-        height: 32px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border: 1px solid transparent;
-        background: transparent;
-        color: var(--amh-text-secondary);
-        border-radius: var(--amh-radius-md);
-        cursor: pointer;
-        transition: background var(--amh-transition-fast), color var(--amh-transition-fast);
-        flex-shrink: 0;
-      }
-      .header-icon-btn:hover {
-        background: var(--amh-bg-hover);
-        color: var(--amh-text);
-      }
-      .header-lang-btn {
-        width: 32px;
-        height: 32px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border: 1px solid var(--amh-border);
-        background: transparent;
-        color: var(--amh-text-secondary);
-        border-radius: var(--amh-radius-md);
-        cursor: pointer;
-        font-size: var(--amh-font-size-sm);
-        font-weight: 500;
-        font-family: var(--amh-font-sans);
-        transition: background var(--amh-transition-fast), color var(--amh-transition-fast);
-        flex-shrink: 0;
-      }
-      .header-lang-btn:hover {
-        background: var(--amh-bg-hover);
-        color: var(--amh-text);
-      }
-      .header-conn {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-      }
-      .header-conn-dot {
-        width: 6px;
-        height: 6px;
-        border-radius: var(--amh-radius-full);
-        background: var(--amh-state-success);
-        flex-shrink: 0;
-      }
-      .header-conn-text {
-        font-size: var(--amh-font-size-xs);
-        color: var(--amh-text-tertiary);
-        white-space: nowrap;
-      }
+      <!-- Tool 6: Kilo Code -->
+      <div class="tool-card">
+        <div class="tool-card-header">
+          <div class="tool-avatar">K</div>
+          <div class="tool-card-header-info">
+            <span class="tool-card-name">Kilo Code</span>
+            <span class="tool-kind-badge">Plugin</span>
+          </div>
+        </div>
+        <div class="tool-status-row">
+          <div class="tool-status-left">
+            <span class="tool-status-dot ok"></span>
+            <span class="tool-status-text ok">已连接</span>
+          </div>
+          <div class="tool-status-right">
+            <span>最后活跃</span>
+            <span>5 小时前</span>
+          </div>
+        </div>
+        <div class="cap-flags">
+          <span class="cap-flag on">自动执行</span>
+          <span class="cap-flag off">Relay</span>
+          <span class="cap-flag on">广播</span>
+          <span class="cap-flag on">记忆</span>
+        </div>
+        <div class="tool-divider"></div>
+        <div class="tool-footer">
+          <span class="tool-version">版本 v0.3.1</span>
+          <span class="tool-config-link">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+            配置
+          </span>
+        </div>
+      </div>
 
-      /* ===== Content area ===== */
-      .shell-content {
-        flex: 1;
-        overflow-y: auto;
-        padding: var(--amh-space-6);
-        background: var(--amh-bg-canvas);
-      }
+      <!-- Tool 7: Roo Code -->
+      <div class="tool-card">
+        <div class="tool-card-header">
+          <div class="tool-avatar">R</div>
+          <div class="tool-card-header-info">
+            <span class="tool-card-name">Roo Code</span>
+            <span class="tool-kind-badge">Plugin</span>
+          </div>
+        </div>
+        <div class="tool-status-row">
+          <div class="tool-status-left">
+            <span class="tool-status-dot ok"></span>
+            <span class="tool-status-text ok">已连接</span>
+          </div>
+          <div class="tool-status-right">
+            <span>最后活跃</span>
+            <span>8 小时前</span>
+          </div>
+        </div>
+        <div class="cap-flags">
+          <span class="cap-flag on">自动执行</span>
+          <span class="cap-flag on">Relay</span>
+          <span class="cap-flag off">广播</span>
+          <span class="cap-flag on">记忆</span>
+        </div>
+        <div class="tool-divider"></div>
+        <div class="tool-footer">
+          <span class="tool-version">版本 v0.2.8</span>
+          <span class="tool-config-link">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+            配置
+          </span>
+        </div>
+      </div>
 
-      /* ===== Reduced motion ===== */
-      @media (prefers-reduced-motion: reduce) {
-        *, *::before, *::after {
-          transition-duration: 0.01ms !important;
-        }
-      }
-    </style>
-    <style id="page-styles">
-      /* ===== Header Primary Button ===== */
-      .header-primary-btn {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        height: 36px;
-        padding: 0 14px;
-        background: var(--amh-primary);
-        color: var(--amh-primary-foreground);
-        border: 1px solid var(--amh-primary);
-        border-radius: var(--amh-radius-md);
-        font-size: var(--amh-font-size-base);
-        font-weight: 600;
-        font-family: var(--amh-font-sans);
-        cursor: pointer;
-        transition: background var(--amh-transition-fast), border-color var(--amh-transition-fast);
-        flex-shrink: 0;
-      }
-      .header-primary-btn:hover {
-        background: var(--amh-primary-hover);
-        border-color: var(--amh-primary-hover);
-      }
-      .header-primary-btn:active {
-        background: var(--amh-primary-active);
-      }
-      .header-primary-btn svg {
-        width: 16px;
-        height: 16px;
-        flex-shrink: 0;
-      }
+      <!-- Tool 8: Auggie (offline) -->
+      <div class="tool-card">
+        <div class="tool-card-header">
+          <div class="tool-avatar muted">A</div>
+          <div class="tool-card-header-info">
+            <span class="tool-card-name">Auggie</span>
+            <span class="tool-kind-badge">Agent</span>
+          </div>
+        </div>
+        <div class="tool-status-row">
+          <div class="tool-status-left">
+            <span class="tool-status-dot fail"></span>
+            <span class="tool-status-text fail">离线</span>
+          </div>
+          <div class="tool-status-right">
+            <span>最后活跃</span>
+            <span>2 天前</span>
+          </div>
+        </div>
+        <div class="cap-flags">
+          <span class="cap-flag off">自动执行</span>
+          <span class="cap-flag off">Relay</span>
+          <span class="cap-flag off">广播</span>
+          <span class="cap-flag off">记忆</span>
+        </div>
+        <div class="tool-divider"></div>
+        <div class="tool-footer">
+          <span class="tool-version">版本 v0.1.0</span>
+          <span class="tool-config-link">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+            配置
+          </span>
+        </div>
+      </div>
 
-      /* ===== Capability Summary ===== */
-      .tools-capability-grid {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 16px;
-        margin-bottom: 20px;
-      }
-      .tools-capability-card {
-        padding: 20px;
-      }
-      .tools-capability-header {
-        display: flex;
-        align-items: baseline;
-        justify-content: space-between;
-      }
-      .tools-capability-title {
-        font-size: var(--amh-font-size-sm);
-        color: var(--amh-text-secondary);
-        font-weight: 500;
-      }
-      .tools-capability-value {
-        font-size: var(--amh-font-size-2xl);
-        font-weight: 700;
-        font-family: var(--amh-font-mono);
-        color: var(--amh-text);
-        font-variant-numeric: tabular-nums;
-      }
-      .tools-progress-bar {
-        height: 6px;
-        background: var(--amh-bg-hover);
-        border-radius: var(--amh-radius-full);
-        margin-top: 12px;
-        overflow: hidden;
-      }
-      .tools-progress-fill {
-        height: 100%;
-        background: var(--amh-primary);
-        border-radius: var(--amh-radius-full);
-        transition: width 300ms cubic-bezier(0.4, 0, 0.2, 1);
-      }
-      .tools-capability-label {
-        font-size: var(--amh-font-size-xs);
-        color: var(--amh-text-tertiary);
-        margin-top: 8px;
-      }
+      <!-- Tool 9: DeepSeek -->
+      <div class="tool-card">
+        <div class="tool-card-header">
+          <div class="tool-avatar">D</div>
+          <div class="tool-card-header-info">
+            <span class="tool-card-name">DeepSeek</span>
+            <span class="tool-kind-badge">API</span>
+          </div>
+        </div>
+        <div class="tool-status-row">
+          <div class="tool-status-left">
+            <span class="tool-status-dot ok"></span>
+            <span class="tool-status-text ok">已连接</span>
+          </div>
+          <div class="tool-status-right">
+            <span>最后活跃</span>
+            <span>1 小时前</span>
+          </div>
+        </div>
+        <div class="cap-flags">
+          <span class="cap-flag on">自动执行</span>
+          <span class="cap-flag on">Relay</span>
+          <span class="cap-flag off">广播</span>
+          <span class="cap-flag off">记忆</span>
+        </div>
+        <div class="tool-divider"></div>
+        <div class="tool-footer">
+          <span class="tool-version">版本 v2.0.0</span>
+          <span class="tool-config-link">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+            配置
+          </span>
+        </div>
+      </div>
 
-      /* ===== Filter Bar ===== */
-      .tools-filter-bar {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        margin-bottom: 20px;
-      }
-      .tools-filter-dropdown {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        height: 36px;
-        padding: 0 12px;
-        background: transparent;
-        border: 1px solid var(--amh-border);
-        border-radius: var(--amh-radius-md);
-        color: var(--amh-text-secondary);
-        font-size: var(--amh-font-size-base);
-        font-family: var(--amh-font-sans);
-        cursor: pointer;
-        transition: border-color var(--amh-transition-fast), background var(--amh-transition-fast), color var(--amh-transition-fast);
-        white-space: nowrap;
-      }
-      .tools-filter-dropdown:hover {
-        border-color: var(--amh-border-strong);
-        background: var(--amh-bg-hover);
-        color: var(--amh-text);
-      }
-      .tools-filter-dropdown svg {
-        width: 14px;
-        height: 14px;
-        flex-shrink: 0;
-        color: var(--amh-text-tertiary);
-      }
-      .tools-search {
-        flex: 1;
-        display: flex;
-        align-items: center;
-        height: 36px;
-        background: var(--amh-bg-input);
-        border: 1px solid var(--amh-border);
-        border-radius: var(--amh-radius-md);
-        transition: border-color var(--amh-transition-fast);
-        position: relative;
-        min-width: 0;
-      }
-      .tools-search:focus-within {
-        border-color: var(--amh-primary);
-      }
-      .tools-search > svg {
-        position: absolute;
-        left: 10px;
-        color: var(--amh-text-tertiary);
-        flex-shrink: 0;
-        pointer-events: none;
-      }
-      .tools-search input {
-        flex: 1;
-        background: transparent;
-        border: none;
-        outline: none;
-        color: var(--amh-text);
-        font-size: var(--amh-font-size-base);
-        font-family: var(--amh-font-sans);
-        padding: 0 12px 0 34px;
-        height: 100%;
-        min-width: 0;
-      }
-      .tools-search input::placeholder {
-        color: var(--amh-text-tertiary);
-      }
+      <!-- Tool 10: OpenAI -->
+      <div class="tool-card">
+        <div class="tool-card-header">
+          <div class="tool-avatar">O</div>
+          <div class="tool-card-header-info">
+            <span class="tool-card-name">OpenAI</span>
+            <span class="tool-kind-badge">API</span>
+          </div>
+        </div>
+        <div class="tool-status-row">
+          <div class="tool-status-left">
+            <span class="tool-status-dot ok"></span>
+            <span class="tool-status-text ok">已连接</span>
+          </div>
+          <div class="tool-status-right">
+            <span>最后活跃</span>
+            <span>4 小时前</span>
+          </div>
+        </div>
+        <div class="cap-flags">
+          <span class="cap-flag on">自动执行</span>
+          <span class="cap-flag on">Relay</span>
+          <span class="cap-flag on">广播</span>
+          <span class="cap-flag on">记忆</span>
+        </div>
+        <div class="tool-divider"></div>
+        <div class="tool-footer">
+          <span class="tool-version">版本 v1.0.0</span>
+          <span class="tool-config-link">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+            配置
+          </span>
+        </div>
+      </div>
 
-      /* ===== Tool Grid ===== */
-      .tools-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-        gap: 16px;
-      }
+    </div>
+  </div>
+</div>
 
-      /* ===== Tool Card ===== */
-      .tool-card {
-        padding: 16px;
-        transition: border-color var(--amh-transition-fast), background var(--amh-transition-fast);
-      }
-      .tool-card:hover {
-        border-color: var(--amh-border-strong);
-        background: var(--amh-bg-elevated);
-      }
-      .tool-card-header {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        margin-bottom: 12px;
-      }
-      .tool-avatar {
-        width: 40px;
-        height: 40px;
-        border-radius: var(--amh-radius-md);
-        background: var(--amh-primary-muted);
-        color: var(--amh-primary);
-        font-size: var(--amh-font-size-lg);
-        font-weight: 700;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        flex-shrink: 0;
-      }
-      .tool-avatar.offline {
-        background: var(--amh-bg-hover);
-        color: var(--amh-text-tertiary);
-      }
-      .tool-card-name-row {
-        flex: 1;
-        min-width: 0;
-      }
-      .tool-name {
-        font-size: var(--amh-font-size-md);
-        font-weight: 600;
-        color: var(--amh-text);
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-      .tool-kind-badge {
-        display: inline-block;
-        font-size: var(--amh-font-size-xs);
-        color: var(--amh-text-tertiary);
-        border: 1px solid var(--amh-border-subtle);
-        border-radius: var(--amh-radius-sm);
-        padding: 1px 6px;
-        margin-top: 2px;
-      }
-      .tool-status-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        margin-bottom: 12px;
-      }
-      .tool-status-left {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-      }
-      .tool-status-dot {
-        width: 6px;
-        height: 6px;
-        border-radius: var(--amh-radius-full);
-        flex-shrink: 0;
-      }
-      .tool-status-dot.connected {
-        background: var(--amh-state-success);
-      }
-      .tool-status-dot.disconnected {
-        background: var(--amh-state-error);
-      }
-      .tool-status-text {
-        font-size: var(--amh-font-size-sm);
-      }
-      .tool-status-text.connected {
-        color: var(--amh-state-success);
-      }
-      .tool-status-text.disconnected {
-        color: var(--amh-state-error);
-      }
-      .tool-last-active {
-        font-size: var(--amh-font-size-xs);
-        color: var(--amh-text-tertiary);
-        white-space: nowrap;
-      }
-      .tool-capability-flags {
-        display: flex;
-        gap: 6px;
-        flex-wrap: wrap;
-      }
-      .tool-flag {
-        font-size: var(--amh-font-size-xs);
-        padding: 2px 6px;
-        border-radius: var(--amh-radius-sm);
-        white-space: nowrap;
-      }
-      .tool-flag.supported {
-        background: var(--amh-primary-muted);
-        color: var(--amh-primary);
-      }
-      .tool-flag.unsupported {
-        background: var(--amh-bg-hover);
-        color: var(--amh-text-disabled);
-      }
-      .tool-divider {
-        border: none;
-        border-top: 1px solid var(--amh-border-subtle);
-        margin: 12px 0;
-      }
-      .tool-footer {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        font-size: var(--amh-font-size-xs);
-        color: var(--amh-text-tertiary);
-      }
-      .tool-version {
-        font-family: var(--amh-font-mono);
-      }
-      .tool-config-link {
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        color: var(--amh-text-secondary);
-        text-decoration: none;
-        cursor: pointer;
-        transition: color var(--amh-transition-fast);
-      }
-      .tool-config-link:hover {
-        color: var(--amh-text);
-      }
-      .tool-config-link svg {
-        width: 14px;
-        height: 14px;
-      }
-
-      /* ===== Responsive ===== */
-      @media (max-width: 900px) {
-        .tools-capability-grid {
-          grid-template-columns: 1fr;
-        }
-        .tools-filter-bar {
-          flex-wrap: wrap;
-        }
-        .tools-search {
-          flex: 1 1 100%;
-          order: 3;
-        }
-      }
-    </style>
 </body>
 </html>

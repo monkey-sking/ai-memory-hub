@@ -23,6 +23,8 @@ import { createDashboardSearchApi } from "./dashboard/search.js";
 import { createDashboardTasksApi } from "./dashboard/tasks.js";
 import { createDashboardToolsApi } from "./dashboard/tools.js";
 import { createDashboardWorkflowsApi } from "./dashboard/workflows.js";
+import { createDashboardAgentSessionsApi } from "./dashboard/agent-sessions-api.js";
+import { createDashboardWorktreesApi } from "./dashboard/worktrees-api.js";
 import { evaluateDaemonHeartbeat } from "./daemon-health.js";
 import { buildWorkflowSharedState } from "./workflow-context.js";
 import { applyCandidateDecision, mineSkillCandidates } from "./skill-mining.js";
@@ -192,6 +194,22 @@ const dashboardDispatch = createDashboardDispatchApi({
   readLatestRelayStatusByThread
 });
 
+const dashboardAgentSessions = createDashboardAgentSessionsApi({
+  readSessions,
+  readTasks,
+  readWorkflows,
+  readLatestRelayStatusByThread,
+  readDispatchRuns
+});
+
+const dashboardWorktrees = createDashboardWorktreesApi({
+  readTasks,
+  readWorkflows,
+  readLatestRelayStatusByThread,
+  readDispatchRuns,
+  inspect: inspectDashboardWorktree
+});
+
 const dashboardTools = createDashboardToolsApi({
   capabilityRegistryVersion: TOOL_CAPABILITY_REGISTRY_VERSION,
   getCachedDetectedTools,
@@ -259,6 +277,7 @@ const dashboardHealth = createDashboardHealthApi({
 });
 
 const dashboardRealtime = createDashboardRealtimeApi({
+  dashboardAgentSessions,
   dashboardBackups,
   dashboardDispatch,
   dashboardMemory,
@@ -268,6 +287,7 @@ const dashboardRealtime = createDashboardRealtimeApi({
   dashboardSettings,
   dashboardTasks,
   dashboardTools,
+  dashboardWorktrees,
   dashboardWorkflows,
   getStatusObject
 });
@@ -5273,6 +5293,18 @@ function collectDispatchWorktreeReviewMetadata(worktree) {
   };
 }
 
+function inspectDashboardWorktree(worktree) {
+  if (!worktree?.path || !fs.existsSync(worktree.path)) {
+    return { ...worktree, exists: false };
+  }
+  const reviewed = collectDispatchWorktreeReviewMetadata(worktree);
+  return {
+    ...reviewed,
+    exists: true,
+    dirty: Boolean(reviewed.hasChanges)
+  };
+}
+
 function normalizeDispatchWorktreeMetadata(worktree) {
   if (!isPlainObject(worktree)) {
     return null;
@@ -7881,6 +7913,12 @@ function appCommand(argv) {
       }
       if (req.method === "GET" && url.pathname === "/api/dispatch") {
         return sendJson(res, dashboardDispatch.getDashboardDispatch(config.memoryDir));
+      }
+      if (req.method === "GET" && url.pathname === "/api/agent-sessions") {
+        return sendJson(res, dashboardAgentSessions.getDashboardAgentSessions(config.memoryDir));
+      }
+      if (req.method === "GET" && url.pathname === "/api/worktrees") {
+        return sendJson(res, dashboardWorktrees.getDashboardWorktrees(config.memoryDir));
       }
       if (req.method === "GET" && url.pathname === "/api/detect") {
         return sendJson(res, dashboardTools.getDashboardDetection(config.memoryDir));

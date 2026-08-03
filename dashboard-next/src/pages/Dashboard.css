@@ -5,6 +5,28 @@
   color: var(--text);
 }
 
+.agent-execution-panel {
+  margin-bottom: 28px;
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: linear-gradient(145deg, rgba(255,255,255,.98), rgba(245,249,255,.94));
+  box-shadow: 0 12px 32px rgba(44, 76, 125, .08);
+}
+.agent-execution-heading, .agent-card-topline, .worktree-review-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.agent-execution-heading h3 { margin: 4px 0 0; font-size: 20px; }
+.agent-execution-count { color: var(--muted-foreground); font-size: 12px; }
+.agent-card-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 18px; }
+.agent-card { padding: 15px; border: 1px solid var(--border); border-radius: 14px; background: var(--card); }
+.agent-card-topline strong { font-size: 13px; color: var(--foreground); }
+.agent-state { border-radius: 999px; padding: 4px 8px; font-size: 11px; font-weight: 700; }
+.agent-state-working { color: #14532d; background: #dcfce7; }.agent-state-idle { color: #475569; background: #f1f5f9; }.agent-state-blocked, .agent-state-failed { color: #991b1b; background: #fee2e2; }.agent-state-waiting_review { color: #92400e; background: #fef3c7; }.agent-state-done { color: #075985; background: #e0f2fe; }.agent-state-stale { color: #7c2d12; background: #ffedd5; }
+.agent-card-title { min-height: 38px; margin: 13px 0; font-weight: 650; color: var(--foreground); }
+.agent-card-meta { display: grid; gap: 8px; margin: 0; }.agent-card-meta div { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }.agent-card-meta dt { color: var(--muted-foreground); }.agent-card-meta dd { max-width: 65%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0; color: var(--foreground); }
+.agent-execution-lower-grid { display: grid; grid-template-columns: 1.35fr 1fr; gap: 24px; margin-top: 22px; padding-top: 20px; border-top: 1px solid var(--border); }.agent-execution-lower-grid h4 { margin: 0 0 12px; font-size: 13px; }.agent-timeline { display: grid; gap: 10px; }.agent-timeline-row { display: flex; gap: 9px; align-items: flex-start; font-size: 12px; color: var(--muted-foreground); }.agent-timeline-row strong { color: var(--foreground); }.agent-timeline-row span { color: var(--muted-foreground); }.agent-timeline-dot { flex: 0 0 7px; width: 7px; height: 7px; margin-top: 5px; border-radius: 50%; background: #4f8edc; }.worktree-review-row { justify-content: flex-start; padding: 9px 0; border-bottom: 1px solid var(--border); }.worktree-review-row > div { min-width: 0; display: grid; gap: 3px; }.worktree-review-row strong, .worktree-review-row small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.review-ready, .review-blocked { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; font-weight: 800; }.review-ready { color: #166534; background: #dcfce7; }.review-blocked { color: #991b1b; background: #fee2e2; }.agent-execution-empty { margin: 18px 0 0; color: var(--muted-foreground); font-size: 13px; }
+@media (max-width: 900px) { .agent-card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .agent-card-grid, .agent-execution-lower-grid { grid-template-columns: 1fr; } .agent-execution-panel { padding: 16px; } }
+
 .page-header {
   display: flex;
   align-items: flex-start;

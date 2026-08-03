@@ -231,3 +231,27 @@ test("cancelled task cards do not offer reopen actions", async () => {
   assert.doesNotMatch(tasks, /\['done', 'cancelled'\]\.includes\(status\)[\s\S]{0,180}\{copy\.reopen\}/);
   assert.match(tasks, /\{status === 'cancelled'\s*\?\s*<p className="task-terminal-note">\{copy\.cancelledTerminal\}<\/p>\s*:\s*<TaskActionMenu/);
 });
+
+test("Dashboard keeps responsive grids and compact actions on narrow screens", async () => {
+  const dashboardCss = await readSource("pages/Dashboard.css");
+  const sidebarCss = await readSource("components/Sidebar.css");
+  const sidebar = await readSource("components/Sidebar.tsx");
+  const layoutCss = await readSource("components/Layout.css");
+  const mobileDashboard = dashboardCss.slice(dashboardCss.indexOf("@media (max-width: 720px)"));
+
+  assert.match(dashboardCss, /@media\s*\(\s*max-width:\s*720px\s*\)/);
+  assert.match(mobileDashboard, /\.header-actions\s*\{[\s\S]*?flex-wrap:\s*wrap;/);
+  assert.match(mobileDashboard, /\.btn\s*\{[\s\S]*?flex:\s*0\s+1\s+auto;/);
+  assert.match(mobileDashboard, /\.dashboard-grid,[\s\S]*?\.panel-grid,[\s\S]*?\.form-grid,[\s\S]*?\.filter-strip,[\s\S]*?grid-template-columns:\s*1fr;/);
+  assert.doesNotMatch(mobileDashboard, /\.form-actions\s+\.btn\s*\{[\s\S]*?width:\s*100%/);
+  assert.doesNotMatch(mobileDashboard, /\.workflow-actions\s+\.btn[\s\S]*?width:\s*100%/);
+
+  assert.match(sidebarCss, /@media\s*\(\s*max-width:\s*768px\s*\)/);
+  assert.match(sidebarCss, /\.sidebar-desktop-nav\s*\{\s*display:\s*none;/);
+  assert.match(sidebarCss, /\.sidebar-mobile-more-menu\s*\{[\s\S]*?max-height:[\s\S]*?overflow:\s*auto;/);
+  assert.match(sidebar, /const\s+primaryItems\s*=\s*navGroups\[0\]\.items/);
+  assert.match(sidebar, /primaryItems\.map\(/);
+  assert.match(sidebar, /aria-expanded=\{isMoreOpen\}/);
+  assert.match(sidebar, /<nav id="sidebar-more-menu"[\s\S]*?aria-label="More navigation"/);
+  assert.match(layoutCss, /@media\s*\(\s*max-width:\s*768px\s*\)\s*\{[\s\S]*?\.main-content\s*\{[\s\S]*?padding:\s*0\s+0\s+64px\s+0;/);
+});

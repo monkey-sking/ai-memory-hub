@@ -2266,6 +2266,8 @@ td {
 
   .header-actions {
     width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
   }
 
   .btn {
@@ -2273,6 +2275,7 @@ td {
   }
 
   .dashboard-grid,
+  .panel-grid,
   .overview-property-grid,
   .property-grid,
   .settings-grid,
@@ -2302,11 +2305,7 @@ td {
 
   .backup-row-actions {
     width: 100%;
-    justify-content: stretch;
-  }
-
-  .backup-row-actions .btn {
-    width: 100%;
+    justify-content: flex-start;
   }
 
   .panel.span-2,
@@ -2315,18 +2314,7 @@ td {
   }
 
   .form-actions {
-    justify-content: stretch;
-  }
-
-  .form-actions .btn {
-    width: 100%;
-  }
-
-  .workflow-actions .btn,
-  .workflow-badges,
-  .tool-card-footer .btn,
-  .tool-preview-header .btn {
-    width: 100%;
+    justify-content: flex-start;
   }
 
   .workflow-badges,
@@ -2335,7 +2323,7 @@ td {
   }
 
   .tool-preview-header {
-    align-items: stretch;
+    align-items: flex-start;
     flex-direction: column;
   }
 

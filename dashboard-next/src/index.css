@@ -1,23 +1,23 @@
 @import "tailwindcss";
 
 @theme {
-  --color-background: #f4f7fb;
-  --color-foreground: #172033;
-  --color-primary: #2eb7a5;
-  --color-primary-foreground: #ffffff;
-  --color-secondary: #eef3f8;
-  --color-secondary-foreground: #172033;
-  --color-muted: #eef3f8;
-  --color-muted-foreground: #667085;
-  --color-accent: #e7f7f4;
-  --color-accent-foreground: #1d9d8c;
-  --color-destructive: #ef4444;
-  --color-destructive-foreground: #ffffff;
-  --color-border: #e5eaf0;
-  --color-input: #ffffff;
-  --color-ring: #2eb7a5;
-  --color-card: #ffffff;
-  --color-card-foreground: #0f172a;
+  --color-background: var(--bg);
+  --color-foreground: var(--text);
+  --color-primary: var(--accent);
+  --color-primary-foreground: var(--bg-panel);
+  --color-secondary: var(--bg-soft);
+  --color-secondary-foreground: var(--text);
+  --color-muted: var(--bg-soft);
+  --color-muted-foreground: var(--text-muted);
+  --color-accent: var(--accent-soft);
+  --color-accent-foreground: var(--accent-strong);
+  --color-destructive: var(--danger);
+  --color-destructive-foreground: var(--bg-panel);
+  --color-border: var(--border);
+  --color-input: var(--bg-panel);
+  --color-ring: var(--accent);
+  --color-card: var(--bg-panel);
+  --color-card-foreground: var(--text);
 }
 
 :root {

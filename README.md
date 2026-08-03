@@ -266,6 +266,11 @@ ai-memory-hub resolve "@RTK.md" --from ~/.codex/AGENTS.md          # 解析缺�
 ai-memory-hub radio send <text> --from <tool> --to <target> --type <type>
 ai-memory-hub radio list [--project <name>]
 ai-memory-hub radio mark-delivered --id <id>
+
+# Memory lifecycle operations (append-only)
+ai-memory-hub memory op create --action supersede --record <old-id> --superseded-by <new-id> --reason correction --by codex
+ai-memory-hub memory op create --action revoke --record <record-id> --reason unsafe-fact --by codex
+ai-memory-hub memory op list --record <record-id>
 ```
 
 #### 任务管理

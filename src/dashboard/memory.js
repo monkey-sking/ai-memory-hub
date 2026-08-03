@@ -24,11 +24,18 @@ export function createDashboardMemoryApi(deps) {
       profile: readTextIfExists(path.join(memoryDir, "profile.md")),
       pending: readEvents(path.join(memoryDir, "inbox", "events.jsonl")),
       records: index.records
-        .filter((record) => !record.superseded)
+        .filter((record) => !record.superseded && isDashboardMemoryVisible(record))
         .sort((a, b) => String(b.ts || b.indexedAt || "").localeCompare(String(a.ts || a.indexedAt || "")))
         .slice(0, 200)
         .map(formatDashboardMemoryRecord)
     };
+  }
+
+  function isDashboardMemoryVisible(record) {
+    const state = record.lifecycle?.state || record.metadata?.lifecycle?.state || "active";
+    if (["archived", "superseded", "revoked", "stale"].includes(state)) return false;
+    const expiresAt = record.metadata?.expiresAt || record.lifecycle?.expiresAt;
+    return !expiresAt || !Number.isFinite(Date.parse(expiresAt)) || new Date(expiresAt) >= new Date();
   }
 
   function formatDashboardMemoryRecord(record) {

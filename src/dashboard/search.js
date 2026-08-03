@@ -68,7 +68,7 @@ export function createDashboardSearchApi({
     const config = { ...loadConfig(), memoryDir };
     const index = buildMemoryIndex(readLedger(memoryDir), config);
     const memoryItems = index.records
-      .filter((record) => !record.superseded)
+      .filter((record) => !record.superseded && isDashboardMemoryVisible(record))
       .map((record) => {
         const tags = uniqueDashboardSearchTags([
           record.kind || record.metadata?.kind,
@@ -199,6 +199,13 @@ export function createDashboardSearchApi({
     });
 
     return [...memoryItems, ...taskItems, ...radioItems, ...workflowItems];
+  }
+
+  function isDashboardMemoryVisible(record) {
+    const state = record.lifecycle?.state || record.metadata?.lifecycle?.state || "active";
+    if (["archived", "superseded", "revoked", "stale"].includes(state)) return false;
+    const expiresAt = record.metadata?.expiresAt || record.lifecycle?.expiresAt;
+    return !expiresAt || !Number.isFinite(Date.parse(expiresAt)) || new Date(expiresAt) >= new Date();
   }
 
   function buildDashboardSearchFacets(items) {

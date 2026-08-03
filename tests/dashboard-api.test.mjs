@@ -1248,6 +1248,95 @@ test("dashboard task review API records approval on task and linked workflow", a
   });
 });
 
+test("dashboard task review and reopen keep cancelled tasks terminal", async () => {
+  await withHub(async (memoryDir) => {
+    const now = new Date().toISOString();
+    await appendJsonl(path.join(memoryDir, "tasks", "tasks.jsonl"), {
+      id: "cancelled-review-task",
+      createdAt: now,
+      updatedAt: now,
+      completedAt: "",
+      createdBy: "test",
+      assignee: "codex",
+      status: "cancelled",
+      priority: "normal",
+      project: "test-project",
+      title: "Cancelled task",
+      description: "",
+      handoff: "",
+      notes: []
+    });
+
+    const port = await getFreePort();
+    const child = spawn(process.execPath, [cliPath, "app", "--port", String(port)], {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        AI_MEMORY_DIR: memoryDir
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true
+    });
+    const stderr = [];
+    child.stderr.on("data", (chunk) => stderr.push(String(chunk)));
+    try {
+      await waitForServer(port, child);
+      const rejectedRes = await fetch(`http://127.0.0.1:${port}/api/task/review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: "cancelled-review-task",
+          decision: "rejected",
+          by: "reviewer"
+        })
+      });
+      if (rejectedRes.status !== 200) {
+        assert.fail(await rejectedRes.text());
+      }
+      const rejectedPayload = await rejectedRes.json();
+      assert.equal(rejectedPayload.task.status, "cancelled");
+      assert.equal(rejectedPayload.task.reviewStatus, "rejected");
+
+      const reopenReviewRes = await fetch(`http://127.0.0.1:${port}/api/task/review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: "cancelled-review-task",
+          decision: "rejected",
+          reopen: true,
+          by: "reviewer"
+        })
+      });
+      if (reopenReviewRes.status !== 200) {
+        assert.fail(await reopenReviewRes.text());
+      }
+      const reopenReviewPayload = await reopenReviewRes.json();
+      assert.equal(reopenReviewPayload.task.status, "cancelled");
+
+      const reopenRes = await fetch(`http://127.0.0.1:${port}/api/task/status`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: "cancelled-review-task",
+          status: "open",
+          by: "reviewer"
+        })
+      });
+      if (reopenRes.status !== 200) {
+        assert.fail(await reopenRes.text());
+      }
+      const reopenPayload = await reopenRes.json();
+      assert.equal(reopenPayload.task.status, "cancelled");
+
+      const tasks = await readJsonl(path.join(memoryDir, "tasks", "tasks.jsonl"));
+      assert.equal(tasks.find((item) => item.id === "cancelled-review-task").status, "cancelled");
+    } finally {
+      await stopServer(child);
+    }
+    assert.deepEqual(stderr, []);
+  });
+});
+
 test("dashboard websocket sends initial and pushed snapshots", async () => {
   await withHub(async (memoryDir) => {
     const port = await getFreePort();

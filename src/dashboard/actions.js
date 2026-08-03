@@ -101,19 +101,20 @@ export function createDashboardActionsApi({
     withHubLock(config.memoryDir, "task-status", () => {
       const by = body.by || "dashboard";
       task = updateTask(config.memoryDir, body.id, (current) => {
+        const nextStatus = current.status === "cancelled" ? current.status : body.status;
         const notes = [...(current.notes || [])];
         if (body.note) {
           notes.push(createTaskNote(by, body.note));
-        } else if (current.status !== body.status) {
-          notes.push(createTaskNote(by, `Status changed to ${body.status}.`));
+        } else if (current.status !== nextStatus) {
+          notes.push(createTaskNote(by, `Status changed to ${nextStatus}.`));
         }
         const now = new Date().toISOString();
         return {
           ...current,
-          status: body.status,
+          status: nextStatus,
           assignee: current.assignee || by,
           updatedAt: now,
-          completedAt: body.status === "done" ? now : current.completedAt || "",
+          completedAt: nextStatus === "done" ? now : current.completedAt || "",
           notes
         };
       });
@@ -133,7 +134,9 @@ export function createDashboardActionsApi({
       task = updateTask(config.memoryDir, body.id, (current) => {
         // 状态转换逻辑
         let nextStatus = current.status;
-        if (decision === "approved" && current.status !== "cancelled") {
+        if (current.status === "cancelled") {
+          nextStatus = current.status;
+        } else if (decision === "approved") {
           nextStatus = "done";
         } else if (decision === "rejected" && reopen) {
           nextStatus = "open"; // 拒绝且选择 reopen

@@ -117,6 +117,23 @@ Goal: extend visibility without moving AMH's source of truth.
 
 These are adapters and views, not replacements for AMH's local-first event and memory model.
 
+## Post-roadmap functional completion
+
+The follow-on functional items are now also implemented without changing the
+Dashboard visual system:
+
+- External Domain Pack registry: `amh pack add|list|show|enable|disable|validate`.
+- Skill registry: `amh skill list|search|attach`; enabled pack skills are included
+  in generated Context Packs.
+- Explicit GitHub lifecycle sync: `amh gh sync --data <pull-requests.json>`
+  with `--apply` to mark linked merged PR tasks done.
+- Review result and Worktree commit/diff snapshots are available through the
+  API and CLI.
+
+Network credentials, remote SSH execution, automatic merge/push/delete, and
+signature verification remain explicit future security increments; the shipped
+pack and GitHub surfaces do not silently execute external commands.
+
 ## Explicitly out of scope for the initial phases
 
 - Electron desktop shell replacement.

@@ -158,3 +158,13 @@ test("Dashboard visual contract keeps the light shell hierarchy and readable lab
     );
   assert.deepEqual(uppercaseFieldOrHeaderRules, []);
 });
+
+test("Dashboard keeps the overview-first section order", async () => {
+  const dashboard = await readSource("pages/Dashboard.tsx");
+
+  assert.match(dashboard, /overview-section/);
+  assert.match(dashboard, /dashboard-grid/);
+  assert.match(dashboard, /metric-card/);
+  assert.match(dashboard, /panel-grid two/);
+  assert.ok(dashboard.indexOf("overview-section") < dashboard.indexOf("panel-grid two"));
+});

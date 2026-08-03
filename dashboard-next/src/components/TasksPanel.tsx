@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { AlertCircle, Plus, Search, X } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
@@ -200,6 +200,7 @@ export function TasksPanel({ tasks, visibleProjects, copy, onMutate }: TasksPane
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader><DialogTitle>{copy.addTask}</DialogTitle></DialogHeader>
+          {error ? <div role="alert" className="rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">{error}</div> : null}
           <div className="grid gap-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="col-span-2 space-y-2"><Label htmlFor="task-title">{copy.title}</Label><Input id="task-title" value={newTask.title} onChange={event => setNewTask(value => ({ ...value, title: event.target.value }))} /></div>
@@ -225,17 +226,22 @@ function TaskCard({ task, copy, busy, onMutate }: { task: AnyRecord; copy: Tasks
   const status = textOf(task.status, 'open')
   const priority = textOf(task.priority, 'normal')
   const isBusy = busy.startsWith(`${id}:`)
+  const canReview = !['cancelled', 'done'].includes(status)
   const runStatus = (nextStatus: string) => onMutate(`${id}:${nextStatus}`, '/api/task/status', { id, status: nextStatus, by: 'dashboard-next' })
   const review = (decision: 'approved' | 'rejected') => onMutate(`${id}:${decision}`, '/api/task/review', { id, decision, by: 'dashboard-next' })
   const sendRadioRequest = () => onMutate(`${id}:radio-request`, '/api/radio/send', {
     from: 'dashboard-next', to: textOf(task.assignee, 'all') || 'all', type: 'request', project: textOf(task.project), thread: id, replyTo: id, text: `Task request: ${textOf(task.title, id)}`
   })
   const secondaryActions: TaskMenuAction[] = [
-    { key: 'radio-request', label: copy.sendRadioRequest, disabled: isBusy, onSelect: () => void sendRadioRequest() },
-    { key: 'approved', label: copy.approve, disabled: isBusy, onSelect: () => void review('approved') },
-    { key: 'rejected', label: copy.reject, disabled: isBusy, onSelect: () => void review('rejected') }
+    { key: 'radio-request', label: copy.sendRadioRequest, disabled: isBusy, onSelect: () => void sendRadioRequest() }
   ]
-  if (!['cancelled', 'done'].includes(status)) secondaryActions.push({ key: 'cancel', label: copy.cancel, disabled: isBusy, onSelect: () => void runStatus('cancelled') })
+  if (canReview) {
+    secondaryActions.push(
+      { key: 'approved', label: copy.approve, disabled: isBusy, onSelect: () => void review('approved') },
+      { key: 'rejected', label: copy.reject, disabled: isBusy, onSelect: () => void review('rejected') },
+      { key: 'cancel', label: copy.cancel, disabled: isBusy, onSelect: () => void runStatus('cancelled') }
+    )
+  }
 
   return (
     <article className="task-card">
@@ -275,6 +281,21 @@ function PriorityBadge({ priority, copy }: { priority: string; copy: TasksCopy }
 }
 
 function TaskActionMenu({ label, actions }: { label: string; actions: TaskMenuAction[] }) {
+  const [open, setOpen] = useState(false)
   const menuId = useId()
-  return <details className="task-action-menu"><summary className="task-action-menu-trigger" aria-haspopup="menu">{label}</summary><div className="task-action-menu-items" id={menuId} role="menu">{actions.map(action => <button key={action.key} type="button" role="menuitem" disabled={action.disabled} onClick={action.onSelect}>{action.label}</button>)}</div></details>
+  const menuRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [open])
+
+  return <div className="task-action-menu" ref={menuRef}>
+    <button className="task-action-menu-trigger" type="button" aria-haspopup="menu" aria-expanded={open} aria-controls={menuId} onClick={() => setOpen(value => !value)}>{label}</button>
+    {open ? <div className="task-action-menu-items" id={menuId} role="menu">{actions.map(action => <button key={action.key} type="button" role="menuitem" disabled={action.disabled} onClick={() => { setOpen(false); action.onSelect() }}>{action.label}</button>)}</div> : null}
+  </div>
 }

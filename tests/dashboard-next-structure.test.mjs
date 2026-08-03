@@ -65,13 +65,17 @@ test("Chat uses detected tools and shows the returned radio content", async () =
 });
 
 test("Task cards keep primary actions visible and move review actions into a menu", async () => {
-  const dashboard = await readSource("pages/Dashboard.tsx");
+  const tasks = await readSource("components/TasksPanel.tsx");
   const css = await readSource("pages/Dashboard.css");
 
-  assert.match(dashboard, /function\s+TaskActionMenu/);
-  assert.match(dashboard, /aria-haspopup=['"]menu['"]/);
-  assert.match(dashboard, /role=['"]menu['"]/);
-  assert.match(dashboard, /role=['"]menuitem['"]/);
+  assert.match(tasks, /function\s+TaskActionMenu/);
+  assert.match(tasks, /aria-haspopup=['"]menu['"]/);
+  assert.match(tasks, /aria-expanded=\{open\}/);
+  assert.match(tasks, /aria-controls=\{menuId\}/);
+  assert.match(tasks, /role=['"]menu['"]/);
+  assert.match(tasks, /role=['"]menuitem['"]/);
+  assert.match(tasks, /event\.key\s*===\s*['"]Escape['"]/);
+  assert.match(tasks, /setOpen\(false\)/);
   assert.match(css, /\.task-action-menu/);
   assert.match(css, /\.task-action-menu-items/);
 });
@@ -126,14 +130,14 @@ test("Radio messages can open compose as a threaded reply", async () => {
 });
 
 test("Task menu includes a low-frequency radio request shortcut", async () => {
-  const dashboard = await readSource("pages/Dashboard.tsx");
+  const tasks = await readSource("components/TasksPanel.tsx");
   const copyModule = await readSource("lib/dashboardCopy.ts");
 
-  assert.match(dashboard, /key:\s*['"]radio-request['"]/);
-  assert.match(dashboard, /\/api\/radio\/send/);
-  assert.match(dashboard, /thread:\s*id/);
-  assert.match(dashboard, /replyTo:\s*id/);
-  assert.match(dashboard, /copy\.sendRadioRequest/);
+  assert.match(tasks, /key:\s*['"]radio-request['"]/);
+  assert.match(tasks, /\/api\/radio\/send/);
+  assert.match(tasks, /thread:\s*id/);
+  assert.match(tasks, /replyTo:\s*id/);
+  assert.match(tasks, /copy\.sendRadioRequest/);
   assert.match(copyModule, /sendRadioRequest/);
 });
 
@@ -207,4 +211,15 @@ test("task and workflow cards expose readable operational hierarchy", async () =
     tasks,
     /className="task-card-top"[\s\S]{0,220}className="task-card-title"[\s\S]{0,180}<StatusBadge\s+status=\{status\}/
   );
+});
+
+test("task actions protect terminal states and keep dialog feedback visible", async () => {
+  const tasks = await readSource("components/TasksPanel.tsx");
+  const css = await readSource("pages/Dashboard.css");
+
+  assert.match(tasks, /const\s+canReview\s*=\s*!\['cancelled',\s*'done'\]\.includes\(status\)/);
+  assert.match(tasks, /if\s*\(canReview\)\s*\{[\s\S]{0,260}key:\s*'rejected'/);
+  assert.match(tasks, /DialogContent[\s\S]{0,1600}\{error\s*\?\s*<div\s+role="alert"/);
+  assert.match(css, /\.status-badge\.priority-high/);
+  assert.match(css, /\.status-badge\.priority-urgent/);
 });

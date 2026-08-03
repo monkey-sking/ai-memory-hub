@@ -605,7 +605,9 @@
 .status-badge.missing,
 .status-badge.cancelled,
 .status-badge.urgent,
-.status-badge.high {
+.status-badge.high,
+.status-badge.priority-urgent,
+.status-badge.priority-high {
   border-color: rgba(239, 68, 68, 0.18);
   background: rgba(239, 68, 68, 0.06);
   color: var(--danger);
@@ -1110,7 +1112,6 @@ td {
   display: none;
 }
 
-.task-action-menu[open] .task-action-menu-trigger,
 .task-action-menu-trigger:hover {
   border-color: var(--border-soft);
   background: var(--bg-soft);

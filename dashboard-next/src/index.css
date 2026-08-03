@@ -24,25 +24,27 @@
 }
 
 :root {
-  --bg: #f8fafc;
+  --bg: #f4f7fb;
   --bg-panel: #ffffff;
-  --bg-panel-strong: #f1f5f9;
-  --bg-soft: #f1f5f9;
-  --border: #e2e8f0;
-  --border-soft: #cbd5e1;
-  --text: #0f172a;
-  --text-muted: #64748b;
-  --text-subtle: #94a3b8;
-  --accent: #2563eb;
-  --accent-strong: #1d4ed8;
-  --accent-soft: rgba(37, 99, 235, 0.08);
+  --bg-panel-strong: #f8fafc;
+  --bg-soft: #eef3f8;
+  --border: #e5eaf0;
+  --border-soft: #d5dde7;
+  --text: #172033;
+  --text-muted: #667085;
+  --text-subtle: #98a2b3;
+  --accent: #2eb7a5;
+  --accent-strong: #1d9d8c;
+  --accent-soft: rgba(46, 183, 165, 0.12);
+  --accent-blue: #4676e8;
+  --accent-blue-soft: rgba(70, 118, 232, 0.1);
   --warning: #f59e0b;
   --danger: #ef4444;
   --success: #22c55e;
-  --sidebar-width: 56px;
-  --sidebar-collapsed-width: 56px;
-  --radius: 10px;
-  --shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --sidebar-width: 236px;
+  --sidebar-collapsed-width: 72px;
+  --radius: 12px;
+  --shadow: 0 1px 2px rgba(16, 24, 40, 0.03), 0 6px 18px rgba(16, 24, 40, 0.04);
   color: var(--text);
   background: var(--bg);
   font-family:

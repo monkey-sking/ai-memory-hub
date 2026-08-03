@@ -10,6 +10,24 @@ async function readSource(relativePath) {
   return readFile(path.join(srcRoot, relativePath), "utf8");
 }
 
+function extractCssBlock(source, atRule) {
+  const start = source.indexOf(atRule);
+  assert.notEqual(start, -1, `Missing CSS at-rule: ${atRule}`);
+  const openingBrace = source.indexOf("{", start);
+  assert.notEqual(openingBrace, -1, `Missing opening brace for: ${atRule}`);
+
+  let depth = 0;
+  for (let index = openingBrace; index < source.length; index += 1) {
+    if (source[index] === "{") depth += 1;
+    if (source[index] === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+
+  assert.fail(`Unbalanced CSS block: ${atRule}`);
+}
+
 test("React dashboard routes are code split at the route boundary", async () => {
   const app = await readSource("App.tsx");
 
@@ -236,8 +254,7 @@ test("Dashboard keeps responsive grids and compact actions on narrow screens", a
   const dashboardCss = await readSource("pages/Dashboard.css");
   const sidebarCss = await readSource("components/Sidebar.css");
   const sidebar = await readSource("components/Sidebar.tsx");
-  const layoutCss = await readSource("components/Layout.css");
-  const mobileDashboard = dashboardCss.slice(dashboardCss.indexOf("@media (max-width: 720px)"));
+  const mobileDashboard = extractCssBlock(dashboardCss, "@media (max-width: 720px)");
 
   assert.match(dashboardCss, /@media\s*\(\s*max-width:\s*720px\s*\)/);
   assert.match(mobileDashboard, /\.header-actions\s*\{[\s\S]*?flex-wrap:\s*wrap;/);
@@ -246,12 +263,14 @@ test("Dashboard keeps responsive grids and compact actions on narrow screens", a
   assert.doesNotMatch(mobileDashboard, /\.form-actions\s+\.btn\s*\{[\s\S]*?width:\s*100%/);
   assert.doesNotMatch(mobileDashboard, /\.workflow-actions\s+\.btn[\s\S]*?width:\s*100%/);
 
-  assert.match(sidebarCss, /@media\s*\(\s*max-width:\s*768px\s*\)/);
-  assert.match(sidebarCss, /\.sidebar-desktop-nav\s*\{\s*display:\s*none;/);
-  assert.match(sidebarCss, /\.sidebar-mobile-more-menu\s*\{[\s\S]*?max-height:[\s\S]*?overflow:\s*auto;/);
+  const mobileSidebar = extractCssBlock(sidebarCss, "@media (max-width: 768px)");
+  assert.match(mobileSidebar, /\.sidebar-desktop-nav\s*\{\s*display:\s*none;/);
+  assert.match(mobileSidebar, /\.sidebar-mobile-more-menu\s*\{[\s\S]*?max-height:[\s\S]*?overflow:\s*auto;/);
+  assert.match(mobileSidebar, /height:\s*calc\(64px\s*\+\s*env\(safe-area-inset-bottom\)\)/);
+  assert.match(mobileSidebar, /padding:\s*0\s+8px\s+env\(safe-area-inset-bottom\)/);
+  assert.match(mobileSidebar, /\.sidebar\s*~\s*\.main-content\s*\{[\s\S]*?padding-bottom:\s*calc\(64px\s*\+\s*env\(safe-area-inset-bottom\)\)/);
   assert.match(sidebar, /const\s+primaryItems\s*=\s*navGroups\[0\]\.items/);
   assert.match(sidebar, /primaryItems\.map\(/);
   assert.match(sidebar, /aria-expanded=\{isMoreOpen\}/);
   assert.match(sidebar, /<nav id="sidebar-more-menu"[\s\S]*?aria-label="More navigation"/);
-  assert.match(layoutCss, /@media\s*\(\s*max-width:\s*768px\s*\)\s*\{[\s\S]*?\.main-content\s*\{[\s\S]*?padding:\s*0\s+0\s+64px\s+0;/);
 });

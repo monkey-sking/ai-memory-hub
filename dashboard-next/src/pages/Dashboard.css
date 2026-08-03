@@ -10,7 +10,12 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 22px;
+  min-height: 76px;
+  margin: 0 -28px 26px;
+  padding: 18px 28px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(12px);
 }
 
 .page-title-group {
@@ -21,16 +26,16 @@
   margin: 0 0 6px;
   color: var(--accent-strong);
   font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0;
+  font-weight: 750;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .page-header h2 {
   margin: 0;
   color: var(--text);
-  font-size: 28px;
-  font-weight: 760;
+  font-size: 26px;
+  font-weight: 780;
   letter-spacing: 0;
   line-height: 1.18;
 }
@@ -48,24 +53,33 @@
   flex: 0 0 auto;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 10px;
+  gap: 8px;
+}
+
+.header-button-icon {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
 }
 
 .btn {
   min-height: 38px;
   padding: 0 14px;
   border: 1px solid transparent;
-  border-radius: 8px;
-  background: var(--accent);
+  border-radius: 9px;
+  background: var(--accent-strong);
   color: #ffffff;
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
-  transition: background 0.15s ease;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.08);
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
 }
 
 .btn:hover:not(:disabled) {
-  background: var(--accent-strong);
+  background: #188978;
+  box-shadow: 0 4px 10px rgba(29, 157, 140, 0.18);
+  transform: translateY(-1px);
 }
 
 .btn:disabled {
@@ -77,6 +91,7 @@
   border-color: var(--border);
   background: #ffffff;
   color: var(--text-muted);
+  box-shadow: none;
 }
 
 .btn.ghost:hover:not(:disabled) {
@@ -88,6 +103,15 @@
   border-color: rgba(239, 68, 68, 0.18);
   background: rgba(239, 68, 68, 0.06);
   color: var(--danger);
+}
+
+.btn:focus-visible,
+.field input:focus-visible,
+.field select:focus-visible,
+.field textarea:focus-visible,
+.task-action-menu-items button:focus-visible {
+  outline: 3px solid var(--accent-soft);
+  outline-offset: 1px;
 }
 
 .btn.small {
@@ -102,7 +126,7 @@
   margin-bottom: 18px;
   padding: 14px 16px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--bg-panel);
 }
 
@@ -135,7 +159,7 @@
   gap: 10px;
   padding: 12px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 10px;
   background: #ffffff;
   box-shadow: var(--shadow);
   color: var(--text);
@@ -206,7 +230,6 @@
   font-weight: 800;
   letter-spacing: 0;
   text-overflow: ellipsis;
-  text-transform: uppercase;
   white-space: nowrap;
 }
 
@@ -216,7 +239,7 @@
   width: 100%;
   min-width: 0;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 9px;
   background: #ffffff;
   color: var(--text);
   outline: none;
@@ -237,7 +260,8 @@
 .field input:focus,
 .field select:focus,
 .field textarea:focus {
-  border-color: rgba(37, 99, 235, 0.5);
+  border-color: rgba(46, 183, 165, 0.7);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 .checkbox-field {
@@ -317,7 +341,7 @@
   overscroll-behavior: contain;
   padding: 18px;
   border: 1px solid rgba(37, 99, 235, 0.15);
-  border-radius: 8px;
+  border-radius: 14px;
   background: #ffffff;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.12);
 }
@@ -363,6 +387,32 @@
   box-shadow: var(--shadow);
 }
 
+.metric-card,
+.panel,
+.tool-card,
+.task-card,
+.memory-record-card,
+.radio-card,
+.dispatch-card,
+.workflow-card,
+.search-result-card,
+.backup-row {
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.metric-card:hover,
+.tool-card:hover,
+.task-card:hover,
+.memory-record-card:hover,
+.radio-card:hover,
+.dispatch-card:hover,
+.workflow-card:hover,
+.search-result-card:hover,
+.backup-row:hover {
+  border-color: var(--border-soft);
+  box-shadow: 0 8px 22px rgba(16, 24, 40, 0.06);
+}
+
 .metric-card {
   display: grid;
   min-height: 104px;
@@ -379,7 +429,6 @@
   font-weight: 700;
   letter-spacing: 0;
   text-overflow: ellipsis;
-  text-transform: uppercase;
   white-space: nowrap;
 }
 
@@ -440,8 +489,8 @@
 .message-row {
   min-width: 0;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #f8fafc;
+  border-radius: 10px;
+  background: var(--bg-panel-strong);
 }
 
 .list-row,
@@ -583,7 +632,6 @@ th {
   font-size: 12px;
   font-weight: 800;
   letter-spacing: 0;
-  text-transform: uppercase;
   white-space: nowrap;
 }
 
@@ -620,8 +668,8 @@ td {
   gap: 12px;
   padding: 12px;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #f8fafc;
+  border-radius: 12px;
+  background: var(--bg-panel-strong);
 }
 
 .kanban-header {
@@ -664,8 +712,8 @@ td {
   min-width: 0;
   padding: 12px;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #f8fafc;
+  border-radius: 10px;
+  background: #ffffff;
 }
 
 .task-card {
@@ -738,8 +786,8 @@ td {
   gap: 6px;
   padding: 10px;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #f1f5f9;
+  border-radius: 9px;
+  background: var(--bg-soft);
   color: var(--text-muted);
   font-size: 12px;
 }
@@ -836,8 +884,8 @@ td {
   gap: 12px;
   padding: 14px;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #f8fafc;
+  border-radius: 10px;
+  background: #ffffff;
 }
 
 .workflow-card-header {
@@ -890,8 +938,8 @@ td {
   gap: 5px;
   padding: 10px;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #f1f5f9;
+  border-radius: 9px;
+  background: var(--bg-soft);
 }
 
 .workflow-text-block strong,
@@ -900,7 +948,6 @@ td {
   font-size: 12px;
   font-weight: 800;
   letter-spacing: 0;
-  text-transform: uppercase;
 }
 
 .workflow-text-block p {
@@ -940,8 +987,8 @@ td {
   gap: 10px;
   padding: 10px;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #f8fafc;
+  border-radius: 9px;
+  background: var(--bg-panel-strong);
 }
 
 .workflow-action-summary strong {
@@ -1069,8 +1116,8 @@ td {
   min-width: 0;
   padding: 12px;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #f8fafc;
+  border-radius: 10px;
+  background: #ffffff;
 }
 
 .search-result-card {
@@ -1428,8 +1475,8 @@ td {
   margin-top: 12px;
   padding: 10px;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #f1f5f9;
+  border-radius: 9px;
+  background: var(--bg-soft);
 }
 
 .tool-card-detail span {
@@ -1461,8 +1508,8 @@ td {
   gap: 10px;
   padding: 12px;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #f8fafc;
+  border-radius: 10px;
+  background: var(--bg-panel-strong);
 }
 
 .tool-preview-header {
@@ -1501,8 +1548,8 @@ td {
   gap: 5px;
   padding: 10px;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #f8fafc;
+  border-radius: 9px;
+  background: var(--bg-panel-strong);
 }
 
 .property strong {
@@ -1556,8 +1603,8 @@ td {
   gap: 8px;
   padding: 12px;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #f8fafc;
+  border-radius: 10px;
+  background: var(--bg-panel-strong);
 }
 
 .health-issue-row.level-high {
@@ -1622,7 +1669,7 @@ td {
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 6px;
-  background: #f1f5f9;
+  background: var(--bg-soft);
   color: #334155;
   font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
   font-size: 12px;
@@ -1648,8 +1695,8 @@ td {
   min-height: 42px;
   padding: 9px 10px;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #f8fafc;
+  border-radius: 9px;
+  background: var(--bg-panel-strong);
 }
 
 .health-storage-row span,
@@ -1746,8 +1793,9 @@ td {
   min-height: 96px;
   place-items: center;
   border: 1px dashed rgba(100, 116, 139, 0.25);
-  border-radius: 8px;
-  color: var(--text-subtle);
+  border-radius: 10px;
+  background: var(--bg-panel-strong);
+  color: var(--text-muted);
   font-size: 14px;
 }
 
@@ -1792,7 +1840,7 @@ td {
   }
 
   .btn {
-    flex: 1;
+    flex: 0 1 auto;
   }
 
   .dashboard-grid,

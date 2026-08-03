@@ -18,6 +18,7 @@ type TasksCopy = Pick<DashboardCopy,
   | 'approveAndComplete'
   | 'assignee'
   | 'cancel'
+  | 'cancelledTerminal'
   | 'claim'
   | 'clear'
   | 'completeDirectly'
@@ -261,8 +262,8 @@ function TaskCard({ task, copy, busy, onMutate }: { task: AnyRecord; copy: Tasks
         {['claimed', 'blocked'].includes(status) ? <Button size="sm" disabled={isBusy} onClick={() => void runStatus('in_progress')}>{status === 'blocked' ? copy.unblock : copy.start}</Button> : null}
         {status === 'in_progress' ? <><Button size="sm" disabled={isBusy} onClick={() => void runStatus('done')}>{copy.completeDirectly}</Button><Button size="sm" variant="outline" disabled={isBusy} onClick={() => void runStatus('needs_verification')}>{copy.requestVerification}</Button></> : null}
         {status === 'needs_verification' ? <Button size="sm" disabled={isBusy} onClick={() => void review('approved')}>{copy.approveAndComplete}</Button> : null}
-        {['done', 'cancelled'].includes(status) ? <Button size="sm" variant="outline" disabled={isBusy} onClick={() => void runStatus('open')}>{copy.reopen}</Button> : null}
-        <TaskActionMenu label={copy.moreActions} actions={secondaryActions} />
+        {status === 'done' ? <Button size="sm" variant="outline" disabled={isBusy} onClick={() => void runStatus('open')}>{copy.reopen}</Button> : null}
+        {status === 'cancelled' ? <p className="task-terminal-note">{copy.cancelledTerminal}</p> : <TaskActionMenu label={copy.moreActions} actions={secondaryActions} />}
       </div>
     </article>
   )

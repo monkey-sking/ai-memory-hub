@@ -32,6 +32,8 @@ import { evaluateDaemonHeartbeat } from "./daemon-health.js";
 import { buildWorkflowSharedState } from "./workflow-context.js";
 import { applyCandidateDecision, mineSkillCandidates } from "./skill-mining.js";
 import { normalizeGithubLinks } from "./github-links.js";
+import { addPack, listPacks, setPackEnabled, validateRegisteredPack } from "./domain-packs.js";
+import { listSkills, searchSkills } from "./skill-registry.js";
 import {
   normalizeAdversarialVerifier,
   normalizeReviewDimensions,
@@ -604,6 +606,11 @@ async function main() {
     case "skill-candidate":
     case "skillcandidate":
       return skillCandidateCommand(rest);
+    case "skill":
+      return skillCommand(rest);
+    case "pack":
+    case "domain-pack":
+      return packCommand(rest);
     case "sync":
       return syncCommand(rest);
     case "index":
@@ -7428,6 +7435,45 @@ function skillCandidateCommand(argv) {
   }
 }
 
+function packCommand(argv) {
+  const action = argv[0] || "list";
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  if (action === "list") { console.log(JSON.stringify(listPacks(config.memoryDir), null, 2)); return; }
+  if (action === "add") {
+    const root = getOption(argv.slice(1), "--path") || argv[1] || "";
+    if (!root) throw new Error("Usage: ai-memory-hub pack add --path <pack-directory>");
+    const manifestFile = path.join(path.resolve(root), "amh-pack.json");
+    if (!fs.existsSync(manifestFile)) throw new Error(`Pack manifest not found: ${manifestFile}`);
+    console.log(JSON.stringify(addPack(config.memoryDir, readJson(manifestFile)), null, 2)); return;
+  }
+  const id = getOption(argv.slice(1), "--id") || argv[1] || "";
+  if (!id) throw new Error(`Usage: ai-memory-hub pack ${action} <id>`);
+  if (action === "enable") console.log(JSON.stringify(setPackEnabled(config.memoryDir, id, true), null, 2));
+  else if (action === "disable") console.log(JSON.stringify(setPackEnabled(config.memoryDir, id, false), null, 2));
+  else if (action === "validate") console.log(JSON.stringify(validateRegisteredPack(config.memoryDir, id), null, 2));
+  else if (action === "show") console.log(JSON.stringify(listPacks(config.memoryDir).find((item) => item.id === id || item.id.startsWith(id)) || null, null, 2));
+  else throw new Error("Usage: ai-memory-hub pack add|list|show|enable|disable|validate");
+}
+
+function skillCommand(argv) {
+  const action = argv[0] || "list";
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  if (action === "list") { console.log(JSON.stringify(listSkills(config.memoryDir), null, 2)); return; }
+  if (action === "search") { console.log(JSON.stringify(searchSkills(config.memoryDir, argv.slice(1).join(" "),), null, 2)); return; }
+  if (action === "attach") {
+    const skillId = getOption(argv.slice(1), "--skill") || argv[1] || "";
+    const taskId = getOption(argv.slice(1), "--task") || "";
+    if (!skillId || !taskId) throw new Error("Usage: ai-memory-hub skill attach --skill <skill-id> --task <task-id>");
+    const skill = listSkills(config.memoryDir).find((item) => item.id === skillId || item.id.startsWith(skillId));
+    if (!skill) throw new Error(`Skill not found: ${skillId}`);
+    const task = withHubLock(config.memoryDir, "skill-attach", () => updateTask(config.memoryDir, taskId, (current) => ({ ...current, skills: [...new Set([...(current.skills || []), skill.id])], updatedAt: new Date().toISOString() })), config.sync.lockStaleMs);
+    console.log(JSON.stringify({ task, skill }, null, 2)); return;
+  }
+  throw new Error("Usage: ai-memory-hub skill list|search|attach");
+}
+
 function getSkillDeltasFile(memoryDir) {
   return path.join(memoryDir, "prompts", SKILL_DELTA_FILE);
 }
@@ -8413,6 +8459,8 @@ Commands:
   checkpoint Show, reset, or inspect loop checkpoint state for resumable daemon loops.
   heartbeat  Check daemon heartbeat status, or watch for stale/dead daemon.
   skill-delta Manage skill improvement proposals (observer → reviewer → merge).
+  skill      List/search/attach reusable skills.
+  pack       Register and validate external domain packs.
   pull       Rebuild MEMORY.md from the local memory ledger.
   merge      Merge local memory with backup data or resolve Git conflicts.
   backup     Back up hub files, inspect/prune retention, and manage GitHub data backups.
@@ -12130,6 +12178,7 @@ function createContextPack({ taskId, workflowId, project, query }) {
     workflow: null,
     relevantMemories: [],
     recentRadio: [],
+    skills: [],
     sharedState: null,
     projectPath: process.cwd(),
     constraints: [],
@@ -12160,6 +12209,7 @@ function createContextPack({ taskId, workflowId, project, query }) {
   if (query || pack.task || pack.workflow) {
     const searchQuery = query || pack.task?.title || pack.workflow?.title || "";
     pack.relevantMemories = searchMemoriesForContext(memoryDir, searchQuery, project, 10);
+    pack.skills = searchSkills(memoryDir, searchQuery).slice(0, 5);
   }
 
   // Get recent radio messages for this project

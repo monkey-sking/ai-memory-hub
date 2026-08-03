@@ -11,3 +11,23 @@ export function syncGithubLifecycle(tasks = [], pullRequests = []) {
   return { changes, unchanged };
 }
 
+export function parseGithubWebhook(payload = {}) {
+  const action = String(payload.action || "");
+  const pull = payload.pull_request || payload.pullRequest || {};
+  if (!pull || (!pull.html_url && !pull.url && !pull.number)) {
+    return { accepted: false, reason: "pull_request payload required", action };
+  }
+  return {
+    accepted: true,
+    action,
+    pullRequest: {
+      url: String(pull.html_url || pull.url || ""),
+      number: pull.number || null,
+      merged: Boolean(pull.merged || (action === "closed" && pull.merged_at)),
+      mergedAt: pull.merged_at || pull.mergedAt || "",
+      mergeCommit: pull.merge_commit_sha || pull.mergeCommit || "",
+      repository: payload.repository?.full_name || ""
+    }
+  };
+}
+

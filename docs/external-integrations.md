@@ -1,6 +1,6 @@
 # External integrations
 
-AMH now exposes safe, explicit adapters for the remaining integration points. They produce plans or payloads locally; they do not silently send network requests or execute remote commands.
+AMH exposes safe, explicit adapters for the remaining integration points. They produce plans or payloads locally; they do not silently send network requests or execute remote commands.
 
 ## GitHub
 
@@ -16,4 +16,4 @@ Pack manifests can include `trust: { required, payload, signature, publicKey }`.
 
 ## Notifications
 
-`amh notify payload --title "Review" --message "Approval required" --url <url>` and `POST /api/notifications/payload` return Feishu interactive-card and WeCom Markdown payloads. Sending remains an explicit adapter/configuration step, so missing credentials cannot be mistaken for a successful delivery.
+`amh notify payload --title "Review" --message "Approval required" --url <url>` and `POST /api/notifications/payload` return Feishu interactive-card and WeCom Markdown payloads. Sending remains an explicit adapter/configuration step, so missing credentials cannot be mistaken for successful delivery.

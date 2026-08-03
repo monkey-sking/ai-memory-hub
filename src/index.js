@@ -33,6 +33,8 @@ import { buildWorkflowSharedState } from "./workflow-context.js";
 import { applyCandidateDecision, mineSkillCandidates } from "./skill-mining.js";
 import { normalizeGithubLinks } from "./github-links.js";
 import { syncGithubLifecycle } from "./github-lifecycle.js";
+import { buildGithubRequest, buildNotificationPayload, buildSshPlan, renderSkillMarkdown } from "./external-integrations.js";
+import { parseGithubWebhook } from "./github-lifecycle.js";
 import { addPack, listPacks, setPackEnabled, validateRegisteredPack } from "./domain-packs.js";
 import { listSkills, searchSkills } from "./skill-registry.js";
 import {
@@ -631,6 +633,8 @@ async function main() {
     case "gh":
     case "github":
       return githubCommand(rest);
+    case "ssh":
+      return sshCommand(rest);
     case "watch":
       return watchCommand(rest);
     case "daemon":
@@ -660,7 +664,27 @@ function parseCliArgs(argv) {
 
 function githubCommand(argv) {
   const action = argv[0] || "sync";
-  if (action !== "sync") throw new Error("Usage: ai-memory-hub gh sync --data <pull-requests.json> [--apply]");
+  if (action === "request") {
+    const owner = getOption(argv.slice(1), "--owner") || "";
+    const repo = getOption(argv.slice(1), "--repo") || "";
+    const pull = getOption(argv.slice(1), "--pull") || "";
+    if (!owner || !repo || !pull) throw new Error("Usage: ai-memory-hub gh request --owner <owner> --repo <repo> --pull <number> [--dry-run]");
+    console.log(JSON.stringify({ request: buildGithubRequest({ owner, repo, pull, token: process.env.GITHUB_TOKEN || "" }), dryRun: true }, null, 2));
+    return;
+  }
+  if (action === "webhook") {
+    const dataFile = getOption(argv.slice(1), "--data") || "";
+    if (!dataFile) throw new Error("Usage: ai-memory-hub gh webhook --data <payload.json> [--apply]");
+    const parsed = parseGithubWebhook(readJson(path.resolve(dataFile)));
+    if (hasFlag(argv, "--apply") && parsed.accepted) {
+      const config = loadConfig(); ensureHub(config.memoryDir);
+      const result = syncGithubLifecycle(readTasks(config.memoryDir), [parsed.pullRequest]);
+      const applied = withHubLock(config.memoryDir, "github-webhook", () => result.changes.map((change) => updateTask(config.memoryDir, change.id, (current) => ({ ...current, ...change.patch, updatedAt: new Date().toISOString() }))), config.sync.lockStaleMs);
+      console.log(JSON.stringify({ ...parsed, result, applied }, null, 2)); return;
+    }
+    console.log(JSON.stringify({ ...parsed, apply: false }, null, 2)); return;
+  }
+  if (action !== "sync") throw new Error("Usage: ai-memory-hub gh sync|request|webhook ...");
   const dataFile = getOption(argv.slice(1), "--data") || "";
   if (!dataFile) throw new Error("Usage: ai-memory-hub gh sync --data <pull-requests.json> [--apply]");
   const config = loadConfig();
@@ -2143,9 +2167,29 @@ function notifyCommand(argv) {
       return notifyDeliverCommand(argv.slice(1));
     case "execution":
       return notifyExecutionCommand(argv.slice(1));
+    case "payload":
+      return notifyPayloadCommand(argv.slice(1));
     default:
-      throw new Error(`Unknown notify action: ${action}\nTry: ai-memory-hub notify send|list|pending|deliver|execution`);
+      throw new Error(`Unknown notify action: ${action}\nTry: ai-memory-hub notify send|list|pending|deliver|execution|payload`);
   }
+}
+
+function sshCommand(argv) {
+  const action = argv[0] || "plan";
+  if (action !== "plan") throw new Error("Usage: ai-memory-hub ssh plan --host <host> --user <user> --worktree <path> --command <command> [--approved] [--policy ask|allow]");
+  const host = getOption(argv.slice(1), "--host") || "";
+  const user = getOption(argv.slice(1), "--user") || "";
+  const worktree = getOption(argv.slice(1), "--worktree") || "";
+  const command = getOption(argv.slice(1), "--command") || positionalArgs(argv.slice(1)).join(" ");
+  if (!host || !user || !worktree || !command) throw new Error("Usage: ai-memory-hub ssh plan --host <host> --user <user> --worktree <path> --command <command> [--approved] [--policy ask|allow]");
+  console.log(JSON.stringify(buildSshPlan({ host, user, worktree, command, approved: hasFlag(argv, "--approved"), policy: getOption(argv, "--policy") || "ask" }), null, 2));
+}
+
+function notifyPayloadCommand(argv) {
+  const title = getOption(argv, "--title") || "AMH";
+  const message = getOption(argv, "--message") || positionalArgs(argv).join(" ");
+  if (!message) throw new Error("Usage: ai-memory-hub notify payload --title <title> --message <message> [--url <url>]");
+  console.log(JSON.stringify(buildNotificationPayload({ title, message, actionUrl: getOption(argv, "--url") || "" }), null, 2));
 }
 
 function notifySendCommand(argv) {
@@ -7494,7 +7538,14 @@ function skillCommand(argv) {
     const task = withHubLock(config.memoryDir, "skill-attach", () => updateTask(config.memoryDir, taskId, (current) => ({ ...current, skills: [...new Set([...(current.skills || []), skill.id])], updatedAt: new Date().toISOString() })), config.sync.lockStaleMs);
     console.log(JSON.stringify({ task, skill }, null, 2)); return;
   }
-  throw new Error("Usage: ai-memory-hub skill list|search|attach");
+  if (action === "render") {
+    const title = getOption(argv.slice(1), "--title") || "Generated skill";
+    const text = getOption(argv.slice(1), "--text") || positionalArgs(argv.slice(1)).join(" ");
+    if (!text) throw new Error("Usage: ai-memory-hub skill render --title <title> --text <rule> [--task <task-id>] [--evidence <item;item>]");
+    console.log(renderSkillMarkdown({ title, text, sourceTaskId: getOption(argv.slice(1), "--task") || "unknown", evidence: (getOption(argv.slice(1), "--evidence") || "").split(";").map((item) => item.trim()).filter(Boolean) }));
+    return;
+  }
+  throw new Error("Usage: ai-memory-hub skill list|search|attach|render");
 }
 
 function getSkillDeltasFile(memoryDir) {
@@ -8143,6 +8194,15 @@ function appCommand(argv) {
         const workflow = readWorkflows(config.memoryDir).find((item) => item.id === workflowId || item.id.startsWith(workflowId)) || {};
         return sendJson(res, { adapters: buildExecutionAdapters({ task, workflow, worktree: task.worktree || workflow.worktree || {} }) });
       }
+      if (req.method === "POST" && url.pathname === "/api/notifications/payload") {
+        const body = await readRequestJson(req);
+        if (!body.message || typeof body.message !== "string") return sendJson(res, { error: "message is required" }, 400);
+        return sendJson(res, { ok: true, dryRun: true, ...buildNotificationPayload(body) });
+      }
+      if (req.method === "POST" && url.pathname === "/api/github/webhook") {
+        const body = await readRequestJson(req);
+        return sendJson(res, { ...parseGithubWebhook(body), apply: false, hint: "Use amh gh webhook --data <file> --apply for explicit task updates." });
+      }
       if (req.method === "GET" && url.pathname === "/api/detect") {
         return sendJson(res, dashboardTools.getDashboardDetection(config.memoryDir));
       }
@@ -8487,7 +8547,8 @@ Commands:
   pull       Rebuild MEMORY.md from the local memory ledger.
   merge      Merge local memory with backup data or resolve Git conflicts.
   backup     Back up hub files, inspect/prune retention, and manage GitHub data backups.
-  gh         Sync linked task state from an explicit GitHub PR export.
+  gh         Sync linked task state, build read-only API requests, or parse webhooks.
+  ssh        Build approval-gated remote execution plans (never executes commands).
   watch      Periodically index pending inbox events.
   daemon     Run or inspect the local dispatch daemon.
   app        Start the local dashboard app.

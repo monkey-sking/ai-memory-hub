@@ -23,6 +23,21 @@ Task is the durable objective. Agent Session is one concrete execution attempt. 
 
 ## Phase 1 — Execution cockpit core (P0)
 
+### Status: implemented (2026-08-03)
+
+The first P0 increment is now live in the AMH Dashboard. Read-only projections
+are implemented in `src/dashboard/agent-sessions.js` and
+`src/dashboard/worktrees.js`, exposed through `/api/agent-sessions`,
+`/api/worktrees`, and additive `agentSessions`/`worktrees` fields on
+`/api/dashboard`. The Overview page now renders Agent Cards, a unified
+task/relay/dispatch timeline, and worktree review readiness. State projection
+distinguishes `working`, `idle`, `blocked`, `waiting_review`, `done`,
+`failed`, and `stale`; no cleanup, merge, push, or worktree mutation is
+performed by these views.
+
+Verification: projection tests pass, Dashboard build passes, and a real HTTP
+smoke test covers all three endpoints.
+
 Goal: turn the Dashboard from a task list into an Agent execution center.
 
 ### Agent Session projection

@@ -112,6 +112,7 @@ const DAEMON_HEARTBEAT_STALE_MS = 30000; // 30 seconds without heartbeat = stale
 const SKILL_DELTA_FILE = "skill-deltas.jsonl";
 const SKILL_CANDIDATE_FILE = "skill-candidates.jsonl";
 const TOOL_CAPABILITY_REGISTRY_VERSION = 1;
+const MODEL_CACHE_STALE_MS = 24 * 60 * 60 * 1000;
 let toolDetectionCache = null;
 
 const dashboardMemory = createDashboardMemoryApi({
@@ -202,6 +203,8 @@ const dashboardTools = createDashboardToolsApi({
   readTasks,
   refreshDetectedTools,
   resolvePermission,
+  readToolDeclarationByTool,
+  readDiscoveredModels,
   POLICY_OPERATIONS
 });
 
@@ -313,6 +316,7 @@ const RUNNER_PROFILES = {
     preview: "codex exec --sandbox danger-full-access --skip-git-repo-check <stdin>",
     versionArgs: ["--version"],
     probeArgs: ["--help"],
+    modelArgs: (model) => ["--model", model],
     capabilities: ["direct-dispatch", "stdin-prompt", "text-output"]
   },
   claude: {
@@ -326,6 +330,7 @@ const RUNNER_PROFILES = {
     versionArgs: ["--version"],
     probeArgs: ["--help"],
     resumeArgs: (sessionId) => ["--resume", sessionId],
+    modelArgs: (model) => ["--model", model],
     capabilities: ["direct-dispatch", "stdin-prompt", "json-output", "session-resume"]
   },
   gemini: {
@@ -337,6 +342,7 @@ const RUNNER_PROFILES = {
     preview: "gemini <stdin>",
     versionArgs: ["--version"],
     probeArgs: ["--help"],
+    modelArgs: (model) => ["--model", model],
     capabilities: ["direct-dispatch", "stdin-prompt", "text-output", "warning-filter"]
   },
   "qoder-cn": {
@@ -348,6 +354,7 @@ const RUNNER_PROFILES = {
     preview: "qoder-cn - <stdin>",
     versionArgs: ["--version"],
     probeArgs: ["--help"],
+    modelArgs: (model) => ["--model", model],
     capabilities: ["direct-dispatch", "stdin-prompt", "text-output"]
   },
   opencode: {
@@ -359,6 +366,9 @@ const RUNNER_PROFILES = {
     preview: "opencode - <stdin>",
     versionArgs: ["--version"],
     probeArgs: ["--help"],
+    modelArgs: (model) => ["--model", model],
+    modelsCommand: ["models"],
+    modelListFormat: "provider-model",
     capabilities: ["direct-dispatch", "stdin-prompt", "text-output"]
   },
   mimocode: {
@@ -371,7 +381,31 @@ const RUNNER_PROFILES = {
     preview: "mimo run <prompt>",
     versionArgs: ["--version"],
     probeArgs: ["--help"],
+    modelArgs: (model) => ["--model", model],
+    modelsCommand: ["models"],
+    modelListFormat: "provider-model",
     capabilities: ["direct-dispatch", "argv-prompt", "text-output", "opencode-compatible"]
+  },
+  grok: {
+    tool: "grok",
+    commandCandidates: [
+      path.join(os.homedir(), ".grok", "bin", "grok"),
+      path.join(os.homedir(), ".grok", "bin", "grok.exe"),
+      path.join(os.homedir(), ".local", "bin", "grok"),
+      "grok.cmd",
+      "grok"
+    ],
+    args: ["--always-approve", "-p"],
+    promptMode: "argv",
+    outputMode: "text",
+    compactPrompt: true,
+    preview: "grok --always-approve -p <prompt>",
+    versionArgs: ["--version"],
+    probeArgs: ["--help"],
+    modelArgs: (model) => ["--model", model],
+    modelsCommand: ["models"],
+    modelListFormat: "grok",
+    capabilities: ["direct-dispatch", "argv-prompt", "text-output"]
   },
   marvis: {
     tool: "marvis",
@@ -456,6 +490,11 @@ async function main() {
     case "capability":
     case "capabilities":
       return capabilitiesCommand(rest);
+    case "declare":
+    case "declaration":
+      return declareCommand(rest);
+    case "models":
+      return modelsCommand(rest);
     case "policy":
       return policyCommand(rest);
     case "status":
@@ -642,6 +681,311 @@ function capabilitiesCommand(argv) {
     return;
   }
   console.log(JSON.stringify(registry, null, 2));
+}
+
+function getToolDeclarationsFile(memoryDir) {
+  return path.join(memoryDir, "state", "tool-declarations.jsonl");
+}
+
+function readToolDeclarations(memoryDir) {
+  const file = getToolDeclarationsFile(memoryDir);
+  if (!fs.existsSync(file)) {
+    return [];
+  }
+  try {
+    return readEvents(file);
+  } catch {
+    return [];
+  }
+}
+
+function readToolDeclarationByTool(memoryDir, tool) {
+  const name = normalizeToolName(tool);
+  const entries = readToolDeclarations(memoryDir);
+  const sorted = entries
+    .filter((entry) => normalizeToolName(entry.tool) === name)
+    .sort((a, b) => String(a.updatedAt || "").localeCompare(String(b.updatedAt || "")));
+  return sorted[sorted.length - 1] || null;
+}
+
+function readDiscoveredModels(memoryDir, tool) {
+  const cacheFile = path.join(memoryDir, "state", "tool-models.json");
+  if (!fs.existsSync(cacheFile)) {
+    return [];
+  }
+  try {
+    const cache = JSON.parse(fs.readFileSync(cacheFile, "utf8"));
+    const name = normalizeToolName(tool);
+    return Array.isArray(cache[name]?.models) ? cache[name].models : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeToolDeclaration(memoryDir, declaration) {
+  const file = getToolDeclarationsFile(memoryDir);
+  ensureDir(path.dirname(file));
+  const existing = readToolDeclarations(memoryDir);
+  const name = normalizeToolName(declaration.tool);
+  const updated = existing.filter((entry) => normalizeToolName(entry.tool) !== name);
+  updated.push(declaration);
+  fs.writeFileSync(file, updated.map((entry) => JSON.stringify(entry)).join("\n") + "\n", "utf8");
+  return declaration;
+}
+
+function removeToolDeclaration(memoryDir, tool) {
+  const file = getToolDeclarationsFile(memoryDir);
+  const name = normalizeToolName(tool);
+  const existing = readToolDeclarations(memoryDir);
+  const remaining = existing.filter((entry) => normalizeToolName(entry.tool) !== name);
+  if (remaining.length === existing.length) {
+    return false;
+  }
+  fs.writeFileSync(file, remaining.map((entry) => JSON.stringify(entry)).join("\n") + "\n", "utf8");
+  return true;
+}
+
+function parseDeclaredList(raw) {
+  return [...new Set(String(raw || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean))];
+}
+
+function declareCommand(argv) {
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const action = argv[0] || "set";
+  const actionArgs = argv.slice(1);
+  switch (action) {
+    case "set":
+    case "upsert":
+    case "add":
+      return declareSetCommand(config, actionArgs);
+    case "list":
+    case "ls":
+      return declareListCommand(config, actionArgs);
+    case "show":
+    case "get":
+      return declareShowCommand(config, actionArgs);
+    case "remove":
+    case "rm":
+    case "delete":
+      return declareRemoveCommand(config, actionArgs);
+    default:
+      throw new Error("Usage: ai-memory-hub declare <set|list|show|remove> [--tool <tool>] [--models a,b] [--strengths 'x,y'] [--note '...'] [--by <tool>]");
+  }
+}
+
+function declareSetCommand(config, actionArgs) {
+  const tool = getOption(actionArgs, "--tool") || "";
+  const by = getOption(actionArgs, "--by") || tool;
+  if (!tool) {
+    throw new Error("declare set requires --tool <tool>");
+  }
+  return withHubLock(config.memoryDir, "tool-declaration", () => {
+    const previous = readToolDeclarationByTool(config.memoryDir, tool);
+    const models = parseDeclaredList(getOption(actionArgs, "--models"));
+    const strengths = parseDeclaredList(getOption(actionArgs, "--strengths"));
+    const note = getOption(actionArgs, "--note");
+    if (models.length === 0 && strengths.length === 0 && !note) {
+      throw new Error("declare set needs at least one of --models, --strengths, or --note.");
+    }
+    const declaration = {
+      tool: normalizeToolName(tool),
+      by: normalizeToolName(by || tool) || "unknown",
+      models,
+      strengths,
+      note: note || "",
+      updatedAt: new Date().toISOString(),
+      previous: previous ? previous.updatedAt : ""
+    };
+    const saved = writeToolDeclaration(config.memoryDir, declaration);
+    console.log(JSON.stringify({
+      ok: true,
+      declaration: saved,
+      message: `Declared ${saved.models.length} model(s) and ${saved.strengths.length} strength area(s) for ${saved.tool}.`
+    }, null, 2));
+  }, config.sync.lockStaleMs);
+}
+
+function declareListCommand(config, actionArgs) {
+  const entries = readToolDeclarations(config.memoryDir)
+    .sort((a, b) => String(a.updatedAt || "").localeCompare(String(b.updatedAt || "")));
+  console.log(JSON.stringify({ ok: true, declarations: entries }, null, 2));
+}
+
+function declareShowCommand(config, actionArgs) {
+  const tool = getOption(actionArgs, "--tool") || positionalArgs(actionArgs)[0] || "";
+  if (!tool) {
+    throw new Error("declare show requires --tool <tool>");
+  }
+  const declaration = readToolDeclarationByTool(config.memoryDir, tool);
+  console.log(JSON.stringify({
+    ok: true,
+    tool: normalizeToolName(tool),
+    declaration
+  }, null, 2));
+}
+
+function declareRemoveCommand(config, actionArgs) {
+  const tool = getOption(actionArgs, "--tool") || positionalArgs(actionArgs)[0] || "";
+  if (!tool) {
+    throw new Error("declare remove requires --tool <tool>");
+  }
+  return withHubLock(config.memoryDir, "tool-declaration", () => {
+    const removed = removeToolDeclaration(config.memoryDir, tool);
+    console.log(JSON.stringify({ ok: true, removed, tool: normalizeToolName(tool) }, null, 2));
+  }, config.sync.lockStaleMs);
+}
+
+function fetchToolModels(memoryDir, tool) {
+  const runner = getToolRunner(tool);
+  if (!runner.available || !Array.isArray(runner.modelsCommand) || runner.modelsCommand.length === 0) {
+    return { tool: normalizeToolName(tool), supported: false, models: [], error: runner.reason || "No model list command for this runner." };
+  }
+  const completed = invokeRunnerCommand(runner, runner.modelsCommand, "", 15000);
+  if (completed.status !== 0) {
+    return {
+      tool: normalizeToolName(tool),
+      supported: true,
+      models: [],
+      error: completed.error?.message || normalizeRunnerStderr(tool, completed.stderr).stderr || `models command exited ${completed.status}`
+    };
+  }
+  const parsed = parseRunnerModelList(tool, runner, completed.stdout);
+  return {
+    tool: normalizeToolName(tool),
+    supported: true,
+    models: parsed,
+    fetchedAt: new Date().toISOString()
+  };
+}
+
+function parseRunnerModelList(tool, runner, stdout) {
+  const format = runner.modelListFormat || "";
+  const text = String(stdout || "");
+  const seen = new Set();
+  const models = [];
+  const add = (value) => {
+    const clean = String(value || "").trim().replace(/\s*\(default\)\s*$/i, "");
+    if (clean && !seen.has(clean)) {
+      seen.add(clean);
+      models.push(clean);
+    }
+  };
+  if (format === "grok") {
+    for (const line of text.split("\n")) {
+      const clean = line.trim();
+      const defaultMatch = clean.match(/^Default model:\s*([A-Za-z0-9._/:@-]+)/i);
+      if (defaultMatch) {
+        add(defaultMatch[1]);
+        continue;
+      }
+      const bulletMatch = clean.match(/^\*+\s*([A-Za-z0-9._/:@-]+)/);
+      if (bulletMatch) {
+        add(bulletMatch[1]);
+        continue;
+      }
+    }
+  } else if (format === "provider-model") {
+    for (const line of text.split("\n")) {
+      const clean = line.trim();
+      if (clean && !clean.startsWith("(") && /^[A-Za-z0-9._-]+(\/|:)[A-Za-z0-9._:/@-]+$/.test(clean)) {
+        add(clean);
+      }
+    }
+  } else {
+    for (const line of text.split("\n")) {
+      const clean = line.trim();
+      if (clean && /^[A-Za-z0-9._:/@-]+$/.test(clean) && !clean.includes(" ")) {
+        add(clean);
+      }
+    }
+  }
+  return models;
+}
+
+function getModelsCacheFile(memoryDir) {
+  return path.join(memoryDir, "state", "tool-models.json");
+}
+
+function readModelsCache(memoryDir) {
+  const cacheFile = getModelsCacheFile(memoryDir);
+  if (!fs.existsSync(cacheFile)) {
+    return {};
+  }
+  try {
+    return JSON.parse(fs.readFileSync(cacheFile, "utf8"));
+  } catch {
+    return {};
+  }
+}
+
+function writeModelsCache(memoryDir, cache) {
+  fs.writeFileSync(getModelsCacheFile(memoryDir), JSON.stringify(cache, null, 2), "utf8");
+}
+
+function refreshModelsIfStale(memoryDir, { tool = "", force = false } = {}) {
+  const cache = readModelsCache(memoryDir);
+  const targets = tool ? [normalizeToolName(tool)] : Object.keys(RUNNER_PROFILES);
+  const refreshed = [];
+  for (const name of targets) {
+    const runner = getToolRunner(name);
+    const supportsList = Array.isArray(runner.modelsCommand) && runner.modelsCommand.length > 0;
+    const cached = cache[name] || null;
+    const cachedAgeMs = cached?.fetchedAt ? Date.now() - new Date(cached.fetchedAt).getTime() : null;
+    const stale = !cached || cachedAgeMs === null || cachedAgeMs > MODEL_CACHE_STALE_MS;
+    if (!supportsList || (!force && !stale)) {
+      continue;
+    }
+    const fetched = fetchToolModels(memoryDir, name);
+    if (fetched.supported && fetched.models.length > 0) {
+      cache[name] = { models: fetched.models, fetchedAt: fetched.fetchedAt };
+      refreshed.push({ tool: name, models: fetched.models.length });
+    }
+  }
+  if (refreshed.length > 0) {
+    writeModelsCache(memoryDir, cache);
+  }
+  return refreshed;
+}
+
+function modelsCommand(argv) {
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const tool = getOption(argv, "--tool") || getOption(argv, "--to") || positionalArgs(argv)[0] || "";
+  const refresh = hasFlag(argv, "--refresh") || hasFlag(argv, "--fetch");
+  if (refresh) {
+    refreshModelsIfStale(config.memoryDir, { tool, force: true });
+  }
+  const cache = readModelsCache(config.memoryDir);
+  const targets = tool ? [normalizeToolName(tool)] : Object.keys(RUNNER_PROFILES);
+  const results = [];
+  for (const name of targets) {
+    const runner = getToolRunner(name);
+    const supportsList = Array.isArray(runner.modelsCommand) && runner.modelsCommand.length > 0;
+    const declaration = readToolDeclarationByTool(config.memoryDir, name);
+    const cached = cache[name] || null;
+    const cachedAgeMs = cached?.fetchedAt ? Date.now() - new Date(cached.fetchedAt).getTime() : null;
+    results.push({
+      tool: name,
+      supported: supportsList,
+      declared: declaration?.models || [],
+      discovered: Array.isArray(cached?.models) ? cached.models : [],
+      discoveredAt: cached?.fetchedAt || "",
+      stale: cachedAgeMs !== null && cachedAgeMs > MODEL_CACHE_STALE_MS,
+      fetchError: "",
+      strengths: declaration?.strengths || [],
+      note: declaration?.note || ""
+    });
+  }
+  console.log(JSON.stringify({
+    ok: true,
+    generatedAt: new Date().toISOString(),
+    refreshed: refresh,
+    tools: results
+  }, null, 2));
 }
 
 function policyCommand(argv) {
@@ -1079,6 +1423,7 @@ function connectSendCommand(argv, defaultType) {
       to,
       project,
       limit: Number(getOption(argv, "--limit") || 5),
+      model: getOption(argv, "--model") || "",
       isolateWorktree: hasFlag(argv, "--isolate-worktree"),
       worktreeRoot: getOption(argv, "--worktree-root") || ""
     })
@@ -3237,13 +3582,14 @@ function dispatchCommand(argv) {
   const to = getOption(argv, "--to") || "";
   const project = getOption(argv, "--project") || "";
   const limit = Number(getOption(argv, "--limit") || 10);
+  const model = getOption(argv, "--model") || "";
   const respectRecipeDependencies = hasFlag(argv, "--respect-recipe-dependencies");
   const isolateWorktree = hasFlag(argv, "--isolate-worktree");
   const worktreeRoot = getOption(argv, "--worktree-root") || "";
   const config = loadConfig();
   ensureHub(config.memoryDir);
 
-  const results = executeDispatch(config.memoryDir, { run, force, to, project, limit, respectRecipeDependencies, isolateWorktree, worktreeRoot });
+  const results = executeDispatch(config.memoryDir, { run, force, to, project, limit, model, respectRecipeDependencies, isolateWorktree, worktreeRoot });
   if (results.length === 0) {
     console.log(JSON.stringify({ run, jobs: [], message: "No undispatched radio messages or active tasks matched." }, null, 2));
     return;
@@ -3643,13 +3989,14 @@ function dispatchRetryCommand(argv) {
   const to = getOption(argv, "--to") || "";
   const project = getOption(argv, "--project") || "";
   const limit = Number(getOption(argv, "--limit") || 10);
+  const model = getOption(argv, "--model") || "";
   const respectRecipeDependencies = hasFlag(argv, "--respect-recipe-dependencies");
   const isolateWorktree = hasFlag(argv, "--isolate-worktree");
   const worktreeRoot = getOption(argv, "--worktree-root") || "";
   const config = loadConfig();
   ensureHub(config.memoryDir);
 
-  const results = executeDispatchRetry(config.memoryDir, { run, to, project, limit, respectRecipeDependencies, isolateWorktree, worktreeRoot });
+  const results = executeDispatchRetry(config.memoryDir, { run, to, project, limit, model, respectRecipeDependencies, isolateWorktree, worktreeRoot });
   if (results.length === 0) {
     console.log(JSON.stringify({ run, jobs: [], message: "No failed relay jobs are eligible for retry." }, null, 2));
     return;
@@ -3667,6 +4014,7 @@ function executeDispatch(memoryDir, {
   to = "",
   project = "",
   limit = 10,
+  model = "",
   respectRecipeDependencies = false,
   isolateWorktree = false,
   worktreeRoot = ""
@@ -3675,6 +4023,15 @@ function executeDispatch(memoryDir, {
   const results = [];
   const relayState = readLatestRelayStatusBySource(memoryDir);
   for (const job of jobs) {
+    if (model) {
+      job.model = model;
+      const declared = readToolDeclarationByTool(memoryDir, job.tool)?.models || [];
+      const discovered = readDiscoveredModels(memoryDir, job.tool);
+      const knownModels = [...new Set([...declared, ...discovered])];
+      if (knownModels.length > 0 && !knownModels.includes(model) && !knownModels.some((known) => known.endsWith(`/${model}`) || known.endsWith(`:${model}`))) {
+        job.modelNote = `Requested model "${model}" is not in ${job.tool}'s declared/discovered list. Available: ${knownModels.length} model(s). Use "ai-memory-hub models --to ${job.tool} --refresh" to refresh from the provider.`;
+      }
+    }
     const runner = getToolRunner(job.tool);
     if (!runner.available) {
       const result = {
@@ -3932,6 +4289,7 @@ function executeDispatchRetry(memoryDir, {
   to = "",
   project = "",
   limit = 10,
+  model = "",
   respectRecipeDependencies = false,
   isolateWorktree = false,
   worktreeRoot = ""
@@ -3943,6 +4301,15 @@ function executeDispatchRetry(memoryDir, {
   const jobs = buildRetryDispatchJobs(memoryDir, relayState, { to, project, limit, respectRecipeDependencies });
   const results = [...timeoutResults];
   for (const job of jobs) {
+    if (model) {
+      job.model = model;
+      const declared = readToolDeclarationByTool(memoryDir, job.tool)?.models || [];
+      const discovered = readDiscoveredModels(memoryDir, job.tool);
+      const knownModels = [...new Set([...declared, ...discovered])];
+      if (knownModels.length > 0 && !knownModels.includes(model) && !knownModels.some((known) => known.endsWith(`/${model}`) || known.endsWith(`:${model}`))) {
+        job.modelNote = `Requested model "${model}" is not in ${job.tool}'s declared/discovered list. Available: ${knownModels.length} model(s). Use "ai-memory-hub models --to ${job.tool} --refresh" to refresh from the provider.`;
+      }
+    }
     const runner = getToolRunner(job.tool);
     const maxRetries = getDispatchJobMaxRetries(job, job.maxRetries);
     if (!runner.available) {
@@ -5042,6 +5409,7 @@ function runDispatchJob(memoryDir, job, runner, options = {}) {
     sourceId: job.refId || "",
     tool: job.tool || "",
     project: job.project || "",
+    model: job.model || "",
     command: invocation.command,
     commandArgs: invocation.args,
     commandLine: invocation.commandLine,
@@ -5152,7 +5520,12 @@ function isKnownGeminiWarning(line) {
 }
 
 function buildRunnerArgs(memoryDir, job, runner, prompt) {
-  const args = [...(runner.args || [])];
+  let args = [...(runner.args || [])];
+  const model = job.model || "";
+  if (model && typeof runner.modelArgs === "function") {
+    args = stripExistingModelArgs(args);
+    args.push(...runner.modelArgs(model));
+  }
   const sessionId = runner.capabilities?.includes("session-resume")
     ? readClaudeSessionState(memoryDir)[getDispatchThreadKey(job)] || ""
     : "";
@@ -5163,6 +5536,22 @@ function buildRunnerArgs(memoryDir, job, runner, prompt) {
     args.push(prompt);
   }
   return args;
+}
+
+function stripExistingModelArgs(args) {
+  const out = [];
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = String(args[i]);
+    if (arg === "--model" && i + 1 < args.length && !String(args[i + 1]).startsWith("-")) {
+      i += 1;
+      continue;
+    }
+    if (arg.startsWith("--model=")) {
+      continue;
+    }
+    out.push(args[i]);
+  }
+  return out;
 }
 
 function parseRunnerOutput(memoryDir, job, runner, stdout) {
@@ -6631,6 +7020,16 @@ function daemonCommand(argv) {
       toolResults: "running"
     });
 
+    // Refresh provider model catalogs when they go stale (default: every 24h)
+    try {
+      const modelRefresh = refreshModelsIfStale(config.memoryDir);
+      if (modelRefresh.length > 0) {
+        console.log(`  -> Refreshed model catalog for ${modelRefresh.map((item) => item.tool).join(", ")}`);
+      }
+    } catch (err) {
+      console.error(`  Model catalog refresh error: ${err.message}`);
+    }
+
     try {
       const tools = daemonTools;
 
@@ -7789,6 +8188,8 @@ Commands:
   detect     Detect installed AI tools.
   capabilities
              Show the cross-tool capability registry and safety policy.
+  declare    Declare an agent's models and strengths, or list/remove declarations.
+  models     Show or refresh the model catalog for each tool (pulled from the provider where supported).
   status     Show hub and tool status.
   record     Append a local memory event.
   radio      Send, list, and promote cross-agent radio messages.
@@ -7855,6 +8256,9 @@ Examples:
   ${APP_NAME} connect
   ${APP_NAME} connect --apply
   ${APP_NAME} capabilities --tool claude
+  ${APP_NAME} declare --tool opencode --models "grok-4.5,claude-sonnet-4" --strengths "前端开发,代码审查" --by opencode
+  ${APP_NAME} declare list
+  ${APP_NAME} models --to opencode --refresh
   ${APP_NAME} connect request --from gemini --to codex --project ai-memory-hub --text "Please inspect the current task list." --task
   ${APP_NAME} doctor --tool claude
   ${APP_NAME} workflow create "Review dashboard changes" --from codex --project ai-memory-hub --planner codex --executor opencode --reviewer qclaw --spawn-tasks --notify
@@ -7870,6 +8274,7 @@ Examples:
   ${APP_NAME} project add my-app --name "My App" --status active --type tool
   ${APP_NAME} dispatch --project ai-memory-hub
   ${APP_NAME} dispatch --to codex --run
+  ${APP_NAME} dispatch --to codex --run --model gpt-5.2
   ${APP_NAME} dispatch --to codex --run --isolate-worktree
   ${APP_NAME} dispatch status --thread <thread-id> --project ai-memory-hub
   ${APP_NAME} dispatch status --recent 10 --project ai-memory-hub
@@ -7958,6 +8363,7 @@ function defaultConfig(memoryDir) {
       openclaw: { enabled: true },
       opencode: { enabled: true },
       mimocode: { enabled: true },
+      grok: { enabled: true },
       cursor: { enabled: true },
       windsurf: { enabled: true },
       vscode: { enabled: true },
@@ -8319,6 +8725,11 @@ function detectTools(memoryDir = resolveMemoryDir()) {
       name: "mimocode",
       kind: "skill-config",
       dir: path.join(home, ".config", "mimocode")
+    },
+    {
+      name: "grok",
+      kind: "cli-config",
+      dir: path.join(home, ".grok")
     },
     {
       name: "cursor",
@@ -9301,6 +9712,11 @@ function getLocalInstallTargets(cwd, memoryDir) {
       template: readTemplate("MIMOCODE_SKILL.md")
     },
     {
+      tool: "grok",
+      file: path.join(cwd, "AGENTS.md"),
+      template: readTemplate("AGENTS.md")
+    },
+    {
       tool: "vscode",
       file: path.join(cwd, ".github", "copilot-instructions.md"),
       template: readTemplate("shared-instructions.md")
@@ -9395,6 +9811,21 @@ function getInstallTargets(memoryDir) {
       tool: "mimocode",
       file: path.join(home, ".config", "mimocode", "skills", "ai-memory-hub", "SKILL.md"),
       template: readTemplate("MIMOCODE_SKILL.md")
+    },
+    {
+      tool: "grok",
+      file: path.join(home, ".grok", "AGENTS.md"),
+      template: readTemplate("AGENTS.md")
+    },
+    {
+      tool: "grok",
+      file: path.join(home, ".grok", "skills", "ai-memory-hub", "SKILL.md"),
+      template: readTemplate("GROK_SKILL.md")
+    },
+    {
+      tool: "grok",
+      file: path.join(memoryDir, "tools", "grok-shared-memory.md"),
+      template: readTemplate("shared-instructions.md")
     },
     ...[
       "claude-desktop",
@@ -9498,6 +9929,7 @@ function getDirectResolveCandidates(normalizedQuery, config, fromFile = "") {
     path.join(home, ".codex"),
     path.join(home, ".claude"),
     path.join(home, ".gemini"),
+    path.join(home, ".grok"),
     config.memoryDir,
     path.join(config.memoryDir, "tools"),
     projectRoot()
@@ -9534,7 +9966,8 @@ function extractFilesystemPathCandidates(text) {
   const source = String(text || "");
   const matches = [
     ...(source.match(/[A-Za-z]:\\[^\s`'")\]}，。；;]+/g) || []),
-    ...(source.match(/~[\\/][^\s`'")\]}，。；;]+/g) || [])
+    ...(source.match(/~[\\/][^\s`'")\]}，。；;]+/g) || []),
+    ...(source.match(/\/[^\s`'")\]}，。；;]+/g) || [])
   ];
   return matches.map((item) => item.replace(/[.,，。；;:]+$/g, ""));
 }
@@ -14243,7 +14676,7 @@ function scoreImportance(memory, topics, ordinal, total, access = {}) {
   if (["project", "lesson"].includes(kind)) score += 30;
   if (["reference", "raw", "note"].includes(kind)) score += 10;
   if (/must|always|never|必须|不要|偏好|规范|规则|纠错|红线|合规|错误|lesson/i.test(text)) score += 18;
-  if (/github|git|lark|feishu|qclaw|coze|扣子|claude|codex|opencode|mimocode|mimo code|memory|飞书|微信|小游戏/i.test(text)) score += 8;
+  if (/github|git|lark|feishu|qclaw|coze|扣子|claude|codex|opencode|mimocode|mimo code|grok|xai|memory|飞书|微信|小游戏/i.test(text)) score += 8;
   if (topics.length > 0) score += Math.min(10, topics.length * 2);
   const recency = total > 0 ? ordinal / total : 0;
   score += Math.round(recency * 8);
@@ -14298,7 +14731,7 @@ function inferTopics(memory) {
   const text = `${memory.text || ""} ${memory.project || memory.metadata?.project || ""} ${tags.join(" ")}`.toLowerCase();
   const topics = [];
   const rules = [
-    ["ai-memory-hub", /ai-memory|shared memory|memory hub|agent radio|opencode|mimocode|mimo code|qclaw|coze|扣子|claude|codex|gemini|共享记忆|本地记忆/],
+    ["ai-memory-hub", /ai-memory|shared memory|memory hub|agent radio|opencode|mimocode|mimo code|grok|xai|qclaw|coze|扣子|claude|codex|gemini|共享记忆|本地记忆/],
     ["game", /game|unity|mahjong|match|西游|麻将|小游戏|策划|关卡|体力|广告|分享/],
     ["wechat-mini-game", /wechat|微信|小游戏|wx\.|sendgift|红包|开放能力/],
     ["lark-feishu", /lark|feishu|飞书|多维表格|任务|文档|lark-cli/],
@@ -16199,7 +16632,7 @@ function resolveCommandPaths(commandName) {
       .map((line) => line.trim())
       .filter(Boolean);
   }
-  const result = spawnSync("sh", ["-lc", `command -v ${shellQuote(name)}`], {
+  const result = spawnSync("sh", ["-c", `command -v ${shellQuote(name)}`], {
     encoding: "utf8",
     windowsHide: true
   });

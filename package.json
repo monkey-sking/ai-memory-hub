@@ -31,6 +31,8 @@
     "claude",
     "codex",
     "gemini",
+    "grok",
+    "xai",
     "marvis"
   ],
   "license": "MIT",

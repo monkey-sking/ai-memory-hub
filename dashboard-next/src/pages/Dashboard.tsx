@@ -1257,14 +1257,19 @@ function RadioPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; 
 function DispatchPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; onRefresh: () => Promise<void> }) {
   const [force, setForce] = useState(false)
   const [limit, setLimit] = useState(10)
+  const [modelName, setModelName] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+
+  const modelOptions = [...new Set(
+    model.tools.flatMap(tool => asArray<string>(asRecord(tool.models).all))
+  )].sort().slice(0, 500)
 
   const trigger = async () => {
     setBusy(true)
     setError('')
     try {
-      await apiPost<AnyRecord>('/api/dispatch/run', { force, limit })
+      await apiPost<AnyRecord>('/api/dispatch/run', { force, limit, model: modelName.trim() })
       await onRefresh()
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : String(nextError))
@@ -1284,6 +1289,13 @@ function DispatchPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewMode
           <label className="field">
             <span>{copy.limit}</span>
             <input type="number" min={1} max={50} value={limit} onChange={event => setLimit(Number(event.target.value) || 10)} />
+          </label>
+          <label className="field">
+            <span>{copy.model}</span>
+            <input type="text" list="amh-model-options" value={modelName} onChange={event => setModelName(event.target.value)} placeholder={copy.modelPlaceholder} />
+            <datalist id="amh-model-options">
+              {modelOptions.map(option => <option key={option} value={option} />)}
+            </datalist>
           </label>
           <div className="form-actions">
             <button className="btn" type="button" onClick={() => void trigger()} disabled={busy}>
@@ -2649,6 +2661,7 @@ function ToolsPanel({
                   <th>{copy.toolName}</th>
                   <th>{copy.status}</th>
                   <th>{copy.mode}</th>
+                  <th>{copy.declaredModels}</th>
                   <th>{copy.runnable}</th>
                   <th>{copy.totalRuns}</th>
                   <th>{copy.successRate}</th>
@@ -2668,6 +2681,8 @@ function ToolsPanel({
                   const kind = textOf(tool.kind || toolKinds[toolName.toLowerCase()])
                   const detail = textOf(config.action || tool.action || tool.runnerReason || asArray<string>(health.reasons)[0], '-')
                   const command = textOf(tool.runnerCommand || config.runnerCommand || tool.runnerProfile || config.runnerCommandKind)
+                  const declaredModels = asArray<string>(asRecord(tool.declared).models)
+                  const declaredStrengths = asArray<string>(asRecord(tool.strengths).all)
                   return (
                     <tr key={toolName}>
                       <td>
@@ -2684,6 +2699,12 @@ function ToolsPanel({
                         <div className="tool-mode-cell">
                           <span className={`tool-kind-badge ${getToolKindClass(kind)}`}>{getToolKindLabel(kind, language)}</span>
                           <span>{textOf(capability.integrationMode, '-')}</span>
+                        </div>
+                      </td>
+                      <td>
+                        <div className="tool-model-cell">
+                          {declaredModels.length ? <span className="tool-model-tags">{declaredModels.slice(0, 2).join(', ')}</span> : <span className="muted">-</span>}
+                          {declaredStrengths.length ? <span className="tool-model-tags alt">{declaredStrengths.slice(0, 2).join(', ')}</span> : null}
                         </div>
                       </td>
                       <td>
@@ -2735,6 +2756,9 @@ function ToolsPanel({
               <Property label={copy.path} value={textOf(selectedTool.dir || selectedConfig.instructionFile, '-')} />
               <Property label={copy.capability} value={asArray<string>(selectedCapability.capabilities).join(', ') || '-'} />
               <Property label={copy.healthReasons} value={asArray<string>(selectedHealth.reasons).join(' · ') || '-'} />
+              <Property label={copy.declaredModels} value={asArray<string>(asRecord(selectedTool.declared).models).join(', ') || '-'} />
+              <Property label={copy.availableModels} value={asArray<string>(asRecord(selectedTool.models).all).slice(0, 12).join(', ') || '-'} />
+              <Property label={copy.strengths} value={asArray<string>(asRecord(selectedTool.strengths).all).join(', ') || '-'} />
             </div>
             {lastInstallFile ? <div className="notice"><span>{copy.changed}: {lastInstallFile}</span></div> : null}
             {error ? <div className="inline-error">{error}</div> : null}

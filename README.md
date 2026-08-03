@@ -376,10 +376,16 @@ ai-memory-hub metrics          # 显示所有指标
 ```bash
 ai-memory-hub dispatch --project <name>              # 派发待处理工作
 ai-memory-hub dispatch --to <tool> --run              # 派发给指定工具并运行
+ai-memory-hub dispatch --to <tool> --run --model <model>  # 指定模型派发
 ai-memory-hub dispatch --to <tool> --run --isolate-worktree  # Worktree 隔离模式
 ai-memory-hub dispatch status --recent 10 --project <name>   # 查看派发状态
 ai-memory-hub dispatch progress --thread-key <key> --percent 40  # 更新进度
 ai-memory-hub dispatch retry --project <name> --to <tool> --run  # 重试失败派发
+
+ai-memory-hub declare --tool <tool> --models "m1,m2" --strengths "前端,审查" --by <tool>  # 申报模型与擅长领域
+ai-memory-hub declare list                        # 查看所有申报
+ai-memory-hub models --to <tool> --refresh         # 从供应商刷新模型目录
+ai-memory-hub capabilities --tool <tool>           # 查看某工具能力（含模型/领域）
 
 ai-memory-hub daemon                              # 启动守护进程
 ai-memory-hub daemon --project <name> --interval-ms 10000  # 自定义间隔

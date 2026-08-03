@@ -9,6 +9,8 @@ export function createDashboardToolsApi({
   readTasks,
   refreshDetectedTools,
   resolvePermission,
+  readToolDeclarationByTool,
+  readDiscoveredModels,
   POLICY_OPERATIONS
 }) {
   function getDashboardDetection(memoryDir) {
@@ -145,6 +147,11 @@ export function createDashboardToolsApi({
     };
     const permissions = buildToolPermissionPolicy(capability, memoryDir, name);
     const health = buildToolCapabilityHealth(tool, capability);
+    const declaration = typeof readToolDeclarationByTool === "function" ? readToolDeclarationByTool(memoryDir, name) : null;
+    const discoveredModels = typeof readDiscoveredModels === "function" ? readDiscoveredModels(memoryDir, name) : [];
+    const declaredModels = normalizeCapabilityList(declaration?.models);
+    const declaredStrengths = normalizeCapabilityList(declaration?.strengths);
+    const observedStrengths = deriveObservedStrengths(name, metrics);
     const entry = {
       name: tool.name,
       kind: tool.kind || "",
@@ -153,6 +160,23 @@ export function createDashboardToolsApi({
       connected: Boolean(tool.connected),
       connectionStatus: tool.connectionStatus || "",
       capability,
+      declared: {
+        models: declaredModels,
+        strengths: declaredStrengths,
+        note: declaration?.note || "",
+        by: declaration?.by || "",
+        updatedAt: declaration?.updatedAt || ""
+      },
+      strengths: {
+        declared: declaredStrengths,
+        observed: observedStrengths,
+        all: [...new Set([...declaredStrengths, ...observedStrengths])]
+      },
+      models: {
+        declared: declaredModels,
+        discovered: discoveredModels,
+        all: [...new Set([...declaredModels, ...discoveredModels])]
+      },
       runner: {
         profile: tool.runnerProfile || profile.promptMode || "",
         commandKind: tool.runnerCommandKind || "",
@@ -257,6 +281,22 @@ export function createDashboardToolsApi({
       status: "missing",
       reasons: ["Tool state and shared memory instructions were not detected."]
     };
+  }
+
+  function deriveObservedStrengths(name, metrics = createEmptyToolMetrics()) {
+    const observed = [];
+    const totalRuns = Number(metrics.totalRuns || 0);
+    const completedRuns = Number(metrics.completedRuns || 0);
+    if (totalRuns > 0 && completedRuns / totalRuns >= 0.7) {
+      observed.push("verified-runner");
+    }
+    if (Number(metrics.activeTasks || 0) + Number(metrics.assignedTasks || 0) > 0) {
+      observed.push("active-executor");
+    }
+    if (Number(metrics.radioMessages || 0) > 0) {
+      observed.push("collaborator");
+    }
+    return observed;
   }
 
   function summarizeCapabilityRegistry(entries) {

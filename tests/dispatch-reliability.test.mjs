@@ -1042,6 +1042,81 @@ test("dispatch passes Claude prompts on stdin with explicit dash argument", asyn
   });
 });
 
+test("dispatch --model injects model flag and replaces hardcoded defaults", async () => {
+  await withHub(async (memoryDir) => {
+    const binDir = await createFakeCodexRunner(memoryDir);
+    const now = new Date().toISOString();
+    await appendJsonl(path.join(memoryDir, "tasks", "tasks.jsonl"), {
+      id: "task-model",
+      createdAt: now,
+      updatedAt: now,
+      completedAt: "",
+      createdBy: "test",
+      assignee: "codex",
+      status: "claimed",
+      priority: "normal",
+      project: "test-project",
+      title: "Verify model flag injection",
+      description: "",
+      handoff: "",
+      notes: []
+    });
+
+    const result = runCli(
+      memoryDir,
+      ["dispatch", "--run", "--to", "codex", "--project", "test-project", "--limit", "1", "--model", "gpt-5.2"],
+      prependPathEnv(binDir)
+    );
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.results.length, 1);
+    assert.equal(payload.results[0].exitCode, 0, JSON.stringify(payload.results[0], null, 2));
+    assert.equal(payload.results[0].model, "gpt-5.2");
+    const stdout = JSON.parse(payload.results[0].stdout);
+    const modelIdx = stdout.args.indexOf("--model");
+    assert.notEqual(modelIdx, -1, `expected --model in args: ${JSON.stringify(stdout.args)}`);
+    assert.equal(stdout.args[modelIdx + 1], "gpt-5.2");
+  });
+});
+
+test("dispatch --model replaces hardcoded claude default model", async () => {
+  await withHub(async (memoryDir) => {
+    const binDir = await createFakeClaudeRunner(memoryDir);
+    const now = new Date().toISOString();
+    await appendJsonl(path.join(memoryDir, "tasks", "tasks.jsonl"), {
+      id: "task-claude-model",
+      createdAt: now,
+      updatedAt: now,
+      completedAt: "",
+      createdBy: "test",
+      assignee: "claude",
+      status: "claimed",
+      priority: "normal",
+      project: "test-project",
+      title: "Verify claude model replacement",
+      description: "",
+      handoff: "",
+      notes: []
+    });
+
+    const result = runCli(
+      memoryDir,
+      ["dispatch", "--run", "--to", "claude", "--project", "test-project", "--limit", "1", "--model", "opus-4.6"],
+      prependPathEnv(binDir)
+    );
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.results.length, 1);
+    assert.equal(payload.results[0].exitCode, 0, JSON.stringify(payload.results[0], null, 2));
+    const stdout = JSON.parse(payload.results[0].stdout);
+    const args = stdout.args;
+    const modelIdx = args.indexOf("--model");
+    assert.notEqual(modelIdx, -1, `expected --model in args: ${JSON.stringify(args)}`);
+    assert.equal(args[modelIdx + 1], "opus-4.6");
+    assert.ok(!args.some((arg) => arg === "sonnet"), `hardcoded sonnet should be removed: ${JSON.stringify(args)}`);
+  });
+});
+
 test("dispatch includes quality gates in runner prompts and retry metadata", async () => {
   await withHub(async (memoryDir) => {
     const binDir = await createFakeCodexRunner(memoryDir);

@@ -186,3 +186,25 @@ test("Dashboard overview empty states retain an actionable recovery path", async
     );
   }
 });
+
+test("task and workflow cards expose readable operational hierarchy", async () => {
+  const tasks = await readSource("components/TasksPanel.tsx");
+  const workflows = await readSource("components/WorkflowsPanel.tsx");
+  const css = await readSource("pages/Dashboard.css");
+  const copy = await readSource("lib/dashboardCopy.ts");
+
+  assert.match(tasks, /task-card-top/);
+  assert.match(tasks, /task-meta-grid/);
+  assert.match(workflows, /workflow-card-header/);
+  assert.match(tasks, /status-badge/);
+  assert.match(workflows, /status-badge/);
+  assert.match(tasks, /task-action-menu/);
+  assert.match(css, /\.task-card:hover/);
+  assert.match(css, /\.workflow-card/);
+  assert.match(copy, /statusLabels/);
+
+  assert.match(
+    tasks,
+    /className="task-card-top"[\s\S]{0,220}className="task-card-title"[\s\S]{0,180}<StatusBadge\s+status=\{status\}/
+  );
+});

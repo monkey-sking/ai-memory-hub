@@ -66,6 +66,10 @@ export default function Sidebar({ language }: SidebarProps) {
       {/* Logo */}
       <div className="sidebar-logo">
         <div className="sidebar-logo-mark">AI</div>
+        <div className="sidebar-logo-copy">
+          <strong>AI Memory Hub</strong>
+          <span>{language === 'zh' ? '协作控制台' : 'Collaboration Console'}</span>
+        </div>
       </div>
 
       {/* Navigation */}
@@ -87,6 +91,7 @@ export default function Sidebar({ language }: SidebarProps) {
                     title={item.label[language]}
                   >
                     <Icon className="sidebar-nav-icon" />
+                    <span className="sidebar-nav-label">{item.label[language]}</span>
                   </NavLink>
                 )
               })}

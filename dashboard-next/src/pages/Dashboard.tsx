@@ -152,7 +152,7 @@ export default function Dashboard({ section }: DashboardProps) {
           </div>
         ) : (
           <div className="p-6">
-            {section === 'overview' && <Overview copy={copy} model={viewModel} />}
+            {section === 'overview' && <Overview copy={copy} model={viewModel} onRefresh={refresh} />}
             {section === 'memory' && <NewMemoryPanel memory={viewModel.memory} copy={copy} onRefresh={refresh} />}
             {section === 'tasks' && <NewTasksPanel tasks={viewModel.tasks} visibleProjects={viewModel.visibleProjects} copy={copy} onMutate={async (_action, path, body) => {
               await apiPost<AnyRecord>(path, body)
@@ -221,7 +221,7 @@ function buildViewModel(data: DashboardSnapshot | null) {
 type ViewModel = ReturnType<typeof buildViewModel>
 type Copy = DashboardCopy
 
-function Overview({ copy, model }: { copy: Copy; model: ViewModel }) {
+function Overview({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; onRefresh: () => Promise<void> }) {
   const statusTasks = asRecord(model.status.tasks)
   const statusWorkflows = asRecord(model.status.workflows)
   const index = asRecord(model.status.index)
@@ -230,46 +230,106 @@ function Overview({ copy, model }: { copy: Copy; model: ViewModel }) {
   const recentFailures = asArray<AnyRecord>(model.metrics.recentFailures).slice(0, 4)
 
   return (
-    <div className="space-y-6">
-      {/* Metrics Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        <NewMetricCard label={copy.totalTasks} value={formatNumber(statusTasks.total)} />
-        <NewMetricCard label={copy.activeTasks} value={formatNumber(statusTasks.active)} tone="success" />
-        <NewMetricCard label={copy.workflows} value={formatNumber(statusWorkflows.total)} />
-        <NewMetricCard label={copy.relayRate} value={textOf(relay.successRate, '0%')} tone="warning" />
-        <NewMetricCard label={copy.toolsReady} value={formatNumber(capabilitySummary.autoDispatch)} />
-        <NewMetricCard label={copy.memoryRecords} value={formatNumber(index.records)} />
+    <div className="overview">
+      <section className="overview-section" aria-label={copy.health}>
+        <div className="dashboard-grid overview-metric-grid">
+          <div className="metric-card">
+            <NewMetricCard label={copy.health} value={textOf(relay.successRate, copy.noData)} tone="success" />
+          </div>
+          <div className="metric-card">
+            <NewMetricCard label={copy.totalTasks} value={formatNumber(statusTasks.total)} />
+          </div>
+          <div className="metric-card">
+            <NewMetricCard label={copy.workflows} value={formatNumber(statusWorkflows.total)} />
+          </div>
+        </div>
+      </section>
+
+      <div className="panel-grid two overview-primary-grid">
+        <NewPanel title={copy.overviewSystemActivity} className="overview-panel overview-system-panel">
+          <div className="overview-property-grid">
+            <Property label={copy.activeTasks} value={formatNumber(statusTasks.active)} />
+            <Property label={copy.toolsReady} value={formatNumber(capabilitySummary.autoDispatch)} />
+            <Property label={copy.memoryRecords} value={formatNumber(index.records)} />
+          </div>
+          <div className="overview-activity">
+            <h4>{copy.recentFailures}</h4>
+            {recentFailures.length ? (
+              <div className="overview-failure-list">
+                {recentFailures.map((failure, indexValue) => (
+                  <div className="overview-failure-row" key={`${textOf(failure.id)}-${indexValue}`}>
+                    <NewStatusBadge status="failed" />
+                    <span>{textOf(failure.error, copy.noData)}</span>
+                  </div>
+                ))}
+              </div>
+            ) : <OverviewEmptyState text={copy.overviewNoFailures} actionLabel={copy.refresh} onAction={onRefresh} />}
+          </div>
+        </NewPanel>
+
+        <NewPanel title={copy.overviewCollaboration} className="overview-panel overview-collaboration-panel">
+          {model.radio.length ? (
+            <NewRadioList messages={model.radio.slice(-4).reverse()} emptyText={copy.overviewNoMessages} />
+          ) : <OverviewEmptyState text={copy.overviewNoMessages} actionLabel={copy.refresh} onAction={onRefresh} />}
+        </NewPanel>
       </div>
 
-      {/* Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <NewPanel title={copy.recentTasks} className="lg:col-span-2">
-          <NewTaskList tasks={model.tasks.slice(0, 6)} emptyText={copy.noData} />
-        </NewPanel>
+      <section className="overview-section overview-summary-section" aria-labelledby="overview-work-heading">
+        <div className="overview-section-heading">
+          <div>
+            <h3 id="overview-work-heading">{copy.overviewWork}</h3>
+            <p>{copy.overviewWorkDescription}</p>
+          </div>
+        </div>
+        <div className="panel-grid two">
+          <NewPanel title={copy.recentTasks} className="overview-panel">
+            {model.tasks.length ? (
+              <NewTaskList tasks={model.tasks.slice(0, 6)} emptyText={copy.overviewNoTasks} />
+            ) : <OverviewEmptyState text={copy.overviewNoTasks} actionLabel={copy.refresh} onAction={onRefresh} />}
+          </NewPanel>
+          <NewPanel title={copy.overviewWorkflows} className="overview-panel">
+            {model.workflows.length ? (
+              <NewTaskList tasks={model.workflows.slice(0, 6)} emptyText={copy.overviewNoWorkflows} />
+            ) : <OverviewEmptyState text={copy.overviewNoWorkflows} actionLabel={copy.refresh} onAction={onRefresh} />}
+          </NewPanel>
+        </div>
+      </section>
 
-        <NewPanel title={copy.toolReadiness}>
-          <NewToolList tools={model.tools.slice(0, 7)} emptyText={copy.noData} />
-        </NewPanel>
-
-        <NewPanel title={copy.recentRadio} className="lg:col-span-2">
-          <NewRadioList messages={model.radio.slice(-6).reverse()} emptyText={copy.noData} />
-        </NewPanel>
-
-        <NewPanel title={copy.recentFailures}>
-          {recentFailures.length ? (
-            <div className="space-y-2">
-              {recentFailures.map((failure, indexValue) => (
-                <div className="flex items-center gap-3 p-2 rounded-lg border bg-card" key={`${textOf(failure.id)}-${indexValue}`}>
-                  <NewStatusBadge status="failed" />
-                  <span className="truncate text-sm">{textOf(failure.error, copy.noData)}</span>
-                </div>
-              ))}
+      <section className="overview-section overview-summary-section" aria-labelledby="overview-system-heading">
+        <div className="overview-section-heading">
+          <div>
+            <h3 id="overview-system-heading">{copy.overviewSystem}</h3>
+            <p>{copy.overviewSystemDescription}</p>
+          </div>
+        </div>
+        <div className="panel-grid two">
+          <NewPanel title={copy.toolReadiness} className="overview-panel">
+            {model.tools.length ? (
+              <NewToolList tools={model.tools.slice(0, 7)} emptyText={copy.overviewNoTools} />
+            ) : <OverviewEmptyState text={copy.overviewNoTools} actionLabel={copy.refresh} onAction={onRefresh} />}
+          </NewPanel>
+          <NewPanel title={copy.overviewHealth} className="overview-panel">
+            <div className="overview-property-grid">
+              <Property label={copy.relayRate} value={textOf(relay.successRate, copy.noData)} />
+              <Property label={copy.pendingEvents} value={formatNumber(asArray<AnyRecord>(model.memory.pending).length)} />
+              <Property label={copy.memoryRecords} value={formatNumber(index.records)} />
             </div>
-          ) : (
-            <div className="text-center text-muted-foreground py-8">{copy.noData}</div>
-          )}
-        </NewPanel>
-      </div>
+          </NewPanel>
+        </div>
+      </section>
+    </div>
+  )
+}
+
+function OverviewEmptyState({ text, actionLabel, onAction }: { text: string; actionLabel?: string; onAction?: () => Promise<void> }) {
+  return (
+    <div className="empty-state overview-empty-state">
+      <p>{text}</p>
+      {actionLabel && onAction ? (
+        <button className="btn small ghost" type="button" onClick={() => void onAction()}>
+          {actionLabel}
+        </button>
+      ) : null}
     </div>
   )
 }

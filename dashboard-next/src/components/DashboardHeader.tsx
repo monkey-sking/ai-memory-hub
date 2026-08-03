@@ -45,7 +45,7 @@ export function DashboardHeader({
 
       <div className="header-actions">
         <button
-          className="btn ghost small"
+          className="btn ghost small header-secondary"
           onClick={onPull}
           disabled={isDisabled}
           type="button"
@@ -55,7 +55,7 @@ export function DashboardHeader({
         </button>
 
         <button
-          className="btn ghost small"
+          className="btn ghost small header-secondary"
           onClick={onSync}
           disabled={isDisabled}
           type="button"
@@ -65,7 +65,7 @@ export function DashboardHeader({
         </button>
 
         <button
-          className="btn ghost small"
+          className="btn ghost small header-secondary"
           onClick={onToggleLanguage}
           type="button"
         >
@@ -74,7 +74,7 @@ export function DashboardHeader({
         </button>
 
         <button
-          className="btn small"
+          className="btn small header-primary"
           onClick={onRefresh}
           disabled={loading}
           type="button"

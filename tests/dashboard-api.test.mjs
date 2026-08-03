@@ -1248,6 +1248,157 @@ test("dashboard task review API records approval on task and linked workflow", a
   });
 });
 
+test("dashboard task review and reopen keep cancelled tasks terminal", async () => {
+  await withHub(async (memoryDir) => {
+    const now = new Date().toISOString();
+    const linkedWorkflow = {
+      id: "cancelled-review-workflow",
+      createdAt: now,
+      updatedAt: now,
+      completedAt: "",
+      createdBy: "test",
+      status: "in_progress",
+      priority: "normal",
+      project: "test-project",
+      title: "Workflow linked to cancelled task",
+      planner: [],
+      executor: ["codex"],
+      reviewer: ["reviewer"],
+      observer: [],
+      plan: "",
+      acceptance: "",
+      risks: [],
+      results: [],
+      reviews: [{ ts: now, by: "test", role: "reviewer", text: "Existing workflow review" }],
+      linkedTasks: ["cancelled-review-task"],
+      linkedRadio: [],
+      notes: [{ ts: now, by: "test", text: "Existing workflow note" }]
+    };
+    await appendJsonl(path.join(memoryDir, "tasks", "tasks.jsonl"), {
+      id: "cancelled-review-task",
+      createdAt: now,
+      updatedAt: now,
+      completedAt: "",
+      createdBy: "test",
+      assignee: "codex",
+      status: "cancelled",
+      priority: "normal",
+      project: "test-project",
+      title: "Cancelled task",
+      description: "",
+      handoff: "",
+      notes: []
+    });
+    await appendJsonl(path.join(memoryDir, "workflows", "workflows.jsonl"), linkedWorkflow);
+    const assertLinkedWorkflowUnchanged = (workflows) => {
+      const workflow = workflows.find((item) => item.id === linkedWorkflow.id);
+      assert.equal(workflow.status, linkedWorkflow.status);
+      assert.equal(workflow.updatedAt, linkedWorkflow.updatedAt);
+      assert.deepEqual(workflow.reviews, linkedWorkflow.reviews);
+      assert.deepEqual(workflow.notes, linkedWorkflow.notes);
+    };
+
+    const port = await getFreePort();
+    const child = spawn(process.execPath, [cliPath, "app", "--port", String(port)], {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        AI_MEMORY_DIR: memoryDir
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true
+    });
+    const stderr = [];
+    child.stderr.on("data", (chunk) => stderr.push(String(chunk)));
+    try {
+      await waitForServer(port, child);
+      const approvedRes = await fetch(`http://127.0.0.1:${port}/api/task/review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: "cancelled-review-task",
+          decision: "approved",
+          by: "reviewer"
+        })
+      });
+      if (approvedRes.status !== 200) {
+        assert.fail(await approvedRes.text());
+      }
+      const approvedPayload = await approvedRes.json();
+      assert.equal(approvedPayload.task.status, "cancelled");
+      assert.equal(approvedPayload.task.reviewStatus, "approved");
+      assert.equal(approvedPayload.workflows.length, 1);
+      assertLinkedWorkflowUnchanged(approvedPayload.workflows);
+
+      const rejectedRes = await fetch(`http://127.0.0.1:${port}/api/task/review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: "cancelled-review-task",
+          decision: "rejected",
+          by: "reviewer"
+        })
+      });
+      if (rejectedRes.status !== 200) {
+        assert.fail(await rejectedRes.text());
+      }
+      const rejectedPayload = await rejectedRes.json();
+      assert.equal(rejectedPayload.task.status, "cancelled");
+      assert.equal(rejectedPayload.task.reviewStatus, "rejected");
+      assert.equal(rejectedPayload.workflows.length, 1);
+      assertLinkedWorkflowUnchanged(rejectedPayload.workflows);
+
+      const reopenReviewRes = await fetch(`http://127.0.0.1:${port}/api/task/review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: "cancelled-review-task",
+          decision: "rejected",
+          reopen: true,
+          by: "reviewer"
+        })
+      });
+      if (reopenReviewRes.status !== 200) {
+        assert.fail(await reopenReviewRes.text());
+      }
+      const reopenReviewPayload = await reopenReviewRes.json();
+      assert.equal(reopenReviewPayload.task.status, "cancelled");
+      assert.equal(reopenReviewPayload.task.reviewStatus, "rejected");
+      assert.equal(reopenReviewPayload.workflows.length, 1);
+      assertLinkedWorkflowUnchanged(reopenReviewPayload.workflows);
+
+      const reopenRes = await fetch(`http://127.0.0.1:${port}/api/task/status`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: "cancelled-review-task",
+          status: "open",
+          by: "reviewer"
+        })
+      });
+      if (reopenRes.status !== 200) {
+        assert.fail(await reopenRes.text());
+      }
+      const reopenPayload = await reopenRes.json();
+      assert.equal(reopenPayload.task.status, "cancelled");
+
+      const tasks = await readJsonl(path.join(memoryDir, "tasks", "tasks.jsonl"));
+      const task = tasks.find((item) => item.id === "cancelled-review-task");
+      assert.equal(task.status, "cancelled");
+      assert.equal(task.notes.length, 3);
+      assert.match(task.notes[0].text, /Review approved/);
+      assert.match(task.notes[1].text, /Review rejected/);
+      assert.match(task.notes[2].text, /Review rejected.*task reopened/);
+
+      const workflows = await readJsonl(path.join(memoryDir, "workflows", "workflows.jsonl"));
+      assertLinkedWorkflowUnchanged(workflows);
+    } finally {
+      await stopServer(child);
+    }
+    assert.deepEqual(stderr, []);
+  });
+});
+
 test("dashboard websocket sends initial and pushed snapshots", async () => {
   await withHub(async (memoryDir) => {
     const port = await getFreePort();

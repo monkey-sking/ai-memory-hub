@@ -1,43 +1,62 @@
-import { useState, useMemo } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { AlertCircle, Plus, Search, X } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
-import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { Textarea } from './ui/textarea'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog'
-import { Plus, Search, X, AlertCircle, Clock, User, FolderKanban } from 'lucide-react'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog'
 import type { AnyRecord } from '@/lib/api'
+import type { DashboardCopy } from '@/lib/dashboardCopy'
+
+type TasksCopy = Pick<DashboardCopy,
+  | 'addTask'
+  | 'allPriorities'
+  | 'allProjects'
+  | 'allStatuses'
+  | 'approve'
+  | 'approveAndComplete'
+  | 'assignee'
+  | 'cancel'
+  | 'cancelledTerminal'
+  | 'claim'
+  | 'clear'
+  | 'completeDirectly'
+  | 'created'
+  | 'description'
+  | 'handoff'
+  | 'moreActions'
+  | 'noData'
+  | 'priority'
+  | 'priorityLabels'
+  | 'project'
+  | 'recentTasks'
+  | 'reject'
+  | 'reopen'
+  | 'requestVerification'
+  | 'running'
+  | 'searchText'
+  | 'sendRadioRequest'
+  | 'start'
+  | 'status'
+  | 'statusLabels'
+  | 'title'
+  | 'unblock'
+  | 'updated'
+>
 
 interface TasksPanelProps {
   tasks: AnyRecord[]
   visibleProjects: AnyRecord[]
-  copy: {
-    recentTasks: string
-    addTask: string
-    searchText: string
-    project: string
-    priority: string
-    status: string
-    allProjects: string
-    allPriorities: string
-    allStatuses: string
-    clear: string
-    noData: string
-    title: string
-    description: string
-    handoff: string
-    cancel: string
-    running: string
-    assignee: string
-    updated: string
-  }
+  copy: TasksCopy
   onMutate: (action: string, path: string, body: AnyRecord) => Promise<boolean>
 }
 
-function uniqueSorted(items: string[]): string[] {
-  return Array.from(new Set(items)).sort()
+type TaskMenuAction = {
+  key: string
+  label: string
+  disabled?: boolean
+  onSelect: () => void
 }
 
 function textOf(value: unknown, fallback = ''): string {
@@ -45,26 +64,24 @@ function textOf(value: unknown, fallback = ''): string {
   return String(value)
 }
 
+function uniqueSorted(items: string[]): string[] {
+  return Array.from(new Set(items)).sort()
+}
+
 function formatDate(value: string): string {
   if (!value) return '-'
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
+  return date.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
-const KANBAN_COLUMNS = [
-  { status: 'open', label: '待处理' },
-  { status: 'claimed', label: '已认领' },
-  { status: 'in_progress', label: '进行中' },
-  { status: 'needs_verification', label: '待验证' },
-  { status: 'blocked', label: '阻塞' },
-  { status: 'done', label: '已完成' }
-] as const
+function statusLabel(copy: TasksCopy, status: string): string {
+  return copy.statusLabels[status as keyof TasksCopy['statusLabels']] || status
+}
+
+function priorityLabel(copy: TasksCopy, priority: string): string {
+  return copy.priorityLabels[priority as keyof TasksCopy['priorityLabels']] || priority
+}
 
 export function TasksPanel({ tasks, visibleProjects, copy, onMutate }: TasksPanelProps) {
   const [projectFilter, setProjectFilter] = useState('')
@@ -86,53 +103,38 @@ export function TasksPanel({ tasks, visibleProjects, copy, onMutate }: TasksPane
     () => uniqueSorted(tasks.map(task => textOf(task.project)).filter(Boolean)),
     [tasks]
   )
-
   const formProjectOptions = useMemo(
-    () =>
-      uniqueSorted([
-        ...visibleProjects.map(project => textOf(project.id || project.name || project.displayName)).filter(Boolean),
-        ...projectOptions
-      ]),
+    () => uniqueSorted([
+      ...visibleProjects.map(project => textOf(project.id || project.name || project.displayName)).filter(Boolean),
+      ...projectOptions
+    ]),
     [visibleProjects, projectOptions]
   )
-
   const priorityOptions = useMemo(
     () => uniqueSorted(tasks.map(task => textOf(task.priority)).filter(Boolean)),
     [tasks]
   )
-
   const statusOptions = useMemo(
     () => uniqueSorted(tasks.map(task => textOf(task.status)).filter(Boolean)),
     [tasks]
   )
-
   const cleanQuery = query.trim().toLowerCase()
   const activeProjectFilter = projectOptions.includes(projectFilter) ? projectFilter : ''
   const activePriorityFilter = priorityOptions.includes(priorityFilter) ? priorityFilter : ''
   const activeStatusFilter = statusOptions.includes(statusFilter) ? statusFilter : ''
-
   const filteredTasks = tasks.filter(task => {
     if (activeProjectFilter && textOf(task.project) !== activeProjectFilter) return false
     if (activePriorityFilter && textOf(task.priority) !== activePriorityFilter) return false
     if (activeStatusFilter && textOf(task.status) !== activeStatusFilter) return false
-    if (!cleanQuery) return true
-    return [
-      task.title,
-      task.description,
-      task.handoff,
-      task.assignee,
-      task.createdBy,
-      task.status,
-      task.project
-    ].some(value => textOf(value).toLowerCase().includes(cleanQuery))
+    return !cleanQuery || [task.title, task.description, task.handoff, task.assignee, task.createdBy, task.status, task.project]
+      .some(value => textOf(value).toLowerCase().includes(cleanQuery))
   })
 
   const mutateTask = async (action: string, path: string, body: AnyRecord) => {
     setBusy(action)
     setError('')
     try {
-      await onMutate(action, path, body)
-      return true
+      return await onMutate(action, path, body)
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : String(nextError))
       return false
@@ -144,11 +146,7 @@ export function TasksPanel({ tasks, visibleProjects, copy, onMutate }: TasksPane
   const submitTask = async () => {
     const title = newTask.title.trim()
     if (!title) return
-    const succeeded = await mutateTask('add-task', '/api/task/add', {
-      ...newTask,
-      title,
-      from: 'dashboard-next'
-    })
+    const succeeded = await mutateTask('add-task', '/api/task/add', { ...newTask, title, from: 'dashboard-next' })
     if (succeeded) {
       setNewTask({ title: '', project: newTask.project, priority: 'normal', description: '', handoff: '' })
       setCreateOpen(false)
@@ -159,312 +157,146 @@ export function TasksPanel({ tasks, visibleProjects, copy, onMutate }: TasksPane
     <div className="space-y-6">
       <Card>
         <CardHeader className="border-b">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-4">
             <div>
               <CardTitle>{copy.recentTasks}</CardTitle>
-              <p className="text-sm text-muted-foreground mt-1">
-                共 {filteredTasks.length} 个任务
-              </p>
+              <p className="mt-1 text-sm text-muted-foreground">{filteredTasks.length}</p>
             </div>
             <Button onClick={() => { setError(''); setCreateOpen(true) }}>
-              <Plus className="w-4 h-4 mr-2" />
+              <Plus className="mr-2 h-4 w-4" />
               {copy.addTask}
             </Button>
           </div>
         </CardHeader>
         <CardContent className="pt-6">
-          {/* Filters */}
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-5 mb-6">
             <div className="space-y-2">
-              <Label htmlFor="search">{copy.searchText}</Label>
+              <Label htmlFor="task-search">{copy.searchText}</Label>
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  id="search"
-                  value={query}
-                  onChange={e => setQuery(e.target.value)}
-                  className="pl-9"
-                  placeholder="搜索任务..."
-                />
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input id="task-search" value={query} onChange={event => setQuery(event.target.value)} className="pl-9" />
               </div>
             </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="status-filter">{copy.status}</Label>
-              <select
-                id="status-filter"
-                value={activeStatusFilter}
-                onChange={e => setStatusFilter(e.target.value)}
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-              >
-                <option value="">{copy.allStatuses || '全部状态'}</option>
-                {statusOptions.map(option => (
-                  <option value={option} key={option}>{option}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="project-filter">{copy.project}</Label>
-              <select
-                id="project-filter"
-                value={activeProjectFilter}
-                onChange={e => setProjectFilter(e.target.value)}
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-              >
-                <option value="">{copy.allProjects}</option>
-                {projectOptions.map(option => (
-                  <option value={option} key={option}>{option}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="priority-filter">{copy.priority}</Label>
-              <select
-                id="priority-filter"
-                value={activePriorityFilter}
-                onChange={e => setPriorityFilter(e.target.value)}
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-              >
-                <option value="">{copy.allPriorities}</option>
-                {priorityOptions.map(option => (
-                  <option value={option} key={option}>{option}</option>
-                ))}
-              </select>
-            </div>
-
+            <TaskFilter label={copy.status} value={activeStatusFilter} onChange={setStatusFilter} allLabel={copy.allStatuses} options={statusOptions} displayValue={value => statusLabel(copy, value)} />
+            <TaskFilter label={copy.project} value={activeProjectFilter} onChange={setProjectFilter} allLabel={copy.allProjects} options={projectOptions} />
+            <TaskFilter label={copy.priority} value={activePriorityFilter} onChange={setPriorityFilter} allLabel={copy.allPriorities} options={priorityOptions} displayValue={value => priorityLabel(copy, value)} />
             <div className="flex items-end">
-              <Button
-                variant="outline"
-                onClick={() => { setQuery(''); setProjectFilter(''); setPriorityFilter(''); setStatusFilter('') }}
-                className="w-full"
-              >
-                <X className="w-4 h-4 mr-2" />
+              <Button variant="outline" onClick={() => { setQuery(''); setProjectFilter(''); setPriorityFilter(''); setStatusFilter('') }} className="w-full">
+                <X className="mr-2 h-4 w-4" />
                 {copy.clear}
               </Button>
             </div>
           </div>
 
-          {error && (
-            <div className="flex items-center gap-2 p-3 mb-4 rounded-lg border border-destructive/20 bg-destructive/10">
-              <AlertCircle className="w-4 h-4 text-destructive shrink-0" />
-              <p className="text-sm text-destructive">{error}</p>
+          {error ? <div className="flex items-center gap-2 mb-4 rounded-lg border border-destructive/20 bg-destructive/10 p-3"><AlertCircle className="h-4 w-4 shrink-0 text-destructive" /><p className="text-sm text-destructive">{error}</p></div> : null}
+
+          {filteredTasks.length ? (
+            <div className="task-card-grid">
+              {filteredTasks.map(task => <TaskCard key={textOf(task.id, textOf(task.title, 'task'))} task={task} copy={copy} busy={busy} onMutate={mutateTask} />)}
             </div>
-          )}
-
-          <div className="grid grid-cols-1 gap-3 overflow-x-auto pb-2 md:grid-cols-3 xl:grid-cols-6">
-            {KANBAN_COLUMNS.map(column => {
-              const columnTasks = filteredTasks.filter(task => textOf(task.status, 'open') === column.status)
-              return (
-                <div key={column.status} className="min-w-[190px] rounded-lg border bg-muted/20 p-3">
-                  <div className="mb-3 flex items-center justify-between">
-                    <span className="text-sm font-semibold">{column.label}</span>
-                    <Badge variant="secondary">{columnTasks.length}</Badge>
-                  </div>
-                  <div className="space-y-2">
-                    {columnTasks.slice(0, 8).map(task => (
-                      <div key={textOf(task.id, textOf(task.title, 'task'))} className="rounded-md border bg-background p-2 shadow-sm">
-                        <p className="line-clamp-2 text-sm font-medium">{textOf(task.title, '-')}</p>
-                        <p className="mt-1 truncate text-xs text-muted-foreground">
-                          {textOf(task.assignee || task.createdBy, '未分配')} · {textOf(task.project, '无项目')}
-                        </p>
-                      </div>
-                    ))}
-                    {columnTasks.length > 8 && (
-                      <p className="text-xs text-muted-foreground">还有 {columnTasks.length - 8} 个任务</p>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-
-          {/* Tasks Table */}
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[50px]">优先级</TableHead>
-                  <TableHead className="w-[100px]">状态</TableHead>
-                  <TableHead>任务标题</TableHead>
-                  <TableHead className="w-[150px]">项目</TableHead>
-                  <TableHead className="w-[120px]">负责人</TableHead>
-                  <TableHead className="w-[140px]">更新时间</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredTasks.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
-                      {copy.noData}
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredTasks.map((task, idx) => {
-                    const status = textOf(task.status, 'open')
-                    const priority = textOf(task.priority, 'normal')
-                    const title = textOf(task.title, '-')
-                    const project = textOf(task.project, '-')
-                    const assignee = textOf(task.assignee || task.createdBy, '-')
-                    const updatedAt = textOf(task.updatedAt)
-
-                    return (
-                      <TableRow key={idx} className="hover:bg-accent cursor-pointer">
-                        <TableCell>
-                          <PriorityBadge priority={priority} />
-                        </TableCell>
-                        <TableCell>
-                          <StatusBadge status={status} />
-                        </TableCell>
-                        <TableCell className="font-medium">{title}</TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                            <FolderKanban className="w-3.5 h-3.5" />
-                            {project}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                            <User className="w-3.5 h-3.5" />
-                            {assignee}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                            <Clock className="w-3.5 h-3.5" />
-                            {formatDate(updatedAt)}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })
-                )}
-              </TableBody>
-            </Table>
-          </div>
+          ) : <div className="py-8 text-center text-muted-foreground">{copy.noData}</div>}
         </CardContent>
       </Card>
 
-      {/* Create Task Dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>{copy.addTask}</DialogTitle>
-          </DialogHeader>
+          <DialogHeader><DialogTitle>{copy.addTask}</DialogTitle></DialogHeader>
+          {error ? <div role="alert" className="rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">{error}</div> : null}
           <div className="grid gap-4">
             <div className="grid grid-cols-2 gap-4">
-              <div className="col-span-2 space-y-2">
-                <Label htmlFor="task-title">{copy.title}</Label>
-                <Input
-                  id="task-title"
-                  value={newTask.title}
-                  onChange={e => setNewTask(v => ({ ...v, title: e.target.value }))}
-                  placeholder="请输入任务标题"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="task-project">{copy.project}</Label>
-                <Input
-                  id="task-project"
-                  value={newTask.project}
-                  onChange={e => setNewTask(v => ({ ...v, project: e.target.value }))}
-                  list="task-project-options"
-                  placeholder="项目名称"
-                />
-                <datalist id="task-project-options">
-                  {formProjectOptions.map(project => (
-                    <option value={project} key={project} />
-                  ))}
-                </datalist>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="task-priority">{copy.priority}</Label>
-                <select
-                  id="task-priority"
-                  value={newTask.priority}
-                  onChange={e => setNewTask(v => ({ ...v, priority: e.target.value }))}
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-                >
-                  <option value="low">低</option>
-                  <option value="normal">普通</option>
-                  <option value="high">高</option>
-                  <option value="urgent">紧急</option>
-                </select>
-              </div>
-
-              <div className="col-span-2 space-y-2">
-                <Label htmlFor="task-description">{copy.description}</Label>
-                <Textarea
-                  id="task-description"
-                  value={newTask.description}
-                  onChange={e => setNewTask(v => ({ ...v, description: e.target.value }))}
-                  rows={3}
-                  placeholder="任务描述"
-                />
-              </div>
-
-              <div className="col-span-2 space-y-2">
-                <Label htmlFor="task-handoff">{copy.handoff}</Label>
-                <Textarea
-                  id="task-handoff"
-                  value={newTask.handoff}
-                  onChange={e => setNewTask(v => ({ ...v, handoff: e.target.value }))}
-                  rows={3}
-                  placeholder="移交说明"
-                />
-              </div>
+              <div className="col-span-2 space-y-2"><Label htmlFor="task-title">{copy.title}</Label><Input id="task-title" value={newTask.title} onChange={event => setNewTask(value => ({ ...value, title: event.target.value }))} /></div>
+              <div className="space-y-2"><Label htmlFor="task-project">{copy.project}</Label><Input id="task-project" value={newTask.project} onChange={event => setNewTask(value => ({ ...value, project: event.target.value }))} list="task-project-options" /><datalist id="task-project-options">{formProjectOptions.map(project => <option value={project} key={project} />)}</datalist></div>
+              <div className="space-y-2"><Label htmlFor="task-priority">{copy.priority}</Label><select id="task-priority" value={newTask.priority} onChange={event => setNewTask(value => ({ ...value, priority: event.target.value }))} className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm">{['low', 'normal', 'high', 'urgent'].map(priority => <option value={priority} key={priority}>{priorityLabel(copy, priority)}</option>)}</select></div>
+              <div className="col-span-2 space-y-2"><Label htmlFor="task-description">{copy.description}</Label><Textarea id="task-description" value={newTask.description} onChange={event => setNewTask(value => ({ ...value, description: event.target.value }))} rows={3} /></div>
+              <div className="col-span-2 space-y-2"><Label htmlFor="task-handoff">{copy.handoff}</Label><Textarea id="task-handoff" value={newTask.handoff} onChange={event => setNewTask(value => ({ ...value, handoff: event.target.value }))} rows={3} /></div>
             </div>
-
-            {error && (
-              <div className="flex items-center gap-2 p-3 rounded-lg border border-destructive/20 bg-destructive/10">
-                <AlertCircle className="w-4 h-4 text-destructive shrink-0" />
-                <p className="text-sm text-destructive">{error}</p>
-              </div>
-            )}
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>
-              {copy.cancel}
-            </Button>
-            <Button
-              onClick={() => void submitTask()}
-              disabled={busy === 'add-task' || !newTask.title.trim()}
-            >
-              {busy === 'add-task' ? copy.running : copy.addTask}
-            </Button>
-          </DialogFooter>
+          <DialogFooter><Button variant="outline" onClick={() => setCreateOpen(false)}>{copy.cancel}</Button><Button onClick={() => void submitTask()} disabled={busy === 'add-task' || !newTask.title.trim()}>{busy === 'add-task' ? copy.running : copy.addTask}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
   )
 }
 
-function PriorityBadge({ priority }: { priority: string }) {
-  const variants: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'outline'; label: string }> = {
-    urgent: { variant: 'destructive', label: '紧急' },
-    high: { variant: 'default', label: '高' },
-    normal: { variant: 'secondary', label: '普通' },
-    low: { variant: 'outline', label: '低' }
-  }
-
-  const config = variants[priority] || variants.normal
-  return <Badge variant={config.variant}>{config.label}</Badge>
+function TaskFilter({ label, value, onChange, allLabel, options, displayValue = value => value }: { label: string; value: string; onChange: (value: string) => void; allLabel: string; options: string[]; displayValue?: (value: string) => string }) {
+  return <div className="space-y-2"><Label>{label}</Label><select value={value} onChange={event => onChange(event.target.value)} className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"><option value="">{allLabel}</option>{options.map(option => <option value={option} key={option}>{displayValue(option)}</option>)}</select></div>
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const variants: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'outline'; label: string }> = {
-    open: { variant: 'secondary', label: 'Open' },
-    claimed: { variant: 'default', label: 'Claimed' },
-    in_progress: { variant: 'default', label: 'In Progress' },
-    blocked: { variant: 'destructive', label: 'Blocked' },
-    needs_verification: { variant: 'outline', label: 'Review' },
-    done: { variant: 'outline', label: 'Done' },
-    cancelled: { variant: 'outline', label: 'Cancelled' }
+function TaskCard({ task, copy, busy, onMutate }: { task: AnyRecord; copy: TasksCopy; busy: string; onMutate: TasksPanelProps['onMutate'] }) {
+  const id = textOf(task.id)
+  const status = textOf(task.status, 'open')
+  const priority = textOf(task.priority, 'normal')
+  const isBusy = busy.startsWith(`${id}:`)
+  const canReview = !['cancelled', 'done'].includes(status)
+  const runStatus = (nextStatus: string) => onMutate(`${id}:${nextStatus}`, '/api/task/status', { id, status: nextStatus, by: 'dashboard-next' })
+  const review = (decision: 'approved' | 'rejected') => onMutate(`${id}:${decision}`, '/api/task/review', { id, decision, by: 'dashboard-next' })
+  const sendRadioRequest = () => onMutate(`${id}:radio-request`, '/api/radio/send', {
+    from: 'dashboard-next', to: textOf(task.assignee, 'all') || 'all', type: 'request', project: textOf(task.project), thread: id, replyTo: id, text: `Task request: ${textOf(task.title, id)}`
+  })
+  const secondaryActions: TaskMenuAction[] = [
+    { key: 'radio-request', label: copy.sendRadioRequest, disabled: isBusy, onSelect: () => void sendRadioRequest() }
+  ]
+  if (canReview) {
+    secondaryActions.push(
+      { key: 'approved', label: copy.approve, disabled: isBusy, onSelect: () => void review('approved') },
+      { key: 'rejected', label: copy.reject, disabled: isBusy, onSelect: () => void review('rejected') },
+      { key: 'cancel', label: copy.cancel, disabled: isBusy, onSelect: () => void runStatus('cancelled') }
+    )
   }
 
-  const config = variants[status] || { variant: 'outline' as const, label: status }
-  return <Badge variant={config.variant}>{config.label}</Badge>
+  return (
+    <article className="task-card">
+      <header className="task-card-top">
+        <div className="task-title-group"><h3 className="task-card-title">{textOf(task.title, '-')}</h3><StatusBadge status={status} copy={copy} /></div>
+        <PriorityBadge priority={priority} copy={copy} />
+      </header>
+      {task.description ? <p className="task-description">{textOf(task.description)}</p> : null}
+      <dl className="task-meta-grid">
+        <TaskMetadata label={copy.project} value={textOf(task.project, '-')} />
+        <TaskMetadata label={copy.assignee} value={textOf(task.assignee || task.createdBy, '-')} />
+        <TaskMetadata label={copy.priority} value={priorityLabel(copy, priority)} />
+        <TaskMetadata label={copy.updated} value={formatDate(textOf(task.updatedAt || task.createdAt))} />
+      </dl>
+      <div className="task-actions">
+        {status === 'open' ? <Button size="sm" disabled={isBusy} onClick={() => void onMutate(`${id}:claim`, '/api/task/claim', { id, by: 'dashboard-next' })}>{copy.claim}</Button> : null}
+        {['claimed', 'blocked'].includes(status) ? <Button size="sm" disabled={isBusy} onClick={() => void runStatus('in_progress')}>{status === 'blocked' ? copy.unblock : copy.start}</Button> : null}
+        {status === 'in_progress' ? <><Button size="sm" disabled={isBusy} onClick={() => void runStatus('done')}>{copy.completeDirectly}</Button><Button size="sm" variant="outline" disabled={isBusy} onClick={() => void runStatus('needs_verification')}>{copy.requestVerification}</Button></> : null}
+        {status === 'needs_verification' ? <Button size="sm" disabled={isBusy} onClick={() => void review('approved')}>{copy.approveAndComplete}</Button> : null}
+        {status === 'done' ? <Button size="sm" variant="outline" disabled={isBusy} onClick={() => void runStatus('open')}>{copy.reopen}</Button> : null}
+        {status === 'cancelled' ? <p className="task-terminal-note">{copy.cancelledTerminal}</p> : <TaskActionMenu label={copy.moreActions} actions={secondaryActions} />}
+      </div>
+    </article>
+  )
+}
+
+function TaskMetadata({ label, value }: { label: string; value: string }) {
+  return <div><dt>{label}</dt><dd title={value}>{value}</dd></div>
+}
+
+function StatusBadge({ status, copy }: { status: string; copy: TasksCopy }) {
+  return <span className={`status-badge ${status}`}>{statusLabel(copy, status)}</span>
+}
+
+function PriorityBadge({ priority, copy }: { priority: string; copy: TasksCopy }) {
+  return <span className={`status-badge priority-${priority}`}>{priorityLabel(copy, priority)}</span>
+}
+
+function TaskActionMenu({ label, actions }: { label: string; actions: TaskMenuAction[] }) {
+  const [open, setOpen] = useState(false)
+  const menuId = useId()
+  const menuRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [open])
+
+  return <div className="task-action-menu" ref={menuRef}>
+    <button className="task-action-menu-trigger" type="button" aria-haspopup="menu" aria-expanded={open} aria-controls={menuId} onClick={() => setOpen(value => !value)}>{label}</button>
+    {open ? <div className="task-action-menu-items" id={menuId} role="menu">{actions.map(action => <button key={action.key} type="button" role="menuitem" disabled={action.disabled} onClick={() => { setOpen(false); action.onSelect() }}>{action.label}</button>)}</div> : null}
+  </div>
 }

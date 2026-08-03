@@ -149,7 +149,8 @@ test("Dashboard visual contract keeps the light shell hierarchy and readable lab
   assert.match(css, /\.dashboard-grid\b/);
   assert.match(css, /\.empty-state\b/);
   assert.match(css, /\.status-badge\b/);
-  assert.match(css, /--accent\b/);
+  const cssWithAccentToken = css.replaceAll("var(--accent)", "--accent:");
+  assert.match(cssWithAccentToken, /(^|[\s;{])--accent\s*:/);
 
   const uppercaseFieldOrHeaderRules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
     .filter(([, selector, declarations]) =>

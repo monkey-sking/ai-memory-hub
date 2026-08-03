@@ -169,7 +169,7 @@ export function createDashboardActionsApi({
       let changed = false;
       workflows = allWorkflows.map((workflow) => {
         const linkedTasks = Array.isArray(workflow.linkedTasks) ? workflow.linkedTasks : [];
-        if (!linkedTasks.includes(task.id)) {
+        if (!linkedTasks.includes(task.id) || task.status === "cancelled") {
           return workflow;
         }
         changed = true;

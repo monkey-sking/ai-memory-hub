@@ -168,3 +168,21 @@ test("Dashboard keeps the overview-first section order", async () => {
   assert.match(dashboard, /panel-grid two/);
   assert.ok(dashboard.indexOf("overview-section") < dashboard.indexOf("panel-grid two"));
 });
+
+test("Dashboard overview empty states retain an actionable recovery path", async () => {
+  const dashboard = await readSource("pages/Dashboard.tsx");
+
+  assert.match(dashboard, /className="empty-state overview-empty-state"/);
+  for (const emptyState of [
+    "overviewNoFailures",
+    "overviewNoMessages",
+    "overviewNoTasks",
+    "overviewNoWorkflows",
+    "overviewNoTools"
+  ]) {
+    assert.match(
+      dashboard,
+      new RegExp(`OverviewEmptyState[\\s\\S]{0,180}text=\\{copy\\.${emptyState}\\}[\\s\\S]{0,160}actionLabel=\\{copy\\.refresh\\}[\\s\\S]{0,120}onAction=\\{onRefresh\\}`)
+    );
+  }
+});

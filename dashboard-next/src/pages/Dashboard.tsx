@@ -263,14 +263,14 @@ function Overview({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; on
                   </div>
                 ))}
               </div>
-            ) : <OverviewEmptyState text={copy.overviewNoFailures} />}
+            ) : <OverviewEmptyState text={copy.overviewNoFailures} actionLabel={copy.refresh} onAction={onRefresh} />}
           </div>
         </NewPanel>
 
         <NewPanel title={copy.overviewCollaboration} className="overview-panel overview-collaboration-panel">
           {model.radio.length ? (
             <NewRadioList messages={model.radio.slice(-4).reverse()} emptyText={copy.overviewNoMessages} />
-          ) : <OverviewEmptyState text={copy.overviewNoMessages} />}
+          ) : <OverviewEmptyState text={copy.overviewNoMessages} actionLabel={copy.refresh} onAction={onRefresh} />}
         </NewPanel>
       </div>
 
@@ -285,12 +285,12 @@ function Overview({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; on
           <NewPanel title={copy.recentTasks} className="overview-panel">
             {model.tasks.length ? (
               <NewTaskList tasks={model.tasks.slice(0, 6)} emptyText={copy.overviewNoTasks} />
-            ) : <OverviewEmptyState text={copy.overviewNoTasks} />}
+            ) : <OverviewEmptyState text={copy.overviewNoTasks} actionLabel={copy.refresh} onAction={onRefresh} />}
           </NewPanel>
           <NewPanel title={copy.overviewWorkflows} className="overview-panel">
             {model.workflows.length ? (
               <NewTaskList tasks={model.workflows.slice(0, 6)} emptyText={copy.overviewNoWorkflows} />
-            ) : <OverviewEmptyState text={copy.overviewNoWorkflows} />}
+            ) : <OverviewEmptyState text={copy.overviewNoWorkflows} actionLabel={copy.refresh} onAction={onRefresh} />}
           </NewPanel>
         </div>
       </section>
@@ -323,7 +323,7 @@ function Overview({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; on
 
 function OverviewEmptyState({ text, actionLabel, onAction }: { text: string; actionLabel?: string; onAction?: () => Promise<void> }) {
   return (
-    <div className="overview-empty-state">
+    <div className="empty-state overview-empty-state">
       <p>{text}</p>
       {actionLabel && onAction ? (
         <button className="btn small ghost" type="button" onClick={() => void onAction()}>

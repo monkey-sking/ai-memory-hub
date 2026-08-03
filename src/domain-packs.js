@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import { getPackTrustStatus } from "./external-integrations.js";
 
 const ID_PATTERN = /^[a-z0-9][a-z0-9._-]{1,63}$/;
 
@@ -15,13 +16,20 @@ export function validatePack(root, manifest = {}) {
     if (resolved !== packRoot && !resolved.startsWith(`${packRoot}${path.sep}`)) errors.push(`${kind} entry resolves outside pack root`);
     else if (!fs.existsSync(resolved)) errors.push(`${kind} entry does not exist: ${relative}`);
   }
-  return { valid: errors.length === 0, errors, manifest: { ...manifest, root: packRoot } };
+  const trust = getPackTrustStatus({
+    payload: manifest.trust?.payload || JSON.stringify({ id: manifest.id, version: manifest.version, entry: manifest.entry || {} }),
+    signature: manifest.trust?.signature || manifest.signature || "",
+    publicKey: manifest.trust?.publicKey || manifest.publicKey || "",
+    required: Boolean(manifest.trust?.required)
+  });
+  if (trust.required && !trust.verified) errors.push(`pack signature ${trust.status}`);
+  return { valid: errors.length === 0, errors, trust, manifest: { ...manifest, root: packRoot } };
 }
 
 export function addPack(memoryDir, manifest) {
   const validation = validatePack(manifest.root || memoryDir, manifest);
   if (!validation.valid) throw new Error(`Invalid domain pack: ${validation.errors.join("; ")}`);
-  const record = { id: manifest.id, name: manifest.name || manifest.id, version: manifest.version || "0.0.0", root: validation.manifest.root, entry: manifest.entry || {}, permissions: manifest.permissions || {}, enabled: false, valid: true, addedAt: new Date().toISOString(), eventId: crypto.randomUUID() };
+  const record = { id: manifest.id, name: manifest.name || manifest.id, version: manifest.version || "0.0.0", root: validation.manifest.root, entry: manifest.entry || {}, permissions: manifest.permissions || {}, trust: { ...(manifest.trust || {}), ...validation.trust }, enabled: false, valid: true, addedAt: new Date().toISOString(), eventId: crypto.randomUUID() };
   appendRegistryEvent(memoryDir, { action: "add", pack: record });
   return record;
 }
@@ -50,7 +58,7 @@ export function validateRegisteredPack(memoryDir, id) {
   if (!pack) throw new Error(`Domain pack not found: ${id}`);
   const validation = validatePack(pack.root, pack);
   appendRegistryEvent(memoryDir, { action: "validate", pack: { id: pack.id, valid: validation.valid, validationErrors: validation.errors } });
-  return { ...pack, valid: validation.valid, validationErrors: validation.errors };
+  return { ...pack, valid: validation.valid, validationErrors: validation.errors, trust: validation.trust };
 }
 
 function registryFile(memoryDir) { return path.join(memoryDir, "packs", "registry.jsonl"); }

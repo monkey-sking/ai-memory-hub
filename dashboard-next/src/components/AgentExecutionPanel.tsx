@@ -4,13 +4,18 @@ type Props = {
   agentSessions: unknown
   worktrees: unknown
   timeline: unknown
+  collaboration: unknown
   language: 'zh' | 'en'
+  onMarkRead: (id: string) => Promise<void>
 }
 
-export function AgentExecutionPanel({ agentSessions, worktrees, timeline, language }: Props) {
+export function AgentExecutionPanel({ agentSessions, worktrees, timeline, collaboration, language, onMarkRead }: Props) {
   const sessions = asArray<Record<string, unknown>>(agentSessions)
   const trees = asArray<Record<string, unknown>>(worktrees)
   const events = asArray<Record<string, unknown>>(timeline).slice(0, 8)
+  const collaborationModel = asRecord(collaboration)
+  const unread = asArray<Record<string, unknown>>(collaborationModel.unread).slice(0, 4)
+  const reviews = asArray<Record<string, unknown>>(collaborationModel.reviews)
   const zh = language === 'zh'
   return (
     <section className="agent-execution-panel" aria-label={zh ? 'Agent 执行中心' : 'Agent execution center'}>
@@ -20,6 +25,10 @@ export function AgentExecutionPanel({ agentSessions, worktrees, timeline, langua
           <h3>{zh ? 'Agent 正在做什么' : 'What agents are doing'}</h3>
         </div>
         <span className="agent-execution-count">{sessions.length} {zh ? '个会话' : 'sessions'}</span>
+      </div>
+      <div className="agent-collaboration-strip">
+        <div><strong>{zh ? '待处理' : 'Needs attention'}</strong><span>{unread.length} unread · {reviews.length} {zh ? '个审查' : 'reviews'}</span></div>
+        {unread.length ? <div className="agent-unread-list">{unread.map(item => <button type="button" key={textOf(item.id)} onClick={() => void onMarkRead(textOf(item.id))}>{textOf(item.title, 'notification')}: {textOf(item.text, '')} · {zh ? '标为已读' : 'mark read'}</button>)}</div> : null}
       </div>
       {sessions.length ? (
         <div className="agent-card-grid">

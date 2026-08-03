@@ -48,6 +48,7 @@ function normalize(value) {
     hasChanges: Boolean(value.hasChanges || value.dirty || (value.head && value.base && value.head !== value.base)),
     diffStatus: value.diffStatus || "",
     diffStat: value.diffStat || "",
+    remote: value.remote || null,
     owner: value.owner || {}
   };
 }

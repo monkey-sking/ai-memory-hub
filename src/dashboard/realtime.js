@@ -5,6 +5,7 @@ import path from "node:path";
 export function createDashboardRealtimeApi({
   dashboardBackups,
   dashboardAgentSessions,
+  dashboardCollaboration,
   dashboardDispatch,
   dashboardMemory,
   dashboardMetrics,
@@ -29,6 +30,7 @@ export function createDashboardRealtimeApi({
       projects: dashboardProjects.getDashboardProjects(memoryDir),
       dispatch: dashboardDispatch.getDashboardDispatch(memoryDir),
       agentSessions: dashboardAgentSessions.getDashboardAgentSessions(memoryDir),
+      collaboration: dashboardCollaboration.getDashboardCollaboration(memoryDir),
       worktrees: dashboardWorktrees.getDashboardWorktrees(memoryDir),
       metrics: dashboardMetrics.calculateMetrics(memoryDir),
       tools: dashboardTools.getDashboardTools(memoryDir),

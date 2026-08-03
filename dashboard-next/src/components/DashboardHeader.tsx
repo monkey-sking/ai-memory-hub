@@ -34,9 +34,9 @@ export function DashboardHeader({
   const isDisabled = loading || Boolean(busyAction)
 
   return (
-    <div className="page-header">
+    <header className="page-header">
       <div className="page-title-group">
-        <p className="eyebrow">AI Memory Hub</p>
+        <p className="eyebrow">AI MEMORY HUB / CONSOLE</p>
         <h2>{title}</h2>
         {subtitle && (
           <p className="page-subtitle">{subtitle}</p>
@@ -50,7 +50,7 @@ export function DashboardHeader({
           disabled={isDisabled}
           type="button"
         >
-          <Download className="w-4 h-4" style={{ display: 'inline', verticalAlign: '-3px', marginRight: 6 }} />
+          <Download className="header-button-icon" />
           {busyAction === 'pull' ? copy.running : copy.rebuildSnapshot}
         </button>
 
@@ -60,7 +60,7 @@ export function DashboardHeader({
           disabled={isDisabled}
           type="button"
         >
-          <Upload className="w-4 h-4" style={{ display: 'inline', verticalAlign: '-3px', marginRight: 6 }} />
+          <Upload className="header-button-icon" />
           {busyAction === 'sync' ? copy.running : copy.syncInbox}
         </button>
 
@@ -69,7 +69,7 @@ export function DashboardHeader({
           onClick={onToggleLanguage}
           type="button"
         >
-          <Languages className="w-4 h-4" style={{ display: 'inline', verticalAlign: '-3px', marginRight: 6 }} />
+          <Languages className="header-button-icon" />
           {copy.language}
         </button>
 
@@ -79,10 +79,10 @@ export function DashboardHeader({
           disabled={loading}
           type="button"
         >
-          <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin')} style={{ display: 'inline', verticalAlign: '-3px', marginRight: 6 }} />
+          <RefreshCw className={cn('header-button-icon', loading && 'animate-spin')} />
           {loading ? copy.refreshing : copy.refresh}
         </button>
       </div>
-    </div>
+    </header>
   )
 }

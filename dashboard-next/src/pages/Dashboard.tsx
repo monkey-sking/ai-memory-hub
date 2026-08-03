@@ -14,6 +14,7 @@ import { TasksPanel as NewTasksPanel } from '../components/TasksPanel'
 import { MemoryPanel as NewMemoryPanel } from '../components/MemoryPanel'
 import { RadioPanel as NewRadioPanel } from '../components/RadioPanel'
 import { WorkflowsPanel as NewWorkflowsPanel } from '../components/WorkflowsPanel'
+import { AgentExecutionPanel } from '../components/AgentExecutionPanel'
 import {
   MetricCard as NewMetricCard,
   Panel as NewPanel,
@@ -39,6 +40,8 @@ interface DashboardSnapshot {
   workflows?: AnyRecord
   projects?: AnyRecord
   dispatch?: AnyRecord
+  agentSessions?: AnyRecord
+  worktrees?: AnyRecord
   tools?: AnyRecord
   backups?: AnyRecord
   settings?: AnyRecord
@@ -152,7 +155,7 @@ export default function Dashboard({ section }: DashboardProps) {
           </div>
         ) : (
           <div className="p-6">
-            {section === 'overview' && <Overview copy={copy} model={viewModel} onRefresh={refresh} />}
+            {section === 'overview' && <Overview copy={copy} model={viewModel} language={language} onRefresh={refresh} />}
             {section === 'memory' && <NewMemoryPanel memory={viewModel.memory} copy={copy} onRefresh={refresh} />}
             {section === 'tasks' && <NewTasksPanel tasks={viewModel.tasks} visibleProjects={viewModel.visibleProjects} copy={copy} onMutate={async (_action, path, body) => {
               await apiPost<AnyRecord>(path, body)
@@ -196,6 +199,8 @@ function buildViewModel(data: DashboardSnapshot | null) {
   const projects = asRecord(data?.projects)
   const dispatch = asRecord(data?.dispatch)
   const tools = asRecord(data?.tools)
+  const agentSessions = asRecord(data?.agentSessions)
+  const worktrees = asRecord(data?.worktrees)
   const backups = asRecord(data?.backups)
   const settings = asRecord(data?.settings)
 
@@ -211,6 +216,9 @@ function buildViewModel(data: DashboardSnapshot | null) {
     unregisteredProjects: asArray<string>(projects.unregisteredProjects),
     dispatchLogs: asArray<AnyRecord>(dispatch.logs),
     relay: asArray<AnyRecord>(dispatch.relay),
+    agentSessions: asArray<AnyRecord>(agentSessions.agentSessions),
+    agentTimeline: asArray<AnyRecord>(agentSessions.timeline),
+    worktrees: asArray<AnyRecord>(worktrees.worktrees),
     tools: asArray<AnyRecord>(tools.tools),
     toolSummary: asRecord(tools.summary),
     backups,
@@ -221,7 +229,7 @@ function buildViewModel(data: DashboardSnapshot | null) {
 type ViewModel = ReturnType<typeof buildViewModel>
 type Copy = DashboardCopy
 
-function Overview({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; onRefresh: () => Promise<void> }) {
+function Overview({ copy, model, language, onRefresh }: { copy: Copy; model: ViewModel; language: AppLanguage; onRefresh: () => Promise<void> }) {
   const statusTasks = asRecord(model.status.tasks)
   const statusWorkflows = asRecord(model.status.workflows)
   const index = asRecord(model.status.index)
@@ -231,6 +239,7 @@ function Overview({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; on
 
   return (
     <div className="overview">
+      <AgentExecutionPanel agentSessions={model.agentSessions} worktrees={model.worktrees} timeline={model.agentTimeline} language={language} />
       <section className="overview-section" aria-label={copy.health}>
         <div className="dashboard-grid overview-metric-grid">
           <div className="metric-card">

@@ -136,3 +136,24 @@ test("Task menu includes a low-frequency radio request shortcut", async () => {
   assert.match(dashboard, /copy\.sendRadioRequest/);
   assert.match(copyModule, /sendRadioRequest/);
 });
+
+test("Dashboard visual contract keeps the light shell hierarchy and readable labels", async () => {
+  const sidebar = await readSource("components/Sidebar.tsx");
+  const header = await readSource("components/DashboardHeader.tsx");
+  const css = await readSource("pages/Dashboard.css");
+
+  assert.match(sidebar, /sidebar-nav-label/);
+  assert.match(sidebar, /AI Memory Hub/);
+  assert.match(header, /AI MEMORY HUB \/ CONSOLE/);
+
+  assert.match(css, /\.dashboard-grid\b/);
+  assert.match(css, /\.empty-state\b/);
+  assert.match(css, /\.status-badge\b/);
+  assert.match(css, /--accent\b/);
+
+  const uppercaseFieldOrHeaderRules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+    .filter(([, selector, declarations]) =>
+      /(?:\.field\b|\bth\b)/.test(selector) && /text-transform\s*:\s*uppercase/.test(declarations)
+    );
+  assert.deepEqual(uppercaseFieldOrHeaderRules, []);
+});

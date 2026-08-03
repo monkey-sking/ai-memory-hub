@@ -1812,6 +1812,164 @@ td {
   font-size: 14px;
 }
 
+.overview {
+  display: grid;
+  gap: 32px;
+}
+
+.overview-section {
+  display: grid;
+  gap: 16px;
+}
+
+.overview-summary-section {
+  padding-top: 4px;
+}
+
+.overview-section-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.overview-section-heading h3,
+.overview-activity h4 {
+  margin: 0;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 760;
+  line-height: 1.3;
+}
+
+.overview-section-heading p {
+  max-width: 620px;
+  margin: 5px 0 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.overview-metric-grid .metric-card {
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.overview-metric-grid .metric-card > div {
+  min-height: 112px;
+  border-color: var(--border);
+  background: var(--bg-panel);
+  box-shadow: none;
+}
+
+.overview-metric-grid .metric-card > div:hover {
+  border-color: var(--border-soft);
+  box-shadow: var(--shadow);
+}
+
+.overview-metric-grid .metric-card > div > div:first-child {
+  padding: 16px 16px 8px;
+}
+
+.overview-metric-grid .metric-card > div > div:last-child {
+  padding: 0 16px 16px;
+}
+
+.overview-primary-grid {
+  align-items: stretch;
+}
+
+.overview-panel {
+  border-color: var(--border);
+  background: var(--bg-panel);
+  box-shadow: none;
+}
+
+.overview-panel > .border-b {
+  padding-bottom: 8px;
+  border-bottom-color: transparent;
+}
+
+.overview-panel > .border-b + div {
+  padding-top: 8px;
+}
+
+.overview-property-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.overview-property-grid .property {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.overview-activity {
+  display: grid;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.overview-failure-list {
+  display: grid;
+}
+
+.overview-failure-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.overview-failure-row:last-child {
+  border-bottom: 0;
+}
+
+.overview-failure-row span {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overview-collaboration-panel .space-y-4 > div {
+  padding: 0 0 14px;
+  border-width: 0 0 1px;
+  border-radius: 0;
+  background: transparent;
+}
+
+.overview-collaboration-panel .space-y-4 > div:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.overview-empty-state {
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+  min-height: 92px;
+  padding: 14px 0;
+  color: var(--text-muted);
+}
+
+.overview-empty-state p {
+  max-width: 480px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
 @media (max-width: 1280px) {
   .kanban-grid-4 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1857,6 +2015,7 @@ td {
   }
 
   .dashboard-grid,
+  .overview-property-grid,
   .property-grid,
   .settings-grid,
   .form-grid,

@@ -837,6 +837,13 @@ td {
   row-gap: 8px;
 }
 
+.task-terminal-note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .task-action-menu {
   position: relative;
   flex: 0 0 auto;

@@ -223,3 +223,11 @@ test("task actions protect terminal states and keep dialog feedback visible", as
   assert.match(css, /\.status-badge\.priority-high/);
   assert.match(css, /\.status-badge\.priority-urgent/);
 });
+
+test("cancelled task cards do not offer reopen actions", async () => {
+  const tasks = await readSource("components/TasksPanel.tsx");
+
+  assert.match(tasks, /\{status === 'done'\s*\?\s*<Button[\s\S]{0,180}\{copy\.reopen\}/);
+  assert.doesNotMatch(tasks, /\['done', 'cancelled'\]\.includes\(status\)[\s\S]{0,180}\{copy\.reopen\}/);
+  assert.match(tasks, /\{status === 'cancelled'\s*\?\s*<p className="task-terminal-note">\{copy\.cancelledTerminal\}<\/p>\s*:\s*<TaskActionMenu/);
+});

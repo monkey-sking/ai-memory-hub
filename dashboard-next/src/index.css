@@ -1,32 +1,32 @@
 @import "tailwindcss";
 
 @theme {
-  --color-background: #f8fafc;
-  --color-foreground: #0f172a;
-  --color-primary: #2563eb;
+  --color-background: #f4f7fb;
+  --color-foreground: #172033;
+  --color-primary: #2eb7a5;
   --color-primary-foreground: #ffffff;
-  --color-secondary: #f1f5f9;
-  --color-secondary-foreground: #0f172a;
-  --color-muted: #f1f5f9;
-  --color-muted-foreground: #64748b;
-  --color-accent: #eff6ff;
-  --color-accent-foreground: #1e40af;
+  --color-secondary: #eef3f8;
+  --color-secondary-foreground: #172033;
+  --color-muted: #eef3f8;
+  --color-muted-foreground: #667085;
+  --color-accent: #e7f7f4;
+  --color-accent-foreground: #1d9d8c;
   --color-destructive: #ef4444;
   --color-destructive-foreground: #ffffff;
-  --color-border: #e2e8f0;
+  --color-border: #e5eaf0;
   --color-input: #ffffff;
-  --color-ring: #2563eb;
+  --color-ring: #2eb7a5;
   --color-card: #ffffff;
   --color-card-foreground: #0f172a;
-  --radius-lg: 14px;
-  --radius-md: 10px;
-  --radius-sm: 6px;
+  --radius-lg: 16px;
+  --radius-md: 12px;
+  --radius-sm: 8px;
 }
 
 :root {
   --bg: #f4f7fb;
   --bg-panel: #ffffff;
-  --bg-panel-strong: #f8fafc;
+  --bg-panel-strong: #fbfcfe;
   --bg-soft: #eef3f8;
   --border: #e5eaf0;
   --border-soft: #d5dde7;
@@ -35,6 +35,7 @@
   --text-subtle: #98a2b3;
   --accent: #2eb7a5;
   --accent-strong: #1d9d8c;
+  --accent-hover: #188978;
   --accent-soft: rgba(46, 183, 165, 0.12);
   --accent-blue: #4676e8;
   --accent-blue-soft: rgba(70, 118, 232, 0.1);
@@ -44,7 +45,11 @@
   --sidebar-width: 236px;
   --sidebar-collapsed-width: 72px;
   --radius: 12px;
+  --radius-sm: 8px;
+  --radius-lg: 16px;
   --shadow: 0 1px 2px rgba(16, 24, 40, 0.03), 0 6px 18px rgba(16, 24, 40, 0.04);
+  --shadow-raised: 0 10px 28px rgba(16, 24, 40, 0.08);
+  --focus-ring: 0 0 0 3px var(--accent-soft);
   color: var(--text);
   background: var(--bg);
   font-family:
@@ -72,6 +77,7 @@ body {
   margin: 0;
   overflow-x: hidden;
   background: var(--bg);
+  color: var(--text);
 }
 
 button,
@@ -87,6 +93,11 @@ button {
 
 a {
   color: inherit;
+}
+
+:focus-visible {
+  outline: 3px solid var(--accent-soft);
+  outline-offset: 2px;
 }
 
 #root {

@@ -5886,13 +5886,48 @@ function memoryCommand(argv) {
   if (subcommand === "archive") {
     return memoryArchiveCommand(rest);
   }
+  if (subcommand === "op") {
+    return memoryOperationCommand(rest);
+  }
   if (subcommand === "hook") {
     return memoryHookCommand(rest);
   }
   if (subcommand === "version") {
     return memoryVersionCommand(rest);
   }
-  throw new Error("Usage: ai-memory-hub memory <search|snapshot|archive|hook|version> [options]");
+  throw new Error("Usage: ai-memory-hub memory <search|snapshot|archive|op|hook|version> [options]");
+}
+
+function memoryOperationCommand(argv) {
+  const action = argv[0] || "list";
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const file = path.join(config.memoryDir, "memories", "operations.jsonl");
+  if (action === "list") {
+    const record = normalizeSupersedeToken(getOption(argv, "--record"));
+    const operations = readEvents(file);
+    console.log(JSON.stringify(record ? operations.filter((item) => normalizeSupersedeToken(item.target?.recordId) === record) : operations, null, 2));
+    return;
+  }
+  if (action !== "create") throw new Error("Usage: ai-memory-hub memory op <create|list> [options]");
+  const lifecycleAction = String(getOption(argv, "--action") || "").trim().toLowerCase();
+  const record = getOption(argv, "--record") || "";
+  const reason = getOption(argv, "--reason") || "";
+  if (!["annotate", "archive", "pin", "revoke", "review", "supersede"].includes(lifecycleAction)) throw new Error("Unsupported memory lifecycle action");
+  if (!record || !reason) throw new Error("memory op create requires --record and --reason");
+  const supersededBy = getOption(argv, "--superseded-by") || "";
+  if (lifecycleAction === "supersede" && !supersededBy) throw new Error("supersede requires --superseded-by");
+  const operation = {
+    id: createId(`${lifecycleAction}:${record}:${Date.now()}`),
+    ts: new Date().toISOString(),
+    source: getOption(argv, "--by") || "manual",
+    action: lifecycleAction,
+    target: { recordId: record },
+    reason,
+    refs: supersededBy ? { supersededBy: [supersededBy] } : {}
+  };
+  appendJsonl(file, operation);
+  console.log(JSON.stringify(operation, null, 2));
 }
 
 // ─── OPC v1.1 P1: Memory decay - archive expired/low-priority memories ───
@@ -6112,7 +6147,11 @@ function searchCommand(argv) {
       const db = createSearchDb(config.memoryDir);
       const stats = getIndexStats(db);
       if (stats.total > 0) {
-        const results = searchIndex(db, query, { limit, entityType });
+        const rawResults = searchIndex(db, query, { limit, entityType });
+        const visibleMemoryIds = new Set(buildMemoryIndex(readLedger(config.memoryDir), config).records
+          .filter(isMemoryLifecycleVisible)
+          .flatMap((record) => getMemoryIdentityKeys(record).map(normalizeSupersedeToken)));
+        const results = rawResults.filter((item) => item.entityType !== "memory" || visibleMemoryIds.has(normalizeSupersedeToken(item.entityId)));
         db.close();
         for (const item of results) {
           const preview = item.content ? item.content.slice(0, 120) : "";
@@ -6129,7 +6168,9 @@ function searchCommand(argv) {
     try {
       const ledger = readLedger(config.memoryDir);
       if (ledger.length > 0) {
-        const results = semanticSearch(ledger, query, limit);
+        const visible = buildMemoryIndex(ledger, config).records.filter(isMemoryLifecycleVisible);
+        const visibleIds = new Set(visible.flatMap((record) => getMemoryIdentityKeys(record).map(normalizeSupersedeToken)));
+        const results = semanticSearch(ledger, query, limit).filter((item) => visibleIds.has(normalizeSupersedeToken(item.id)));
         if (results.length > 0) {
           if (trackAccess) {
             const updated = recordMemoryAccess(ledger, results);
@@ -12655,6 +12696,7 @@ function formatMemoryFilterSummary(filters = {}) {
 
 function filterMemoryRecords(records, filters = {}) {
   return records
+    .filter((record) => isMemoryLifecycleVisible(record))
     .filter((record) => filters.project ? record.project === normalizeMemoryProject(filters.project) : true)
     .filter((record) => matchesMemoryTags(record, filters.tags))
     .filter((record) => matchesMemoryRef(record, "thread", filters.thread))
@@ -12880,8 +12922,9 @@ function rebuildMemoryOutputs(config, ledger) {
 function buildMemoryIndex(memories, config) {
   const sorted = [...memories].sort((a, b) => String(a.ts || "").localeCompare(String(b.ts || "")));
   const enrichedRecords = sorted.map((memory, index) => enrichMemory(memory, index, sorted.length));
-  const supersededBy = buildMemorySupersededBy(enrichedRecords);
-  const records = enrichedRecords.map((record) => applyMemorySupersedeState(record, supersededBy));
+  const lifecycleRecords = applyMemoryLifecycleOperations(enrichedRecords, readMemoryLifecycleOperations(config.memoryDir), getMemoryIdentityKeys);
+  const supersededBy = buildMemorySupersededBy(lifecycleRecords);
+  const records = lifecycleRecords.map((record) => applyMemorySupersedeState(record, supersededBy));
   const snapshotLimits = resolveSnapshotLimits(config);
   const stats = {
     records: records.length,
@@ -12910,6 +12953,48 @@ function buildMemoryIndex(memories, config) {
     sources: countBy(records.map((item) => item.source || "unknown")),
     records
   };
+}
+
+function readMemoryLifecycleOperations(memoryDir) {
+  return readEvents(path.join(memoryDir, "memories", "operations.jsonl"));
+}
+
+function applyMemoryLifecycleOperations(records, operations, getIdentityKeys) {
+  const lookup = new Map();
+  for (const record of records) {
+    for (const key of getIdentityKeys(record)) lookup.set(normalizeSupersedeToken(key), record);
+  }
+  const overlays = new Map();
+  for (const operation of [...operations].sort((a, b) => String(a.ts || "").localeCompare(String(b.ts || "")))) {
+    const target = lookup.get(normalizeSupersedeToken(operation.target?.recordId));
+    if (!target) continue;
+    const key = getIdentityKeys(target)[0];
+    if (!key) continue;
+    const current = overlays.get(key) || {};
+    let state = operation.patch?.lifecycle?.state || current.state || "active";
+    if (operation.action === "supersede") state = "superseded";
+    if (operation.action === "revoke") state = "revoked";
+    if (operation.action === "archive") state = "archived";
+    overlays.set(key, {
+      ...current,
+      state,
+      reason: operation.reason || current.reason || "",
+      reviewedAt: operation.action === "review" ? operation.ts : current.reviewedAt,
+      supersededBy: operation.refs?.supersededBy || current.supersededBy || []
+    });
+  }
+  return records.map((record) => {
+    const overlay = overlays.get(getIdentityKeys(record)[0]);
+    const lifecycle = { ...(record.metadata?.lifecycle || {}), ...(overlay || {}), state: overlay?.state || record.metadata?.lifecycle?.state || "active" };
+    return { ...record, lifecycle, metadata: { ...(record.metadata || {}), lifecycle } };
+  });
+}
+
+function isMemoryLifecycleVisible(record) {
+  const lifecycle = record.lifecycle || record.metadata?.lifecycle || {};
+  if (["archived", "superseded", "revoked", "stale"].includes(lifecycle.state)) return false;
+  const expiresAt = record.metadata?.expiresAt || lifecycle.expiresAt;
+  return !expiresAt || !Number.isFinite(Date.parse(expiresAt)) || new Date(expiresAt) >= new Date();
 }
 
 function enrichMemory(memory, ordinal, total) {
@@ -13077,7 +13162,7 @@ function renderMemorySnapshot(index, config, options = {}) {
   const coreLimit = snapshotLimits.coreLimit;
   const recentLimit = snapshotLimits.recentLimit;
   const totalLimit = Number(options.limit || snapshotLimits.snapshotLimit || 0);
-  const visibleRecords = index.records.filter((item) => !item.superseded);
+  const visibleRecords = index.records.filter((item) => !item.superseded && isMemoryLifecycleVisible(item));
   const startup = selectStartupMemoryRecords(visibleRecords, config);
   const startupKeys = new Set(startup.map(getMemoryRecordStableKey).filter(Boolean));
   const allCore = visibleRecords

@@ -98,9 +98,20 @@ memory that clearly states the corrected rule or fact. The corrected record
 should rank into `core` or `working`, while the old record remains auditable in
 the ledger and searchable in the index.
 
-Future implementation may add the explicit `lifecycle` fields listed above, but
-they should become mutating CLI behavior only after the operation abstraction and
-thread-aware linking tasks define how records reference one another.
+The lifecycle operation CLI provides an append-only way to make that relationship explicit:
+
+```bash
+ai-memory-hub memory op create --action supersede --record <old-id> --superseded-by <new-id> --reason correction --by codex
+ai-memory-hub memory op create --action revoke --record <record-id> --reason unsafe-fact --by codex
+ai-memory-hub memory op create --action archive --record <record-id> --reason manual-review --by codex
+ai-memory-hub memory op list --record <record-id>
+```
+
+Operations are stored in `memories/operations.jsonl`; they do not rewrite the source ledger. During index rebuild, superseded, revoked, archived, and expired records remain auditable but are excluded from default snapshots, CLI search, and dashboard memory views. `review` and `pin` can explicitly return a record to the active view.
+
+The CLI lifecycle operations apply these explicit `lifecycle` fields as a
+derived overlay. The source ledger remains append-only; operation history is
+stored separately so corrections and revocations remain auditable.
 
 ## Operation Abstraction
 
@@ -112,7 +123,7 @@ operation log is the auditable source of lifecycle intent; rebuilt indexes apply
 those operations as an overlay when deciding search ranking, snapshot
 visibility, and lifecycle links.
 
-The planned storage surface is:
+The storage surface is:
 
 - `memories/operations.jsonl`: append-only operation events.
 - `memories/operation-state.json`: optional derived state for fast lookup. It
@@ -239,8 +250,7 @@ through ranking, but deletion must be explicit and backed up.
 The following are intentionally deferred to separate tasks:
 
 - Thread-aware linking between corrections, stale facts, and source events.
-- Implementation of the operation abstraction described above.
 - Automatic expiration, stale review queues, and destructive cleanup commands.
 
 This keeps the current lifecycle policy conservative: structured enough for
-agents to reason about, but not yet a mutating lifecycle engine.
+agents to reason about while keeping lifecycle mutations auditable.

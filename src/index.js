@@ -25,6 +25,8 @@ import { createDashboardToolsApi } from "./dashboard/tools.js";
 import { createDashboardWorkflowsApi } from "./dashboard/workflows.js";
 import { createDashboardAgentSessionsApi } from "./dashboard/agent-sessions-api.js";
 import { createDashboardWorktreesApi } from "./dashboard/worktrees-api.js";
+import { createDashboardCollaborationApi } from "./dashboard/collaboration.js";
+import { buildExecutionAdapters } from "./execution-adapters.js";
 import { evaluateDaemonHeartbeat } from "./daemon-health.js";
 import { buildWorkflowSharedState } from "./workflow-context.js";
 import { applyCandidateDecision, mineSkillCandidates } from "./skill-mining.js";
@@ -207,7 +209,24 @@ const dashboardWorktrees = createDashboardWorktreesApi({
   readWorkflows,
   readLatestRelayStatusByThread,
   readDispatchRuns,
-  inspect: inspectDashboardWorktree
+  inspect: inspectDashboardWorktree,
+  buildAdapters: ({ worktree, remote }) => buildExecutionAdapters({ worktree, remote })
+});
+
+const dashboardCollaboration = createDashboardCollaborationApi({
+  appendJsonl,
+  createRadioMessage,
+  getRadioMessagesFile: (memoryDir) => path.join(memoryDir, "radio", "messages.jsonl"),
+  readRadioMessages,
+  readTasks,
+  readWorkflows,
+  readUnreadReceipts,
+  appendUnreadReceipt,
+  readAgentSessions: (memoryDir) => dashboardAgentSessions.getDashboardAgentSessions(memoryDir).agentSessions,
+  updateTask,
+  updateWorkflow,
+  createTaskNote,
+  withHubLock
 });
 
 const dashboardTools = createDashboardToolsApi({
@@ -279,6 +298,7 @@ const dashboardHealth = createDashboardHealthApi({
 const dashboardRealtime = createDashboardRealtimeApi({
   dashboardAgentSessions,
   dashboardBackups,
+  dashboardCollaboration,
   dashboardDispatch,
   dashboardMemory,
   dashboardMetrics,
@@ -540,6 +560,12 @@ async function main() {
       return gateCommand(rest);
     case "session":
       return sessionCommand(rest);
+    case "agent":
+      return agentCommand(rest);
+    case "review":
+      return reviewCommand(rest);
+    case "worktree":
+      return worktreeCommand(rest);
     case "rpc":
       return rpcCommand(rest);
     case "notify":
@@ -1811,9 +1837,73 @@ function sessionCommand(argv) {
       return sessionUpdateCommand(argv.slice(1));
     case "active":
       return sessionActiveCommand(argv.slice(1));
+    case "inspect":
+      return sessionInspectCommand(argv.slice(1));
+    case "follow-up":
+    case "followup":
+      return sessionFollowUpCommand(argv.slice(1));
     default:
-      throw new Error(`Unknown session action: ${action}\nTry: ai-memory-hub session list|add|update|active`);
+      throw new Error(`Unknown session action: ${action}\nTry: ai-memory-hub session list|add|update|active|inspect|follow-up`);
   }
+}
+
+function agentCommand(argv) {
+  const action = argv[0] || "list";
+  if (!["list", "status"].includes(action)) throw new Error("Usage: ai-memory-hub agent list|status [--state <state>]");
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const sessions = dashboardAgentSessions.getDashboardAgentSessions(config.memoryDir).agentSessions;
+  const state = getOption(argv.slice(1), "--state") || "";
+  console.log(JSON.stringify(state ? sessions.filter((item) => item.state === state) : sessions, null, 2));
+}
+
+function reviewCommand(argv) {
+  const action = argv[0] || "list";
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  if (action === "list") {
+    console.log(JSON.stringify(dashboardCollaboration.getDashboardCollaboration(config.memoryDir).reviews, null, 2));
+    return;
+  }
+  if (action !== "request") throw new Error("Usage: ai-memory-hub review list|request --task <id> [--to <agent>] [--text <text>]");
+  const taskId = getOption(argv.slice(1), "--task") || "";
+  const workflowId = getOption(argv.slice(1), "--workflow") || "";
+  const sessionId = getOption(argv.slice(1), "--session") || "";
+  if (!taskId && !workflowId && !sessionId) throw new Error("review request requires --task, --workflow, or --session");
+  const result = withHubLock(config.memoryDir, "review-request", () => dashboardCollaboration.requestReview(config.memoryDir, {
+    taskId, workflowId, sessionId, to: getOption(argv.slice(1), "--to") || "all", by: getOption(argv.slice(1), "--by") || "manual", text: getOption(argv.slice(1), "--text") || "Review requested."
+  }), config.sync.lockStaleMs);
+  console.log(JSON.stringify(result, null, 2));
+}
+
+function worktreeCommand(argv) {
+  const action = argv[0] || "list";
+  if (!["list", "inspect", "snapshot"].includes(action)) throw new Error("Usage: ai-memory-hub worktree list|inspect|snapshot [--id <path-or-id>]");
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const worktrees = dashboardWorktrees.getDashboardWorktrees(config.memoryDir).worktrees;
+  const id = getOption(argv.slice(1), "--id") || argv[1] || "";
+  console.log(JSON.stringify(id ? worktrees.filter((item) => item.id === id || item.path === id || item.branch === id) : worktrees, null, 2));
+}
+
+function sessionInspectCommand(argv) {
+  const id = getOption(argv, "--id") || argv[0] || "";
+  if (!id) throw new Error("Usage: ai-memory-hub session inspect --id <session-id>");
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const session = dashboardAgentSessions.getDashboardAgentSessions(config.memoryDir).agentSessions.find((item) => item.sessionId === id || item.id === id);
+  if (!session) throw new Error(`Session not found: ${id}`);
+  console.log(JSON.stringify(session, null, 2));
+}
+
+function sessionFollowUpCommand(argv) {
+  const sessionId = getOption(argv, "--id") || argv[0] || "";
+  const text = getOption(argv, "--text") || positionalArgs(argv.slice(1)).join(" ").trim();
+  if (!sessionId || !text) throw new Error("Usage: ai-memory-hub session follow-up --id <session-id> --text <message> [--to <agent>]");
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const result = withHubLock(config.memoryDir, "agent-follow-up", () => dashboardCollaboration.sendFollowUp(config.memoryDir, { sessionId, text, by: getOption(argv, "--by") || "manual", to: getOption(argv, "--to") || "all" }), config.sync.lockStaleMs);
+  console.log(JSON.stringify(result, null, 2));
 }
 
 function sessionListCommand(argv) {
@@ -2011,8 +2101,10 @@ function notifyCommand(argv) {
       return notifyPendingCommand(argv.slice(1));
     case "deliver":
       return notifyDeliverCommand(argv.slice(1));
+    case "execution":
+      return notifyExecutionCommand(argv.slice(1));
     default:
-      throw new Error(`Unknown notify action: ${action}\nTry: ai-memory-hub notify send|list|pending|deliver`);
+      throw new Error(`Unknown notify action: ${action}\nTry: ai-memory-hub notify send|list|pending|deliver|execution`);
   }
 }
 
@@ -7920,6 +8012,39 @@ function appCommand(argv) {
       if (req.method === "GET" && url.pathname === "/api/worktrees") {
         return sendJson(res, dashboardWorktrees.getDashboardWorktrees(config.memoryDir));
       }
+      if (req.method === "GET" && url.pathname === "/api/collaboration") {
+        return sendJson(res, dashboardCollaboration.getDashboardCollaboration(config.memoryDir, url.searchParams.get("actor") || "all"));
+      }
+      if (req.method === "GET" && url.pathname === "/api/reviews") {
+        return sendJson(res, { reviews: dashboardCollaboration.getDashboardCollaboration(config.memoryDir).reviews });
+      }
+      if (req.method === "POST" && url.pathname === "/api/unread/read") {
+        const body = await readRequestJson(req);
+        const result = withHubLock(config.memoryDir, "unread-read", () => dashboardCollaboration.markRead(config.memoryDir, body), config.sync.lockStaleMs);
+        broadcastDashboardUpdate("unread:read");
+        return sendJson(res, { ok: true, ...result });
+      }
+      if (req.method === "POST" && ["/api/agent/follow-up", "/api/session/follow-up"].includes(url.pathname)) {
+        const body = await readRequestJson(req);
+        if (!body.text || typeof body.text !== "string") return sendJson(res, { error: "text is required" }, 400);
+        const result = withHubLock(config.memoryDir, "agent-follow-up", () => dashboardCollaboration.sendFollowUp(config.memoryDir, body), config.sync.lockStaleMs);
+        broadcastDashboardUpdate("agent:follow-up");
+        return sendJson(res, { ok: true, ...result });
+      }
+      if (req.method === "POST" && url.pathname === "/api/reviews/request") {
+        const body = await readRequestJson(req);
+        if (!body.taskId && !body.workflowId && !body.sessionId) return sendJson(res, { error: "taskId, workflowId, or sessionId is required" }, 400);
+        const result = withHubLock(config.memoryDir, "review-request", () => dashboardCollaboration.requestReview(config.memoryDir, body), config.sync.lockStaleMs);
+        broadcastDashboardUpdate("review:request");
+        return sendJson(res, { ok: true, ...result });
+      }
+      if (req.method === "GET" && url.pathname === "/api/execution-adapters") {
+        const taskId = url.searchParams.get("task") || "";
+        const workflowId = url.searchParams.get("workflow") || "";
+        const task = readTasks(config.memoryDir).find((item) => item.id === taskId || item.id.startsWith(taskId)) || {};
+        const workflow = readWorkflows(config.memoryDir).find((item) => item.id === workflowId || item.id.startsWith(workflowId)) || {};
+        return sendJson(res, { adapters: buildExecutionAdapters({ task, workflow, worktree: task.worktree || workflow.worktree || {} }) });
+      }
       if (req.method === "GET" && url.pathname === "/api/detect") {
         return sendJson(res, dashboardTools.getDashboardDetection(config.memoryDir));
       }
@@ -8241,6 +8366,9 @@ Commands:
   prompt     Manage prompt templates with Nunjucks rendering for AI tools.
   project    Manage project metadata, aliases, resources, and archive state.
   session    Manage session handoff for context transfer between tools.
+  agent      Inspect projected agent execution sessions.
+  review     Request or list linked reviews.
+  worktree   Inspect projected execution worktrees.
   rpc        Synchronous request-response RPC calls between tools.
   notify     Send cross-platform notifications with severity-based routing.
   context    Generate task-specific memory bundles for focused context.
@@ -11745,6 +11873,35 @@ function isWorkflowStatus(status) {
 function readSessions(memoryDir) {
   const file = path.join(memoryDir, "context", "sessions.jsonl");
   return readEvents(file);
+}
+
+function notifyExecutionCommand(argv) {
+  const actor = getOption(argv, "--actor") || "all";
+  const channels = getNotificationChannels("warning", (getOption(argv, "--channels") || "").split(",").map((item) => item.trim()).filter(Boolean));
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const unread = dashboardCollaboration.getDashboardCollaboration(config.memoryDir, actor).unread;
+  const existing = new Set(readNotifications(config.memoryDir).map((item) => item.sourceItemId).filter(Boolean));
+  const created = [];
+  for (const item of unread) {
+    if (existing.has(item.id)) continue;
+    const notification = { ...createNotification({ severity: ["failed", "blocked"].includes(item.state) ? "error" : "warning", title: `AMH execution: ${item.title}`, message: item.text, actionUrl: item.kind === "agent" ? `/sessions/${item.targetId}` : `/radio/${item.targetId}`, channels, from: "ai-memory-hub", project: "" }), sourceItemId: item.id };
+    writeNotification(config.memoryDir, notification);
+    created.push(notification);
+  }
+  console.log(JSON.stringify({ actor, created, pending: getPendingNotifications(config.memoryDir).length }, null, 2));
+}
+
+function readUnreadReceipts(memoryDir) {
+  return readEvents(path.join(memoryDir, "state", "unread.jsonl"));
+}
+
+function appendUnreadReceipt(memoryDir, receipt) {
+  appendJsonl(path.join(memoryDir, "state", "unread.jsonl"), {
+    id: createId(`unread:${receipt.itemId}:${receipt.actor}:${Date.now()}`),
+    ts: new Date().toISOString(),
+    ...receipt
+  });
 }
 
 function writeSessions(memoryDir, sessions) {

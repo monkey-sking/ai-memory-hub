@@ -42,6 +42,7 @@ interface DashboardSnapshot {
   dispatch?: AnyRecord
   agentSessions?: AnyRecord
   worktrees?: AnyRecord
+  collaboration?: AnyRecord
   tools?: AnyRecord
   backups?: AnyRecord
   settings?: AnyRecord
@@ -201,6 +202,7 @@ function buildViewModel(data: DashboardSnapshot | null) {
   const tools = asRecord(data?.tools)
   const agentSessions = asRecord(data?.agentSessions)
   const worktrees = asRecord(data?.worktrees)
+  const collaboration = asRecord(data?.collaboration)
   const backups = asRecord(data?.backups)
   const settings = asRecord(data?.settings)
 
@@ -219,6 +221,7 @@ function buildViewModel(data: DashboardSnapshot | null) {
     agentSessions: asArray<AnyRecord>(agentSessions.agentSessions),
     agentTimeline: asArray<AnyRecord>(agentSessions.timeline),
     worktrees: asArray<AnyRecord>(worktrees.worktrees),
+    collaboration,
     tools: asArray<AnyRecord>(tools.tools),
     toolSummary: asRecord(tools.summary),
     backups,
@@ -239,7 +242,7 @@ function Overview({ copy, model, language, onRefresh }: { copy: Copy; model: Vie
 
   return (
     <div className="overview">
-      <AgentExecutionPanel agentSessions={model.agentSessions} worktrees={model.worktrees} timeline={model.agentTimeline} language={language} />
+      <AgentExecutionPanel agentSessions={model.agentSessions} worktrees={model.worktrees} timeline={model.agentTimeline} collaboration={model.collaboration} language={language} onMarkRead={async (id) => { await apiPost<AnyRecord>('/api/unread/read', { itemId: id, actor: 'dashboard' }); await onRefresh() }} />
       <section className="overview-section" aria-label={copy.health}>
         <div className="dashboard-grid overview-metric-grid">
           <div className="metric-card">

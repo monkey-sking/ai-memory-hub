@@ -1,6 +1,6 @@
 import { buildWorktreeProjection } from "./worktrees.js";
 
-export function createDashboardWorktreesApi({ readTasks, readWorkflows, readLatestRelayStatusByThread, readDispatchRuns, inspect }) {
+export function createDashboardWorktreesApi({ readTasks, readWorkflows, readLatestRelayStatusByThread, readDispatchRuns, inspect, buildAdapters = () => ({}) }) {
   function getDashboardWorktrees(memoryDir) {
     return {
       worktrees: buildWorktreeProjection({
@@ -9,7 +9,7 @@ export function createDashboardWorktreesApi({ readTasks, readWorkflows, readLate
         relay: Object.values(readLatestRelayStatusByThread(memoryDir)),
         dispatchRuns: readDispatchRuns(memoryDir),
         inspect
-      })
+      }).map((worktree) => ({ ...worktree, adapters: buildAdapters({ worktree, remote: worktree.remote || {} }) }))
     };
   }
 

@@ -13,6 +13,7 @@
   background: linear-gradient(145deg, rgba(255,255,255,.98), rgba(245,249,255,.94));
   box-shadow: 0 12px 32px rgba(44, 76, 125, .08);
 }
+.agent-collaboration-strip { display: grid; gap: 10px; margin-top: 18px; padding: 12px 14px; border: 1px solid #dce8f7; border-radius: 12px; background: #f8fbff; }.agent-collaboration-strip > div:first-child { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; }.agent-collaboration-strip span { color: var(--muted-foreground); }.agent-unread-list { display: flex; flex-wrap: wrap; gap: 8px; }.agent-unread-list button { border: 1px solid #c8d8ec; border-radius: 999px; padding: 6px 9px; background: #fff; color: var(--foreground); font-size: 11px; cursor: pointer; }.agent-unread-list button:hover { border-color: #4f8edc; }
 .agent-execution-heading, .agent-card-topline, .worktree-review-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .agent-execution-heading h3 { margin: 4px 0 0; font-size: 20px; }
 .agent-execution-count { color: var(--muted-foreground); font-size: 12px; }

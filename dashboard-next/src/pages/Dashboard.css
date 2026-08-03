@@ -70,7 +70,7 @@
   min-height: 38px;
   padding: 0 14px;
   border: 1px solid transparent;
-  border-radius: var(--radius-sm);
+  border-radius: calc(var(--radius) - 4px);
   background: var(--accent-strong);
   color: #ffffff;
   font-size: 14px;
@@ -114,9 +114,8 @@
 .field select:focus-visible,
 .field textarea:focus-visible,
 .task-action-menu-items button:focus-visible {
-  outline: 0;
-  box-shadow: var(--focus-ring);
-  outline-offset: 1px;
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 2px;
 }
 
 .btn.small {
@@ -252,7 +251,7 @@
   width: 100%;
   min-width: 0;
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: calc(var(--radius) - 4px);
   background: var(--bg-panel);
   color: var(--text);
   outline: none;
@@ -509,7 +508,7 @@
 .message-row {
   min-width: 0;
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: calc(var(--radius) - 4px);
   background: var(--bg-panel-strong);
 }
 
@@ -735,9 +734,6 @@ td {
 .dispatch-card {
   min-width: 0;
   padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: #ffffff;
 }
 
 .task-card {
@@ -871,10 +867,8 @@ td {
   cursor: pointer;
 }
 
-.task-action-menu-items button:hover:not(:disabled),
-.task-action-menu-items button:focus-visible {
+.task-action-menu-items button:hover:not(:disabled) {
   background: rgba(37, 99, 235, 0.06);
-  outline: none;
 }
 
 .task-action-menu-items button:disabled {
@@ -907,9 +901,6 @@ td {
   min-width: 0;
   gap: 12px;
   padding: 14px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: #ffffff;
 }
 
 .workflow-card-header {
@@ -1139,9 +1130,6 @@ td {
 .backup-row {
   min-width: 0;
   padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: #ffffff;
 }
 
 .search-result-card {

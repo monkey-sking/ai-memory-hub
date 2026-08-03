@@ -130,7 +130,7 @@ export default function Sidebar({ language }: SidebarProps) {
           className={cn('sidebar-mobile-nav-item sidebar-more-trigger', (isMoreOpen || hasOverflowRoute) && 'active')}
           type="button"
           aria-expanded={isMoreOpen}
-          aria-controls="sidebar-more-menu"
+          aria-controls={isMoreOpen ? 'sidebar-more-menu' : undefined}
           onClick={() => setIsMoreOpen(open => !open)}
         >
           <MoreHorizontal className="sidebar-nav-icon" />
@@ -139,7 +139,7 @@ export default function Sidebar({ language }: SidebarProps) {
       </nav>
 
       {isMoreOpen && (
-        <div id="sidebar-more-menu" className="sidebar-mobile-more-menu" aria-label="More navigation">
+        <nav id="sidebar-more-menu" className="sidebar-mobile-more-menu" aria-label="More navigation">
           {overflowGroups.map(group => (
             <section key={group.label.en} className="sidebar-mobile-more-group">
               <p>{group.label[language]}</p>
@@ -161,7 +161,7 @@ export default function Sidebar({ language }: SidebarProps) {
               </div>
             </section>
           ))}
-        </div>
+        </nav>
       )}
     </aside>
   )

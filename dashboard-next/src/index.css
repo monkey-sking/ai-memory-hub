@@ -18,9 +18,6 @@
   --color-ring: #2eb7a5;
   --color-card: #ffffff;
   --color-card-foreground: #0f172a;
-  --radius-lg: 16px;
-  --radius-md: 12px;
-  --radius-sm: 8px;
 }
 
 :root {
@@ -45,11 +42,8 @@
   --sidebar-width: 236px;
   --sidebar-collapsed-width: 72px;
   --radius: 12px;
-  --radius-sm: 8px;
-  --radius-lg: 16px;
   --shadow: 0 1px 2px rgba(16, 24, 40, 0.03), 0 6px 18px rgba(16, 24, 40, 0.04);
   --shadow-raised: 0 10px 28px rgba(16, 24, 40, 0.08);
-  --focus-ring: 0 0 0 3px var(--accent-soft);
   color: var(--text);
   background: var(--bg);
   font-family:
@@ -96,7 +90,7 @@ a {
 }
 
 :focus-visible {
-  outline: 3px solid var(--accent-soft);
+  outline: 2px solid var(--accent-strong);
   outline-offset: 2px;
 }
 

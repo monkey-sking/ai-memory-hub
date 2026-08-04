@@ -52,6 +52,12 @@ function parseJson(result) {
   return JSON.parse(result.stdout);
 }
 
+test("github commit-message formats an idempotent task reference", () => {
+  const result = runCli("", ["gh", "commit-message", "--task", "task-1", "--message", "Ship lifecycle links"]);
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.equal(JSON.parse(result.stdout).message, "[AMH-TASK-task-1] Ship lifecycle links");
+});
+
 async function writeRecipe(memoryDir, name, recipe) {
   const recipesDir = path.join(memoryDir, "recipes");
   await fs.mkdir(recipesDir, { recursive: true });

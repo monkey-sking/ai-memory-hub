@@ -16,4 +16,14 @@ jobs:
       - run: npm ci
       - run: npm ci --prefix dashboard-next
       - run: npm run build:dashboard
-      - run: npm test
+      - name: Run npm test
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee "$RUNNER_TEMP/npm-test.log"
+          test_status=${PIPESTATUS[0]}
+          if [ "$test_status" -ne 0 ]; then
+            grep -E "not ok|AssertionError|Error:|expected|actual" "$RUNNER_TEMP/npm-test.log" | head -n 30 | while IFS= read -r line; do
+              echo "::error::$line"
+            done
+          fi
+          exit "$test_status"

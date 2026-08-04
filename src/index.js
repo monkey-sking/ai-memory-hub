@@ -35,7 +35,7 @@ import { normalizeGithubLinks } from "./github-links.js";
 import { syncGithubLifecycle } from "./github-lifecycle.js";
 import { buildGithubRequest, buildNotificationPayload, buildSshPlan, renderSkillMarkdown } from "./external-integrations.js";
 import { parseGithubWebhook } from "./github-lifecycle.js";
-import { addPack, listPacks, setPackEnabled, validateRegisteredPack } from "./domain-packs.js";
+import { addPack, discoverPacks, listPacks, setPackEnabled, validateRegisteredPack } from "./domain-packs.js";
 import { listSkills, searchSkills } from "./skill-registry.js";
 import {
   normalizeAdversarialVerifier,
@@ -7519,12 +7519,14 @@ function packCommand(argv) {
   const config = loadConfig();
   ensureHub(config.memoryDir);
   if (action === "list") { console.log(JSON.stringify(listPacks(config.memoryDir), null, 2)); return; }
+  if (action === "discover") {
+    const roots = argv.slice(1).filter((item) => item !== "--path");
+    console.log(JSON.stringify(discoverPacks(config.memoryDir, roots), null, 2)); return;
+  }
   if (action === "add") {
     const root = getOption(argv.slice(1), "--path") || argv[1] || "";
     if (!root) throw new Error("Usage: ai-memory-hub pack add --path <pack-directory>");
-    const manifestFile = path.join(path.resolve(root), "amh-pack.json");
-    if (!fs.existsSync(manifestFile)) throw new Error(`Pack manifest not found: ${manifestFile}`);
-    console.log(JSON.stringify(addPack(config.memoryDir, readJson(manifestFile)), null, 2)); return;
+    console.log(JSON.stringify(addPack(config.memoryDir, root), null, 2)); return;
   }
   const id = getOption(argv.slice(1), "--id") || argv[1] || "";
   if (!id) throw new Error(`Usage: ai-memory-hub pack ${action} <id>`);
@@ -7532,7 +7534,7 @@ function packCommand(argv) {
   else if (action === "disable") console.log(JSON.stringify(setPackEnabled(config.memoryDir, id, false), null, 2));
   else if (action === "validate") console.log(JSON.stringify(validateRegisteredPack(config.memoryDir, id), null, 2));
   else if (action === "show") console.log(JSON.stringify(listPacks(config.memoryDir).find((item) => item.id === id || item.id.startsWith(id)) || null, null, 2));
-  else throw new Error("Usage: ai-memory-hub pack add|list|show|enable|disable|validate");
+  else throw new Error("Usage: ai-memory-hub pack add|list|show|enable|disable|validate|discover");
 }
 
 function skillCommand(argv) {

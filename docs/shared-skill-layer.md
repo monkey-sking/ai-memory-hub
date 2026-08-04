@@ -79,3 +79,13 @@ ai-memory-hub skill doctor --project <project>
 The canonical package is stored below `~/.ai-memory/skill-store`; the project selection is stored in `.amh/skills.json`. Agent directories contain only AMH-managed projections and are never used as the source of truth. Existing unmarked Skills are reported as conflicts and are not overwritten.
 
 The dashboard Skill Center exposes the same scan, import, sync, and doctor operations. Credential profiles can be configured once from the Skill Center or `/api/credentials`. Secret values are protected with Windows DPAPI where available, never returned in API responses, and may be injected only into a runner invocation that explicitly references the profile.
+### External source types
+
+The installer accepts a local Skill directory, a ZIP archive, or a Git repository URL. ZIP imports use a temporary extraction directory with traversal handled by PowerShell `Expand-Archive`; Git imports use a shallow clone and optional `--ref`. AMH reads and validates `SKILL.md` only, records source provenance, and never executes package scripts.
+
+```bash
+ai-memory-hub skill install --path <directory|archive.zip|git-url> --version 1.0.0 --project <project>
+ai-memory-hub skill install --path <git-url> --ref <tag-or-branch> --project <project>
+```
+
+Use `skill update` to import a new immutable version and `skill rollback` to select an earlier version. The dashboard exposes registry discovery, credential setup, sync, and projection health checks.

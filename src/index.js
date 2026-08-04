@@ -41,6 +41,7 @@ import { defaultSkillRoots, scanSkillRoots } from "./shared-skill-scan.js";
 import { importSharedSkill, listSharedSkillPackages, findSharedSkillPackage } from "./shared-skills.js";
 import { loadProjectSkillManifest, setProjectSkill, removeProjectSkill, selectProjectSkills } from "./shared-skill-project.js";
 import { doctorSkillProjections, syncSkillProjections } from "./shared-skill-materializer.js";
+import { withPreparedSkillSource } from "./shared-skill-sources.js";
 import { listCredentialProfiles, setCredentialProfile, removeCredentialProfile, resolveCredential } from "./credentials.js";
 import {
   normalizeAdversarialVerifier,
@@ -7576,7 +7577,7 @@ async function skillCommand(argv) {
   if (action === "import" || action === "install") {
     const source = getOption(argv.slice(1), "--path") || argv[1] || "";
     if (!source) throw new Error("Usage: ai-memory-hub skill import|install --path <skill-directory> [--version <version>] [--project <path>]");
-    const imported = await importSharedSkill(config.memoryDir, source, { id: getOption(argv.slice(1), "--id"), version: getOption(argv.slice(1), "--version") || "1.0.0" });
+    const imported = await withPreparedSkillSource(config.memoryDir, source, { ref: getOption(argv.slice(1), "--ref") }, (prepared) => importSharedSkill(config.memoryDir, prepared.path, { id: getOption(argv.slice(1), "--id"), version: getOption(argv.slice(1), "--version") || "1.0.0", source: prepared.source }));
     const project = getOption(argv.slice(1), "--project");
     let synced = [];
     let manifest = null;
@@ -7590,7 +7591,7 @@ async function skillCommand(argv) {
   if (action === "update") {
     const source = getOption(argv.slice(1), "--path");
     if (!source) throw new Error("Usage: ai-memory-hub skill update --path <skill-directory> --version <version> [--project <path>]");
-    const imported = await importSharedSkill(config.memoryDir, source, { id: getOption(argv.slice(1), "--id"), version: getOption(argv.slice(1), "--version") });
+    const imported = await withPreparedSkillSource(config.memoryDir, source, { ref: getOption(argv.slice(1), "--ref") }, (prepared) => importSharedSkill(config.memoryDir, prepared.path, { id: getOption(argv.slice(1), "--id"), version: getOption(argv.slice(1), "--version"), source: prepared.source }));
     const project = getOption(argv.slice(1), "--project");
     const manifest = project ? await setProjectSkill(project, imported.id, imported.version) : null;
     const packages = project ? selectProjectSkills(manifest, await listSharedSkillPackages(config.memoryDir)) : [];
@@ -8108,8 +8109,8 @@ function appCommand(argv) {
       }
       if (req.method === "POST" && url.pathname === "/api/skills/install") {
         const body = await readRequestJson(req);
-        if (!body.path || typeof body.path !== "string") return sendJson(res, { error: "path is required" }, 400);
-        const imported = await importSharedSkill(config.memoryDir, body.path, { id: body.id, version: body.version || "1.0.0" });
+        if ((!body.path || typeof body.path !== "string") && (!body.source || typeof body.source !== "string")) return sendJson(res, { error: "path or source is required" }, 400);
+        const imported = await withPreparedSkillSource(config.memoryDir, body.source || body.path, { ref: body.ref || "" }, (prepared) => importSharedSkill(config.memoryDir, prepared.path, { id: body.id, version: body.version || "1.0.0", source: prepared.source }));
         let manifest = null;
         let synced = [];
         if (body.project) {
@@ -17231,3 +17232,8 @@ if (typeof module !== "undefined" && module.exports) {
     POLICY_OPERATIONS
   };
 }
+
+
+
+
+

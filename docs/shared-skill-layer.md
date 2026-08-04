@@ -65,3 +65,17 @@ ai-memory-hub doctor --tool claude
 `detect` and `connect status` report `skillLayer`, `skillLayerVersion`, and
 `skillLayerStatus`. `doctor` reports the same installation status under
 `install`, while runner availability remains separate.
+
+## Shared external Skills
+
+External Skills are managed once by the AMH registry instead of being copied manually into every Agent. A local Skill can be imported and bound to a project with:
+
+```bash
+ai-memory-hub skill install --path <skill-directory> --version 1.0.0 --project <project> --tool codex
+ai-memory-hub skill sync --project <project>
+ai-memory-hub skill doctor --project <project>
+```
+
+The canonical package is stored below `~/.ai-memory/skill-store`; the project selection is stored in `.amh/skills.json`. Agent directories contain only AMH-managed projections and are never used as the source of truth. Existing unmarked Skills are reported as conflicts and are not overwritten.
+
+The dashboard Skill Center exposes the same scan, import, sync, and doctor operations. Credential profiles can be configured once from the Skill Center or `/api/credentials`. Secret values are protected with Windows DPAPI where available, never returned in API responses, and may be injected only into a runner invocation that explicitly references the profile.

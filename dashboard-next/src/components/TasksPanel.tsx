@@ -6,6 +6,7 @@ import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { Textarea } from './ui/textarea'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog'
+import { VirtualizedList } from './VirtualizedList'
 import type { AnyRecord } from '@/lib/api'
 import type { DashboardCopy } from '@/lib/dashboardCopy'
 
@@ -50,6 +51,8 @@ interface TasksPanelProps {
   visibleProjects: AnyRecord[]
   copy: TasksCopy
   onMutate: (action: string, path: string, body: AnyRecord) => Promise<boolean>
+  hasMore?: boolean
+  onLoadMore?: () => Promise<void>
 }
 
 type TaskMenuAction = {
@@ -83,7 +86,7 @@ function priorityLabel(copy: TasksCopy, priority: string): string {
   return copy.priorityLabels[priority as keyof TasksCopy['priorityLabels']] || priority
 }
 
-export function TasksPanel({ tasks, visibleProjects, copy, onMutate }: TasksPanelProps) {
+export function TasksPanel({ tasks, visibleProjects, copy, onMutate, hasMore = false, onLoadMore }: TasksPanelProps) {
   const [projectFilter, setProjectFilter] = useState<string[]>([])
   const [priorityFilter, setPriorityFilter] = useState<string[]>([])
   const [statusFilter, setStatusFilter] = useState<string[]>([])
@@ -99,6 +102,8 @@ export function TasksPanel({ tasks, visibleProjects, copy, onMutate }: TasksPane
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
   const [selectedTask, setSelectedTask] = useState<AnyRecord | null>(null)
+  const [visibleCount, setVisibleCount] = useState(60)
+  const [loadingMore, setLoadingMore] = useState(false)
 
   const projectOptions = useMemo(
     () => uniqueSorted(tasks.map(task => textOf(task.project)).filter(Boolean)),
@@ -131,6 +136,25 @@ export function TasksPanel({ tasks, visibleProjects, copy, onMutate }: TasksPane
     return !cleanQuery || [task.title, task.description, task.handoff, task.assignee, task.createdBy, task.status, task.project]
       .some(value => textOf(value).toLowerCase().includes(cleanQuery))
   })
+
+  useEffect(() => {
+    setVisibleCount(60)
+  }, [cleanQuery, activeProjectFilter.join(','), activePriorityFilter.join(','), activeStatusFilter.join(',')])
+
+  const visibleTasks = filteredTasks.slice(0, visibleCount)
+  const loadMore = async () => {
+    if (visibleTasks.length < filteredTasks.length) {
+      setVisibleCount(value => Math.min(value + 60, filteredTasks.length))
+      return
+    }
+    if (!hasMore || !onLoadMore || loadingMore) return
+    setLoadingMore(true)
+    try {
+      await onLoadMore()
+    } finally {
+      setLoadingMore(false)
+    }
+  }
 
   const mutateTask = async (action: string, path: string, body: AnyRecord) => {
     setBusy(action)
@@ -193,9 +217,16 @@ export function TasksPanel({ tasks, visibleProjects, copy, onMutate }: TasksPane
           {error ? <div className="flex items-center gap-2 mb-4 rounded-lg border border-destructive/20 bg-destructive/10 p-3"><AlertCircle className="h-4 w-4 shrink-0 text-destructive" /><p className="text-sm text-destructive">{error}</p></div> : null}
 
           {filteredTasks.length ? (
-            <div className="task-card-grid">
-              {filteredTasks.map(task => <TaskCard key={textOf(task.id, textOf(task.title, 'task'))} task={task} copy={copy} busy={busy} onMutate={mutateTask} onOpen={() => setSelectedTask(task)} />)}
-            </div>
+            <VirtualizedList
+              items={visibleTasks}
+              itemHeight={300}
+              getKey={(task, index) => textOf(task.id, `${textOf(task.title, 'task')}-${index}`)}
+              hasMore={visibleTasks.length < filteredTasks.length || hasMore}
+              loading={loadingMore}
+              onEndReached={() => void loadMore()}
+              className="task-virtual-list"
+              renderItem={task => <TaskCard task={task} copy={copy} busy={busy} onMutate={mutateTask} onOpen={() => setSelectedTask(task)} />}
+            />
           ) : <div className="py-8 text-center text-muted-foreground">{copy.noData}</div>}
         </CardContent>
       </Card>

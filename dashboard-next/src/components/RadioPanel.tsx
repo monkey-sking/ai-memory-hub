@@ -1,4 +1,4 @@
-import { useState, useMemo, type KeyboardEvent, type MouseEvent } from 'react'
+import { useEffect, useState, useMemo, type KeyboardEvent, type MouseEvent } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
@@ -8,6 +8,7 @@ import { Textarea } from './ui/textarea'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog'
 import { Send, Search, X, AlertCircle, Clock, Reply, Star } from 'lucide-react'
 import type { AnyRecord } from '@/lib/api'
+import { VirtualizedList } from './VirtualizedList'
 
 interface RadioPanelProps {
   radio: AnyRecord[]
@@ -36,6 +37,8 @@ interface RadioPanelProps {
     noData: string
   }
   onRefresh: () => Promise<void>
+  hasMore?: boolean
+  onLoadMore?: () => Promise<void>
 }
 
 function textOf(value: unknown, fallback = ''): string {
@@ -59,7 +62,7 @@ function formatDate(value: string): string {
   })
 }
 
-export function RadioPanel({ radio, visibleProjects, copy, onRefresh }: RadioPanelProps) {
+export function RadioPanel({ radio, visibleProjects, copy, onRefresh, hasMore = false, onLoadMore }: RadioPanelProps) {
   const [form, setForm] = useState({
     text: '',
     from: 'dashboard-next',
@@ -78,6 +81,8 @@ export function RadioPanel({ radio, visibleProjects, copy, onRefresh }: RadioPan
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
   const [selectedMessage, setSelectedMessage] = useState<AnyRecord | null>(null)
+  const [visibleCount, setVisibleCount] = useState(60)
+  const [loadingMore, setLoadingMore] = useState(false)
 
   const senderOptions = useMemo(
     () => uniqueSorted(radio.map(message => textOf(message.from)).filter(Boolean)),
@@ -123,6 +128,25 @@ export function RadioPanel({ radio, visibleProjects, copy, onRefresh }: RadioPan
     })
     .slice()
     .reverse()
+
+  useEffect(() => {
+    setVisibleCount(60)
+  }, [cleanQuery, activeFromFilter, activeToFilter, activeTypeFilter, activeProjectFilter])
+
+  const visibleMessages = filteredMessages.slice(0, visibleCount)
+  const loadMore = async () => {
+    if (visibleMessages.length < filteredMessages.length) {
+      setVisibleCount(value => Math.min(value + 60, filteredMessages.length))
+      return
+    }
+    if (!hasMore || !onLoadMore || loadingMore) return
+    setLoadingMore(true)
+    try {
+      await onLoadMore()
+    } finally {
+      setLoadingMore(false)
+    }
+  }
 
   const submitRadio = async () => {
     const text = form.text.trim()
@@ -301,7 +325,15 @@ export function RadioPanel({ radio, visibleProjects, copy, onRefresh }: RadioPan
           {/* Messages Stream */}
           <div className="space-y-4 max-h-[600px] overflow-y-auto">
             {filteredMessages.length ? (
-              filteredMessages.map((message, idx) => {
+              <VirtualizedList
+                items={visibleMessages}
+                itemHeight={190}
+                getKey={(message, index) => textOf(message.id, `message-${index}`)}
+                hasMore={visibleMessages.length < filteredMessages.length || hasMore}
+                loading={loadingMore}
+                onEndReached={() => void loadMore()}
+                className="radio-virtual-list"
+                renderItem={message => {
                 const type = textOf(message.type, 'note')
                 const from = textOf(message.from, '-')
                 const to = textOf(message.to, '-')
@@ -312,7 +344,7 @@ export function RadioPanel({ radio, visibleProjects, copy, onRefresh }: RadioPan
                 const messageId = textOf(message.id)
 
                 return (
-                  <div className="radio-message-row" role="button" tabIndex={0} onClick={(event: MouseEvent<HTMLDivElement>) => { if (!(event.target as HTMLElement).closest('button, a, input, textarea, select')) setSelectedMessage(message) }} onKeyDown={(event: KeyboardEvent<HTMLDivElement>) => { if ((event.key === 'Enter' || event.key === ' ') && event.target === event.currentTarget) setSelectedMessage(message) }}><Card key={messageId || idx} className="hover:shadow-md transition-shadow">
+                  <div className="radio-message-row" role="button" tabIndex={0} onClick={(event: MouseEvent<HTMLDivElement>) => { if (!(event.target as HTMLElement).closest('button, a, input, textarea, select')) setSelectedMessage(message) }} onKeyDown={(event: KeyboardEvent<HTMLDivElement>) => { if ((event.key === 'Enter' || event.key === ' ') && event.target === event.currentTarget) setSelectedMessage(message) }}><Card className="hover:shadow-md transition-shadow">
                     <CardContent className="p-4">
                       <div className="space-y-3">
                         {/* Header */}
@@ -357,9 +389,10 @@ export function RadioPanel({ radio, visibleProjects, copy, onRefresh }: RadioPan
                       </div>
                     </CardContent>
                   </Card>
-                </div>
+                  </div>
                 )
-              })
+                }}
+              />
             ) : (
               <div className="text-center text-muted-foreground py-8">{copy.noData}</div>
             )}

@@ -2466,6 +2466,17 @@ td {
 @media (max-width: 1120px) { .dashboard-section-tasks .task-card-grid, .dashboard-section-tools .tool-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .dashboard-section-workflows .workflow-stage-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 760px) { .dashboard-section-tasks .filter-strip, .dashboard-section-workflows .workflow-stage-strip, .dashboard-section-radio .radio-stream, .dashboard-section-memory .memory-record-list, .dashboard-section-search .search-results, .dashboard-section-backups .backup-list, .dashboard-section-analytics .bar-list { grid-template-columns: 1fr; } .dashboard-section-tasks .task-card-grid, .dashboard-section-tools .tool-grid { grid-template-columns: 1fr; } }
 
+/* Large collections keep a stable viewport while only visible rows stay mounted. */
+.virtual-list-viewport { position: relative; width: 100%; min-height: 0; overflow-x: hidden; overflow-y: auto; contain: strict; overscroll-behavior: contain; }
+.virtual-list-content { position: relative; width: 100%; min-height: 1px; }
+.virtual-list-item { position: absolute; inset-inline: 0; top: 0; width: 100%; padding-bottom: 12px; will-change: transform; }
+.virtual-list-item > * { height: 100%; min-width: 0; }
+.virtual-list-end-marker { position: absolute; left: 0; width: 1px; height: 1px; pointer-events: none; }
+.virtual-list-loading { position: sticky; bottom: 8px; z-index: 1; width: max-content; margin: -34px auto 8px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--bg-panel); color: var(--text-muted); font-size: 12px; box-shadow: var(--shadow); }
+.task-virtual-list .task-card { min-height: 0; height: 100%; overflow: hidden; }
+.radio-virtual-list .radio-message-row, .memory-virtual-list .memory-record-item { height: 100%; min-height: 0; }
+.radio-virtual-list .radio-message-row > *, .memory-virtual-list .memory-record-item > * { height: 100%; overflow: hidden; }
+
 /* --- Workbench home: the primary product surface --- */
 .command-center { display: grid; gap: 28px; }
 .command-center-hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; padding: 28px 30px; border-radius: 24px; background: #172033; color: #f8fafc; box-shadow: 0 18px 42px rgba(23,32,51,.18); }

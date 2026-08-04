@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
@@ -8,6 +8,7 @@ import { Textarea } from './ui/textarea'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog'
 import { Plus, AlertCircle, Clock, Tag, User, RefreshCw } from 'lucide-react'
 import type { AnyRecord } from '@/lib/api'
+import { VirtualizedList } from './VirtualizedList'
 
 interface MemoryPanelProps {
   memory: AnyRecord
@@ -27,6 +28,8 @@ interface MemoryPanelProps {
     noData: string
   }
   onRefresh: () => Promise<void>
+  hasMore?: boolean
+  onLoadMore?: () => Promise<void>
 }
 
 function textOf(value: unknown, fallback = ''): string {
@@ -61,7 +64,7 @@ function formatNumber(value: unknown): string {
   return Number.isNaN(num) ? String(value) : num.toLocaleString()
 }
 
-export function MemoryPanel({ memory, copy, onRefresh }: MemoryPanelProps) {
+export function MemoryPanel({ memory, copy, onRefresh, hasMore = false, onLoadMore }: MemoryPanelProps) {
   const pending = asArray<AnyRecord>(memory.pending)
   const memoryRecords = asArray<AnyRecord>(memory.records)
   const [text, setText] = useState('')
@@ -73,6 +76,27 @@ export function MemoryPanel({ memory, copy, onRefresh }: MemoryPanelProps) {
   const [supersedeText, setSupersedeText] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [visibleCount, setVisibleCount] = useState(60)
+  const [loadingMore, setLoadingMore] = useState(false)
+
+  useEffect(() => {
+    setVisibleCount(60)
+  }, [memoryRecords.length])
+
+  const visibleRecords = memoryRecords.slice(0, visibleCount)
+  const loadMore = async () => {
+    if (visibleRecords.length < memoryRecords.length) {
+      setVisibleCount(value => Math.min(value + 60, memoryRecords.length))
+      return
+    }
+    if (!hasMore || !onLoadMore || loadingMore) return
+    setLoadingMore(true)
+    try {
+      await onLoadMore()
+    } finally {
+      setLoadingMore(false)
+    }
+  }
 
   const submitMemory = async () => {
     const nextText = text.trim()
@@ -198,10 +222,16 @@ export function MemoryPanel({ memory, copy, onRefresh }: MemoryPanelProps) {
         </CardHeader>
         <CardContent className="pt-6">
           {memoryRecords.length ? (
-            <div className="memory-record-list">
-              {memoryRecords.slice(0, 12).map((record, idx) => {
+            <VirtualizedList
+              items={visibleRecords}
+              itemHeight={190}
+              getKey={(record, index) => textOf(record.localEventId || record.id, `memory-${index}`)}
+              hasMore={visibleRecords.length < memoryRecords.length || hasMore}
+              loading={loadingMore}
+              onEndReached={() => void loadMore()}
+              className="memory-virtual-list"
+              renderItem={record => {
                 const metadata = asRecord(record.metadata)
-                const recordId = textOf(record.localEventId || record.id)
                 const kindValue = textOf(record.kind || metadata.kind, 'note')
                 const sourceValue = textOf(record.source, '-')
                 const timestamp = textOf(record.ts || record.indexedAt)
@@ -209,7 +239,7 @@ export function MemoryPanel({ memory, copy, onRefresh }: MemoryPanelProps) {
                 const supersedes = textOf(metadata.supersedes)
 
                 return (
-                  <div className="memory-record-item" role="button" tabIndex={0} onClick={(event: React.MouseEvent<HTMLDivElement>) => { if (!(event.target as HTMLElement).closest('button, a, input, textarea, select')) setSelectedRecord(record) }} onKeyDown={(event: React.KeyboardEvent<HTMLDivElement>) => { if ((event.key === 'Enter' || event.key === ' ') && event.target === event.currentTarget) setSelectedRecord(record) }}><Card key={recordId || idx} className="hover:shadow-md transition-shadow">
+                  <div className="memory-record-item" role="button" tabIndex={0} onClick={(event: React.MouseEvent<HTMLDivElement>) => { if (!(event.target as HTMLElement).closest('button, a, input, textarea, select')) setSelectedRecord(record) }} onKeyDown={(event: React.KeyboardEvent<HTMLDivElement>) => { if ((event.key === 'Enter' || event.key === ' ') && event.target === event.currentTarget) setSelectedRecord(record) }}><Card className="hover:shadow-md transition-shadow">
                     <CardContent className="p-4">
                       <div className="space-y-3">
                         {/* Header */}
@@ -257,10 +287,10 @@ export function MemoryPanel({ memory, copy, onRefresh }: MemoryPanelProps) {
                         )}
                       </div>
                     </CardContent>
-                  </Card>`n                </div>
+                  </Card></div>
                 )
-              })}
-            </div>
+              }}
+            />
           ) : (
             <div className="text-center text-muted-foreground py-8">{copy.noData}</div>
           )}

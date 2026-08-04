@@ -5,6 +5,7 @@ import './App.css'
 
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Chat = lazy(() => import('./pages/Chat'))
+const Skills = lazy(() => import('./pages/Skills'))
 
 function RouteFallback() {
   return (
@@ -30,7 +31,7 @@ function App() {
             <Route path="analytics" element={<Dashboard section="analytics" />} />
             <Route path="backups" element={<Dashboard section="backups" />} />
             <Route path="search" element={<Dashboard section="search" />} />
-            <Route path="tools" element={<Dashboard section="tools" />} />
+            <Route path="tools" element={<Dashboard section="tools" />} />`r`n            <Route path="skills" element={<Skills />} />
             <Route path="projects" element={<Dashboard section="projects" />} />
             <Route path="health" element={<Dashboard section="health" />} />
             <Route path="settings" element={<Dashboard section="settings" />} />

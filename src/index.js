@@ -41,6 +41,7 @@ import { defaultSkillRoots, scanSkillRoots } from "./shared-skill-scan.js";
 import { importSharedSkill, listSharedSkillPackages, findSharedSkillPackage } from "./shared-skills.js";
 import { loadProjectSkillManifest, setProjectSkill, removeProjectSkill, selectProjectSkills } from "./shared-skill-project.js";
 import { doctorSkillProjections, syncSkillProjections } from "./shared-skill-materializer.js";
+import { listCredentialProfiles, setCredentialProfile, removeCredentialProfile } from "./credentials.js";
 import {
   normalizeAdversarialVerifier,
   normalizeReviewDimensions,
@@ -8050,6 +8051,56 @@ function appCommand(argv) {
       }
       if (req.method === "GET" && url.pathname === "/api/dashboard/overview") {
         return sendJson(res, dashboardRealtime.getDashboardOverview(config.memoryDir));
+      }
+      if (req.method === "GET" && url.pathname === "/api/credentials") {
+        return sendJson(res, { profiles: listCredentialProfiles(config.memoryDir) });
+      }
+      if (req.method === "POST" && url.pathname === "/api/credentials") {
+        const body = await readRequestJson(req);
+        const profile = setCredentialProfile(config.memoryDir, body);
+        return sendJson(res, { ok: true, profile });
+      }
+      if (req.method === "DELETE" && url.pathname === "/api/credentials") {
+        const body = await readRequestJson(req);
+        return sendJson(res, { ok: true, profiles: removeCredentialProfile(config.memoryDir, body.id) });
+      }
+      if (req.method === "GET" && url.pathname === "/api/skills") {
+        const packages = await listSharedSkillPackages(config.memoryDir);
+        const project = url.searchParams.get("project") || process.cwd();
+        const manifest = await loadProjectSkillManifest(project);
+        return sendJson(res, { packages, manifest, selected: selectProjectSkills(manifest, packages) });
+      }
+      if (req.method === "GET" && url.pathname === "/api/skills/scan") {
+        return sendJson(res, { skills: await scanSkillRoots(defaultSkillRoots()) });
+      }
+      if (req.method === "POST" && url.pathname === "/api/skills/install") {
+        const body = await readRequestJson(req);
+        if (!body.path || typeof body.path !== "string") return sendJson(res, { error: "path is required" }, 400);
+        const imported = await importSharedSkill(config.memoryDir, body.path, { id: body.id, version: body.version || "1.0.0" });
+        let manifest = null;
+        let synced = [];
+        if (body.project) {
+          manifest = await setProjectSkill(body.project, imported.id, body.version || imported.version);
+          const packages = selectProjectSkills(manifest, await listSharedSkillPackages(config.memoryDir));
+          synced = await syncSkillProjections(body.project, packages, Array.isArray(body.targets) && body.targets.length ? body.targets : ["codex", "claude", "gemini", "antigravity"]);
+        }
+        broadcastDashboardUpdate("skills:install");
+        return sendJson(res, { ok: true, imported, manifest, synced });
+      }
+      if (req.method === "POST" && url.pathname === "/api/skills/sync") {
+        const body = await readRequestJson(req);
+        const project = body.project || process.cwd();
+        const manifest = await loadProjectSkillManifest(project);
+        const packages = selectProjectSkills(manifest, await listSharedSkillPackages(config.memoryDir));
+        const result = await syncSkillProjections(project, packages, Array.isArray(body.targets) && body.targets.length ? body.targets : (manifest.targets.length ? manifest.targets : ["codex", "claude", "gemini", "antigravity"]));
+        broadcastDashboardUpdate("skills:sync");
+        return sendJson(res, { ok: true, project, result });
+      }
+      if (req.method === "GET" && url.pathname === "/api/skills/doctor") {
+        const project = url.searchParams.get("project") || process.cwd();
+        const manifest = await loadProjectSkillManifest(project);
+        const packages = selectProjectSkills(manifest, await listSharedSkillPackages(config.memoryDir));
+        return sendJson(res, { project, result: await doctorSkillProjections(project, packages, manifest.targets.length ? manifest.targets : ["codex", "claude", "gemini", "antigravity"]) });
       }
       if (req.method === "GET" && url.pathname === "/api/metrics") {
         return sendJson(res, dashboardMetrics.calculateMetrics(config.memoryDir));

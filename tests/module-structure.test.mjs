@@ -39,7 +39,8 @@ test("dashboard radio read model lives outside the CLI entrypoint", async () => 
 
   assert.match(radioModule, /export\s+function\s+createDashboardRadioApi/);
   assert.match(radioModule, /function\s+getDashboardRadio\(/);
-  assert.match(radioModule, /readRadioMessages\(memoryDir\)\.slice\(-50\)/);
+  assert.match(radioModule, /readRadioMessages\(memoryDir\)/);
+  assert.match(radioModule, /messages: orderedMessages\.slice\(pageStart, pageEnd\)/);
 });
 
 test("dashboard task read model lives outside the CLI entrypoint", async () => {
@@ -54,7 +55,7 @@ test("dashboard task read model lives outside the CLI entrypoint", async () => {
   assert.match(tasksModule, /export\s+function\s+createDashboardTasksApi/);
   assert.match(tasksModule, /function\s+getDashboardTasks\(/);
   assert.match(tasksModule, /readTasks\(memoryDir\)/);
-  assert.match(tasksModule, /\.slice\(0,\s*200\)/);
+  assert.match(tasksModule, /tasks: filteredTasks\.slice\(offset, offset \+ limit\)/);
 });
 
 test("dashboard workflow API lives outside the CLI entrypoint", async () => {
@@ -319,3 +320,4 @@ test("dashboard action route wrappers live outside the CLI entrypoint", async ()
   assert.match(actionsModule, /export\s+function\s+createDashboardActionsApi/);
   assert.match(actionsModule, /appendIfMissing\(target\.file,\s*snippet,\s*"Shared AI Memory"\)/);
 });
+

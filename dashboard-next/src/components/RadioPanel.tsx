@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, type KeyboardEvent, type MouseEvent } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
@@ -16,6 +16,7 @@ interface RadioPanelProps {
     recentRadio: string
     broadcastMessage: string
     searchText: string
+    searchPlaceholder: string
     from: string
     to: string
     type: string
@@ -76,6 +77,7 @@ export function RadioPanel({ radio, visibleProjects, copy, onRefresh }: RadioPan
   const [composeOpen, setComposeOpen] = useState(false)
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
+  const [selectedMessage, setSelectedMessage] = useState<AnyRecord | null>(null)
 
   const senderOptions = useMemo(
     () => uniqueSorted(radio.map(message => textOf(message.from)).filter(Boolean)),
@@ -196,10 +198,10 @@ export function RadioPanel({ radio, visibleProjects, copy, onRefresh }: RadioPan
           {/* Filters */}
           <div className="grid grid-cols-1 md:grid-cols-6 gap-4 mb-6">
             <div className="space-y-2">
-              <Label htmlFor="search">{copy.searchText}</Label>
+              
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input id="search" value={query} onChange={e => setQuery(e.target.value)} className="pl-9" placeholder="搜索消息..." />
+                <Input id="search" value={query} onChange={e => setQuery(e.target.value)} className="pl-9" placeholder={copy.searchPlaceholder} aria-label={copy.searchText} />
               </div>
             </div>
 
@@ -310,7 +312,7 @@ export function RadioPanel({ radio, visibleProjects, copy, onRefresh }: RadioPan
                 const messageId = textOf(message.id)
 
                 return (
-                  <Card key={messageId || idx} className="hover:shadow-md transition-shadow">
+                  <div className="radio-message-row" role="button" tabIndex={0} onClick={(event: MouseEvent<HTMLDivElement>) => { if (!(event.target as HTMLElement).closest('button, a, input, textarea, select')) setSelectedMessage(message) }} onKeyDown={(event: KeyboardEvent<HTMLDivElement>) => { if ((event.key === 'Enter' || event.key === ' ') && event.target === event.currentTarget) setSelectedMessage(message) }}><Card key={messageId || idx} className="hover:shadow-md transition-shadow">
                     <CardContent className="p-4">
                       <div className="space-y-3">
                         {/* Header */}
@@ -355,6 +357,7 @@ export function RadioPanel({ radio, visibleProjects, copy, onRefresh }: RadioPan
                       </div>
                     </CardContent>
                   </Card>
+                </div>
                 )
               })
             ) : (
@@ -365,6 +368,7 @@ export function RadioPanel({ radio, visibleProjects, copy, onRefresh }: RadioPan
       </Card>
 
       {/* Compose Dialog */}
+      {selectedMessage ? <Dialog open onOpenChange={open => { if (!open) setSelectedMessage(null) }}><DialogContent className="radio-detail-dialog"><DialogHeader><DialogTitle>{copy.message}</DialogTitle></DialogHeader><div className="radio-detail-content"><div className="radio-detail-route"><TypeBadge type={textOf(selectedMessage.type, 'note')} /><strong>{textOf(selectedMessage.from, '-')}</strong><span>→</span><strong>{textOf(selectedMessage.to, '-')}</strong><time>{formatDate(textOf(selectedMessage.ts || selectedMessage.createdAt))}</time></div><p className="radio-detail-text">{textOf(selectedMessage.text, '-')}</p><div className="radio-detail-meta"><span>{copy.project}: {textOf(selectedMessage.project, '-')}</span><span>{copy.thread}: {textOf(selectedMessage.thread || selectedMessage.id, '-')}</span></div><div className="radio-detail-actions"><Button onClick={() => { startReply(selectedMessage); setSelectedMessage(null) }}><Reply className="w-3 h-3 mr-1" />{copy.reply}</Button><Button variant="outline" onClick={() => void promote(textOf(selectedMessage.id))}><Star className="w-3 h-3 mr-1" />{copy.promoteToMemory}</Button></div></div></DialogContent></Dialog> : null}
       <Dialog open={composeOpen} onOpenChange={setComposeOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>

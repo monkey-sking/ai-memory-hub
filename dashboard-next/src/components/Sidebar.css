@@ -273,3 +273,17 @@
     padding-bottom: calc(64px + env(safe-area-inset-bottom));
   }
 }
+
+/* --- Navigation is a workspace rail, not a second content panel --- */
+.sidebar { width: 248px; padding: 22px 16px; background: #111827; border-right: 0; box-shadow: 10px 0 30px rgba(15, 23, 42, .08); }
+.sidebar-logo { margin: 0 6px 38px; }
+.sidebar-logo-mark { background: linear-gradient(135deg, #f59e0b, #ef7d22); box-shadow: 0 8px 18px rgba(245, 158, 11, .22); }
+.sidebar-logo-copy strong { color: #f8fafc; }
+.sidebar-logo-copy span, .sidebar-nav-group-label { color: #94a3b8; }
+.sidebar-nav-group { padding-bottom: 24px; }
+.sidebar-nav-item { min-height: 44px; border-radius: 12px; color: #a8b4c7; }
+.sidebar-nav-item:hover { color: #fff; background: rgba(255,255,255,.07); }
+.sidebar-nav-item.active { color: #fff; background: linear-gradient(90deg, rgba(245,158,11,.2), rgba(245,158,11,.06)); }
+.sidebar-nav-item.active::before { background: #f59e0b; }
+.sidebar-nav-icon { stroke-width: 1.8; }
+@media (max-width: 768px) { .sidebar { width: 100%; height: calc(68px + env(safe-area-inset-bottom)); padding: 0 8px env(safe-area-inset-bottom); background: #111827; border-top: 1px solid rgba(255,255,255,.12); } .sidebar-mobile-nav-item { color: #a8b4c7; } .sidebar-mobile-nav-item:hover, .sidebar-mobile-nav-item.active { color: #fff; background: rgba(245,158,11,.18); } }

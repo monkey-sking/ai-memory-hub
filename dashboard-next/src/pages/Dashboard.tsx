@@ -78,7 +78,7 @@ export default function Dashboard({ section }: DashboardProps) {
     setLoading(true)
     setError('')
     try {
-      const { snapshot, health: nextHealth } = await fetchDashboardData()
+      const { snapshot, health: nextHealth } = await fetchDashboardData(section)
       setData(snapshot)
       setHealth(nextHealth)
     } catch (nextError) {
@@ -86,7 +86,7 @@ export default function Dashboard({ section }: DashboardProps) {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [section])
 
   const runHubAction = useCallback(async (path: string, action: string) => {
     setBusyAction(action)
@@ -107,7 +107,7 @@ export default function Dashboard({ section }: DashboardProps) {
   useEffect(() => {
     let active = true
 
-    void fetchDashboardData()
+    void fetchDashboardData(section)
       .then(({ snapshot, health: nextHealth }) => {
         if (!active) return
         setData(snapshot)
@@ -124,12 +124,12 @@ export default function Dashboard({ section }: DashboardProps) {
     return () => {
       active = false
     }
-  }, [])
+  }, [section])
 
   const viewModel = useMemo(() => buildViewModel(data), [data])
 
   return (
-    <div className="dashboard-page">
+    <div className={`dashboard-page dashboard-section-${section}`}>
       <DashboardHeader
         title={dashboardTitles[language][section]}
         subtitle={dashboardSubtitles[language][section]}
@@ -152,11 +152,11 @@ export default function Dashboard({ section }: DashboardProps) {
 
         {loading && !data ? (
           <div className="m-6 p-4 rounded-lg border bg-card text-center">
-            <span className="text-muted-foreground">{copy.refreshing}</span>
+            <span className="loading-state"><span className="loading-spinner" aria-hidden="true" /> <span>{copy.refreshing}</span></span>
           </div>
         ) : (
           <div className="p-6">
-            {section === 'overview' && <Overview copy={copy} model={viewModel} language={language} onRefresh={refresh} />}
+            {section === 'overview' && <CommandCenter copy={copy} model={viewModel} language={language} onRefresh={refresh} />}
             {section === 'memory' && <NewMemoryPanel memory={viewModel.memory} copy={copy} onRefresh={refresh} />}
             {section === 'tasks' && <NewTasksPanel tasks={viewModel.tasks} visibleProjects={viewModel.visibleProjects} copy={copy} onMutate={async (_action, path, body) => {
               await apiPost<AnyRecord>(path, body)
@@ -182,14 +182,37 @@ export default function Dashboard({ section }: DashboardProps) {
   )
 }
 
-async function fetchDashboardData(): Promise<{ snapshot: DashboardSnapshot; health: AnyRecord | null }> {
-  const [snapshot, health] = await Promise.all([
-    apiGet<DashboardSnapshot>('/api/dashboard'),
-    apiGet<AnyRecord>('/api/health').catch(() => null)
-  ])
-  return { snapshot, health }
-}
+async function fetchDashboardData(section: DashboardSection): Promise<{ snapshot: DashboardSnapshot; health: AnyRecord | null }> {
+  if (section === 'overview') {
+    const snapshot = await apiGet<DashboardSnapshot>('/api/dashboard/overview')
+    return { snapshot, health: null }
+  }
 
+  const sectionRequest: Partial<Record<DashboardSection, { path: string; key: keyof DashboardSnapshot }>> = {
+    memory: { path: '/api/memory', key: 'memory' },
+    tasks: { path: '/api/tasks', key: 'tasks' },
+    radio: { path: '/api/radio', key: 'radio' },
+    workflows: { path: '/api/workflows', key: 'workflows' },
+    dispatch: { path: '/api/dispatch', key: 'dispatch' },
+    tools: { path: '/api/tools', key: 'tools' },
+    backups: { path: '/api/backups', key: 'backups' },
+    projects: { path: '/api/projects', key: 'projects' },
+    analytics: { path: '/api/metrics', key: 'metrics' },
+    settings: { path: '/api/settings', key: 'settings' },
+    health: { path: '/api/health', key: 'status' }
+  }
+  const request = sectionRequest[section]
+  if (!request) {
+    const snapshot = await apiGet<DashboardSnapshot>('/api/dashboard')
+    return { snapshot, health: null }
+  }
+
+  const requests: Promise<AnyRecord>[] = [apiGet<AnyRecord>(request.path)]
+  if (section === 'tasks' || section === 'workflows') requests.push(apiGet<AnyRecord>('/api/projects'))
+  const [payload, projects] = await Promise.all(requests)
+  const snapshot = { [request.key]: payload, ...(projects ? { projects } : {}) } as DashboardSnapshot
+  return { snapshot, health: section === 'health' ? payload : null }
+}
 function buildViewModel(data: DashboardSnapshot | null) {
   const status = asRecord(data?.status)
   const metrics = asRecord(data?.metrics)
@@ -231,6 +254,109 @@ function buildViewModel(data: DashboardSnapshot | null) {
 
 type ViewModel = ReturnType<typeof buildViewModel>
 type Copy = DashboardCopy
+
+function humanStatus(value: unknown, language: AppLanguage): string {
+  const status = textOf(value).toLowerCase()
+  const zh: Record<string, string> = { open: '待处理', active: '进行中', in_progress: '进行中', claimed: '已领取', waiting_review: '待确认', blocked: '已阻塞', failed: '失败', completed: '已完成', done: '已完成', cancelled: '已取消', idle: '空闲', running: '运行中', success: '成功', pending: '待处理' }
+  const en: Record<string, string> = { open: 'Open', active: 'Active', in_progress: 'In progress', claimed: 'Claimed', waiting_review: 'Waiting for review', blocked: 'Blocked', failed: 'Failed', completed: 'Completed', done: 'Done', cancelled: 'Cancelled', idle: 'Idle', running: 'Running', success: 'Succeeded', pending: 'Pending' }
+  return (language === 'zh' ? zh : en)[status] || (status ? status.replace(/_/g, ' ') : '—')
+}
+
+function CommandCenter({ copy, model, language, onRefresh }: { copy: Copy; model: ViewModel; language: AppLanguage; onRefresh: () => Promise<void> }) {
+  const [selected, setSelected] = useState<{ kind: 'agent' | 'task' | 'radio'; item: AnyRecord } | null>(null)
+  const activeAgents = model.agentSessions.slice(0, 6)
+  const attentionTasks = model.tasks.filter(task => ['failed', 'blocked', 'waiting_review', 'in_progress', 'claimed'].includes(textOf(task.status))).slice(0, 6)
+  const recentTasks = model.tasks.slice(0, 5)
+  const recentMessages = model.radio.slice(0, 5)
+  const selectedId = textOf(selected?.item.id)
+
+  const choose = (kind: 'agent' | 'task' | 'radio', item: AnyRecord) => setSelected({ kind, item })
+
+  return (
+    <div className="command-center">
+      <section className="command-center-hero">
+        <div>
+          <p className="command-center-kicker">{language === 'zh' ? '团队工作台' : 'Team workspace'}</p>
+          <h1>{language === 'zh' ? '团队现在在推进什么？' : 'What is the team moving forward?'}</h1>
+          <p>{language === 'zh' ? '查看正在运行的智能体、需要你关注的任务，以及最新协作进展。' : 'See active agents, tasks that need your attention, and the latest collaboration updates.'}</p>
+        </div>
+        <div className="command-center-hero-actions">
+          <div className="command-center-live"><span />{language === 'zh' ? '实时同步' : 'Live updates'}</div>
+          <button className="btn" type="button" onClick={() => void onRefresh()}>{copy.refresh}</button>
+        </div>
+      </section>
+
+      <div className="command-center-grid">
+        <main className="command-center-main">
+          <section className="command-section">
+            <div className="command-section-heading">
+              <div><span className="command-section-index">01</span><div><h2>{language === 'zh' ? 'Agent 活动' : 'Agent activity'}</h2><p>{language === 'zh' ? '当前正在执行或保持上下文的智能体' : 'Agents currently executing or holding context'}</p></div></div>
+              <strong className="command-section-count">{activeAgents.length}</strong>
+            </div>
+            {activeAgents.length ? (
+              <div className="agent-work-grid">
+                {activeAgents.map((agent, index) => (
+                  <article className={'agent-work-card '+(selectedId === textOf(agent.id) ? 'is-selected' : '')} key={textOf(agent.id)+'-'+index} role="button" tabIndex={0} onClick={() => choose('agent', agent)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') choose('agent', agent) }}>
+                    <div className="agent-work-card-top"><span className={'agent-presence '+textOf(agent.status)}></span><strong>{textOf(agent.tool || agent.agent || agent.actor, 'Agent')}</strong><NewStatusBadge status={textOf(agent.status, 'idle')} /></div>
+                    <h3>{textOf(agent.title || agent.taskTitle || agent.project, language === 'zh' ? '未命名工作' : 'Untitled work')}</h3>
+                    <div className="agent-work-card-meta"><span>{textOf(agent.project, '—')}</span><span>{textOf(agent.updatedAt || agent.lastSeenAt, '—')}</span></div>
+                    <div className="agent-work-card-footer"><span>{language === 'zh' ? '点击查看上下文' : 'Click to inspect'}</span><strong>{textOf(agent.sessionId || agent.threadKey, 'local')}</strong></div>
+                  </article>
+                ))}
+              </div>
+            ) : <div className="command-empty">{language === 'zh' ? '当前没有活跃 Agent' : 'No active agents right now'}</div>}
+          </section>
+
+          <section className="command-section command-attention-section">
+            <div className="command-section-heading">
+              <div><span className="command-section-index">02</span><div><h2>{language === 'zh' ? '需要关注' : 'Needs attention'}</h2><p>{language === 'zh' ? '失败、阻塞或正在推进中的任务' : 'Failed, blocked, or currently moving tasks'}</p></div></div>
+              <strong className="command-section-count danger">{attentionTasks.length}</strong>
+            </div>
+            <div className="attention-task-grid">
+              {attentionTasks.length ? attentionTasks.map((task, index) => (
+                <article className={'attention-task-card '+(selectedId === textOf(task.id) ? 'is-selected' : '')} key={textOf(task.id)+'-'+index} role="button" tabIndex={0} onClick={() => choose('task', task)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') choose('task', task) }}>
+                  <div className="attention-task-top"><NewStatusBadge status={textOf(task.status, 'open')} /><span>{textOf(task.priority, 'normal')}</span></div>
+                  <h3>{textOf(task.title, '—')}</h3>
+                  <div><span>{textOf(task.project, '—')}</span><span>{textOf(task.assignee || task.createdBy, 'unassigned')}</span></div>
+                </article>
+              )) : <div className="command-empty">{language === 'zh' ? '没有需要立即介入的任务' : 'Nothing needs intervention right now'}</div>}
+            </div>
+          </section>
+        </main>
+
+        <aside className="command-center-side">
+          <section className="command-side-block command-next-block">
+            <div className="command-side-heading"><span className="command-section-index">04</span><h2>{language === 'zh' ? '最近任务' : 'Recent work'}</h2></div>
+            <div className="command-recent-list">
+              {recentTasks.map((task, index) => <div className={'command-recent-item '+(selectedId === textOf(task.id) ? 'is-selected' : '')} key={textOf(task.id)+'-'+index} role="button" tabIndex={0} onClick={() => choose('task', task)}><NewStatusBadge status={textOf(task.status, 'open')} /><div><strong>{textOf(task.title, '—')}</strong><span>{textOf(task.assignee || task.createdBy, 'unassigned')}</span></div></div>)}
+            </div>
+          </section>
+          <section className="command-side-block command-radio-block">
+            <div className="command-side-heading"><span className="command-section-index">05</span><h2>{language === 'zh' ? '协作广播' : 'Handoffs'}</h2></div>
+            <div className="command-radio-list">
+              {recentMessages.map((message, index) => <div className="command-radio-item" key={textOf(message.id)+'-'+index} role="button" tabIndex={0} onClick={() => choose('radio', message)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') choose('radio', message) }}><span className="command-radio-dot" /><div><strong>{textOf(message.from, 'agent')} → {textOf(message.to, 'all')}</strong><p>{textOf(message.text, '—')}</p></div></div>)}
+            </div>
+          </section>
+        </aside>
+      </div>
+      {selected ? (
+        <Modal title={textOf(selected.item.title || selected.item.taskTitle || selected.item.tool || selected.item.agent || selected.item.text, language === 'zh' ? '条目详情' : 'Item details')} onClose={() => setSelected(null)}>
+          <div className="command-modal-detail">
+            <div className="command-modal-type">{selected.kind === 'agent' ? 'AGENT CONTEXT' : selected.kind === 'radio' ? 'RADIO MESSAGE' : 'TASK CONTEXT'}</div>
+            <h3>{textOf(selected.item.title || selected.item.taskTitle || selected.item.tool || selected.item.agent || selected.item.text, '—')}</h3>
+            <div className="command-modal-grid">
+              <Property label={language === 'zh' ? '状态' : 'Status'} value={humanStatus(selected.item.status, language)} />
+              <Property label={language === 'zh' ? '项目' : 'Project'} value={textOf(selected.item.project, '—')} />
+              <Property label={language === 'zh' ? '负责人' : 'Owner'} value={textOf(selected.item.assignee || selected.item.actor || selected.item.tool, '—')} />
+              <Property label={language === 'zh' ? '上下文 ID' : 'Context ID'} value={textOf(selected.item.sessionId || selected.item.threadKey || selected.item.id, '—')} />
+            </div>
+            <div className="command-modal-copy"><strong>{language === 'zh' ? '技术详情' : 'Technical details'}</strong><pre>{JSON.stringify(selected.item, null, 2)}</pre></div>
+          </div>
+        </Modal>
+      ) : null}    </div>
+  )
+}
+void Overview
 
 function Overview({ copy, model, language, onRefresh }: { copy: Copy; model: ViewModel; language: AppLanguage; onRefresh: () => Promise<void> }) {
   const statusTasks = asRecord(model.status.tasks)
@@ -1272,10 +1398,7 @@ function DispatchPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewMode
   const [modelName, setModelName] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-
-  const modelOptions = [...new Set(
-    model.tools.flatMap(tool => asArray<string>(asRecord(tool.models).all))
-  )].sort().slice(0, 500)
+  const modelOptions = [...new Set(model.tools.flatMap(tool => asArray<string>(asRecord(tool.models).all)))].sort().slice(0, 500)
 
   const trigger = async () => {
     setBusy(true)
@@ -1290,75 +1413,23 @@ function DispatchPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewMode
     }
   }
 
-  return (
-    <div className="stack">
-      <Panel title={copy.triggerDispatch}>
-        <div className="form-grid dispatch-control-grid">
-          <label className="field checkbox-field">
-            <input type="checkbox" checked={force} onChange={event => setForce(event.target.checked)} />
-            <span>{copy.forceDispatch}</span>
-          </label>
-          <label className="field">
-            <span>{copy.limit}</span>
-            <input type="number" min={1} max={50} value={limit} onChange={event => setLimit(Number(event.target.value) || 10)} />
-          </label>
-          <label className="field">
-            <span>{copy.model}</span>
-            <input type="text" list="amh-model-options" value={modelName} onChange={event => setModelName(event.target.value)} placeholder={copy.modelPlaceholder} />
-            <datalist id="amh-model-options">
-              {modelOptions.map(option => <option key={option} value={option} />)}
-            </datalist>
-          </label>
-          <div className="form-actions">
-            <button className="btn" type="button" onClick={() => void trigger()} disabled={busy}>
-              {busy ? copy.running : copy.triggerDispatch}
-            </button>
-          </div>
-        </div>
-        {error ? <div className="inline-error">{error}</div> : null}
-      </Panel>
-      <div className="panel-grid two">
-        <Panel title={copy.dispatchThreads}>
-          <div className="stack">
-            {model.relay.length ? model.relay.map(entry => (
-              <div className="dispatch-card" key={textOf(entry.id || entry.threadKey || entry.sourceId)}>
-                <div className="dispatch-card-header">
-                  <div>
-                    <strong>{textOf(entry.tool, '-')}</strong>
-                    <span>{textOf(entry.project, '-')}</span>
-                  </div>
-                  <StatusBadge status={textOf(entry.state, 'pending')} />
-                </div>
-                <p>{textOf(entry.threadKey || entry.thread || entry.sourceId, '-')}</p>
-                {entry.progressPercent !== undefined && entry.progressPercent !== null ? (
-                  <div className="progress-line">
-                    <span style={{ width: `${Math.min(100, Math.max(0, numberOf(entry.progressPercent)))}%` }} />
-                  </div>
-                ) : null}
-                {entry.progressStatus ? <p>{textOf(entry.progressStatus)}</p> : null}
-                {entry.lastError ? <p className="error-text">{textOf(entry.lastError)}</p> : null}
-                <span className="muted-text">{formatDate(textOf(entry.ts || entry.progressAt || entry.deliveryUpdatedAt))}</span>
-              </div>
-            )) : <EmptyState text={copy.noData} />}
-          </div>
-        </Panel>
-        <Panel title={copy.dispatchLogs}>
-          <DataTable
-            emptyText={copy.noData}
-            columns={[copy.status, copy.to, copy.project, copy.message]}
-            rows={model.dispatchLogs.slice(0, 30).map(log => [
-              <StatusBadge status={textOf(log.runStatus || log.status || log.exitCode, 'log')} />,
-              textOf(log.tool, '-'),
-              textOf(log.project, '-'),
-              textOf(log.message || log.text || log.error || log.lastError, '-')
-            ])}
-          />
-        </Panel>
+  return <div className="stack dispatch-workspace">
+    <div className="dispatch-summary-line"><span><strong>{formatNumber(model.relay.length)}</strong> 活跃调度</span><span><strong>{formatNumber(model.dispatchLogs.length)}</strong> 运行记录</span><span className="dispatch-summary-note">调度只处理当前待处理事项</span></div>
+    <Panel title={copy.triggerDispatch} className="dispatch-control-panel">
+      <div className="dispatch-control-intro"><div><strong>自动派发</strong><p>选择本次最多处理的数量和目标模型，执行结果会出现在运行记录中。</p></div><span className={force ? 'dispatch-risk-badge active' : 'dispatch-risk-badge'}>{force ? '强制执行已开启' : '普通模式'}</span></div>
+      <div className="dispatch-control-grid">
+        <label className="field"><span>{copy.limit}</span><input type="number" min={1} max={50} value={limit} onChange={event => setLimit(Number(event.target.value) || 10)} /></label>
+        <label className="field"><span>{copy.model}</span><input type="text" list="amh-model-options" value={modelName} onChange={event => setModelName(event.target.value)} placeholder={copy.modelPlaceholder} /><datalist id="amh-model-options">{modelOptions.map(option => <option key={option} value={option} />)}</datalist></label>
+        <label className="dispatch-force-toggle"><input type="checkbox" checked={force} onChange={event => setForce(event.target.checked)} /><span><strong>强制执行</strong><small>跳过常规条件，仅在确认风险后使用</small></span></label>
+        <button className="btn dispatch-trigger-button" type="button" onClick={() => void trigger()} disabled={busy}>{busy ? copy.running : copy.triggerDispatch}</button>
       </div>
-    </div>
-  )
+      {error ? <div className="inline-error">{error}</div> : null}
+    </Panel>
+    <div className="dispatch-section-heading"><div><h3>运行队列</h3><p>当前工具和项目的派发状态</p></div></div>
+    <Panel title={copy.dispatchThreads} className="dispatch-queue-panel"><div className="stack">{model.relay.length ? model.relay.map(entry => <div className="dispatch-card" key={textOf(entry.id || entry.threadKey || entry.sourceId)}><div className="dispatch-card-header"><div><strong>{textOf(entry.tool, '-')}</strong><span>{textOf(entry.project, '-')}</span></div><StatusBadge status={textOf(entry.state, 'pending')} /></div><p>{textOf(entry.threadKey || entry.thread || entry.sourceId, '-')}</p>{entry.progressPercent !== undefined && entry.progressPercent !== null ? <div className="progress-line"><span style={{ width: `${Math.min(100, Math.max(0, numberOf(entry.progressPercent)))}%` }} /></div> : null}{entry.progressStatus ? <p>{textOf(entry.progressStatus)}</p> : null}{entry.lastError ? <p className="error-text">{textOf(entry.lastError)}</p> : null}<span className="muted-text">{formatDate(textOf(entry.ts || entry.progressAt || entry.deliveryUpdatedAt))}</span></div>) : <EmptyState text={copy.noData} />}</div></Panel>
+    <Panel title={copy.dispatchLogs} className="dispatch-history-panel"><DataTable emptyText={copy.noData} columns={[copy.status, copy.to, copy.project, copy.message]} rows={model.dispatchLogs.slice(0, 30).map(log => [<StatusBadge status={textOf(log.runStatus || log.status || log.exitCode, 'log')} />, textOf(log.tool, '-'), textOf(log.project, '-'), textOf(log.message || log.text || log.error || log.lastError, '-')])} /></Panel>
+  </div>
 }
-
 /* OLD workflow helpers - commented out, kept for reference
 const workflowStatusOptions = ['open', 'planned', 'in_progress', 'review', 'blocked', 'done', 'cancelled']
 const workflowPriorityOptions = ['low', 'normal', 'high', 'urgent']
@@ -1936,14 +2007,7 @@ function AnalyticsPanel({ copy, model }: { copy: Copy; model: ViewModel }) {
 
   return (
     <div className="stack">
-      <div className="dashboard-grid">
-        <MetricCard label={copy.totalTasks} value={formatNumber(statusTasks.total)} />
-        <MetricCard label={copy.activeTasks} value={formatNumber(statusTasks.active)} tone="success" />
-        <MetricCard label={copy.relayRate} value={textOf(asRecord(model.metrics.relay).successRate, '0%')} tone="warning" />
-        <MetricCard label={copy.backupSets} value={formatNumber(model.backups.count ?? model.status.backups)} />
-        <MetricCard label={copy.storageUsed} value={textOf(model.backups.totalDisplay, '-')} />
-        <MetricCard label={copy.toolsReady} value={formatNumber(toolSummary.runnable)} />
-      </div>
+      <div className="dashboard-summary-line"><span><strong>{formatNumber(statusTasks.total)}</strong>{copy.totalTasks}</span><span><strong>{formatNumber(statusTasks.active)}</strong>{copy.activeTasks}</span><span><strong>{textOf(asRecord(model.metrics.relay).successRate, '0%')}</strong>{copy.relayRate}</span><span><strong>{formatNumber(toolSummary.runnable)}</strong>{copy.toolsReady}</span><span><strong>{formatNumber(model.backups.count ?? model.status.backups)}</strong>{copy.backupSets}</span></div>
       <div className="panel-grid two">
         <Panel title={copy.tasksByStatus}>
           <BarList items={taskStatus} emptyText={copy.noData} />
@@ -2330,6 +2394,7 @@ function SearchPanel({ copy }: { copy: Copy }) {
   const [payload, setPayload] = useState<AnyRecord | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [selectedResult, setSelectedResult] = useState<AnyRecord | null>(null)
 
   const runSearch = useCallback(async (overrides: Partial<{ query: string; type: string; range: string; sort: string; tag: string }> = {}) => {
     const nextQuery = overrides.query ?? query
@@ -2351,16 +2416,8 @@ function SearchPanel({ copy }: { copy: Copy }) {
 
   useEffect(() => {
     let active = true
-    void apiGet<AnyRecord>('/api/search?limit=0')
-      .then(nextPayload => {
-        if (active) setPayload(nextPayload)
-      })
-      .catch(nextError => {
-        if (active) setError(nextError instanceof Error ? nextError.message : String(nextError))
-      })
-    return () => {
-      active = false
-    }
+    void apiGet<AnyRecord>('/api/search?limit=0').then(nextPayload => { if (active) setPayload(nextPayload) }).catch(nextError => { if (active) setError(nextError instanceof Error ? nextError.message : String(nextError)) })
+    return () => { active = false }
   }, [])
 
   const facets = asRecord(payload?.facets)
@@ -2368,112 +2425,19 @@ function SearchPanel({ copy }: { copy: Copy }) {
   const tags = asArray<AnyRecord>(facets.tags)
   const projects = asArray<AnyRecord>(facets.projects)
   const results = asArray<AnyRecord>(payload?.results)
+  const clearSearch = () => { setQuery(''); setType('all'); setRange('all'); setSort('relevance'); setTag(''); void runSearch({ query: '', type: 'all', range: 'all', sort: 'relevance', tag: '' }) }
 
-  return (
-    <div className="stack">
-      <Panel title={copy.globalSearch}>
-        <div className="form-grid search-control-grid">
-          <label className="field span-2">
-            <span>{copy.searchText}</span>
-            <input value={query} onChange={event => setQuery(event.target.value)} placeholder={copy.searchPlaceholder} />
-          </label>
-          <label className="field">
-            <span>{copy.type}</span>
-            <select value={type} onChange={event => setType(event.target.value)}>
-              <option value="all">{copy.allTypes}</option>
-              <option value="memory">memory</option>
-              <option value="task">task</option>
-              <option value="radio">radio</option>
-              <option value="workflow">workflow</option>
-            </select>
-          </label>
-          <label className="field">
-            <span>{copy.range}</span>
-            <select value={range} onChange={event => setRange(event.target.value)}>
-              <option value="all">{copy.allRanges}</option>
-              <option value="24h">{copy.last24h}</option>
-              <option value="7d">{copy.last7d}</option>
-              <option value="30d">{copy.last30d}</option>
-              <option value="90d">{copy.last90d}</option>
-            </select>
-          </label>
-          <label className="field">
-            <span>{copy.sort}</span>
-            <select value={sort} onChange={event => setSort(event.target.value)}>
-              <option value="relevance">{copy.relevance}</option>
-              <option value="newest">{copy.newest}</option>
-              <option value="oldest">{copy.oldest}</option>
-            </select>
-          </label>
-          <div className="form-actions">
-            <button className="btn ghost" type="button" onClick={() => { setQuery(''); setType('all'); setRange('all'); setSort('relevance'); setTag('') }}>
-              {copy.clear}
-            </button>
-            <button className="btn" type="button" onClick={() => void runSearch()} disabled={loading}>
-              {loading ? copy.running : copy.globalSearch}
-            </button>
-          </div>
-        </div>
-        {error ? <div className="inline-error">{error}</div> : null}
-      </Panel>
-      <div className="dashboard-grid">
-        <MetricCard label={copy.resultCount} value={formatNumber(payload?.count)} />
-        <MetricCard label={copy.elapsed} value={`${formatNumber(payload?.elapsedMs)} ms`} />
-        <MetricCard label={copy.type} value={type} />
-        <MetricCard label={copy.tags} value={tag || '-'} />
-      </div>
-      <div className="panel-grid two">
-        <Panel title={copy.facets}>
-          <div className="facet-group">
-            <h4>{copy.type}</h4>
-            <div className="chip-list">
-              {types.map(item => <button className="chip button-chip" type="button" key={textOf(item.key)} onClick={() => setType(textOf(item.key, 'all'))}>{textOf(item.label || item.key)} {formatNumber(item.count)}</button>)}
-            </div>
-          </div>
-          <div className="facet-group">
-            <h4>{copy.tags}</h4>
-            <div className="chip-list">
-              {tags.length ? tags.slice(0, 24).map(item => (
-                <button className={`chip button-chip ${tag === textOf(item.key) ? 'active' : ''}`} type="button" key={textOf(item.key)} onClick={() => setTag(textOf(item.key))}>
-                  {textOf(item.key)} {formatNumber(item.count)}
-                </button>
-              )) : <EmptyState text={copy.noData} />}
-            </div>
-          </div>
-          <div className="facet-group">
-            <h4>{copy.project}</h4>
-            <div className="chip-list">
-              {projects.length ? projects.slice(0, 16).map(item => <span className="chip" key={textOf(item.key)}>{textOf(item.key)} {formatNumber(item.count)}</span>) : <EmptyState text={copy.noData} />}
-            </div>
-          </div>
-        </Panel>
-        <Panel title={copy.results}>
-          <div className="search-results">
-            {results.length ? results.map((result, indexValue) => {
-              const meta = asRecord(result.meta)
-              return (
-                <article className="search-result-card" key={`${textOf(result.kind)}-${textOf(meta.id)}-${indexValue}`}>
-                  <div className="search-result-header">
-                    <StatusBadge status={textOf(result.kind, 'result')} />
-                    <strong>{textOf(result.title, '-')}</strong>
-                    <span>{formatDate(textOf(result.ts))}</span>
-                  </div>
-                  <p>{textOf(result.preview || result.text, '-')}</p>
-                  <div className="chip-list">
-                    {textOf(meta.project) ? <span className="chip">{textOf(meta.project)}</span> : null}
-                    {asArray<string>(result.tags).slice(0, 6).map(item => <span className="chip" key={item}>{item}</span>)}
-                    <span className="chip">{copy.score}: {formatNumber(result.score)}</span>
-                  </div>
-                </article>
-              )
-            }) : <EmptyState text={copy.noData} />}
-          </div>
-        </Panel>
-      </div>
-    </div>
-  )
+  return <div className="search-workspace stack">
+    <Panel title={copy.globalSearch} className="search-command-panel">
+      <div className="search-command-row"><div className="search-main-input"><input value={query} onChange={event => setQuery(event.target.value)} placeholder={copy.searchPlaceholder} aria-label={copy.searchText} /></div><select value={type} onChange={event => setType(event.target.value)} aria-label={copy.type}><option value="all">{copy.allTypes}</option><option value="memory">memory</option><option value="task">task</option><option value="radio">radio</option><option value="workflow">workflow</option></select><select value={range} onChange={event => setRange(event.target.value)} aria-label={copy.range}><option value="all">{copy.allRanges}</option><option value="24h">{copy.last24h}</option><option value="7d">{copy.last7d}</option><option value="30d">{copy.last30d}</option><option value="90d">{copy.last90d}</option></select><select value={sort} onChange={event => setSort(event.target.value)} aria-label={copy.sort}><option value="relevance">{copy.relevance}</option><option value="newest">{copy.newest}</option><option value="oldest">{copy.oldest}</option></select><button className="btn" type="button" onClick={() => void runSearch()} disabled={loading}>{loading ? copy.running : copy.globalSearch}</button></div>
+      <div className="search-command-footer"><span>{query ? `“${query}”` : '搜索全部记忆、任务、消息和工作流'}</span><button className="btn ghost small" type="button" onClick={clearSearch}>{copy.clear}</button></div>
+      {error ? <div className="inline-error">{error}</div> : null}
+    </Panel>
+    <div className="search-result-summary"><span><strong>{formatNumber(payload?.count)}</strong>{copy.resultCount}</span><span><strong>{formatNumber(payload?.elapsedMs)} ms</strong>{copy.elapsed}</span><span><strong>{type === 'all' ? copy.allTypes : type}</strong>{copy.type}</span><span><strong>{tag || '—'}</strong>{copy.tags}</span></div>
+    <div className="search-content-grid"><Panel title={copy.facets} className="search-facets-panel"><div className="search-facet-group"><h4>{copy.type}</h4><div className="chip-list">{types.map(item => <button className={`chip button-chip ${type === textOf(item.key) ? 'active' : ''}`} type="button" key={textOf(item.key)} onClick={() => { setType(textOf(item.key, 'all')); void runSearch({ type: textOf(item.key, 'all') }) }}>{textOf(item.label || item.key)} {formatNumber(item.count)}</button>)}</div></div><div className="search-facet-group"><h4>{copy.tags}</h4><div className="chip-list">{tags.length ? tags.slice(0, 24).map(item => <button className={`chip button-chip ${tag === textOf(item.key) ? 'active' : ''}`} type="button" key={textOf(item.key)} onClick={() => { setTag(textOf(item.key)); void runSearch({ tag: textOf(item.key) }) }}>{textOf(item.key)} {formatNumber(item.count)}</button>) : <EmptyState text={copy.noData} />}</div></div><div className="search-facet-group"><h4>{copy.project}</h4><div className="chip-list">{projects.length ? projects.slice(0, 16).map(item => <span className="chip" key={textOf(item.key)}>{textOf(item.key)} {formatNumber(item.count)}</span>) : <EmptyState text={copy.noData} />}</div></div></Panel><Panel title={copy.results} className="search-results-panel"><div className="search-results">{results.length ? results.map((result, indexValue) => { const meta = asRecord(result.meta); const title = textOf(result.title, '-'); return <article className="search-result-card" role="button" tabIndex={0} key={`${textOf(result.kind)}-${textOf(meta.id)}-${indexValue}`} onClick={() => setSelectedResult(result)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') setSelectedResult(result) }}><div className="search-result-header"><StatusBadge status={textOf(result.kind, 'result')} /><strong>{title}</strong><span>{formatDate(textOf(result.ts))}</span></div><p>{textOf(result.preview || result.text, '-')}</p><div className="chip-list">{textOf(meta.project) ? <span className="chip">{textOf(meta.project)}</span> : null}{asArray<string>(result.tags).slice(0, 6).map(item => <span className="chip" key={item}>{item}</span>)}<span className="chip">{copy.score}: {formatNumber(result.score)}</span></div></article> }) : <EmptyState text={copy.noData} />}</div></Panel></div>
+    {selectedResult ? <Modal title={textOf(selectedResult.title, copy.results)} onClose={() => setSelectedResult(null)}><div className="search-result-detail"><div className="chip-list"><StatusBadge status={textOf(selectedResult.kind, 'result')} /><span>{formatDate(textOf(selectedResult.ts))}</span></div><p className="search-result-detail-text">{textOf(selectedResult.text || selectedResult.preview, '-')}</p><Property label={copy.project} value={textOf(asRecord(selectedResult.meta).project, '-')} /><Property label={copy.score} value={formatNumber(selectedResult.score)} /></div></Modal> : null}
+  </div>
 }
-
 function ToolsPanel({
   copy,
   language,
@@ -2993,7 +2957,6 @@ function HealthPanel({
   const daemon = asRecord(model.status.daemon)
   const index = asRecord(model.status.index)
   const score = numberOf(analysis.score, 0)
-  const scoreTone = score >= 90 ? 'success' : score >= 70 ? 'warning' : 'default'
   const hasRepairActions = getRepairTotalActions(repairPreview) > 0
 
   const getLimit = () => {
@@ -3047,14 +3010,7 @@ function HealthPanel({
 
   return (
     <div className="stack">
-      <div className="dashboard-grid">
-        <MetricCard label={copy.healthScore} value={formatNumber(score)} tone={scoreTone} />
-        <MetricCard label={copy.totalRecords} value={formatNumber(analysis.totalRecords)} />
-        <MetricCard label={copy.duplicateRecords} value={formatNumber(analysis.duplicateRecords)} tone={numberOf(analysis.duplicateRecords) ? 'warning' : 'default'} />
-        <MetricCard label={copy.corruptedRecords} value={formatNumber(analysis.corruptedRecordsCount)} tone={numberOf(analysis.corruptedRecordsCount) ? 'warning' : 'default'} />
-        <MetricCard label={copy.storageUsed} value={textOf(storage.totalDisplay, '-')} />
-        <MetricCard label={copy.healthStatus} value={textOf(analysis.status, '-')} tone={scoreTone} />
-      </div>
+      <div className="dashboard-summary-line health-summary-line"><span><strong>{formatNumber(score)}</strong>{copy.healthScore}</span><span><strong>{formatNumber(analysis.totalRecords)}</strong>{copy.totalRecords}</span><span className={numberOf(analysis.duplicateRecords) ? 'warning' : ''}><strong>{formatNumber(analysis.duplicateRecords)}</strong>{copy.duplicateRecords}</span><span className={numberOf(analysis.corruptedRecordsCount) ? 'warning' : ''}><strong>{formatNumber(analysis.corruptedRecordsCount)}</strong>{copy.corruptedRecords}</span><span><strong>{textOf(storage.totalDisplay, '-')}</strong>{copy.storageUsed}</span></div>
 
       <Panel title={copy.health}>
         <div className="section-actions">
@@ -3428,18 +3384,19 @@ function HealthIssueRows({ copy, issues }: { copy: Copy; issues: AnyRecord[] }) 
 function HealthSuggestionRows({ copy, suggestions }: { copy: Copy; suggestions: AnyRecord[] }) {
   if (!suggestions.length) return <EmptyState text={copy.noHealthIssues} />
   return (
-    <div className="stack">
-      {suggestions.map((suggestion, indexValue) => (
-        <div className="health-action-row" key={`${textOf(suggestion.id || suggestion.label)}-${indexValue}`}>
-          <strong>{textOf(suggestion.label || suggestion.id, copy.repairSuggestions)}</strong>
-          <p>{textOf(suggestion.detail || suggestion.command || suggestion.endpoint, '-')}</p>
-          {suggestion.command || suggestion.endpoint ? <code className="health-command">{textOf(suggestion.command || suggestion.endpoint)}</code> : null}
-        </div>
-      ))}
+    <div className="stack health-suggestion-list">
+      {suggestions.map((suggestion, indexValue) => {
+        const command = textOf(suggestion.command || suggestion.endpoint)
+        return (
+          <article className="health-action-row" key={`${textOf(suggestion.id || suggestion.label)}-${indexValue}`}>
+            <div className="health-suggestion-main"><span className="health-suggestion-kicker">建议</span><strong>{textOf(suggestion.label || suggestion.id, copy.repairSuggestions)}</strong><p>{textOf(suggestion.detail || '建议检查并处理此项健康问题。', '-')}</p></div>
+            {command ? <details className="health-suggestion-command"><summary>查看执行方式</summary><code className="health-command">{command}</code></details> : null}
+          </article>
+        )
+      })}
     </div>
   )
 }
-
 function DuplicateGroupRows({ copy, groups }: { copy: Copy; groups: AnyRecord[] }) {
   if (!groups.length) return <EmptyState text={copy.noHealthExamples} />
   return (
@@ -3735,3 +3692,10 @@ function countValues(values: string[], limit = 8): Array<{ key: string; count: n
     .sort((left, right) => right.count - left.count || left.key.localeCompare(right.key))
     .slice(0, limit)
 }
+
+
+
+
+
+
+

@@ -76,6 +76,7 @@ export default function Chat() {
   const copy = chatLabels[language]
   const [messages, setMessages] = useState<Message[]>([])
   const [tools, setTools] = useState<ToolOption[]>([])
+  const [toolsLoading, setToolsLoading] = useState(true)
   const [toolError, setToolError] = useState('')
   const [to, setTo] = useState('all')
   const [project, setProject] = useState('ai-memory-hub')
@@ -85,7 +86,7 @@ export default function Chat() {
   useEffect(() => {
     let active = true
 
-    apiGet<AnyRecord>('/api/tools?refresh=1')
+    apiGet<AnyRecord>('/api/tools')
       .then(payload => {
         if (!active) return
         const nextTools = formatToolOptions(payload)
@@ -97,6 +98,9 @@ export default function Chat() {
         if (!active) return
         setTools([])
         setToolError(error instanceof Error ? error.message : String(error))
+      })
+      .finally(() => {
+        if (active) setToolsLoading(false)
       })
 
     return () => {
@@ -168,6 +172,11 @@ export default function Chat() {
                 ))}
               </select>
             </label>
+          ) : toolsLoading ? (
+            <div className="chat-tool-empty" role="status" aria-live="polite">
+              <span className="chat-loading-dot" aria-hidden="true" />
+              {language === 'zh' ? '正在加载可用工具…' : 'Loading available tools…'}
+            </div>
           ) : (
             <div className="chat-tool-empty" role={toolError ? 'alert' : 'status'}>
               {toolError || copy.toolsUnavailable}

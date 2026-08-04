@@ -84,9 +84,9 @@ function priorityLabel(copy: TasksCopy, priority: string): string {
 }
 
 export function TasksPanel({ tasks, visibleProjects, copy, onMutate }: TasksPanelProps) {
-  const [projectFilter, setProjectFilter] = useState('')
-  const [priorityFilter, setPriorityFilter] = useState('')
-  const [statusFilter, setStatusFilter] = useState('')
+  const [projectFilter, setProjectFilter] = useState<string[]>([])
+  const [priorityFilter, setPriorityFilter] = useState<string[]>([])
+  const [statusFilter, setStatusFilter] = useState<string[]>([])
   const [query, setQuery] = useState('')
   const [newTask, setNewTask] = useState({
     title: '',
@@ -98,6 +98,7 @@ export function TasksPanel({ tasks, visibleProjects, copy, onMutate }: TasksPane
   const [createOpen, setCreateOpen] = useState(false)
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
+  const [selectedTask, setSelectedTask] = useState<AnyRecord | null>(null)
 
   const projectOptions = useMemo(
     () => uniqueSorted(tasks.map(task => textOf(task.project)).filter(Boolean)),
@@ -119,13 +120,14 @@ export function TasksPanel({ tasks, visibleProjects, copy, onMutate }: TasksPane
     [tasks]
   )
   const cleanQuery = query.trim().toLowerCase()
-  const activeProjectFilter = projectOptions.includes(projectFilter) ? projectFilter : ''
-  const activePriorityFilter = priorityOptions.includes(priorityFilter) ? priorityFilter : ''
-  const activeStatusFilter = statusOptions.includes(statusFilter) ? statusFilter : ''
+  const activeProjectFilter = projectFilter.filter(value => projectOptions.includes(value))
+  const activePriorityFilter = priorityFilter.filter(value => priorityOptions.includes(value))
+  const activeStatusFilter = statusFilter.filter(value => statusOptions.includes(value))
+  const statusCounts = useMemo(() => tasks.reduce<Record<string, number>>((counts, task) => { const status = textOf(task.status, 'open'); counts[status] = (counts[status] || 0) + 1; return counts }, {}), [tasks])
   const filteredTasks = tasks.filter(task => {
-    if (activeProjectFilter && textOf(task.project) !== activeProjectFilter) return false
-    if (activePriorityFilter && textOf(task.priority) !== activePriorityFilter) return false
-    if (activeStatusFilter && textOf(task.status) !== activeStatusFilter) return false
+    if (activeProjectFilter.length && !activeProjectFilter.includes(textOf(task.project))) return false
+    if (activePriorityFilter.length && !activePriorityFilter.includes(textOf(task.priority))) return false
+    if (activeStatusFilter.length && !activeStatusFilter.includes(textOf(task.status))) return false
     return !cleanQuery || [task.title, task.description, task.handoff, task.assignee, task.createdBy, task.status, task.project]
       .some(value => textOf(value).toLowerCase().includes(cleanQuery))
   })
@@ -155,11 +157,12 @@ export function TasksPanel({ tasks, visibleProjects, copy, onMutate }: TasksPane
 
   return (
     <div className="space-y-6">
+      <div className="task-status-summary">{['open', 'claimed', 'in_progress', 'needs_verification', 'done'].map(status => <button type="button" className={activeStatusFilter.includes(status) ? 'task-summary-item is-active' : 'task-summary-item'} key={status} onClick={() => setStatusFilter(activeStatusFilter.includes(status) ? activeStatusFilter.filter(value => value !== status) : [...activeStatusFilter, status])}><span>{statusLabel(copy, status)}</span><strong>{statusCounts[status] || 0}</strong></button>)}</div>
       <Card>
         <CardHeader className="border-b">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <CardTitle>{copy.recentTasks}</CardTitle>
+              <CardTitle>任务队列</CardTitle>
               <p className="mt-1 text-sm text-muted-foreground">{filteredTasks.length}</p>
             </div>
             <Button onClick={() => { setError(''); setCreateOpen(true) }}>
@@ -169,19 +172,18 @@ export function TasksPanel({ tasks, visibleProjects, copy, onMutate }: TasksPane
           </div>
         </CardHeader>
         <CardContent className="pt-6">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-5 mb-6">
+          <div className="task-filter-toolbar">
             <div className="space-y-2">
-              <Label htmlFor="task-search">{copy.searchText}</Label>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input id="task-search" value={query} onChange={event => setQuery(event.target.value)} className="pl-9" />
+                <Input id="task-search" value={query} onChange={event => setQuery(event.target.value)} placeholder={copy.searchText} aria-label={copy.searchText} className="pl-9" />
               </div>
             </div>
-            <TaskFilter label={copy.status} value={activeStatusFilter} onChange={setStatusFilter} allLabel={copy.allStatuses} options={statusOptions} displayValue={value => statusLabel(copy, value)} />
-            <TaskFilter label={copy.project} value={activeProjectFilter} onChange={setProjectFilter} allLabel={copy.allProjects} options={projectOptions} />
-            <TaskFilter label={copy.priority} value={activePriorityFilter} onChange={setPriorityFilter} allLabel={copy.allPriorities} options={priorityOptions} displayValue={value => priorityLabel(copy, value)} />
+            <MultiTaskFilter label={copy.status} values={activeStatusFilter} onChange={setStatusFilter} options={statusOptions} displayValue={value => statusLabel(copy, value)} />
+            <MultiTaskFilter label={copy.project} values={activeProjectFilter} onChange={setProjectFilter} options={projectOptions} searchable />
+            <MultiTaskFilter label={copy.priority} values={activePriorityFilter} onChange={setPriorityFilter} options={priorityOptions} displayValue={value => priorityLabel(copy, value)} />
             <div className="flex items-end">
-              <Button variant="outline" onClick={() => { setQuery(''); setProjectFilter(''); setPriorityFilter(''); setStatusFilter('') }} className="w-full">
+              <Button variant="outline" onClick={() => { setQuery(''); setProjectFilter([]); setPriorityFilter([]); setStatusFilter([]) }} className="w-full">
                 <X className="mr-2 h-4 w-4" />
                 {copy.clear}
               </Button>
@@ -192,11 +194,13 @@ export function TasksPanel({ tasks, visibleProjects, copy, onMutate }: TasksPane
 
           {filteredTasks.length ? (
             <div className="task-card-grid">
-              {filteredTasks.map(task => <TaskCard key={textOf(task.id, textOf(task.title, 'task'))} task={task} copy={copy} busy={busy} onMutate={mutateTask} />)}
+              {filteredTasks.map(task => <TaskCard key={textOf(task.id, textOf(task.title, 'task'))} task={task} copy={copy} busy={busy} onMutate={mutateTask} onOpen={() => setSelectedTask(task)} />)}
             </div>
           ) : <div className="py-8 text-center text-muted-foreground">{copy.noData}</div>}
         </CardContent>
       </Card>
+
+      {selectedTask ? <TaskDetailsDialog task={selectedTask} copy={copy} busy={busy} onMutate={mutateTask} onClose={() => setSelectedTask(null)} /> : null}
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="max-w-2xl">
@@ -218,11 +222,25 @@ export function TasksPanel({ tasks, visibleProjects, copy, onMutate }: TasksPane
   )
 }
 
-function TaskFilter({ label, value, onChange, allLabel, options, displayValue = value => value }: { label: string; value: string; onChange: (value: string) => void; allLabel: string; options: string[]; displayValue?: (value: string) => string }) {
-  return <div className="space-y-2"><Label>{label}</Label><select value={value} onChange={event => onChange(event.target.value)} className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"><option value="">{allLabel}</option>{options.map(option => <option value={option} key={option}>{displayValue(option)}</option>)}</select></div>
+function MultiTaskFilter({ label, values, onChange, options, displayValue = value => value, searchable = false }: { label: string; values: string[]; onChange: (values: string[]) => void; options: string[]; displayValue?: (value: string) => string; searchable?: boolean }) {
+  const [query, setQuery] = useState('')
+  const detailsRef = useRef<HTMLDetailsElement | null>(null)
+  useEffect(() => {
+    const close = (event: PointerEvent) => {
+      if (detailsRef.current && !detailsRef.current.contains(event.target as Node)) detailsRef.current.open = false
+    }
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && detailsRef.current) detailsRef.current.open = false
+    }
+    document.addEventListener('pointerdown', close)
+    document.addEventListener('keydown', escape)
+    return () => { document.removeEventListener('pointerdown', close); document.removeEventListener('keydown', escape) }
+  }, [])
+  const visibleOptions = options.filter(option => !query.trim() || displayValue(option).toLowerCase().includes(query.trim().toLowerCase()))
+  const selectedLabel = values.length ? `${values.length} 项已选` : '全部'
+  return <details ref={detailsRef} className="task-multi-filter"><summary><span>{label}</span><strong>{selectedLabel}</strong></summary><div className="task-filter-popover">{searchable ? <Input value={query} onChange={event => setQuery(event.target.value)} placeholder="搜索项目" aria-label="搜索项目" /> : null}<div className="task-filter-option-list"><button type="button" className={values.length === 0 ? 'task-filter-chip is-active' : 'task-filter-chip'} onClick={() => onChange([])}>全部</button>{visibleOptions.map(option => <button type="button" className={values.includes(option) ? 'task-filter-chip is-active' : 'task-filter-chip'} key={option} onClick={() => onChange(values.includes(option) ? values.filter(value => value !== option) : [...values, option])}>{displayValue(option)}</button>)}</div>{searchable && !visibleOptions.length ? <span className="task-filter-empty">没有匹配的项目</span> : null}</div></details>
 }
-
-function TaskCard({ task, copy, busy, onMutate }: { task: AnyRecord; copy: TasksCopy; busy: string; onMutate: TasksPanelProps['onMutate'] }) {
+function TaskCard({ task, copy, busy, onMutate, onOpen }: { task: AnyRecord; copy: TasksCopy; busy: string; onMutate: TasksPanelProps['onMutate']; onOpen: () => void }) {
   const id = textOf(task.id)
   const status = textOf(task.status, 'open')
   const priority = textOf(task.priority, 'normal')
@@ -245,7 +263,7 @@ function TaskCard({ task, copy, busy, onMutate }: { task: AnyRecord; copy: Tasks
   }
 
   return (
-    <article className="task-card">
+    <article className="task-card" role="button" tabIndex={0} onClick={event => { if (!(event.target as HTMLElement).closest('button, a, input, textarea, select')) onOpen() }} onKeyDown={event => { if ((event.key === 'Enter' || event.key === ' ') && event.target === event.currentTarget) onOpen() }}>
       <header className="task-card-top">
         <div className="task-title-group"><h3 className="task-card-title">{textOf(task.title, '-')}</h3><StatusBadge status={status} copy={copy} /></div>
         <PriorityBadge priority={priority} copy={copy} />
@@ -269,6 +287,16 @@ function TaskCard({ task, copy, busy, onMutate }: { task: AnyRecord; copy: Tasks
   )
 }
 
+function TaskDetailsDialog({ task, copy, busy, onMutate, onClose }: { task: AnyRecord; copy: TasksCopy; busy: string; onMutate: TasksPanelProps['onMutate']; onClose: () => void }) {
+  const id = textOf(task.id)
+  const status = textOf(task.status, 'open')
+  const priority = textOf(task.priority, 'normal')
+  const isBusy = busy.startsWith(`${id}:`)
+  const runStatus = (nextStatus: string) => void onMutate(`${id}:${nextStatus}`, '/api/task/status', { id, status: nextStatus, by: 'dashboard-next' })
+  const review = (decision: 'approved' | 'rejected') => void onMutate(`${id}:${decision}`, '/api/task/review', { id, decision, by: 'dashboard-next' })
+  const notes = Array.isArray(task.notes) ? task.notes : []
+  return <Dialog open onOpenChange={open => { if (!open) onClose() }}><DialogContent className="max-w-3xl task-detail-dialog-content"><DialogHeader><DialogTitle>{textOf(task.title, copy.recentTasks)}</DialogTitle></DialogHeader><div className="task-detail-dialog"><div className="task-detail-lead"><StatusBadge status={status} copy={copy} /><PriorityBadge priority={priority} copy={copy} /><span>{textOf(task.project, copy.allProjects)}</span></div>{task.description ? <section className="task-detail-section"><h4>{copy.description}</h4><p className="task-detail-description">{textOf(task.description)}</p></section> : null}<dl className="task-detail-grid"><TaskMetadata label={copy.project} value={textOf(task.project, '-')} /><TaskMetadata label={copy.assignee} value={textOf(task.assignee || task.createdBy, '-')} /><TaskMetadata label={copy.priority} value={priorityLabel(copy, priority)} /><TaskMetadata label={copy.updated} value={formatDate(textOf(task.updatedAt || task.createdAt))} /><TaskMetadata label={copy.created} value={formatDate(textOf(task.createdAt))} /><TaskMetadata label="ID" value={id || '-'} /></dl>{task.handoff ? <section className="task-detail-section task-detail-note"><h4>{copy.handoff}</h4><p>{textOf(task.handoff)}</p></section> : null}<section className="task-detail-section"><h4>执行信息</h4><dl className="task-detail-grid"><TaskMetadata label="交付状态" value={textOf(task.deliveryState, '-')} /><TaskMetadata label="执行次数" value={`${textOf(task.attempt, '0')} / ${textOf(task.maxRetries, '—')}`} /><TaskMetadata label="进度" value={textOf(task.progressStatus || task.progressPercent, '-')} /><TaskMetadata label="审核状态" value={textOf(task.reviewStatus, '-')} /></dl></section>{task.lastError ? <section className="task-detail-section task-detail-error"><h4>最近问题</h4><p>{textOf(task.lastError)}</p></section> : null}{notes.length ? <section className="task-detail-section"><h4>活动记录（最近 {Math.min(notes.length, 8)} 条）</h4><div className="task-detail-timeline">{notes.slice(-8).reverse().map((note, index) => <div key={textOf(note.ts, String(index))}><time>{formatDate(textOf(note.ts))}</time><strong>{textOf(note.by, '-')}</strong><p>{textOf(note.text, '-')}</p></div>)}</div></section> : null}<div className="task-detail-actions">{status === 'open' ? <Button disabled={isBusy} onClick={() => void onMutate(`${id}:claim`, '/api/task/claim', { id, by: 'dashboard-next' })}>{copy.claim}</Button> : null}{['claimed', 'blocked'].includes(status) ? <Button disabled={isBusy} onClick={() => runStatus('in_progress')}>{status === 'blocked' ? copy.unblock : copy.start}</Button> : null}{status === 'in_progress' ? <><Button disabled={isBusy} onClick={() => runStatus('done')}>{copy.completeDirectly}</Button><Button variant="outline" disabled={isBusy} onClick={() => runStatus('needs_verification')}>{copy.requestVerification}</Button></> : null}{status === 'needs_verification' ? <><Button disabled={isBusy} onClick={() => review('approved')}>{copy.approveAndComplete}</Button><Button variant="outline" disabled={isBusy} onClick={() => review('rejected')}>{copy.reject}</Button></> : null}{status === 'done' ? <Button variant="outline" disabled={isBusy} onClick={() => runStatus('open')}>{copy.reopen}</Button> : null}</div></div><DialogFooter><Button variant="outline" onClick={onClose}>{copy.cancel}</Button></DialogFooter></DialogContent></Dialog>
+}
 function TaskMetadata({ label, value }: { label: string; value: string }) {
   return <div><dt>{label}</dt><dd title={value}>{value}</dd></div>
 }

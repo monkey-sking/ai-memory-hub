@@ -22,14 +22,14 @@ export function MetricCard({ label, value, tone = 'default', trend }: MetricCard
   const TrendIcon = trend === 'up' ? TrendingUp : trend === 'down' ? TrendingDown : Minus
 
   return (
-    <Card>
-      <CardHeader className="pb-2">
+    <Card className="dashboard-metric-card">
+      <CardHeader className="dashboard-metric-header">
         <CardTitle className="text-sm font-medium text-muted-foreground">
           {label}
         </CardTitle>
       </CardHeader>
-      <CardContent>
-        <div className="flex items-baseline gap-2">
+      <CardContent className="dashboard-metric-content">
+        <div className="dashboard-metric-value-row">
           <div className={cn('text-3xl font-bold', toneColors[tone])}>
             {value}
           </div>
@@ -55,11 +55,11 @@ interface PanelProps {
 
 export function Panel({ title, children, className }: PanelProps) {
   return (
-    <Card className={className}>
-      <CardHeader className="border-b">
+    <Card className={cn('dashboard-panel-card', className)}>
+      <CardHeader className="dashboard-panel-header">
         <CardTitle>{title}</CardTitle>
       </CardHeader>
-      <CardContent className="pt-6">
+      <CardContent className="dashboard-panel-content">
         {children}
       </CardContent>
     </Card>
@@ -77,7 +77,7 @@ export function TaskList({ tasks, emptyText }: TaskListProps) {
   }
 
   return (
-    <div className="space-y-3">
+    <div className="overview-task-cards">
       {tasks.map((task, idx) => {
         const status = String(task.status || 'open')
         const title = String(task.title || '-')
@@ -85,15 +85,17 @@ export function TaskList({ tasks, emptyText }: TaskListProps) {
         const assignee = String(task.assignee || task.createdBy || '-')
 
         return (
-          <div key={idx} className="flex items-start gap-3 p-3 rounded-lg hover:bg-accent transition-colors">
-            <StatusBadge status={status} />
-            <div className="flex-1 min-w-0">
-              <p className="font-medium truncate">{title}</p>
-              <p className="text-sm text-muted-foreground">
-                {project} · {assignee}
-              </p>
+          
+          <article key={idx} className="overview-task-card">
+            <div className="overview-task-card-top">
+              <StatusBadge status={status} />
+              <span className="overview-card-index">{String(idx + 1).padStart(2, '0')}</span>
             </div>
-          </div>
+            <div className="overview-task-card-body">
+              <p className="overview-task-card-title">{title}</p>
+              <div className="overview-task-card-meta"><span>{project}</span><span>{assignee}</span></div>
+            </div>
+          </article>
         )
       })}
     </div>
@@ -103,15 +105,16 @@ export function TaskList({ tasks, emptyText }: TaskListProps) {
 interface RadioListProps {
   messages: AnyRecord[]
   emptyText: string
+  onSelect?: (message: AnyRecord) => void
 }
 
-export function RadioList({ messages, emptyText }: RadioListProps) {
+export function RadioList({ messages, emptyText, onSelect }: RadioListProps) {
   if (!messages.length) {
     return <div className="text-center text-muted-foreground py-8">{emptyText}</div>
   }
 
   return (
-    <div className="space-y-4">
+    <div className="overview-radio-cards">
       {messages.map((message, idx) => {
         const type = String(message.type || 'note')
         const from = String(message.from || '-')
@@ -119,16 +122,14 @@ export function RadioList({ messages, emptyText }: RadioListProps) {
         const text = String(message.text || '-')
 
         return (
-          <div key={idx} className="p-3 rounded-lg border bg-card">
-            <div className="flex items-center gap-2 mb-2">
+          <article key={idx} className="overview-radio-card" role={onSelect ? "button" : undefined} tabIndex={onSelect ? 0 : undefined} onClick={() => onSelect?.(message)} onKeyDown={event => { if (onSelect && (event.key === "Enter" || event.key === " ")) onSelect(message) }}>
+            <div className="overview-radio-card-header">
               <StatusBadge status={type} />
-              <span className="text-sm text-muted-foreground">
-                {from} → {to}
-              </span>
+              <span className="overview-radio-route"><strong>{from}</strong><span>→</span><strong>{to}</strong></span>
             </div>
-            <p className="text-sm">{text}</p>
-          </div>
-        )
+            <p className="overview-radio-text">{text}</p>
+            <span className="overview-card-index">{String(idx + 1).padStart(2, '0')}</span>
+          </article>        )
       })}
     </div>
   )
@@ -145,17 +146,17 @@ export function ToolList({ tools, emptyText }: ToolListProps) {
   }
 
   return (
-    <div className="space-y-2">
+    <div className="overview-tool-cards">
       {tools.map((tool, idx) => {
         const name = String(tool.name || '-')
         const status = String(tool.connectionStatus || 'missing')
 
         return (
-          <div key={idx} className="flex items-center gap-3 p-2 rounded-lg hover:bg-accent transition-colors">
+          <article key={idx} className="overview-tool-card">
+            <div className="overview-tool-icon">{name.slice(0, 1).toUpperCase()}</div>
+            <div className="overview-tool-copy"><strong>{name}</strong><span>{String(tool.mode || tool.kind || 'runtime')}</span></div>
             <StatusBadge status={status} />
-            <span className="truncate flex-1">{name}</span>
-          </div>
-        )
+          </article>        )
       })}
     </div>
   )
@@ -196,3 +197,7 @@ export function StatusBadge({ status }: StatusBadgeProps) {
     </Badge>
   )
 }
+
+
+
+

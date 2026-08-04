@@ -688,6 +688,7 @@ ai-memory-hub backup --reason manual
 - [CLI Reference](docs/CLI.md)
 - [Project Registry](docs/project-registry.md)
 - [Dashboard UI Plan](docs/dashboard-ui-redesign-plan.md)
+- [Dashboard Console Standard](docs/dashboard-console-standard.md)
 - [Permission Policy Design](docs/permission-policy-layer-design.md)
 - [Approval Gates](docs/approval-gates-design.md)
 - [Quality Gate Rules](docs/quality-gate-rules.md)

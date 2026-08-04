@@ -7993,6 +7993,9 @@ function appCommand(argv) {
       if (req.method === "GET" && url.pathname === "/api/dashboard") {
         return sendJson(res, dashboardRealtime.getDashboardSnapshot(config.memoryDir));
       }
+      if (req.method === "GET" && url.pathname === "/api/dashboard/overview") {
+        return sendJson(res, dashboardRealtime.getDashboardOverview(config.memoryDir));
+      }
       if (req.method === "GET" && url.pathname === "/api/metrics") {
         return sendJson(res, dashboardMetrics.calculateMetrics(config.memoryDir));
       }

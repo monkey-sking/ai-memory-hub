@@ -16,14 +16,4 @@ jobs:
       - run: npm ci
       - run: npm ci --prefix dashboard-next
       - run: npm run build:dashboard
-      - name: Run npm test
-        run: |
-          set -o pipefail
-          npm test 2>&1 | tee "$RUNNER_TEMP/npm-test.log"
-          test_status=${PIPESTATUS[0]}
-          if [ "$test_status" -ne 0 ]; then
-            tail -n 80 "$RUNNER_TEMP/npm-test.log" | while IFS= read -r line; do
-              echo "::error::$line"
-            done
-          fi
-          exit "$test_status"
+      - run: npm test -- --test-concurrency=1

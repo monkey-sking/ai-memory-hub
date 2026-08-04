@@ -37,6 +37,10 @@ import { buildGithubRequest, buildNotificationPayload, buildSshPlan, renderSkill
 import { parseGithubWebhook } from "./github-lifecycle.js";
 import { addPack, discoverPacks, listPacks, setPackEnabled, validateRegisteredPack } from "./domain-packs.js";
 import { listSkills, searchSkills } from "./skill-registry.js";
+import { defaultSkillRoots, scanSkillRoots } from "./shared-skill-scan.js";
+import { importSharedSkill, listSharedSkillPackages, findSharedSkillPackage } from "./shared-skills.js";
+import { loadProjectSkillManifest, setProjectSkill, removeProjectSkill, selectProjectSkills } from "./shared-skill-project.js";
+import { doctorSkillProjections, syncSkillProjections } from "./shared-skill-materializer.js";
 import {
   normalizeAdversarialVerifier,
   normalizeReviewDimensions,
@@ -7544,11 +7548,53 @@ function packCommand(argv) {
   else throw new Error("Usage: ai-memory-hub pack add|list|show|enable|disable|validate|discover");
 }
 
-function skillCommand(argv) {
+async function skillCommand(argv) {
   const action = argv[0] || "list";
   const config = loadConfig();
   ensureHub(config.memoryDir);
-  if (action === "list") { console.log(JSON.stringify(listSkills(config.memoryDir), null, 2)); return; }
+  if (action === "list") {
+    const shared = await listSharedSkillPackages(config.memoryDir);
+    console.log(JSON.stringify([...listSkills(config.memoryDir), ...shared.map((item) => ({ ...item, name: item.id, source: "registry" }))], null, 2)); return;
+  }
+  if (action === "scan") {
+    const root = getOption(argv.slice(1), "--root");
+    const roots = root ? [{ tool: getOption(argv.slice(1), "--tool") || "custom", path: root }] : defaultSkillRoots();
+    console.log(JSON.stringify(await scanSkillRoots(roots), null, 2)); return;
+  }
+  if (action === "import" || action === "install") {
+    const source = getOption(argv.slice(1), "--path") || argv[1] || "";
+    if (!source) throw new Error("Usage: ai-memory-hub skill import|install --path <skill-directory> [--version <version>] [--project <path>]");
+    const imported = await importSharedSkill(config.memoryDir, source, { id: getOption(argv.slice(1), "--id"), version: getOption(argv.slice(1), "--version") || "1.0.0" });
+    const project = getOption(argv.slice(1), "--project");
+    let synced = [];
+    let manifest = null;
+    if (project) {
+      manifest = await setProjectSkill(project, imported.id, getOption(argv.slice(1), "--version") || imported.version);
+      const packages = selectProjectSkills(manifest, await listSharedSkillPackages(config.memoryDir));
+      synced = await syncSkillProjections(project, packages, getOption(argv.slice(1), "--tool") ? [getOption(argv.slice(1), "--tool")] : (manifest.targets.length ? manifest.targets : ["codex", "claude", "gemini", "antigravity"]));
+    }
+    console.log(JSON.stringify({ imported, project: project || "", manifest, synced }, null, 2)); return;
+  }
+  if (action === "show") {
+    const id = getOption(argv.slice(1), "--id") || argv[1] || "";
+    if (!id) throw new Error("Usage: ai-memory-hub skill show <id> [--version <version>]");
+    console.log(JSON.stringify(await findSharedSkillPackage(config.memoryDir, id, getOption(argv.slice(1), "--version")), null, 2)); return;
+  }
+  if (action === "enable" || action === "disable") {
+    const project = getOption(argv.slice(1), "--project") || process.cwd();
+    const id = getOption(argv.slice(1), "--id") || argv[1] || "";
+    if (!id) throw new Error(`Usage: ai-memory-hub skill ${action} <id> --project <path>`);
+    const manifest = action === "enable" ? await setProjectSkill(project, id, getOption(argv.slice(1), "--version") || "*") : await removeProjectSkill(project, id);
+    console.log(JSON.stringify(manifest, null, 2)); return;
+  }
+  if (action === "sync" || action === "doctor") {
+    const project = getOption(argv.slice(1), "--project") || process.cwd();
+    const manifest = await loadProjectSkillManifest(project);
+    const packages = selectProjectSkills(manifest, await listSharedSkillPackages(config.memoryDir));
+    const targets = getOption(argv.slice(1), "--tool") ? [getOption(argv.slice(1), "--tool")] : (manifest.targets.length ? manifest.targets : ["codex", "claude", "gemini", "antigravity"]);
+    const result = action === "sync" ? await syncSkillProjections(project, packages, targets) : await doctorSkillProjections(project, packages, targets);
+    console.log(JSON.stringify({ project, packages: packages.map((item) => `${item.id}@${item.version}`), targets, result }, null, 2)); return;
+  }
   if (action === "search") { console.log(JSON.stringify(searchSkills(config.memoryDir, argv.slice(1).join(" "),), null, 2)); return; }
   if (action === "attach") {
     const skillId = getOption(argv.slice(1), "--skill") || argv[1] || "";
@@ -7566,7 +7612,7 @@ function skillCommand(argv) {
     console.log(renderSkillMarkdown({ title, text, sourceTaskId: getOption(argv.slice(1), "--task") || "unknown", evidence: (getOption(argv.slice(1), "--evidence") || "").split(";").map((item) => item.trim()).filter(Boolean) }));
     return;
   }
-  throw new Error("Usage: ai-memory-hub skill list|search|attach|render");
+  throw new Error("Usage: ai-memory-hub skill list|scan|import|install|show|enable|disable|sync|doctor|search|attach|render");
 }
 
 function getSkillDeltasFile(memoryDir) {

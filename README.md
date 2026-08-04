@@ -16,6 +16,13 @@
 - ✅ **不读取 Token** - 完全不接触各工具的认证信息
 - ✅ **纯本地协作** - 所有数据存储在本地
 
+### 当前自动执行 Runner
+
+- `codex`、`claude`、`opencode`、`mimocode` 等使用各自 CLI runner。
+- `antigravity` 使用官方 `agy` CLI 的 `--print` 非交互模式，不调用桌面 APP。
+- Windows 默认查找 `C:\Users\<user>\AppData\Local\agy\bin\agy.exe`，也支持 PATH 中的 `agy.cmd` / `agy`。
+- `antigravity-gemini` 仅表示共享记忆适配器，不是另一个执行 agent。
+
 ### 🚀 核心功能
 
 #### 1. 共享记忆系统
@@ -42,7 +49,7 @@
 - **Policy Packs** - 可附加的执行 persona，集成到工作流角色中
 
 #### 4. 调度与分发
-- **Dispatch Relay** - 异步状态机管理 7 种投递状态（pending/dispatched/acked/retrying/failed/completed/abandoned）
+- **Dispatch Relay** - 异步状态机管理 8 种投递状态（pending/dispatched/acked/progress/retrying/failed/completed/abandoned）
 - **Event-Driven Daemon** - 事件驱动守护进程，心跳监控，cycle-start 心跳，自动化质量门禁执行
 - **Worktree 隔离** - `--isolate-worktree` 在独立 Git worktree 中运行分发任务，不影响当前工作区
 - **Progress 上报** - 长时间运行的任务通过 heartbeat 报告进度百分比和状态
@@ -130,6 +137,14 @@ npm install -g .
 ai-memory-hub init
 ```
 
+
+#### 可选：安装 Antigravity CLI
+
+Windows PowerShell：
+
+```powershell
+irm https://antigravity.google/cli/install.ps1 | iex
+```
 #### 方式 2：从 npm 安装
 
 ```bash
@@ -170,6 +185,8 @@ ai-memory-hub radio list
 ```
 
 #### 4. 管理任务
+# Gemini 不可用时，可手动改派给 Antigravity CLI
+ai-memory-hub task claim --id <task-id> --by antigravity
 
 ```bash
 # 创建任务
@@ -382,6 +399,12 @@ ai-memory-hub dispatch status --recent 10 --project <name>   # 查看派发状�
 ai-memory-hub dispatch progress --thread-key <key> --percent 40  # 更新进度
 ai-memory-hub dispatch retry --project <name> --to <tool> --run  # 重试失败派发
 
+#### 派发与人工审核边界
+
+- 普通 AI 之间的任务派发默认自动放行，包括派发给 `antigravity`。
+- 安装依赖、远程 `push`、删除和 `purge` 等高风险操作保留人工审核。
+- 查看待审核门禁：`ai-memory-hub gate queue --reviewer human`
+
 ai-memory-hub declare --tool <tool> --models "m1,m2" --strengths "前端,审查" --by <tool>  # 申报模型与擅长领域
 ai-memory-hub declare list                        # 查看所有申报
 ai-memory-hub models --to <tool> --refresh         # 从供应商刷新模型目录
@@ -457,7 +480,7 @@ ai-memory-hub task-spec run <name>                # 运行任务命令
 - ✅ **Claude Code** - Anthropic 官方 CLI
 - ✅ **Codex** - 代码生成工具
 - ✅ **Gemini** - Google AI 工具
-- ✅ **Antigravity** - 多功能 AI 助手
+- ✅ **Antigravity CLI (`agy`)** - 官方终端 runner；桌面版 Antigravity 与 CLI 独立，AMH 通过 CLI 自动派发
 - ✅ **QClaw / OpenClaw** - 开源 AI 工具
 - ✅ **Marvis** - 腾讯 AI 助手
 - ✅ **OpenCode** - 代码辅助工具
@@ -477,7 +500,7 @@ ai-memory-hub task-spec run <name>                # 运行任务命令
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                    AI 工具层                              │
-│  Claude  Codex  Gemini  Marvis  QClaw  VS Code  Coze    │
+│  Claude  Codex  Gemini  Antigravity/agy  Marvis  Coze   │
 └────────────────────┬────────────────────────────────────┘
                      │
         ┌────────────┴────────────┐
@@ -572,6 +595,13 @@ Apache License 2.0 - 详见 [LICENSE](LICENSE)
 
 `ai-memory-hub` is a local collaboration layer for multiple AI tools. It allows Claude, Codex, Gemini, Antigravity, QClaw, OpenClaw, OpenCode, MiMo Code, Marvis and other tools to share memory, messages and tasks using a single local directory, while each tool continues to use its own model tokens, service providers and billing accounts.
 
+
+### Current CLI Runners
+
+- `antigravity` uses the official `agy --print` non-interactive CLI runner; it does not automate the desktop app.
+- On Windows AMH searches `%LOCALAPPDATA%\\agy\\bin\\agy.exe`, then `agy.cmd` / `agy` on `PATH`.
+- `antigravity-gemini` is a shared-memory adapter label, not a replacement agent.
+- Gemini CLI authentication is independent; use an eligible account or `GEMINI_API_KEY`, or manually reassign work to `antigravity`.
 **Key Features**:
 - ✅ **No LLM proxying** - Tools connect directly to their APIs
 - ✅ **No unified configuration** - Each tool maintains independence
@@ -614,6 +644,13 @@ ai-memory-hub init
 ```
 
 ### 🎯 Quick Start
+
+#### Optional: install Antigravity CLI
+
+```powershell
+irm https://antigravity.google/cli/install.ps1 | iex
+```
+Verify with `agy --version`; AMH will discover the CLI automatically.
 
 ```bash
 # Initialize

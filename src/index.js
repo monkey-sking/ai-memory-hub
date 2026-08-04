@@ -476,8 +476,20 @@ const RUNNER_PROFILES = {
   },
   antigravity: {
     tool: "antigravity",
-    sharedStateOnly: true,
-    reason: "antigravity currently integrates through shared memory instructions or desktop automation; no verified direct CLI runner is configured"
+    commandCandidates: [
+      path.join(os.homedir(), "AppData", "Local", "agy", "bin", "agy.exe"),
+      "agy.cmd",
+      "agy"
+    ],
+    args: ["--print"],
+    promptMode: "argv",
+    outputMode: "text",
+    compactPrompt: true,
+    preview: "agy --print <prompt>",
+    versionArgs: ["--version"],
+    probeArgs: ["--help"],
+    modelArgs: (model) => ["--model", model],
+    capabilities: ["direct-dispatch", "argv-prompt", "text-output", "session-history"]
   },
   "codex-app": {
     tool: "codex-app",

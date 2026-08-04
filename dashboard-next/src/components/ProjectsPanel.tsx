@@ -258,7 +258,7 @@ export function ProjectsPanel({ copy, model, onRefresh }: ProjectsPanelProps) {
                 </TableRow>
               ) : (
                 model.visibleProjects.map((project, idx) => (
-                  <TableRow key={idx}>
+                  <TableRow key={idx} className="project-row-clickable" tabIndex={0} onClick={event => { if (!(event.target as HTMLElement).closest('button, a, input, select')) openEdit(project) }} onKeyDown={event => { if ((event.key === 'Enter' || event.key === ' ') && event.target === event.currentTarget) openEdit(project) }}>
                     <TableCell>
                       <StatusBadge status={textOf(project.status, 'active')} />
                     </TableCell>

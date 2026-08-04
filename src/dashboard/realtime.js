@@ -39,6 +39,18 @@ export function createDashboardRealtimeApi({
     };
   }
 
+  function getDashboardOverview(memoryDir) {
+    const tasks = dashboardTasks.getDashboardTasks(memoryDir, "all");
+    const radio = dashboardRadio.getDashboardRadio(memoryDir);
+    const agentSessions = dashboardAgentSessions.getDashboardAgentSessions(memoryDir);
+    return {
+      type: "overview",
+      ts: new Date().toISOString(),
+      tasks: { tasks: (tasks.tasks || []).slice(0, 24) },
+      radio: { messages: (radio.messages || []).slice(-24) },
+      agentSessions: { agentSessions: (agentSessions.agentSessions || []).slice(0, 12) }
+    };
+  }
   function createDashboardRealtime(memoryDir) {
     const clients = new Set();
     let sequence = 0;
@@ -281,6 +293,7 @@ export function createDashboardRealtimeApi({
   return {
     createDashboardRealtime,
     getDashboardSnapshot,
+    getDashboardOverview,
     watchDashboardState
   };
 }

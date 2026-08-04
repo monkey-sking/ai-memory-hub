@@ -68,6 +68,7 @@ export function MemoryPanel({ memory, copy, onRefresh }: MemoryPanelProps) {
   const [kind, setKind] = useState('note')
   const [source, setSource] = useState('dashboard-next')
   const [recordOpen, setRecordOpen] = useState(false)
+  const [selectedRecord, setSelectedRecord] = useState<AnyRecord | null>(null)
   const [supersedeTarget, setSupersedeTarget] = useState<AnyRecord | null>(null)
   const [supersedeText, setSupersedeText] = useState('')
   const [saving, setSaving] = useState(false)
@@ -139,7 +140,7 @@ export function MemoryPanel({ memory, copy, onRefresh }: MemoryPanelProps) {
         {/* Memory Snapshot */}
         <Card className="lg:col-span-2">
           <CardHeader className="border-b">
-            <CardTitle>{copy.memorySnapshot}</CardTitle>
+            <CardTitle>记忆总览</CardTitle>
           </CardHeader>
           <CardContent className="pt-6">
             <pre className="text-sm bg-muted p-4 rounded-lg overflow-auto max-h-96 whitespace-pre-wrap">
@@ -193,11 +194,11 @@ export function MemoryPanel({ memory, copy, onRefresh }: MemoryPanelProps) {
       {/* Memory Records */}
       <Card>
         <CardHeader className="border-b">
-          <CardTitle>{copy.memoryRecords}</CardTitle>
+          <CardTitle>记忆记录</CardTitle>
         </CardHeader>
         <CardContent className="pt-6">
           {memoryRecords.length ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="memory-record-list">
               {memoryRecords.slice(0, 12).map((record, idx) => {
                 const metadata = asRecord(record.metadata)
                 const recordId = textOf(record.localEventId || record.id)
@@ -208,7 +209,7 @@ export function MemoryPanel({ memory, copy, onRefresh }: MemoryPanelProps) {
                 const supersedes = textOf(metadata.supersedes)
 
                 return (
-                  <Card key={recordId || idx} className="hover:shadow-md transition-shadow">
+                  <div className="memory-record-item" role="button" tabIndex={0} onClick={(event: React.MouseEvent<HTMLDivElement>) => { if (!(event.target as HTMLElement).closest('button, a, input, textarea, select')) setSelectedRecord(record) }} onKeyDown={(event: React.KeyboardEvent<HTMLDivElement>) => { if ((event.key === 'Enter' || event.key === ' ') && event.target === event.currentTarget) setSelectedRecord(record) }}><Card key={recordId || idx} className="hover:shadow-md transition-shadow">
                     <CardContent className="p-4">
                       <div className="space-y-3">
                         {/* Header */}
@@ -256,7 +257,7 @@ export function MemoryPanel({ memory, copy, onRefresh }: MemoryPanelProps) {
                         )}
                       </div>
                     </CardContent>
-                  </Card>
+                  </Card>`n                </div>
                 )
               })}
             </div>
@@ -266,6 +267,17 @@ export function MemoryPanel({ memory, copy, onRefresh }: MemoryPanelProps) {
         </CardContent>
       </Card>
 
+      {selectedRecord ? <Dialog open onOpenChange={open => { if (!open) setSelectedRecord(null) }}>
+        <DialogContent className="memory-detail-dialog">
+          <DialogHeader><DialogTitle>{textOf(selectedRecord.kind, copy.memoryRecords)} · {formatDate(textOf(selectedRecord.ts || selectedRecord.indexedAt))}</DialogTitle></DialogHeader>
+          <div className="memory-detail-content">
+            <div className="memory-detail-meta"><KindBadge kind={textOf(selectedRecord.kind, 'note')} /><span>{textOf(selectedRecord.source, '-')}</span><span>{textOf(selectedRecord.project || asRecord(selectedRecord.metadata).project, '-')}</span></div>
+            <p className="memory-detail-text">{textOf(selectedRecord.text, '-')}</p>
+            <dl className="memory-detail-grid"><div><dt>ID</dt><dd>{textOf(selectedRecord.localEventId || selectedRecord.id, '-')}</dd></div><div><dt>时间</dt><dd>{formatDate(textOf(selectedRecord.ts || selectedRecord.indexedAt))}</dd></div><div><dt>来源</dt><dd>{textOf(selectedRecord.source, '-')}</dd></div><div><dt>项目</dt><dd>{textOf(selectedRecord.project || asRecord(selectedRecord.metadata).project, '-')}</dd></div></dl>
+          </div>
+          <DialogFooter><Button variant="outline" onClick={() => setSelectedRecord(null)}>关闭</Button><Button onClick={() => { setSelectedRecord(null); openSupersede(selectedRecord) }}><RefreshCw className="mr-2 h-3.5 w-3.5" />{copy.supersedeMemory}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog> : null}
       {/* Record Memory Dialog */}
       <Dialog open={recordOpen} onOpenChange={setRecordOpen}>
         <DialogContent>

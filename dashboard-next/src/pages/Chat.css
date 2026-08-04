@@ -213,3 +213,18 @@
     grid-template-columns: 1fr;
   }
 }
+
+.chat-loading-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  border: 2px solid rgba(37, 99, 235, 0.22);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: chat-spin 0.75s linear infinite;
+}
+
+@keyframes chat-spin {
+  to { transform: rotate(360deg); }
+}

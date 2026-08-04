@@ -74,7 +74,7 @@ test("Dashboard modal traps keyboard focus and exposes dialog semantics", async 
 test("Chat uses detected tools and shows the returned radio content", async () => {
   const chat = await readSource("pages/Chat.tsx");
 
-  assert.match(chat, /apiGet<[^>]+>\(['"]\/api\/tools\?refresh=1['"]\)/);
+  assert.match(chat, /apiGet<[^>]+>\(['"]\/api\/tools['"]\)/);
   assert.match(chat, /tools\.map\(/);
   assert.match(chat, /formatRadioReceipt\(/);
   assert.match(chat, /textOf\(message\.text/);

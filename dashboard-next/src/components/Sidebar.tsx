@@ -17,7 +17,8 @@ import {
   Settings,
   MessageSquare,
   Zap,
-  MoreHorizontal
+  MoreHorizontal,
+  Puzzle
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -50,6 +51,7 @@ const navGroups: NavGroup[] = [
       { to: '/radio', icon: Radio, label: { zh: 'Radio', en: 'Radio' } },
       { to: '/dispatch', icon: Zap, label: { zh: '调度', en: 'Dispatch' } },
       { to: '/tools', icon: Wrench, label: { zh: '工具', en: 'Tools' } },
+      { to: '/skills', icon: Puzzle, label: { zh: 'Skills', en: 'Skills' } },
       { to: '/chat', icon: MessageSquare, label: { zh: '对话', en: 'Chat' } },
     ]
   },

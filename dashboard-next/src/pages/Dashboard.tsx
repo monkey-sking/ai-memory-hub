@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import type { AnyRecord } from '../lib/api'
 import { apiGet, apiPost, asArray, asRecord, boolOf, numberOf, textOf } from '../lib/api'
+import { createDashboardRealtimeClient } from '../lib/realtime'
 import type { AppLanguage, AppOutletContext } from '../lib/i18n'
 import { dashboardLabels, dashboardSubtitles, dashboardTitles } from '../lib/dashboardCopy'
 import type { DashboardCopy, DashboardSection } from '../lib/dashboardCopy'
@@ -106,10 +107,21 @@ export default function Dashboard({ section }: DashboardProps) {
 
   useEffect(() => {
     let active = true
+    let realtimeReceived = false
+
+    const realtime = createDashboardRealtimeClient({
+      onSnapshot: snapshot => {
+        if (!active) return
+        realtimeReceived = true
+        setData(snapshot as DashboardSnapshot)
+        setError('')
+        setLoading(false)
+      }
+    })
 
     void fetchDashboardData(section)
       .then(({ snapshot, health: nextHealth }) => {
-        if (!active) return
+        if (!active || realtimeReceived) return
         setData(snapshot)
         setHealth(nextHealth)
       })
@@ -123,10 +135,45 @@ export default function Dashboard({ section }: DashboardProps) {
 
     return () => {
       active = false
+      realtime.close()
     }
   }, [section])
 
   const viewModel = useMemo(() => buildViewModel(data), [data])
+  const loadMoreCollection = useCallback(async (collection: 'memory' | 'tasks' | 'radio') => {
+    const config: Record<typeof collection, { path: string; itemKey: string }> = {
+      memory: { path: '/api/memory', itemKey: 'records' },
+      tasks: { path: '/api/tasks', itemKey: 'tasks' },
+      radio: { path: '/api/radio', itemKey: 'messages' }
+    }
+    const request = config[collection]
+    const currentSection = asRecord(data?.[collection])
+    const currentItems = asArray<AnyRecord>(currentSection[request.itemKey])
+    const payload = await apiGet<AnyRecord>(`${request.path}?offset=${currentItems.length}&limit=200`)
+    const nextItems = asArray<AnyRecord>(payload[request.itemKey])
+    setData(previous => {
+      const previousSection = asRecord(previous?.[collection])
+      const previousItems = asArray<AnyRecord>(previousSection[request.itemKey])
+      const seen = new Set(previousItems.map(item => textOf(item.localEventId || item.id)))
+      const mergedItems = [...previousItems, ...nextItems.filter(item => {
+        const key = textOf(item.localEventId || item.id)
+        if (!key || seen.has(key)) return false
+        seen.add(key)
+        return true
+      })]
+      return {
+        ...(previous || {}),
+        [collection]: {
+          ...previousSection,
+          [request.itemKey]: mergedItems,
+          total: payload.total,
+          offset: payload.offset,
+          limit: payload.limit,
+          hasMore: payload.hasMore
+        }
+      }
+    })
+  }, [data])
 
   return (
     <div className={`dashboard-page dashboard-section-${section}`}>
@@ -157,13 +204,13 @@ export default function Dashboard({ section }: DashboardProps) {
         ) : (
           <div className="p-6">
             {section === 'overview' && <CommandCenter copy={copy} model={viewModel} language={language} onRefresh={refresh} />}
-            {section === 'memory' && <NewMemoryPanel memory={viewModel.memory} copy={copy} onRefresh={refresh} />}
+            {section === 'memory' && <NewMemoryPanel memory={viewModel.memory} copy={copy} onRefresh={refresh} hasMore={viewModel.memoryHasMore} onLoadMore={() => loadMoreCollection('memory')} />}
             {section === 'tasks' && <NewTasksPanel tasks={viewModel.tasks} visibleProjects={viewModel.visibleProjects} copy={copy} onMutate={async (_action, path, body) => {
               await apiPost<AnyRecord>(path, body)
               await refresh()
               return true
-            }} />}
-            {section === 'radio' && <NewRadioPanel radio={viewModel.radio} visibleProjects={viewModel.visibleProjects} copy={copy} onRefresh={refresh} />}
+            }} hasMore={viewModel.tasksHasMore} onLoadMore={() => loadMoreCollection('tasks')} />}
+            {section === 'radio' && <NewRadioPanel radio={viewModel.radio} visibleProjects={viewModel.visibleProjects} copy={copy} onRefresh={refresh} hasMore={viewModel.radioHasMore} onLoadMore={() => loadMoreCollection('radio')} />}
             {section === 'dispatch' && <DispatchPanel copy={copy} model={viewModel} onRefresh={refresh} />}
             {section === 'workflows' && <NewWorkflowsPanel workflows={viewModel.workflows} visibleProjects={viewModel.visibleProjects} copy={copy} onRefresh={refresh} />}
             {section === 'analytics' && <AnalyticsPanel copy={copy} model={viewModel} />}
@@ -233,8 +280,11 @@ function buildViewModel(data: DashboardSnapshot | null) {
     status,
     metrics,
     memory,
+    memoryHasMore: boolOf(memory.hasMore),
     radio: asArray<AnyRecord>(radio.messages),
+    radioHasMore: boolOf(radio.hasMore),
     tasks: asArray<AnyRecord>(tasks.tasks),
+    tasksHasMore: boolOf(tasks.hasMore),
     workflows: asArray<AnyRecord>(workflows.workflows),
     projects: asArray<AnyRecord>(projects.projects),
     visibleProjects: asArray<AnyRecord>(projects.visibleProjects),

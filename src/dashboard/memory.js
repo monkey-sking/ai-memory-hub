@@ -16,19 +16,30 @@ export function createDashboardMemoryApi(deps) {
     readTextIfExists
   } = deps;
 
-  function getDashboardMemory(memoryDir) {
+  function getDashboardMemory(memoryDir, options = {}) {
     const config = { ...loadConfig(), memoryDir };
     const index = buildMemoryIndex(readLedger(memoryDir), config);
+    const offset = normalizePageValue(options.offset, 0);
+    const limit = normalizePageValue(options.limit, 200, 500);
+    const records = index.records
+      .filter((record) => !record.superseded && isDashboardMemoryVisible(record))
+      .sort((a, b) => String(b.ts || b.indexedAt || "").localeCompare(String(a.ts || a.indexedAt || "")));
     return {
       memory: readTextIfExists(path.join(memoryDir, "MEMORY.md")),
       profile: readTextIfExists(path.join(memoryDir, "profile.md")),
       pending: readEvents(path.join(memoryDir, "inbox", "events.jsonl")),
-      records: index.records
-        .filter((record) => !record.superseded && isDashboardMemoryVisible(record))
-        .sort((a, b) => String(b.ts || b.indexedAt || "").localeCompare(String(a.ts || a.indexedAt || "")))
-        .slice(0, 200)
-        .map(formatDashboardMemoryRecord)
+      records: records.slice(offset, offset + limit).map(formatDashboardMemoryRecord),
+      total: records.length,
+      offset,
+      limit,
+      hasMore: offset + limit < records.length
     };
+  }
+
+  function normalizePageValue(value, fallback, maximum = Number.MAX_SAFE_INTEGER) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed < 0) return fallback;
+    return Math.min(maximum, Math.floor(parsed));
   }
 
   function isDashboardMemoryVisible(record) {

@@ -14,13 +14,25 @@ export function createDashboardTasksApi({ readTasks }) {
 
   function getDashboardTasks(memoryDir, status = "all", options = {}) {
     const includeCancelled = Boolean(options.includeCancelled);
+    const offset = normalizePageValue(options.offset, 0);
+    const limit = normalizePageValue(options.limit, 200, 500);
+    const filteredTasks = readTasks(memoryDir)
+      .filter((task) => matchesTaskStatus(task, status, includeCancelled))
+      .sort((a, b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")));
     return {
-      tasks: readTasks(memoryDir)
-        .filter((task) => matchesTaskStatus(task, status, includeCancelled))
-        .sort((a, b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")))
-        .slice(0, 200),
-      kanban: buildTaskKanban(readTasks(memoryDir))
+      tasks: filteredTasks.slice(offset, offset + limit),
+      total: filteredTasks.length,
+      offset,
+      limit,
+      hasMore: offset + limit < filteredTasks.length,
+      kanban: buildTaskKanban(filteredTasks)
     };
+  }
+
+  function normalizePageValue(value, fallback, maximum = Number.MAX_SAFE_INTEGER) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed < 0) return fallback;
+    return Math.min(maximum, Math.floor(parsed));
   }
 
   return {

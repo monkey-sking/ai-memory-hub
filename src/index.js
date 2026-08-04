@@ -41,7 +41,7 @@ import { defaultSkillRoots, scanSkillRoots } from "./shared-skill-scan.js";
 import { importSharedSkill, listSharedSkillPackages, findSharedSkillPackage } from "./shared-skills.js";
 import { loadProjectSkillManifest, setProjectSkill, removeProjectSkill, selectProjectSkills } from "./shared-skill-project.js";
 import { doctorSkillProjections, syncSkillProjections } from "./shared-skill-materializer.js";
-import { listCredentialProfiles, setCredentialProfile, removeCredentialProfile } from "./credentials.js";
+import { listCredentialProfiles, setCredentialProfile, removeCredentialProfile, resolveCredential } from "./credentials.js";
 import {
   normalizeAdversarialVerifier,
   normalizeReviewDimensions,
@@ -5630,7 +5630,7 @@ function runDispatchJob(memoryDir, job, runner, options = {}) {
   const startedAtMs = Date.now();
   const startedAt = new Date(startedAtMs).toISOString();
   const invocation = buildRunnerInvocation(runner, args);
-  const completed = invokeRunnerCommand(runner, args, input, DEFAULT_DISPATCH_RUN_TIMEOUT_MS, cwd);
+  const completed = invokeRunnerCommand(runner, args, input, DEFAULT_DISPATCH_RUN_TIMEOUT_MS, cwd, resolveCredentialEnvironment(memoryDir, job.credentialRefs || job.credentials || []));
   const finishedAtMs = Date.now();
   const finishedAt = new Date(finishedAtMs).toISOString();
   const parsed = parseRunnerOutput(memoryDir, jobWithWorktree, runner, completed.stdout);
@@ -5708,7 +5708,17 @@ function buildRunnerInvocation(runner, args = []) {
   };
 }
 
-function invokeRunnerCommand(runner, args = [], input = "", timeoutMs = DEFAULT_DISPATCH_RUN_TIMEOUT_MS, cwd = process.cwd()) {
+function resolveCredentialEnvironment(memoryDir, references = []) {
+  const env = {};
+  for (const reference of Array.isArray(references) ? references : []) {
+    const id = typeof reference === "string" ? reference : reference?.id;
+    const envName = typeof reference === "string" ? id : reference?.envVar || id;
+    if (!id || !envName) continue;
+    env[envName] = resolveCredential(memoryDir, id);
+  }
+  return env;
+}
+function invokeRunnerCommand(runner, args = [], input = "", timeoutMs = DEFAULT_DISPATCH_RUN_TIMEOUT_MS, cwd = process.cwd(), credentialEnv = {}) {
   const invocation = buildRunnerInvocation(runner, args);
   const useCmdLauncher = invocation.usesShell;
   const command = useCmdLauncher ? invocation.commandLine : runner.command;
@@ -5720,7 +5730,8 @@ function invokeRunnerCommand(runner, args = [], input = "", timeoutMs = DEFAULT_
     maxBuffer: 10 * 1024 * 1024,
     windowsHide: true,
     shell: useCmdLauncher,
-    input
+    input,
+    env: { ...process.env, ...credentialEnv }
   });
 }
 
@@ -7576,6 +7587,28 @@ async function skillCommand(argv) {
     }
     console.log(JSON.stringify({ imported, project: project || "", manifest, synced }, null, 2)); return;
   }
+  if (action === "update") {
+    const source = getOption(argv.slice(1), "--path");
+    if (!source) throw new Error("Usage: ai-memory-hub skill update --path <skill-directory> --version <version> [--project <path>]");
+    const imported = await importSharedSkill(config.memoryDir, source, { id: getOption(argv.slice(1), "--id"), version: getOption(argv.slice(1), "--version") });
+    const project = getOption(argv.slice(1), "--project");
+    const manifest = project ? await setProjectSkill(project, imported.id, imported.version) : null;
+    const packages = project ? selectProjectSkills(manifest, await listSharedSkillPackages(config.memoryDir)) : [];
+    const synced = project ? await syncSkillProjections(project, packages, getOption(argv.slice(1), "--tool") ? [getOption(argv.slice(1), "--tool")] : ["codex", "claude", "gemini", "antigravity"]) : [];
+    console.log(JSON.stringify({ imported, manifest, synced }, null, 2)); return;
+  }
+  if (action === "rollback") {
+    const id = getOption(argv.slice(1), "--id") || argv[1] || "";
+    const version = getOption(argv.slice(1), "--version");
+    const project = getOption(argv.slice(1), "--project") || process.cwd();
+    if (!id || !version) throw new Error("Usage: ai-memory-hub skill rollback <id> --version <version> --project <path>");
+    const packageRecord = await findSharedSkillPackage(config.memoryDir, id, version);
+    if (!packageRecord) throw new Error(`Skill package not found: ${id}@${version}`);
+    const manifest = await setProjectSkill(project, id, version);
+    const packages = selectProjectSkills(manifest, await listSharedSkillPackages(config.memoryDir));
+    const synced = await syncSkillProjections(project, packages, getOption(argv.slice(1), "--tool") ? [getOption(argv.slice(1), "--tool")] : ["codex", "claude", "gemini", "antigravity"]);
+    console.log(JSON.stringify({ package: packageRecord, manifest, synced }, null, 2)); return;
+  }
   if (action === "show") {
     const id = getOption(argv.slice(1), "--id") || argv[1] || "";
     if (!id) throw new Error("Usage: ai-memory-hub skill show <id> [--version <version>]");
@@ -7613,7 +7646,7 @@ async function skillCommand(argv) {
     console.log(renderSkillMarkdown({ title, text, sourceTaskId: getOption(argv.slice(1), "--task") || "unknown", evidence: (getOption(argv.slice(1), "--evidence") || "").split(";").map((item) => item.trim()).filter(Boolean) }));
     return;
   }
-  throw new Error("Usage: ai-memory-hub skill list|scan|import|install|show|enable|disable|sync|doctor|search|attach|render");
+  throw new Error("Usage: ai-memory-hub skill list|scan|import|install|show|update|rollback|enable|disable|sync|doctor|search|attach|render");
 }
 
 function getSkillDeltasFile(memoryDir) {

@@ -5,6 +5,7 @@ import { apiGet, apiPost, asArray, textOf } from '../lib/api'
 import type { AppOutletContext } from '../lib/i18n'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
+import { CredentialForm } from '../components/CredentialForm'
 import './Skills.css'
 
 type SkillPackage = { id: string; version: string; contentHash?: string; source?: { kind?: string; location?: string }; packagePath?: string; conflict?: boolean }
@@ -92,6 +93,7 @@ export default function Skills() {
         <CardHeader><CardTitle><ShieldAlert size={18} />{zh ? '统一凭据' : 'Shared Credentials'}</CardTitle></CardHeader>
         <CardContent>
           <p className="skills-credential-note">{zh ? '凭据只配置一次，密钥不会返回到页面或 Skill 文件。' : 'Configure credentials once; secret values are never returned to the page or Skill files.'}</p>
+          <CredentialForm language={language} onSaved={() => void load()} />
           <div className="skills-credential-list">{credentials.map(profile => <span key={profile.id} className="skill-good"><CheckCircle2 size={14} />{profile.id}{profile.envVar ? ` · ${profile.envVar}` : ''}</span>)}{!credentials.length && <span className="skills-empty">{zh ? '尚未配置凭据' : 'No credentials configured'}</span>}</div>
         </CardContent>
       </Card>

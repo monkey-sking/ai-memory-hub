@@ -1506,6 +1506,24 @@ test("doctor reports shared-state-only runner profiles", async () => {
   });
 });
 
+test("doctor recognizes Antigravity CLI as an argv runner", async () => {
+  await withHub(async (memoryDir) => {
+    const binDir = path.join(memoryDir, "fake-agy-bin");
+    await fs.mkdir(binDir, { recursive: true });
+    await fs.writeFile(path.join(binDir, "agy.cmd"), "@echo off\r\nexit /b 0\r\n", "utf8");
+    const result = runCli(memoryDir, ["doctor", "--tool", "antigravity", "--skip-version"], {
+      PATH: `${binDir};${process.env.PATH || ""}`
+    });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.summary.runnable, 1);
+    assert.equal(payload.tools[0].tool, "antigravity");
+    assert.equal(payload.tools[0].available, true);
+    assert.equal(payload.tools[0].sharedStateOnly, false);
+    assert.equal(payload.tools[0].profile.promptMode, "argv");
+    assert.equal(payload.tools[0].profile.outputMode, "text");
+  });
+});
 test("doctor reports unknown runner profiles clearly", async () => {
   await withHub(async (memoryDir) => {
     const result = runCli(memoryDir, ["doctor", "--tool", "missing-runner", "--skip-version"]);

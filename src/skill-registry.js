@@ -1,9 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
+import { getEnabledPacks } from "./domain-packs.js";
 
 export function listSkills(memoryDir) {
   const roots = [path.join(memoryDir, "skills")];
-  for (const pack of enabledPacks(memoryDir)) {
+  for (const pack of getEnabledPacks(memoryDir)) {
     const skillsRoot = pack.entry?.skills ? path.resolve(pack.root, pack.entry.skills) : "";
     if (skillsRoot) roots.push(skillsRoot);
   }
@@ -19,18 +20,6 @@ export function listSkills(memoryDir) {
     }
   }
   return skills;
-}
-
-function enabledPacks(memoryDir) {
-  const file = path.join(memoryDir, "packs", "registry.jsonl");
-  if (!fs.existsSync(file)) return [];
-  const state = new Map();
-  for (const line of fs.readFileSync(file, "utf8").split(/\r?\n/).filter(Boolean)) {
-    const event = JSON.parse(line);
-    if (!event.pack?.id) continue;
-    state.set(event.pack.id, { ...(state.get(event.pack.id) || {}), ...event.pack, ...(event.action === "enable" ? { enabled: true } : {}), ...(event.action === "disable" ? { enabled: false } : {}) });
-  }
-  return [...state.values()].filter((pack) => pack.enabled);
 }
 
 export function searchSkills(memoryDir, query) {

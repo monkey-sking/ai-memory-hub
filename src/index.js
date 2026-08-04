@@ -8005,7 +8005,7 @@ function appCommand(argv) {
         return sendJson(res, getStatusObject());
       }
       if (req.method === "GET" && url.pathname === "/api/memory") {
-        return sendJson(res, dashboardMemory.getDashboardMemory(config.memoryDir));
+        return sendJson(res, dashboardMemory.getDashboardMemory(config.memoryDir, getPageOptions(url)));
       }
       if (req.method === "POST" && url.pathname === "/api/memory/supersede") {
         const body = await readRequestJson(req);
@@ -8023,12 +8023,12 @@ function appCommand(argv) {
         return sendJson(res, { ok: true, event, status: getStatusObject() });
       }
       if (req.method === "GET" && url.pathname === "/api/radio") {
-        return sendJson(res, dashboardRadio.getDashboardRadio(config.memoryDir));
+        return sendJson(res, dashboardRadio.getDashboardRadio(config.memoryDir, getPageOptions(url)));
       }
       if (req.method === "GET" && url.pathname === "/api/tasks") {
         const status = url.searchParams.get("status") || "all";
         const includeCancelled = url.searchParams.get("includeCancelled") === "1";
-        return sendJson(res, dashboardTasks.getDashboardTasks(config.memoryDir, status, { includeCancelled }));
+        return sendJson(res, dashboardTasks.getDashboardTasks(config.memoryDir, status, { includeCancelled, ...getPageOptions(url) }));
       }
       if (req.method === "GET" && url.pathname === "/api/workflows") {
         return sendJson(res, dashboardWorkflows.getDashboardWorkflows(config.memoryDir));
@@ -10481,6 +10481,19 @@ function sendJson(res, value, status = 200) {
     "Cache-Control": "no-store"
   });
   res.end(JSON.stringify(value, null, 2));
+}
+
+function getPageOptions(url) {
+  return {
+    offset: parsePageParam(url.searchParams.get("offset"), 0),
+    limit: parsePageParam(url.searchParams.get("limit"), undefined)
+  };
+}
+
+function parsePageParam(value, fallback) {
+  if (value === null || value === "") return fallback;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : fallback;
 }
 
 function sendStaticAsset(res, pathname) {

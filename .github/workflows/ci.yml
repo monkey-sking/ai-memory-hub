@@ -22,7 +22,7 @@ jobs:
           npm test 2>&1 | tee "$RUNNER_TEMP/npm-test.log"
           test_status=${PIPESTATUS[0]}
           if [ "$test_status" -ne 0 ]; then
-            grep -E "not ok|AssertionError|Error:|expected|actual" "$RUNNER_TEMP/npm-test.log" | head -n 30 | while IFS= read -r line; do
+            tail -n 80 "$RUNNER_TEMP/npm-test.log" | while IFS= read -r line; do
               echo "::error::$line"
             done
           fi

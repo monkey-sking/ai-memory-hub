@@ -78,6 +78,13 @@ ai-memory-hub skill doctor --project <project>
 
 The canonical package is stored below `~/.ai-memory/skill-store`; the project selection is stored in `.amh/skills.json`. Agent directories contain only AMH-managed projections and are never used as the source of truth. Existing unmarked Skills are reported as conflicts and are not overwritten.
 
+The reserved `ai-memory-hub` adapter is a protected core Skill. Its copies in
+Codex, Claude, Gemini, OpenCode, QClaw, or MiMo Code remain tool-specific
+projections and cannot be imported back into the AMH registry. For other
+multiple-hash groups, AMH distinguishes identical duplicates, target-agent
+variants, and true content conflicts: variants remain separated by target,
+while true conflicts require an explicit source choice.
+
 The dashboard Skill Center exposes the same scan, import, sync, and doctor operations. Credential profiles can be configured once from the Skill Center or `/api/credentials`. Secret values are protected with Windows DPAPI where available, never returned in API responses, and may be injected only into a runner invocation that explicitly references the profile.
 ### External source types
 
@@ -107,3 +114,7 @@ auditable edges in `relations/events.jsonl`:
 Context Packs use project and task links first, then enabled Skills and related
 memories. This gives an Agent reusable evidence and operating instructions
 without turning all historical memory into executable Skill content.
+
+The dashboard exposes the same relation drawer from Skills, Projects, Memory,
+and Task detail views. It lists confirmed edges and lets the user confirm
+inferred suggestions; confirmation writes an append-only relation event.

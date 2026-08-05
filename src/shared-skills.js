@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { validateSkillPack } from "./shared-skill-pack.js";
+import { PROTECTED_SKILL_IDS } from "./shared-skill-scan.js";
 
 export const SKILL_REGISTRY_VERSION = 1;
 const SKILL_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{1,63}$/;
@@ -49,6 +50,7 @@ export async function readSkillPackage(packagePath) {
 export async function importSharedSkill(memoryDir, sourcePath, metadata = {}) {
   const validation = await validateSkillPackage(sourcePath);
   const id = normalizeSkillId(metadata.id || validation.id);
+  if (PROTECTED_SKILL_IDS.has(id)) throw new Error(`Skill ${id} is protected and cannot be imported into the AMH registry`);
   const version = normalizeSkillVersion(metadata.version || "1.0.0");
   const registryRoot = path.join(path.resolve(memoryDir), "skill-store");
   const packageBase = path.join(registryRoot, "packages", id, version);
@@ -81,6 +83,8 @@ export async function importSharedSkill(memoryDir, sourcePath, metadata = {}) {
 
 export async function importSharedPack(memoryDir, sourcePath, metadata = {}) {
   const validation = await validateSkillPack(sourcePath);
+  const protectedMember = validation.skills.find((member) => PROTECTED_SKILL_IDS.has(member.id));
+  if (protectedMember) throw new Error(`Skill ${protectedMember.id} is protected and cannot be imported into the AMH registry`);
   const registryRoot = path.join(path.resolve(memoryDir), "skill-store");
   const packageBase = path.join(registryRoot, "packs", validation.manifest.id, validation.manifest.version);
   const packageManifestPath = path.join(packageBase, "pack.json");

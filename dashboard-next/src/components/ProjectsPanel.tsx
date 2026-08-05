@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { RelatedEntities } from '@/components/RelatedEntities'
 
 interface ProjectsPanelProps {
   copy: {
@@ -306,6 +307,7 @@ export function ProjectsPanel({ copy, model, onRefresh }: ProjectsPanelProps) {
                     <TableCell>
                       <div className="flex gap-2">
                         <Button size="sm" variant="outline" onClick={() => openEdit(project)}>Edit</Button>
+                        <RelatedEntities entityType="project" entityId={textOf(project.id || project.name)} title="关联" />
                         <Button size="sm" variant="ghost" onClick={() => void archiveProject(textOf(project.id))} disabled={busy === 'archive'}>
                           Archive
                         </Button>

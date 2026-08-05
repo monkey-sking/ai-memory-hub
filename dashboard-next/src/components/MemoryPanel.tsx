@@ -6,6 +6,7 @@ import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { Textarea } from './ui/textarea'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog'
+import { RelatedEntities } from './RelatedEntities'
 import { Plus, AlertCircle, Clock, Tag, User, RefreshCw } from 'lucide-react'
 import type { AnyRecord } from '@/lib/api'
 import { VirtualizedList } from './VirtualizedList'
@@ -297,7 +298,7 @@ export function MemoryPanel({ memory, copy, onRefresh, hasMore = false, onLoadMo
         <DialogContent className="memory-detail-dialog">
           <DialogHeader><DialogTitle>{textOf(selectedRecord.kind, copy.memoryRecords)} · {formatDate(textOf(selectedRecord.ts || selectedRecord.indexedAt))}</DialogTitle></DialogHeader>
           <div className="memory-detail-content">
-            <div className="memory-detail-meta"><KindBadge kind={textOf(selectedRecord.kind, 'note')} /><span>{textOf(selectedRecord.source, '-')}</span><span>{textOf(selectedRecord.project || asRecord(selectedRecord.metadata).project, '-')}</span></div>
+            <div className="memory-detail-meta"><KindBadge kind={textOf(selectedRecord.kind, 'note')} /><span>{textOf(selectedRecord.source, '-')}</span><span>{textOf(selectedRecord.project || asRecord(selectedRecord.metadata).project, '-')}</span><RelatedEntities entityType="memory" entityId={textOf(selectedRecord.localEventId || selectedRecord.id)} title="关联上下文" /></div>
             <p className="memory-detail-text">{textOf(selectedRecord.text, '-')}</p>
             <dl className="memory-detail-grid"><div><dt>ID</dt><dd>{textOf(selectedRecord.localEventId || selectedRecord.id, '-')}</dd></div><div><dt>时间</dt><dd>{formatDate(textOf(selectedRecord.ts || selectedRecord.indexedAt))}</dd></div><div><dt>来源</dt><dd>{textOf(selectedRecord.source, '-')}</dd></div><div><dt>项目</dt><dd>{textOf(selectedRecord.project || asRecord(selectedRecord.metadata).project, '-')}</dd></div></dl>
           </div>

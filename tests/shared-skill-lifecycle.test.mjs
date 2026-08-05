@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { aggregateSkillSources, scanSkillRoots } from "../src/shared-skill-scan.js";
-import { importSharedPack } from "../src/shared-skills.js";
+import { importSharedPack, importSharedSkill } from "../src/shared-skills.js";
 import { disableProjectSkill, getSkillLifecycleState, selectProjectSkillVersion, setProjectSkill, loadProjectSkillManifest } from "../src/shared-skill-project.js";
 
 async function makeSkillRoot() {
@@ -23,7 +23,7 @@ async function makeSkillRoot() {
   return root;
 }
 
-test("skill source aggregation folds identical copies and marks content conflicts", async () => {
+test("skill source aggregation folds identical copies and marks target variants", async () => {
   const root = await makeSkillRoot();
   try {
     const sources = await scanSkillRoots([
@@ -36,7 +36,7 @@ test("skill source aggregation folds identical copies and marks content conflict
     assert.equal(deepDiscuss.sourceCount, 3);
     assert.equal(deepDiscuss.duplicateCount, 1);
     assert.equal(deepDiscuss.contentHashes.length, 2);
-    assert.equal(deepDiscuss.status, "conflict");
+    assert.equal(deepDiscuss.status, "variant");
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
@@ -52,6 +52,36 @@ test("skill source aggregation returns one discovered group for a unique source"
     assert.equal(groups[1].sourceCount, 1);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("skill source aggregation protects the AMH adapter and classifies target variants", () => {
+  const groups = aggregateSkillSources([
+    { id: "ai-memory-hub", tool: "codex", path: "codex/ai-memory-hub", contentHash: "sha256:codex" },
+    { id: "ai-memory-hub", tool: "claude", path: "claude/ai-memory-hub", contentHash: "sha256:claude" },
+    { id: "lark-doc", tool: "codex", path: "codex/lark-doc", contentHash: "sha256:shared" },
+    { id: "lark-doc", tool: "gemini", path: "gemini/lark-doc", contentHash: "sha256:shared" },
+    { id: "lark-doc", tool: "opencode", path: "opencode/lark-doc", contentHash: "sha256:target" }
+  ]);
+  const protectedGroup = groups.find((item) => item.id === "ai-memory-hub");
+  assert.equal(protectedGroup.status, "protected");
+  assert.equal(protectedGroup.protected, true);
+  assert.equal(protectedGroup.importable, false);
+  const variantGroup = groups.find((item) => item.id === "lark-doc");
+  assert.equal(variantGroup.status, "variant");
+  assert.equal(variantGroup.variant, true);
+});
+
+test("protected core adapters cannot be imported into the registry", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "amh-protected-skill-"));
+  const memoryDir = await fs.mkdtemp(path.join(os.tmpdir(), "amh-protected-memory-"));
+  try {
+    await fs.mkdir(path.join(root, "ai-memory-hub"), { recursive: true });
+    await fs.writeFile(path.join(root, "ai-memory-hub", "SKILL.md"), "# AMH adapter\n", "utf8");
+    await assert.rejects(() => importSharedSkill(memoryDir, path.join(root, "ai-memory-hub")), /protected/i);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+    await fs.rm(memoryDir, { recursive: true, force: true });
   }
 });
 

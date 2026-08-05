@@ -781,8 +781,8 @@ function initAllTools(memoryDir, { apply = false } = {}) {
   for (const target of targets) {
     const snippet = renderInstallSnippet(target, memoryDir);
     ensureDir(path.dirname(target.file));
-    appendIfMissing(target.file, snippet, "Shared AI Memory");
-    console.log(`Installed shared memory instructions for ${target.tool}: ${target.file}`);
+    const result = syncSharedSkillLayer(target.file, snippet, { apply: true });
+    console.log(`${result.status === "updated" ? "Updated" : result.status === "current" ? "Already current" : "Installed"} shared memory instructions for ${target.tool}: ${target.file}`);
     installed += 1;
   }
   console.log(`\nOnboarded ${installed} tool(s) into the shared memory hub.`);
@@ -1472,7 +1472,7 @@ function connectStatusCommand(argv) {
       if (!target) continue;
       const snippet = renderInstallSnippet(target, config.memoryDir);
       ensureDir(path.dirname(target.file));
-      appendIfMissing(target.file, snippet, "Shared AI Memory");
+      syncSharedSkillLayer(target.file, snippet, { apply: true });
     }
   }
 
@@ -8711,15 +8711,17 @@ function installCommand(argv) {
 
   for (const target of targets) {
     const snippet = renderInstallSnippet(target, config.memoryDir);
+    const preview = syncSharedSkillLayer(target.file, snippet, { apply: false });
     if (!apply) {
       console.log(`\n[dry-run] ${target.tool}: ${target.file}`);
+      console.log(`Status: ${preview.status}`);
       console.log(snippet.trim());
       continue;
     }
 
     ensureDir(path.dirname(target.file));
-    appendIfMissing(target.file, snippet, "Shared AI Memory");
-    console.log(`Installed shared memory instructions for ${target.tool}: ${target.file}`);
+    const result = syncSharedSkillLayer(target.file, snippet, { apply: true });
+    console.log(`${result.status === "updated" ? "Updated" : result.status === "current" ? "Already current" : "Installed"} shared memory instructions for ${target.tool}: ${target.file}`);
   }
 }
 
@@ -17004,6 +17006,46 @@ function updateRadioMessage(memoryDir, id, patch) {
 function appendJsonl(file, value) {
   ensureDir(path.dirname(file));
   fs.appendFileSync(file, `${JSON.stringify(value)}\n`, "utf8");
+}
+
+function syncSharedSkillLayer(file, snippet, { apply = false } = {}) {
+  const existing = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
+  const renderedSnippet = String(snippet || "").trim();
+  const renderedStart = renderedSnippet.match(/<!--\s*AI_MEMORY_HUB_SHARED_SKILL_LAYER v[0-9]+\s*-->/);
+  const renderedEndMarker = "<!-- /AI_MEMORY_HUB_SHARED_SKILL_LAYER -->";
+  const renderedEnd = renderedStart
+    ? renderedSnippet.indexOf(renderedEndMarker, renderedStart.index + renderedStart[0].length)
+    : -1;
+  const rendered = renderedStart && renderedEnd !== -1
+    ? renderedSnippet.slice(renderedStart.index, renderedEnd + renderedEndMarker.length).trim()
+    : renderedSnippet;
+  const startMatch = existing.match(/<!--\s*AI_MEMORY_HUB_SHARED_SKILL_LAYER v[0-9]+\s*-->/);
+  const endMarker = "<!-- /AI_MEMORY_HUB_SHARED_SKILL_LAYER -->";
+
+  if (startMatch) {
+    const start = startMatch.index;
+    const end = existing.indexOf(endMarker, start + startMatch[0].length);
+    if (end === -1) {
+      return { status: "malformed", changed: false };
+    }
+    const endExclusive = end + endMarker.length;
+    const current = existing.slice(start, endExclusive).trim();
+    const normalize = (value) => value.replace(/\r\n/g, "\n");
+    if (normalize(current) === normalize(rendered)) {
+      return { status: "current", changed: false };
+    }
+    if (!apply) {
+      return { status: "stale", changed: true };
+    }
+    fs.writeFileSync(file, `${existing.slice(0, start)}${rendered}${existing.slice(endExclusive)}`, "utf8");
+    return { status: "updated", changed: true };
+  }
+
+  if (!apply) {
+    return { status: existing ? "missing" : "new", changed: true };
+  }
+  appendIfMissing(file, snippet, "Shared AI Memory");
+  return { status: existing ? "upgraded" : "installed", changed: true };
 }
 
 function appendIfMissing(file, snippet, marker) {

@@ -25,6 +25,39 @@ export function recordRelation(memoryDir, input) {
 export function recordMemoryRelations(memoryDir, memory = {}) {
   const memoryId = String(memory.localEventId || memory.id || "").trim();
   if (!memoryId) return [];
+  return buildMemoryRelations(memory).map((target) => recordRelation(memoryDir, {
+    from: { type: "memory", id: memoryId },
+    to: { type: target.type, id: target.id },
+    relation: target.relation,
+    source: "memory-write",
+    confidence: 1,
+    evidence: target.evidence
+  }));
+}
+
+export function rebuildMemoryRelations(memoryDir, memories = [], { dryRun = false } = {}) {
+  const summary = { memories: memories.length, candidates: 0, created: 0, reused: 0 };
+  for (const memory of memories) {
+    const candidates = buildMemoryRelations(memory);
+    summary.candidates += candidates.length;
+    if (dryRun) continue;
+    for (const target of candidates) {
+      const result = recordRelation(memoryDir, {
+        from: { type: "memory", id: String(memory.localEventId || memory.id).trim() },
+        to: { type: target.type, id: target.id },
+        relation: target.relation,
+        source: "memory-migration",
+        confidence: 1,
+        evidence: { ...target.evidence, migration: "historical-memory-backfill" }
+      });
+      if (result.reused) summary.reused += 1;
+      else summary.created += 1;
+    }
+  }
+  return summary;
+}
+
+function buildMemoryRelations(memory = {}) {
   const metadata = memory.metadata && typeof memory.metadata === "object" ? memory.metadata : {};
   const project = String(memory.project || metadata.project || "").trim();
   const skills = normalizeIds(memory.skills || metadata.skills);
@@ -34,14 +67,7 @@ export function recordMemoryRelations(memoryDir, memory = {}) {
   for (const skill of skills) inputs.push({ type: "skill", id: skill, relation: "supports", evidence: { source: "memory-write", field: "skills" } });
   for (const taskId of normalizeIds(refs.taskId || refs.taskIds)) inputs.push({ type: "task", id: taskId, relation: "related-to", evidence: { source: "memory-write", field: "refs.taskId" } });
   for (const workflowId of normalizeIds(refs.workflowId || refs.workflowIds)) inputs.push({ type: "workflow", id: workflowId, relation: "related-to", evidence: { source: "memory-write", field: "refs.workflowId" } });
-  return inputs.map((target) => recordRelation(memoryDir, {
-    from: { type: "memory", id: memoryId },
-    to: { type: target.type, id: target.id },
-    relation: target.relation,
-    source: "memory-write",
-    confidence: 1,
-    evidence: target.evidence
-  }));
+  return inputs;
 }
 
 export function revokeRelation(memoryDir, relationId, reason = "") {

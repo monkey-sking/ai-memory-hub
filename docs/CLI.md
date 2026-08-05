@@ -793,6 +793,28 @@ current shared skill adapters. See
 [Shared Skill Layer](shared-skill-layer.md) for the memory/skill/task/workflow
 and radio boundaries.
 
+### Skill classification
+
+`skill list` now returns a `classification` object for every discovered Skill.
+The classifier keeps legacy Skills compatible (they default to `capability`) and
+recognizes explicit frontmatter fields:
+
+```yaml
+---
+type: agent        # agent | project | capability | integration | workflow | package
+owner: codex
+scope: global      # global | project | task
+status: active     # active | outdated | conflict | disabled
+targets: codex
+---
+```
+
+The classification is metadata for routing, lifecycle checks, and relations; it
+does not copy Skill content into memory or execute package code. Integration
+Skills such as Feishu/Lark and GitHub are classified by their explicit type or
+known provider prefix. The pure classifier is also available to integrations as
+`classifySkill()` from `src/skill-registry.js`.
+
 ---
 
 ## Capability Registry

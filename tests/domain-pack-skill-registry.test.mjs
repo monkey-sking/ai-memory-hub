@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { addPack, discoverPacks, getEnabledPacks, listPacks, setPackEnabled, validatePack } from "../src/domain-packs.js";
-import { listSkills, searchSkills } from "../src/skill-registry.js";
+import { classifySkill, listSkills, searchSkills } from "../src/skill-registry.js";
 
 test("domain pack registry validates, registers, enables, and rejects traversal", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "amh-pack-"));
@@ -34,6 +34,45 @@ test("skill registry discovers local markdown and searches by title/content", as
     const skills = listSkills(root);
     assert.equal(skills.length, 1);
     assert.equal(searchSkills(root, "evidence")[0].id, "reverse");
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("skill registry classifies agent, project, and capability metadata without changing legacy skills", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "amh-skill-types-"));
+  try {
+    await fs.mkdir(path.join(root, "skills", "codex-review"), { recursive: true });
+    await fs.writeFile(path.join(root, "skills", "codex-review", "SKILL.md"), [
+      "---",
+      "type: agent",
+      "owner: codex",
+      "scope: global",
+      "status: active",
+      "targets: codex",
+      "---",
+      "# Codex Review",
+      "Review changes safely.",
+      ""
+    ].join("\n"), "utf8");
+    await fs.mkdir(path.join(root, "skills", "legacy"), { recursive: true });
+    await fs.writeFile(path.join(root, "skills", "legacy", "SKILL.md"), "# Legacy Skill\n", "utf8");
+
+    const skills = listSkills(root);
+    const agent = skills.find((skill) => skill.id === "codex-review");
+    const legacy = skills.find((skill) => skill.id === "legacy");
+    assert.deepEqual(agent.classification, {
+      type: "agent",
+      owner: "codex",
+      scope: "global",
+      status: "active",
+      targets: ["codex"]
+    });
+    assert.equal(legacy.classification.type, "capability");
+    assert.equal(classifySkill({ id: "feishu-sync", name: "Feishu Sync" }).type, "integration");
+    assert.equal(classifySkill({ id: "amh-project-rules", metadata: { scope: "project" } }).type, "project");
+    assert.equal(classifySkill({ id: "workflow-handoff" }).type, "workflow");
+    assert.equal(classifySkill({ id: "bundle", metadata: { package: true } }).type, "package");
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }

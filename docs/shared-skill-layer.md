@@ -97,6 +97,12 @@ The dashboard Skill Center exposes the same scan, import, sync, and doctor opera
 
 The installer accepts a local Skill directory, a ZIP archive, or a Git repository URL. ZIP imports use a temporary extraction directory with traversal handled by PowerShell `Expand-Archive`; Git imports use a shallow clone and optional `--ref`. A plain directory is validated by its `SKILL.md`; a directory with `amh-pack.json` is validated as a generic multi-Skill package and its non-executable resources are preserved. AMH never executes package scripts.
 
+Skill imports preserve the complete package payload, including `references/`,
+examples, schemas, and other supporting files (excluding registry metadata and
+`node_modules`/`.git`). The package content hash covers those files too, so a
+reference-only change is treated as a new immutable version instead of being
+silently reused.
+
 ```bash
 ai-memory-hub skill install --path <directory|archive.zip|git-url> --version 1.0.0 --project <project>
 ai-memory-hub skill install --path <git-url> --ref <tag-or-branch> --project <project>

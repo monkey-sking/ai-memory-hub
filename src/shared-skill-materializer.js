@@ -21,8 +21,7 @@ export async function syncSkillProjections(projectRoot, packages, targets = ["co
         results.push({ tool, id: pkg.id, state: "conflict", path: destination });
         continue;
       }
-      await fs.mkdir(destination, { recursive: true });
-      await fs.copyFile(path.join(pkg.packagePath, "SKILL.md"), path.join(destination, "SKILL.md"));
+      await copySkillPayload(pkg.packagePath, destination);
       await fs.writeFile(markerPath, `${JSON.stringify({ managedBy: "ai-memory-hub", id: pkg.id, version: pkg.version, contentHash: pkg.contentHash, packagePath: pkg.packagePath }, null, 2)}\n`, "utf8");
       results.push({ tool, id: pkg.id, state: marker ? "updated" : "created", path: destination });
     }
@@ -46,4 +45,16 @@ export async function doctorSkillProjections(projectRoot, packages, targets = ["
 function targetRootFor(projectRoot, tool) {
   const roots = { codex: [".agents", "skills"], agents: [".agents", "skills"], claude: [".claude", "skills"], gemini: [".gemini", "skills"], antigravity: [".gemini", "skills"], qclaw: [".qclaw", "skills"], opencode: [".config", "opencode", "skills"] };
   return path.join(projectRoot, ...(roots[tool] || [".amh", "skills", tool]));
+}
+
+async function copySkillPayload(sourceRoot, targetRoot) {
+  const entries = await fs.readdir(sourceRoot, { withFileTypes: true });
+  await fs.mkdir(targetRoot, { recursive: true });
+  for (const entry of entries) {
+    if (entry.name === "skill.json" || entry.name === "provenance.json") continue;
+    const source = path.join(sourceRoot, entry.name);
+    const target = path.join(targetRoot, entry.name);
+    if (entry.isDirectory()) await copySkillPayload(source, target);
+    else if (entry.isFile()) await fs.copyFile(source, target);
+  }
 }

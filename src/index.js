@@ -6552,6 +6552,15 @@ function memoryOperationCommand(argv) {
     console.log(JSON.stringify(record ? operations.filter((item) => normalizeSupersedeToken(item.target?.recordId) === record) : operations, null, 2));
     return;
   }
+  if (action === "apply") {
+    const dryRun = hasFlag(argv, "--dry-run");
+    const ledger = readLedger(config.memoryDir);
+    const index = buildMemoryIndex(ledger, config);
+    const hidden = index.records.filter((item) => !isMemoryLifecycleVisible(item)).length;
+    if (!dryRun) rebuildMemoryOutputs(config, ledger);
+    console.log(JSON.stringify({ dryRun, records: index.records.length, hidden, rebuilt: !dryRun }, null, 2));
+    return;
+  }
   if (action !== "create") throw new Error("Usage: ai-memory-hub memory op <create|list> [options]");
   const lifecycleAction = String(getOption(argv, "--action") || "").trim().toLowerCase();
   const record = getOption(argv, "--record") || "";
@@ -6584,7 +6593,6 @@ function memoryArchiveCommand(argv) {
   const ledger = readLedger(config.memoryDir);
   const now = new Date();
   const toArchive = [];
-  const toKeep = [];
 
   for (const record of ledger) {
     const meta = record.metadata || {};
@@ -6607,8 +6615,6 @@ function memoryArchiveCommand(argv) {
 
     if (shouldArchive && record.kind !== "correction") {
       toArchive.push(record);
-    } else {
-      toKeep.push(record);
     }
   }
 
@@ -6627,11 +6633,20 @@ function memoryArchiveCommand(argv) {
     return;
   }
 
-  const archiveFile = path.join(config.memoryDir, "memories", "ledger-archive.jsonl");
-  ensureDir(path.dirname(archiveFile));
-  fs.appendFileSync(archiveFile, toArchive.map(r => JSON.stringify(r)).join("\n") + "\n", "utf8");
-  writeLedger(config.memoryDir, toKeep);
-  console.log("Archived " + toArchive.length + ", kept " + toKeep.length + ".");
+  const operationsFile = path.join(config.memoryDir, "memories", "operations.jsonl");
+  ensureDir(path.dirname(operationsFile));
+  const operations = toArchive.map((record) => ({
+    id: createId("archive:" + (record.id || record.localEventId || record.ts) + ":" + Date.now()),
+    ts: new Date().toISOString(),
+    source: "memory-archive",
+    action: "archive",
+    target: { recordId: record.id || record.localEventId || "" },
+    reason: record.metadata?.expiresAt ? "expired" : "low-priority",
+    patch: { lifecycle: { state: "archived" } }
+  }));
+  for (const operation of operations) appendJsonl(operationsFile, operation);
+  rebuildMemoryOutputs(config, readLedger(config.memoryDir));
+  console.log("Archived " + operations.length + " record(s) through lifecycle operations; source ledger unchanged.");
 }
 
 // ─── OPC v1.1 P1: Lifecycle hooks - auto-capture memory events ───
@@ -7566,8 +7581,7 @@ async function skillCommand(argv) {
   const config = loadConfig();
   ensureHub(config.memoryDir);
   if (action === "list") {
-    const shared = await listSharedSkillPackages(config.memoryDir);
-    console.log(JSON.stringify([...listSkills(config.memoryDir), ...shared.map((item) => ({ ...item, name: item.id, source: "registry" }))], null, 2)); return;
+    console.log(JSON.stringify(listSkills(config.memoryDir), null, 2)); return;
   }
   if (action === "scan") {
     const root = getOption(argv.slice(1), "--root");
@@ -13932,6 +13946,7 @@ function applyMemoryLifecycleOperations(records, operations, getIdentityKeys) {
     if (!key) continue;
     const current = overlays.get(key) || {};
     let state = operation.patch?.lifecycle?.state || current.state || "active";
+    if ((operation.action === "pin" || operation.action === "review") && current.state !== "revoked") state = "active";
     if (operation.action === "supersede") state = "superseded";
     if (operation.action === "revoke") state = "revoked";
     if (operation.action === "archive") state = "archived";

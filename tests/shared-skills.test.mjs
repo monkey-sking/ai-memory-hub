@@ -14,6 +14,7 @@ import {
   readSkillPackage,
   validateSkillPackage
 } from "../src/shared-skills.js";
+import { listSkills, searchSkills } from "../src/skill-registry.js";
 
 async function withTempDir(fn) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "amh-shared-skills-"));
@@ -83,3 +84,16 @@ test("reimporting identical content is idempotent and conflicting content is ret
   });
 });
 
+test("canonical registry packages are visible to the skill registry and search", async () => {
+  await withTempDir(async (dir) => {
+    const source = path.join(dir, "source", "browser");
+    const memoryDir = path.join(dir, "memory");
+    await fs.mkdir(source, { recursive: true });
+    await fs.writeFile(path.join(source, "SKILL.md"), "# Browser\n\nSafe navigation.\n", "utf8");
+    await importSharedSkill(memoryDir, source, { version: "1.0.0" });
+    const listed = listSkills(memoryDir).filter((item) => item.source === "registry");
+    assert.equal(listed.length, 1);
+    assert.equal(listed[0].version, "1.0.0");
+    assert.equal(searchSkills(memoryDir, "navigation").length, 1);
+  });
+});

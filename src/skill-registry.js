@@ -19,6 +19,32 @@ export function listSkills(memoryDir) {
       skills.push({ id: entry.name, name: readTitle(content) || entry.name, path: file, preview: content.replace(/^---[\s\S]*?---\s*/m, "").trim().slice(0, 240), source: root === path.join(memoryDir, "skills") ? "local" : "domain-pack" });
     }
   }
+  const registryRoot = path.join(memoryDir, "skill-store", "packages");
+  if (fs.existsSync(registryRoot)) {
+    for (const idEntry of fs.readdirSync(registryRoot, { withFileTypes: true })) {
+      if (!idEntry.isDirectory()) continue;
+      const idRoot = path.join(registryRoot, idEntry.name);
+      for (const versionEntry of fs.readdirSync(idRoot, { withFileTypes: true })) {
+        if (!versionEntry.isDirectory()) continue;
+        const packageRoot = path.join(idRoot, versionEntry.name);
+        const metadataPath = path.join(packageRoot, "skill.json");
+        const skillPath = path.join(packageRoot, "SKILL.md");
+        if (!fs.existsSync(metadataPath) || !fs.existsSync(skillPath)) continue;
+        const metadata = JSON.parse(fs.readFileSync(metadataPath, "utf8"));
+        const content = fs.readFileSync(skillPath, "utf8");
+        skills.push({
+          id: metadata.id || idEntry.name,
+          name: readTitle(content) || metadata.id || idEntry.name,
+          path: skillPath,
+          packagePath: packageRoot,
+          version: metadata.version || versionEntry.name,
+          contentHash: metadata.contentHash || "",
+          preview: content.replace(/^---[\s\S]*?---\s*/m, "").trim().slice(0, 240),
+          source: "registry"
+        });
+      }
+    }
+  }
   return skills;
 }
 

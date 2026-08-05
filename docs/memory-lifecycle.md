@@ -57,8 +57,8 @@ The index schema uses these lifecycle-relevant fields:
 Unknown metadata fields should be preserved. The hub should normalize known
 fields for search and display, not strip tool-specific context.
 
-The next lifecycle extension should use a nested `lifecycle` object instead of
-overloading `layer`:
+Lifecycle state uses a nested `lifecycle` object instead of overloading
+`layer`:
 
 - `lifecycle.state`: `active`, `stale`, `archived`, `superseded`, or `revoked`.
 - `lifecycle.reason`: short reason, such as `expired`, `manual-archive`,
@@ -92,7 +92,10 @@ long-unaccessed memories receive a capped downgrade.
 
 ## Stale And Superseded Memories
 
-The current policy does not automatically delete or hide stale durable facts.
+The current policy does not automatically delete durable facts. Stale or low-value
+working records may be automatically lowered out of startup context through an
+append-only `archive` operation, while the original ledger record remains
+auditable.
 When a fact becomes wrong, tools should append a new `correction` or `lesson`
 memory that clearly states the corrected rule or fact. The corrected record
 should rank into `core` or `working`, while the old record remains auditable in
@@ -192,8 +195,9 @@ ai-memory-hub memory op list --record <id>
 ai-memory-hub memory op apply --dry-run
 ```
 
-Convenience aliases may be added later, such as `memory archive`, `memory pin`,
-or `memory revoke`, but they should still append operation events internally.
+`pin` and `review` restore an active record unless it is already revoked;
+revocation has higher visibility priority and cannot be undone by a later
+pin/review operation.
 
 The dashboard/API equivalent should mirror the same event model:
 
@@ -242,15 +246,18 @@ Default retention is:
 - Indexed inbox events: archived or retained according to
   `sync.archiveIndexedInboxItems`.
 
-Age alone should not remove a durable memory. Age may reduce snapshot priority
-through ranking, but deletion must be explicit and backed up.
+Age alone should not delete a durable memory. Age may reduce snapshot priority
+or trigger an auditable archive operation for low-priority operational records,
+but deletion must be explicit and backed up.
 
 ## Deferred Work
 
 The following are intentionally deferred to separate tasks:
 
 - Thread-aware linking between corrections, stale facts, and source events.
-- Automatic expiration, stale review queues, and destructive cleanup commands.
+- Automatic stale review queues and destructive cleanup commands. Expiration
+  filtering is implemented when `expiresAt` is present, but automatic
+  expiration operations are intentionally not emitted.
 
 This keeps the current lifecycle policy conservative: structured enough for
 agents to reason about while keeping lifecycle mutations auditable.

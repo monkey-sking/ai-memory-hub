@@ -20,6 +20,17 @@ This adapter implements the same AI Memory Hub workflow contract for `{{TOOL}}`.
 - Never edit `{{MEMORY_DIR}}/memories/ledger.jsonl` or `{{MEMORY_DIR}}/MEMORY.md` directly.
 - After writing a durable event, run `ai-memory-hub sync` when command execution is available.
 
+### Automatic Context Associations
+
+- When the context is known, include it in the event metadata so AMH can create relations automatically:
+
+```json
+{"source":"{{TOOL}}","text":"short durable memory","metadata":{"kind":"project","project":"ai-memory-hub","skills":["skill-name"],"tags":["topic"],"refs":{"taskId":"task-id","workflowId":"workflow-id"}}}
+```
+
+- `project`, `skills`, and task/workflow references are high-confidence associations. Do not ask users to maintain these links manually when the agent already knows the context.
+- Keep values omitted when unknown; never invent project, skill, task, or workflow identifiers. AMH enriches direct inbox writes during `sync` and records CLI/API writes immediately.
+
 ### Task, Workflow, and Review
 
 - Use `ai-memory-hub task list --status active` before substantial shared work.

@@ -1209,7 +1209,10 @@ Scans for Claude, Codex, Gemini, QClaw, OpenClaw, Marvis, and other supported to
 
 ### `install`
 
-Show or apply tool integration instructions.
+Show or apply tool integration instructions. Applying an adapter also refreshes
+the AMH-managed Shared Skill Layer block when its rendered content is stale.
+Only that marked block is replaced; tool-specific and user-authored content
+outside the block is preserved.
 
 ```bash
 # Preview instructions
@@ -1227,6 +1230,8 @@ ai-memory-hub install --tool <tool-name> --apply
 
 All rendered adapters include the shared skill layer marker and can be checked
 with `ai-memory-hub detect` or `ai-memory-hub doctor --tool <tool-name>`.
+The install preview reports `new`, `missing`, `stale`, `current`, or `malformed`
+for the managed block. A malformed block is left untouched for manual repair.
 
 ### `backup`
 

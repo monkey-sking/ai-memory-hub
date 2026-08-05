@@ -1218,6 +1218,40 @@ test("install upgrades legacy adapter files and doctor reports skill layer statu
   });
 });
 
+test("install refreshes only a stale shared skill layer block", async () => {
+  await withHub(async (memoryDir) => {
+    const toolsDir = path.join(memoryDir, "tools");
+    const adapterFile = path.join(toolsDir, "antigravity-shared-memory.md");
+    await fs.mkdir(toolsDir, { recursive: true });
+    await fs.writeFile(adapterFile, [
+      "# Shared AI Memory",
+      "",
+      "User-owned instructions must survive updates.",
+      "",
+      "<!-- AI_MEMORY_HUB_SHARED_SKILL_LAYER v1 -->",
+      "## Shared Skill Layer",
+      "",
+      "Old managed content.",
+      "<!-- /AI_MEMORY_HUB_SHARED_SKILL_LAYER -->",
+      "",
+      "Tool-specific footer must survive updates.",
+      ""
+    ].join("\n"), "utf8");
+
+    const apply = runCli(memoryDir, ["install", "--tool", "antigravity", "--apply"]);
+    assert.equal(apply.status, 0, apply.stderr || apply.stdout);
+    assert.match(apply.stdout, /Updated shared memory instructions/);
+    const updated = await fs.readFile(adapterFile, "utf8");
+    assert.match(updated, /Automatic Context Associations/);
+    assert.match(updated, /User-owned instructions must survive updates/);
+    assert.match(updated, /Tool-specific footer must survive updates/);
+    assert.doesNotMatch(updated, /Old managed content/);
+
+    const second = runCli(memoryDir, ["install", "--tool", "antigravity", "--apply"]);
+    assert.match(second.stdout, /Already current shared memory instructions/);
+  });
+});
+
 test("capabilities command reports registry modes and safety policy", async () => {
   await withHub(async (memoryDir) => {
     const registry = parseJson(runCli(memoryDir, ["capabilities"]));

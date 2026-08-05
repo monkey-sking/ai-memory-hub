@@ -44,7 +44,7 @@ import { disableProjectSkill, getSkillLifecycleState, loadProjectSkillManifest, 
 import { doctorSkillProjections, syncSkillProjections } from "./shared-skill-materializer.js";
 import { withPreparedSkillSource } from "./shared-skill-sources.js";
 import { listCredentialProfiles, setCredentialProfile, removeCredentialProfile, resolveCredential } from "./credentials.js";
-import { listRelatedEntities, recordMemoryRelations, recordRelation, revokeRelation } from "./relations.js";
+import { listRelatedEntities, recordMemoryRelations, recordRelation, rebuildMemoryRelations, revokeRelation } from "./relations.js";
 import {
   normalizeAdversarialVerifier,
   normalizeReviewDimensions,
@@ -610,6 +610,9 @@ async function main() {
       return metricsCommand(rest);
     case "health":
       return healthCommand(rest);
+    case "relations":
+    case "relation":
+      return relationsCommand(rest);
     case "update":
       return updateCommand(rest);
     case "connect":
@@ -2745,6 +2748,18 @@ function healthCommand(argv) {
     : 5;
   const report = dashboardHealth.buildMemoryHealthDiagnostic(config, { issueLimit });
   console.log(report.markdown);
+}
+
+function relationsCommand(argv) {
+  const action = argv[0] && !argv[0].startsWith("--") ? argv[0] : "rebuild";
+  if (action !== "rebuild") {
+    throw new Error("Usage: ai-memory-hub relations rebuild [--dry-run]");
+  }
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const dryRun = hasFlag(argv, "--dry-run");
+  const result = rebuildMemoryRelations(config.memoryDir, readLedger(config.memoryDir), { dryRun });
+  console.log(JSON.stringify({ ok: true, action, apply: !dryRun, ...result }, null, 2));
 }
 
 function healthRepairCommand(argv) {

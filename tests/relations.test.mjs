@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { listRelatedEntities, readRelations, recordMemoryRelations, recordRelation, revokeRelation } from "../src/relations.js";
+import { listRelatedEntities, readRelations, recordMemoryRelations, recordRelation, rebuildMemoryRelations, revokeRelation } from "../src/relations.js";
 
 test("relations are append-only, deduplicated, and revocable", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "amh-relations-"));
@@ -51,6 +51,25 @@ test("memory writes create explicit high-confidence relations from declared meta
     assert.ok(relations.some((item) => item.to.type === "skill" && item.to.id === "lark-doc"));
     assert.ok(relations.some((item) => item.to.type === "task" && item.to.id === "task-1"));
     assert.ok(relations.some((item) => item.to.type === "workflow" && item.to.id === "workflow-1"));
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("relation rebuild backfills historical memories and is idempotent", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "amh-memory-rebuild-"));
+  try {
+    const memories = [
+      { localEventId: "memory-old-1", project: "feishu", metadata: { skills: ["lark-doc"], refs: { taskId: "task-1" } } },
+      { localEventId: "memory-old-2", metadata: { project: "ai-memory-hub", refs: { workflowId: "workflow-1" } } }
+    ];
+    const first = rebuildMemoryRelations(root, memories);
+    assert.equal(first.memories, 2);
+    assert.equal(first.created, 5);
+    const second = rebuildMemoryRelations(root, memories);
+    assert.equal(second.created, 0);
+    assert.equal(second.reused, 5);
+    assert.equal(readRelations(root).length, 5);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }

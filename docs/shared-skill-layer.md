@@ -81,7 +81,7 @@ The canonical package is stored below `~/.ai-memory/skill-store`; the project se
 The dashboard Skill Center exposes the same scan, import, sync, and doctor operations. Credential profiles can be configured once from the Skill Center or `/api/credentials`. Secret values are protected with Windows DPAPI where available, never returned in API responses, and may be injected only into a runner invocation that explicitly references the profile.
 ### External source types
 
-The installer accepts a local Skill directory, a ZIP archive, or a Git repository URL. ZIP imports use a temporary extraction directory with traversal handled by PowerShell `Expand-Archive`; Git imports use a shallow clone and optional `--ref`. AMH reads and validates `SKILL.md` only, records source provenance, and never executes package scripts.
+The installer accepts a local Skill directory, a ZIP archive, or a Git repository URL. ZIP imports use a temporary extraction directory with traversal handled by PowerShell `Expand-Archive`; Git imports use a shallow clone and optional `--ref`. A plain directory is validated by its `SKILL.md`; a directory with `amh-pack.json` is validated as a generic multi-Skill package and its non-executable resources are preserved. AMH never executes package scripts.
 
 ```bash
 ai-memory-hub skill install --path <directory|archive.zip|git-url> --version 1.0.0 --project <project>
@@ -89,3 +89,21 @@ ai-memory-hub skill install --path <git-url> --ref <tag-or-branch> --project <pr
 ```
 
 Use `skill update` to import a new immutable version and `skill rollback` to select an earlier version. The dashboard exposes registry discovery, credential setup, sync, and projection health checks.
+
+### Skill, memory, and project associations
+
+AMH does not copy memory text into a Skill and does not treat every Skill
+mention in a memory as a confirmed relationship. The relation layer stores
+auditable edges in `relations/events.jsonl`:
+
+- `project` edges come from the existing project field and project registry;
+- `task` and `workflow` edges carry the project and explicitly attached Skills;
+- `memory -> skill` edges may be explicit or inferred from tags/text and are
+  shown as suggestions until confirmed;
+- `skill-pack -> skill` edges preserve generic package membership, including
+  Feishu, reverse-engineering, or any future package without vendor-specific
+  code.
+
+Context Packs use project and task links first, then enabled Skills and related
+memories. This gives an Agent reusable evidence and operating instructions
+without turning all historical memory into executable Skill content.

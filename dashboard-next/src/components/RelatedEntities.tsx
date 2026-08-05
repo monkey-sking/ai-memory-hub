@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Link2, RefreshCw } from 'lucide-react'
-import { apiGet, apiPost, asArray, type AnyRecord } from '@/lib/api'
+import { apiGet, asArray, type AnyRecord } from '@/lib/api'
 import { Button } from './ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog'
 
 type EntityRef = { type: string; id: string }
-type Relation = { id?: string; from: EntityRef; to: EntityRef; relation?: string; status?: string; evidence?: AnyRecord }
+type Relation = { id?: string; from: EntityRef; to: EntityRef; relation?: string; status?: string; confidence?: number; evidence?: AnyRecord }
 type RelationResponse = { explicit?: Relation[]; suggestions?: Relation[] }
 
 function label(ref: EntityRef): string {
@@ -28,18 +28,6 @@ export function RelatedEntities({ entityType, entityId, title = '关联上下文
       .finally(() => setBusy(false))
   }, [entityId, entityType, open])
 
-  const accept = async (suggestion: Relation) => {
-    setBusy(true)
-    try {
-      await apiPost('/api/relations', { from: suggestion.from, to: suggestion.to, relation: suggestion.relation || 'related-to', evidence: { ...(suggestion.evidence || {}), source: 'dashboard-confirmed-suggestion' } })
-      setData(await apiGet<RelationResponse>(`/api/relations?entityType=${encodeURIComponent(entityType)}&entityId=${encodeURIComponent(entityId)}`))
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : String(nextError))
-    } finally {
-      setBusy(false)
-    }
-  }
-
   const explicit = asArray<Relation>(data.explicit)
   const suggestions = asArray<Relation>(data.suggestions)
   return <>
@@ -51,12 +39,17 @@ export function RelatedEntities({ entityType, entityId, title = '关联上下文
         {busy ? <p className="flex items-center gap-2 text-sm text-muted-foreground"><RefreshCw className="h-4 w-4 animate-spin" />读取关联中…</p> : null}
         <div className="space-y-4">
           <RelationList title="已确认关联" items={explicit} />
-          <section className="space-y-2"><h4 className="text-sm font-medium">待确认建议</h4>{suggestions.length ? suggestions.map((item, index) => <div className="flex items-center justify-between gap-3 rounded-md border p-3 text-sm" key={`${label(item.from)}-${label(item.to)}-${index}`}><span>{label(item.from)} <span className="text-muted-foreground">→ {item.relation || 'related-to'} →</span> {label(item.to)}</span><Button size="sm" disabled={busy} onClick={() => void accept(item)}>确认</Button></div>) : <p className="text-sm text-muted-foreground">暂无可确认建议</p>}</section>
+          <section className="space-y-2"><h4 className="text-sm font-medium">自动推断上下文</h4>{suggestions.length ? suggestions.map((item, index) => <div className="rounded-md border p-3 text-sm" key={`${label(item.from)}-${label(item.to)}-${index}`}><div>{label(item.from)} <span className="text-muted-foreground">→ {item.relation || 'related-to'} →</span> {label(item.to)}</div><small className="text-muted-foreground">置信度 {Math.round(Number(item.confidence || 0) * 100)}% · {textOfEvidence(item.evidence)}</small></div>) : <p className="text-sm text-muted-foreground">暂无自动推断</p>}</section>
         </div>
         <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>关闭</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   </>
+}
+
+function textOfEvidence(evidence: AnyRecord | undefined): string {
+  const field = evidence?.field || evidence?.source || '内容上下文'
+  return String(field)
 }
 
 function RelationList({ title, items }: { title: string; items: Relation[] }) {

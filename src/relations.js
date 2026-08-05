@@ -22,6 +22,28 @@ export function recordRelation(memoryDir, input) {
   return { ...event, reused: false };
 }
 
+export function recordMemoryRelations(memoryDir, memory = {}) {
+  const memoryId = String(memory.localEventId || memory.id || "").trim();
+  if (!memoryId) return [];
+  const metadata = memory.metadata && typeof memory.metadata === "object" ? memory.metadata : {};
+  const project = String(memory.project || metadata.project || "").trim();
+  const skills = normalizeIds(memory.skills || metadata.skills);
+  const refs = memory.refs && typeof memory.refs === "object" ? memory.refs : metadata.refs && typeof metadata.refs === "object" ? metadata.refs : {};
+  const inputs = [];
+  if (project) inputs.push({ type: "project", id: project, relation: "belongs-to", evidence: { source: "memory-write", field: "project" } });
+  for (const skill of skills) inputs.push({ type: "skill", id: skill, relation: "supports", evidence: { source: "memory-write", field: "skills" } });
+  for (const taskId of normalizeIds(refs.taskId || refs.taskIds)) inputs.push({ type: "task", id: taskId, relation: "related-to", evidence: { source: "memory-write", field: "refs.taskId" } });
+  for (const workflowId of normalizeIds(refs.workflowId || refs.workflowIds)) inputs.push({ type: "workflow", id: workflowId, relation: "related-to", evidence: { source: "memory-write", field: "refs.workflowId" } });
+  return inputs.map((target) => recordRelation(memoryDir, {
+    from: { type: "memory", id: memoryId },
+    to: { type: target.type, id: target.id },
+    relation: target.relation,
+    source: "memory-write",
+    confidence: 1,
+    evidence: target.evidence
+  }));
+}
+
 export function revokeRelation(memoryDir, relationId, reason = "") {
   const current = readRelations(memoryDir).find((item) => item.id === relationId && item.status === "active");
   if (!current) throw new Error(`Active relation not found: ${relationId}`);
@@ -77,5 +99,6 @@ function activeRelations(events) {
   return events.filter((item) => item.status === "active" && !revoked.has(item.id));
 }
 function suggestion(type, id, relation, target, evidence, confidence) { return { id: `suggested:${type}:${id}:${relation}:${target.type}:${target.id}`, from: { type, id }, to: target, relation, source: "inferred", confidence, evidence, status: "suggested" }; }
+function normalizeIds(value) { return Array.isArray(value) ? value.map((item) => String(item || "").trim()).filter(Boolean) : value ? [String(value).trim()].filter(Boolean) : []; }
 function readJson(file) { try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch { return null; } }
 function readJsonLines(file) { if (!fs.existsSync(file)) return []; return fs.readFileSync(file, "utf8").split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line)); }

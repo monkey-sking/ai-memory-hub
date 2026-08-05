@@ -44,7 +44,7 @@ import { disableProjectSkill, getSkillLifecycleState, loadProjectSkillManifest, 
 import { doctorSkillProjections, syncSkillProjections } from "./shared-skill-materializer.js";
 import { withPreparedSkillSource } from "./shared-skill-sources.js";
 import { listCredentialProfiles, setCredentialProfile, removeCredentialProfile, resolveCredential } from "./credentials.js";
-import { listRelatedEntities, recordRelation, revokeRelation } from "./relations.js";
+import { listRelatedEntities, recordMemoryRelations, recordRelation, revokeRelation } from "./relations.js";
 import {
   normalizeAdversarialVerifier,
   normalizeReviewDimensions,
@@ -1570,7 +1570,7 @@ function connectSendCommand(argv, defaultType) {
 function recordCommand(argv) {
   const text = positionalArgs(argv).join(" ").trim();
   if (!text) {
-    throw new Error("Usage: ai-memory-hub record <text> [--source tool] [--kind preference] [--project name] [--tags a,b] [--ttl days] [--priority high|normal|low]");
+    throw new Error("Usage: ai-memory-hub record <text> [--source tool] [--kind preference] [--project name] [--skills id1,id2] [--task task-id] [--workflow workflow-id] [--tags a,b] [--ttl days] [--priority high|normal|low]");
   }
 
   const config = loadConfig();
@@ -1583,9 +1583,16 @@ function recordCommand(argv) {
   // OPC v1.1 P2: token counting support
   const tokenCount = getOption(argv, "--tokens") || "";
   const ttlDate = ttlDays ? new Date(Date.now() + parseInt(ttlDays, 10) * 86400000).toISOString() : "";
+  const taskIds = parseListOption(getOption(argv, "--task"));
+  const workflowIds = parseListOption(getOption(argv, "--workflow"));
   const metadata = normalizeMemoryMetadata({
     kind,
     project: getOption(argv, "--project") || "",
+    skills: parseListOption(getOption(argv, "--skills")),
+    refs: {
+      ...(taskIds.length ? { taskId: taskIds.length === 1 ? taskIds[0] : taskIds } : {}),
+      ...(workflowIds.length ? { workflowId: workflowIds.length === 1 ? workflowIds[0] : workflowIds } : {})
+    },
     tags: parseListOption(getOption(argv, "--tags")),
     scope: getOption(argv, "--scope") || "",
     confidence: getOption(argv, "--confidence") || ""
@@ -1605,6 +1612,7 @@ function recordCommand(argv) {
   };
 
   appendJsonl(path.join(config.memoryDir, "inbox", "events.jsonl"), event);
+  const relations = recordMemoryRelations(config.memoryDir, event);
 
   // Incrementally update FTS5 search index
   let db = null;
@@ -1619,6 +1627,7 @@ function recordCommand(argv) {
   finally { if (db) try { db.close(); } catch {} }
 
   console.log(`Recorded memory event: ${event.id}`);
+  return { event, relations };
 }
 
 function radioCommand(argv) {
@@ -6468,6 +6477,7 @@ function syncIndexedEvents(config, dryRun, allowSensitive = false) {
     }
 
     appendJsonl(path.join(config.memoryDir, "memories", "ledger.jsonl"), record);
+    recordMemoryRelations(config.memoryDir, record);
     newRecords.push(record);
     knownIds.add(localEventId);
     synced++;

@@ -37,6 +37,13 @@ The shared contract requires each tool to:
 7. Treat repo-local instructions, project docs, `.tasks.json`, and recipe
    gates as a project-level skill overlay.
 
+When an Agent writes a durable memory, it should declare known context in the
+event metadata. AMH accepts `project`, `skills`, `tags`, and
+`refs.taskId` / `refs.workflowId` (or the equivalent CLI flags). Direct
+CLI/API writes create high-confidence relation events immediately; direct
+adapter writes to `inbox/events.jsonl` receive the same relation enrichment
+during `sync`.
+
 ## Installation and Verification
 
 Preview an adapter:

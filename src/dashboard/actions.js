@@ -35,14 +35,20 @@ export function createDashboardActionsApi({
   writeWorkflows
 }) {
   function recordDashboardMemory(body = {}) {
-    recordCommand([
+    const args = [
       body.text,
       "--source",
       body.source || "dashboard",
       "--kind",
       body.kind || "note"
-    ]);
-    return { ok: true, status: getStatusObject() };
+    ];
+    const refs = body.refs && typeof body.refs === "object" ? body.refs : {};
+    for (const [flag, value] of [["--project", body.project], ["--skills", body.skills], ["--task", refs.taskId || body.taskId], ["--workflow", refs.workflowId || body.workflowId], ["--tags", body.tags], ["--scope", body.scope], ["--confidence", body.confidence]]) {
+      const list = Array.isArray(value) ? value.join(",") : value;
+      if (list) args.push(flag, String(list));
+    }
+    const result = recordCommand(args);
+    return { ok: true, relations: result?.relations || [], status: getStatusObject() };
   }
 
   function sendDashboardRadio(config, body = {}) {

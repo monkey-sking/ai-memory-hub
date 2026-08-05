@@ -4,6 +4,7 @@ import { useOutletContext } from 'react-router-dom'
 import type { AnyRecord } from '../lib/api'
 import { apiGet, apiPost, asArray, asRecord, boolOf, numberOf, textOf } from '../lib/api'
 import { createDashboardRealtimeClient } from '../lib/realtime'
+import { mergeDashboardPage } from '../lib/dashboardPagination'
 import type { AppLanguage, AppOutletContext } from '../lib/i18n'
 import { dashboardLabels, dashboardSubtitles, dashboardTitles } from '../lib/dashboardCopy'
 import type { DashboardCopy, DashboardSection } from '../lib/dashboardCopy'
@@ -154,13 +155,12 @@ export default function Dashboard({ section }: DashboardProps) {
     setData(previous => {
       const previousSection = asRecord(previous?.[collection])
       const previousItems = asArray<AnyRecord>(previousSection[request.itemKey])
-      const seen = new Set(previousItems.map(item => textOf(item.localEventId || item.id)))
-      const mergedItems = [...previousItems, ...nextItems.filter(item => {
-        const key = textOf(item.localEventId || item.id)
-        if (!key || seen.has(key)) return false
-        seen.add(key)
-        return true
-      })]
+      const mergedItems = mergeDashboardPage(
+        collection,
+        previousItems,
+        nextItems,
+        item => textOf(item.localEventId || item.id)
+      )
       return {
         ...(previous || {}),
         [collection]: {

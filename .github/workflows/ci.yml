@@ -17,5 +17,15 @@ jobs:
       - run: npm ci --prefix dashboard-next
       - run: node scripts/check-public-repo-boundary.js
       - run: npm run build:dashboard
-      - run: npm test -- --test-concurrency=1
+      - name: Run tests
+        shell: bash
+        run: |
+          set -o pipefail
+          npm test -- --test-concurrency=1 2>&1 | tee test-output.log
+      - name: Upload test output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-output
+          path: test-output.log
 

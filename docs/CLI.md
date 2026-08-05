@@ -1493,3 +1493,15 @@ single value.
 - [UPDATE Guide](UPDATE.md) - Update instructions
 - [Memory Lifecycle](memory-lifecycle.md) - Memory system design
 - [Relay Protocol](relay-protocol.md) - Communication protocol
+### Memory audit
+
+Audit durable memories for semantic duplicates and correction/version signals.
+The default mode is read-only. `--apply` archives only high-confidence exact
+semantic duplicates through the append-only lifecycle operation log; suspected
+conflicts remain review candidates and are never deleted automatically.
+
+```bash
+ai-memory-hub memory audit --limit 50
+ai-memory-hub memory audit --apply
+ai-memory-hub memory op apply
+```

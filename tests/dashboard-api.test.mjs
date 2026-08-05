@@ -1399,7 +1399,7 @@ test("dashboard task review and reopen keep cancelled tasks terminal", async () 
   });
 });
 
-test("dashboard websocket sends initial and pushed snapshots", async () => {
+test("dashboard websocket avoids duplicate initial snapshot and sends pushed snapshots", async () => {
   await withHub(async (memoryDir) => {
     const port = await getFreePort();
     const child = spawn(process.execPath, [cliPath, "app", "--port", String(port)], {
@@ -1419,8 +1419,7 @@ test("dashboard websocket sends initial and pushed snapshots", async () => {
       ws = await openWebSocket(port);
       const hello = await ws.reader.readJson(3000);
       assert.equal(hello.type, "hello");
-      assert.equal(hello.snapshot.type, "snapshot");
-      assert.ok(Array.isArray(hello.snapshot.tasks.tasks));
+      assert.equal(Object.prototype.hasOwnProperty.call(hello, "snapshot"), false);
 
       const res = await fetch(`http://127.0.0.1:${port}/api/task/add`, {
         method: "POST",

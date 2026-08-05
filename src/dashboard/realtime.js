@@ -109,8 +109,7 @@ export function createDashboardRealtimeApi({
       sendWebSocketJson(client, {
         type: "hello",
         sequence: ++sequence,
-        heartbeatMs: 30000,
-        snapshot: getDashboardSnapshot(memoryDir)
+        heartbeatMs: 30000
       });
     }
 

@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { aggregateSkillSources, scanSkillRoots } from "../src/shared-skill-scan.js";
 import { importSharedPack, importSharedSkill } from "../src/shared-skills.js";
+import { syncSkillProjections } from "../src/shared-skill-materializer.js";
 import { disableProjectSkill, getSkillLifecycleState, selectProjectSkillVersion, setProjectSkill, loadProjectSkillManifest } from "../src/shared-skill-project.js";
 
 async function makeSkillRoot() {
@@ -120,6 +121,23 @@ test("Skill pack import preserves members and auxiliary files", async () => {
     assert.equal(reused.reused, true);
     const nestedImport = await importSharedPack(memoryDir, path.join(root, "skills", "lark-doc"));
     assert.equal(nestedImport.reused, true);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+    await fs.rm(memoryDir, { recursive: true, force: true });
+  }
+});
+
+test("skill projections preserve imported references", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "amh-skill-projection-"));
+  const memoryDir = await fs.mkdtemp(path.join(os.tmpdir(), "amh-skill-projection-memory-"));
+  try {
+    const source = path.join(root, "research");
+    await fs.mkdir(path.join(source, "references"), { recursive: true });
+    await fs.writeFile(path.join(source, "SKILL.md"), "# Research\n", "utf8");
+    await fs.writeFile(path.join(source, "references", "guide.md"), "# Guide\n", "utf8");
+    const imported = await importSharedSkill(memoryDir, source, { version: "1.0.0" });
+    await syncSkillProjections(root, [imported], ["codex"]);
+    assert.equal(await fs.readFile(path.join(root, ".agents", "skills", "research", "references", "guide.md"), "utf8"), "# Guide\n");
   } finally {
     await fs.rm(root, { recursive: true, force: true });
     await fs.rm(memoryDir, { recursive: true, force: true });

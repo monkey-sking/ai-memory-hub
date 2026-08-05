@@ -67,6 +67,21 @@ test("validates and imports an immutable skill package", async () => {
   });
 });
 
+test("imports the complete skill payload including references and supporting files", async () => {
+  await withTempDir(async (dir) => {
+    const source = path.join(dir, "source", "research");
+    const memoryDir = path.join(dir, "memory");
+    await fs.mkdir(path.join(source, "references", "examples"), { recursive: true });
+    await fs.writeFile(path.join(source, "SKILL.md"), "# Research\nRead the references.\n", "utf8");
+    await fs.writeFile(path.join(source, "references", "guide.md"), "# Guide\n", "utf8");
+    await fs.writeFile(path.join(source, "references", "examples", "sample.json"), "{\"ok\":true}\n", "utf8");
+
+    const imported = await importSharedSkill(memoryDir, source, { version: "1.0.0" });
+    assert.equal(await fs.readFile(path.join(imported.packagePath, "references", "guide.md"), "utf8"), "# Guide\n");
+    assert.equal(await fs.readFile(path.join(imported.packagePath, "references", "examples", "sample.json"), "utf8"), "{\"ok\":true}\n");
+  });
+});
+
 test("reimporting identical content is idempotent and conflicting content is retained", async () => {
   await withTempDir(async (dir) => {
     const source = path.join(dir, "source", "browser");

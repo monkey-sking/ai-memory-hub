@@ -24,6 +24,19 @@ export function hashSkillContent(content) {
   return `sha256:${crypto.createHash("sha256").update(String(content), "utf8").digest("hex")}`;
 }
 
+export async function hashSkillPackage(root) {
+  const files = [];
+  await collectSkillFiles(path.resolve(String(root || "")), path.resolve(String(root || "")), files);
+  const hash = crypto.createHash("sha256");
+  for (const file of files.sort((a, b) => a.relative.localeCompare(b.relative))) {
+    hash.update(file.relative, "utf8");
+    hash.update("\0");
+    hash.update(file.content);
+    hash.update("\0");
+  }
+  return `sha256:${hash.digest("hex")}`;
+}
+
 export async function validateSkillPackage(sourcePath) {
   const root = path.resolve(String(sourcePath || ""));
   const stat = await fs.stat(root).catch(() => null);
@@ -34,7 +47,7 @@ export async function validateSkillPackage(sourcePath) {
   });
   const inferredId = path.basename(root).toLowerCase();
   const id = normalizeSkillId(inferredId);
-  return { valid: true, id, root, skillFile, content, contentHash: hashSkillContent(content) };
+  return { valid: true, id, root, skillFile, content, contentHash: await hashSkillPackage(root) };
 }
 
 export async function readSkillPackage(packagePath) {
@@ -63,7 +76,7 @@ export async function importSharedSkill(memoryDir, sourcePath, metadata = {}) {
   const suffix = existing ? `-${validation.contentHash.slice("sha256:".length, "sha256:".length + 12)}` : "";
   const packagePath = `${packageBase}${suffix}`;
   await fs.mkdir(packagePath, { recursive: true });
-  await fs.copyFile(validation.skillFile, path.join(packagePath, "SKILL.md"));
+  await copyTree(validation.root, packagePath);
   const record = {
     registryVersion: SKILL_REGISTRY_VERSION,
     id,
@@ -162,5 +175,15 @@ async function copyTree(sourceRoot, targetRoot) {
     const target = path.join(targetRoot, entry.name);
     if (entry.isDirectory()) await copyTree(source, target);
     else if (entry.isFile()) await fs.copyFile(source, target);
+  }
+}
+
+async function collectSkillFiles(root, directory, files) {
+  const entries = await fs.readdir(directory, { withFileTypes: true });
+  for (const entry of entries) {
+    if (entry.name === ".git" || entry.name === "node_modules") continue;
+    const absolute = path.join(directory, entry.name);
+    if (entry.isDirectory()) await collectSkillFiles(root, absolute, files);
+    else if (entry.isFile()) files.push({ relative: path.relative(root, absolute).replaceAll("\\", "/"), content: await fs.readFile(absolute) });
   }
 }

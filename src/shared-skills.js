@@ -170,7 +170,7 @@ async function copyTree(sourceRoot, targetRoot) {
   const entries = await fs.readdir(sourceRoot, { withFileTypes: true });
   await fs.mkdir(targetRoot, { recursive: true });
   for (const entry of entries) {
-    if (entry.name === ".git" || entry.name === "node_modules") continue;
+    if (isIgnoredSkillEntry(entry.name)) continue;
     const source = path.join(sourceRoot, entry.name);
     const target = path.join(targetRoot, entry.name);
     if (entry.isDirectory()) await copyTree(source, target);
@@ -181,9 +181,13 @@ async function copyTree(sourceRoot, targetRoot) {
 async function collectSkillFiles(root, directory, files) {
   const entries = await fs.readdir(directory, { withFileTypes: true });
   for (const entry of entries) {
-    if (entry.name === ".git" || entry.name === "node_modules") continue;
+    if (isIgnoredSkillEntry(entry.name)) continue;
     const absolute = path.join(directory, entry.name);
     if (entry.isDirectory()) await collectSkillFiles(root, absolute, files);
     else if (entry.isFile()) files.push({ relative: path.relative(root, absolute).replaceAll("\\", "/"), content: await fs.readFile(absolute) });
   }
+}
+
+function isIgnoredSkillEntry(name) {
+  return name === ".git" || name === "node_modules" || name === ".env" || name.startsWith(".env.") || /(?:credentials?|secrets?)\.(?:json|ya?ml|toml)$/i.test(name) || /\.(?:pem|key)$/i.test(name);
 }

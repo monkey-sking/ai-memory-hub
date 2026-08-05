@@ -51,10 +51,14 @@ async function copySkillPayload(sourceRoot, targetRoot) {
   const entries = await fs.readdir(sourceRoot, { withFileTypes: true });
   await fs.mkdir(targetRoot, { recursive: true });
   for (const entry of entries) {
-    if (entry.name === "skill.json" || entry.name === "provenance.json") continue;
+    if (entry.name === "skill.json" || entry.name === "provenance.json" || isSensitiveSkillFile(entry.name)) continue;
     const source = path.join(sourceRoot, entry.name);
     const target = path.join(targetRoot, entry.name);
     if (entry.isDirectory()) await copySkillPayload(source, target);
     else if (entry.isFile()) await fs.copyFile(source, target);
   }
+}
+
+function isSensitiveSkillFile(name) {
+  return name === ".env" || name.startsWith(".env.") || /(?:credentials?|secrets?)\.(?:json|ya?ml|toml)$/i.test(name) || /\.(?:pem|key)$/i.test(name);
 }

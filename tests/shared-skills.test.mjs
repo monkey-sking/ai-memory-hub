@@ -75,10 +75,12 @@ test("imports the complete skill payload including references and supporting fil
     await fs.writeFile(path.join(source, "SKILL.md"), "# Research\nRead the references.\n", "utf8");
     await fs.writeFile(path.join(source, "references", "guide.md"), "# Guide\n", "utf8");
     await fs.writeFile(path.join(source, "references", "examples", "sample.json"), "{\"ok\":true}\n", "utf8");
+    await fs.writeFile(path.join(source, ".env"), "TOKEN=do-not-copy\n", "utf8");
 
     const imported = await importSharedSkill(memoryDir, source, { version: "1.0.0" });
     assert.equal(await fs.readFile(path.join(imported.packagePath, "references", "guide.md"), "utf8"), "# Guide\n");
     assert.equal(await fs.readFile(path.join(imported.packagePath, "references", "examples", "sample.json"), "utf8"), "{\"ok\":true}\n");
+    await assert.rejects(() => fs.access(path.join(imported.packagePath, ".env")), { code: "ENOENT" });
   });
 });
 

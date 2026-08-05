@@ -782,7 +782,7 @@ function initAllTools(memoryDir, { apply = false } = {}) {
     const snippet = renderInstallSnippet(target, memoryDir);
     ensureDir(path.dirname(target.file));
     const result = syncSharedSkillLayer(target.file, snippet, { apply: true });
-    console.log(`${result.status === "updated" ? "Updated" : result.status === "current" ? "Already current" : "Installed"} shared memory instructions for ${target.tool}: ${target.file}`);
+    console.log(`${sharedSkillLayerActionLabel(result.status)} shared memory instructions for ${target.tool}: ${target.file}`);
     installed += 1;
   }
   console.log(`\nOnboarded ${installed} tool(s) into the shared memory hub.`);
@@ -8721,7 +8721,7 @@ function installCommand(argv) {
 
     ensureDir(path.dirname(target.file));
     const result = syncSharedSkillLayer(target.file, snippet, { apply: true });
-    console.log(`${result.status === "updated" ? "Updated" : result.status === "current" ? "Already current" : "Installed"} shared memory instructions for ${target.tool}: ${target.file}`);
+    console.log(`${sharedSkillLayerActionLabel(result.status)} shared memory instructions for ${target.tool}: ${target.file}`);
   }
 }
 
@@ -17046,6 +17046,16 @@ function syncSharedSkillLayer(file, snippet, { apply = false } = {}) {
   }
   appendIfMissing(file, snippet, "Shared AI Memory");
   return { status: existing ? "upgraded" : "installed", changed: true };
+}
+
+function sharedSkillLayerActionLabel(status) {
+  return status === "updated"
+    ? "Updated"
+    : status === "current"
+      ? "Already current"
+      : status === "malformed"
+        ? "Skipped (malformed)"
+        : "Installed";
 }
 
 function appendIfMissing(file, snippet, marker) {

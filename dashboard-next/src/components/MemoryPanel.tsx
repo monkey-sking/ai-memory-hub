@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
@@ -78,10 +78,6 @@ export function MemoryPanel({ memory, copy, onRefresh, hasMore = false, onLoadMo
   const [error, setError] = useState('')
   const [visibleCount, setVisibleCount] = useState(60)
   const [loadingMore, setLoadingMore] = useState(false)
-
-  useEffect(() => {
-    setVisibleCount(60)
-  }, [memoryRecords.length])
 
   const visibleRecords = memoryRecords.slice(0, visibleCount)
   const loadMore = async () => {

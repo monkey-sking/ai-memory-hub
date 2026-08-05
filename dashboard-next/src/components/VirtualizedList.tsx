@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { createEndReachedGate, getVirtualRange } from '@/lib/virtualization'
 
 interface VirtualizedListProps<T> {
   items: T[]
@@ -30,6 +31,8 @@ export function VirtualizedList<T>({
   const [scrollTop, setScrollTop] = useState(0)
   const [viewportHeight, setViewportHeight] = useState(height)
   const frameRef = useRef<number | null>(null)
+  const endReachedGateRef = useRef(createEndReachedGate())
+  const previousItemCountRef = useRef(items.length)
 
   useEffect(() => {
     const viewport = viewportRef.current
@@ -47,11 +50,18 @@ export function VirtualizedList<T>({
     const viewport = viewportRef.current
     if (!end || !viewport || !hasMore || !onEndReached || typeof IntersectionObserver === 'undefined') return
     const observer = new IntersectionObserver(entries => {
-      if (entries.some(entry => entry.isIntersecting) && !loading) onEndReached()
+      if (entries.some(entry => entry.isIntersecting) && !loading && endReachedGateRef.current.tryEnter()) onEndReached()
     }, { root: viewport, rootMargin: `${itemHeight * overscan}px` })
     observer.observe(end)
     return () => observer.disconnect()
   }, [hasMore, itemHeight, loading, onEndReached, overscan])
+
+  useEffect(() => {
+    if (previousItemCountRef.current !== items.length) {
+      previousItemCountRef.current = items.length
+      endReachedGateRef.current.reset()
+    }
+  }, [items.length])
 
   useEffect(() => () => {
     if (frameRef.current !== null) window.cancelAnimationFrame(frameRef.current)
@@ -66,8 +76,13 @@ export function VirtualizedList<T>({
   }
 
   const totalHeight = items.length * itemHeight
-  const firstVisible = Math.max(0, Math.floor(scrollTop / itemHeight) - overscan)
-  const lastVisible = Math.min(items.length, Math.ceil((scrollTop + viewportHeight) / itemHeight) + overscan)
+  const { firstVisible, lastVisible } = getVirtualRange({
+    itemCount: items.length,
+    itemHeight,
+    scrollTop,
+    viewportHeight,
+    overscan
+  })
   const visibleItems = items.slice(firstVisible, lastVisible)
   const containerStyle: CSSProperties = { height: `${Math.max(totalHeight, 1)}px`, position: 'relative' }
 

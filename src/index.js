@@ -45,6 +45,7 @@ import { doctorSkillProjections, syncSkillProjections } from "./shared-skill-mat
 import { withPreparedSkillSource } from "./shared-skill-sources.js";
 import { listCredentialProfiles, setCredentialProfile, removeCredentialProfile, resolveCredential } from "./credentials.js";
 import { listRelatedEntities, recordMemoryRelations, recordRelation, rebuildMemoryRelations, revokeRelation } from "./relations.js";
+import { auditMemories } from "./memory-audit.js";
 import {
   normalizeAdversarialVerifier,
   normalizeReviewDimensions,
@@ -6565,7 +6566,58 @@ function memoryCommand(argv) {
   if (subcommand === "version") {
     return memoryVersionCommand(rest);
   }
-  throw new Error("Usage: ai-memory-hub memory <search|snapshot|archive|op|hook|version> [options]");
+  if (subcommand === "audit") {
+    return memoryAuditCommand(rest);
+  }
+  throw new Error("Usage: ai-memory-hub memory <search|snapshot|archive|audit|op|hook|version> [options]");
+}
+
+function memoryAuditCommand(argv) {
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const apply = hasFlag(argv, "--apply");
+  const limit = getOption(argv, "--limit") ? parsePositiveIntegerOption(getOption(argv, "--limit"), "--limit") : 50;
+  const run = () => {
+    const audit = auditMemories(readLedger(config.memoryDir));
+    const operationsFile = path.join(config.memoryDir, "memories", "operations.jsonl");
+    const operations = readEvents(operationsFile);
+    const existingArchives = new Set(operations
+      .filter((item) => item.action === "archive" && item.reason === "audit-semantic-duplicate")
+      .map((item) => normalizeSupersedeToken(item.target?.recordId)));
+    const candidates = audit.autoArchiveCandidates.filter((item) => !existingArchives.has(normalizeSupersedeToken(item.id)));
+    let archived = 0;
+    if (apply) {
+      runAutomaticBackupStrategy(config, { trigger: "memory-audit" });
+      for (const candidate of candidates) {
+        appendJsonl(operationsFile, {
+          id: createId(`audit-archive:${candidate.id}`),
+          ts: new Date().toISOString(),
+          source: "codex",
+          action: "archive",
+          target: { recordId: candidate.id },
+          reason: "audit-semantic-duplicate",
+          refs: { duplicateOf: audit.duplicateGroups.find((group) => group.archive.some((item) => item.id === candidate.id))?.keep.id || "" }
+        });
+        archived += 1;
+      }
+      rebuildMemoryOutputs(config, readLedger(config.memoryDir));
+    }
+    return {
+      ok: true,
+      apply,
+      records: audit.records,
+      duplicateGroups: audit.duplicateGroups.length,
+      duplicateRecords: audit.duplicateRecords,
+      archiveCandidates: candidates.length,
+      archived,
+      duplicates: audit.duplicateGroups.slice(0, limit),
+      reviewCandidates: audit.reviewCandidates.slice(0, limit)
+    };
+  };
+  const result = apply
+    ? withHubLock(config.memoryDir, "memory-audit", run, config.sync.lockStaleMs)
+    : run();
+  console.log(JSON.stringify(result, null, 2));
 }
 
 function memoryOperationCommand(argv) {

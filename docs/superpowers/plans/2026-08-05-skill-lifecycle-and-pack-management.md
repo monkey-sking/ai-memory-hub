@@ -20,6 +20,7 @@
 - Modify `src/index.js` to expose aggregated scan, package detail, update, version selection, diff, sync, and doctor responses.
 - Modify `dashboard-next/src/pages/Skills.tsx` and `dashboard-next/src/pages/Skills.css` to show deduplicated states and actions.
 - Add `tests/shared-skill-lifecycle.test.mjs`, extend `tests/shared-skills.test.mjs`, and extend Dashboard structure/API tests.
+- Add `src/relations.js` and `tests/relations.test.mjs` for auditable memory/Skill/project/task links.
 
 ### Task 1: Aggregate local discovery and duplicate/conflict states
 
@@ -214,4 +215,33 @@ Expected: all selected tests pass; no source Agent directory is modified.
 git add src/shared-skill-scan.js src/shared-skills.js src/shared-skill-pack.js src/shared-skill-project.js src/shared-skill-materializer.js src/index.js dashboard-next/src/pages/Skills.tsx dashboard-next/src/pages/Skills.css tests/shared-skill-lifecycle.test.mjs tests/shared-skills.test.mjs tests/dashboard-api.test.mjs tests/dashboard-next-structure.test.mjs docs/shared-skill-layer.md README.md
 git commit -m "feat: manage skill lifecycle and packs"
 ```
+
+### Task 7: Connect Skills, memories, projects, tasks, and context packs
+
+**Files:**
+- Create: `src/relations.js`
+- Modify: `src/index.js`
+- Test: `tests/relations.test.mjs`
+- Modify: `docs/memory-execution-boundary.md`
+- Modify: `docs/shared-skill-layer.md`
+
+- [ ] **Step 1: Write relation tests**
+
+Assert append-only relation events, duplicate reuse, revoke events, project-derived memory/task suggestions, and Skill-derived task/memory suggestions. Existing memories must remain byte-for-byte unchanged.
+
+- [ ] **Step 2: Implement relation storage**
+
+Store normalized edges in `relations/events.jsonl` with `from`, `to`, `relation`, `source`, `confidence`, `evidence`, and `status`. Supported entities are `memory`, `skill`, `skill-pack`, `project`, `task`, `workflow`, `agent`, and `tool`.
+
+- [ ] **Step 3: Expose relation APIs**
+
+Implement `GET /api/relations?entityType=<type>&entityId=<id>`, `POST /api/relations`, and `POST /api/relations/revoke`. Return explicit relations separately from inferred suggestions, and never copy secrets into relation evidence.
+
+- [ ] **Step 4: Connect context assembly**
+
+When a context pack has a task or project, use explicit project/Skill links first, then inferred suggestions, then existing text search. Include related memories and Skills with source/confidence metadata so agents can distinguish facts from suggestions.
+
+- [ ] **Step 5: Document relationship semantics**
+
+Document that `metadata.project`, task `skills`, and tags are compatibility signals; the relation event store is the authoritative mutable link layer and can revoke incorrect inferred/explicit links without rewriting memory history.
 

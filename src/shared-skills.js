@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { validateSkillPack } from "./shared-skill-pack.js";
 
 export const SKILL_REGISTRY_VERSION = 1;
 const SKILL_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{1,63}$/;
@@ -78,6 +79,48 @@ export async function importSharedSkill(memoryDir, sourcePath, metadata = {}) {
   return record;
 }
 
+export async function importSharedPack(memoryDir, sourcePath, metadata = {}) {
+  const validation = await validateSkillPack(sourcePath);
+  const registryRoot = path.join(path.resolve(memoryDir), "skill-store");
+  const packageBase = path.join(registryRoot, "packs", validation.manifest.id, validation.manifest.version);
+  const packageManifestPath = path.join(packageBase, "pack.json");
+  const existing = await fs.readFile(packageManifestPath, "utf8").then(JSON.parse).catch(() => null);
+  if (existing?.contentHash !== validation.contentHash) {
+    const suffix = existing ? `-${validation.contentHash.slice("sha256:".length, "sha256:".length + 12)}` : "";
+    const target = `${packageBase}${suffix}`;
+    await copyTree(validation.root, target);
+    const record = {
+      package: true,
+      id: validation.manifest.id,
+      version: validation.manifest.version,
+      name: validation.manifest.name,
+      description: validation.manifest.description,
+      contentHash: validation.contentHash,
+      packagePath: target,
+      source: metadata.source || { kind: "local", location: path.resolve(sourcePath) },
+      dependencies: validation.manifest.dependencies,
+      credentials: validation.manifest.credentials.map(({ id, envVar }) => ({ id, envVar })),
+      targets: validation.manifest.targets,
+      skills: validation.skills.map(({ id, path: memberPath, contentHash }) => ({ id, path: memberPath, contentHash })),
+      importedAt: new Date().toISOString(),
+      status: "installed"
+    };
+    await fs.writeFile(path.join(target, "pack.json"), `${JSON.stringify(record, null, 2)}\n`, "utf8");
+    await fs.writeFile(path.join(target, "provenance.json"), `${JSON.stringify({ source: record.source, importedAt: record.importedAt, contentHash: record.contentHash }, null, 2)}\n`, "utf8");
+    const members = [];
+    for (const member of validation.skills) {
+      members.push(await importSharedSkill(memoryDir, member.root, {
+        id: member.id,
+        version: validation.manifest.version,
+        source: { kind: "pack", location: path.resolve(sourcePath), packId: record.id }
+      }));
+    }
+    await appendRegistryEvent(registryRoot, { action: "pack-import", package: record });
+    return { ...record, skills: members, reused: false };
+  }
+  return { ...existing, packagePath: path.dirname(packageManifestPath), reused: true };
+}
+
 export async function listSharedSkillPackages(memoryDir) {
   const root = path.join(path.resolve(memoryDir), "skill-store", "packages");
   const ids = await fs.readdir(root, { withFileTypes: true }).catch(() => []);
@@ -104,4 +147,16 @@ export async function findSharedSkillPackage(memoryDir, id, version = "") {
 async function appendRegistryEvent(registryRoot, event) {
   await fs.mkdir(registryRoot, { recursive: true });
   await fs.appendFile(path.join(registryRoot, "registry.jsonl"), `${JSON.stringify({ id: crypto.randomUUID(), ts: new Date().toISOString(), ...event })}\n`, "utf8");
+}
+
+async function copyTree(sourceRoot, targetRoot) {
+  const entries = await fs.readdir(sourceRoot, { withFileTypes: true });
+  await fs.mkdir(targetRoot, { recursive: true });
+  for (const entry of entries) {
+    if (entry.name === ".git" || entry.name === "node_modules") continue;
+    const source = path.join(sourceRoot, entry.name);
+    const target = path.join(targetRoot, entry.name);
+    if (entry.isDirectory()) await copyTree(source, target);
+    else if (entry.isFile()) await fs.copyFile(source, target);
+  }
 }

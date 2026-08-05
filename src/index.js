@@ -37,12 +37,14 @@ import { buildGithubRequest, buildNotificationPayload, buildSshPlan, renderSkill
 import { parseGithubWebhook } from "./github-lifecycle.js";
 import { addPack, discoverPacks, listPacks, setPackEnabled, validateRegisteredPack } from "./domain-packs.js";
 import { listSkills, searchSkills } from "./skill-registry.js";
-import { defaultSkillRoots, scanSkillRoots } from "./shared-skill-scan.js";
-import { importSharedSkill, listSharedSkillPackages, findSharedSkillPackage } from "./shared-skills.js";
-import { loadProjectSkillManifest, setProjectSkill, removeProjectSkill, selectProjectSkills } from "./shared-skill-project.js";
+import { aggregateSkillSources, defaultSkillRoots, scanSkillRoots } from "./shared-skill-scan.js";
+import { importSharedPack, importSharedSkill, listSharedSkillPackages, findSharedSkillPackage } from "./shared-skills.js";
+import { readSkillPackManifest } from "./shared-skill-pack.js";
+import { disableProjectSkill, getSkillLifecycleState, loadProjectSkillManifest, setProjectSkill, removeProjectSkill, selectProjectSkillVersion, selectProjectSkills } from "./shared-skill-project.js";
 import { doctorSkillProjections, syncSkillProjections } from "./shared-skill-materializer.js";
 import { withPreparedSkillSource } from "./shared-skill-sources.js";
 import { listCredentialProfiles, setCredentialProfile, removeCredentialProfile, resolveCredential } from "./credentials.js";
+import { listRelatedEntities, recordRelation, revokeRelation } from "./relations.js";
 import {
   normalizeAdversarialVerifier,
   normalizeReviewDimensions,
@@ -8116,19 +8118,36 @@ function appCommand(argv) {
         const packages = await listSharedSkillPackages(config.memoryDir);
         const project = url.searchParams.get("project") || process.cwd();
         const manifest = await loadProjectSkillManifest(project);
-        return sendJson(res, { packages, manifest, selected: selectProjectSkills(manifest, packages) });
+        const ids = [...new Set(packages.map((item) => item.id))];
+        const lifecycle = Object.fromEntries(ids.map((id) => [id, getSkillLifecycleState(manifest, packages, id)]));
+        return sendJson(res, { packages, manifest, selected: selectProjectSkills(manifest, packages), lifecycle });
+      }
+      if (req.method === "GET" && url.pathname.startsWith("/api/skills/") && url.pathname !== "/api/skills/scan" && url.pathname !== "/api/skills/install" && url.pathname !== "/api/skills/sync" && url.pathname !== "/api/skills/doctor") {
+        const id = decodeURIComponent(url.pathname.slice("/api/skills/".length));
+        const packages = (await listSharedSkillPackages(config.memoryDir)).filter((item) => item.id === id);
+        if (!packages.length) return sendJson(res, { error: `Skill not found: ${id}` }, 404);
+        const project = url.searchParams.get("project") || process.cwd();
+        const manifest = await loadProjectSkillManifest(project);
+        return sendJson(res, { id, packages, manifest: manifest.skills[id] || null, lifecycle: getSkillLifecycleState(manifest, packages, id) });
       }
       if (req.method === "GET" && url.pathname === "/api/skills/scan") {
-        return sendJson(res, { skills: await scanSkillRoots(defaultSkillRoots()) });
+        const skills = await scanSkillRoots(defaultSkillRoots());
+        return sendJson(res, { skills, groups: aggregateSkillSources(skills) });
       }
       if (req.method === "POST" && url.pathname === "/api/skills/install") {
         const body = await readRequestJson(req);
         if ((!body.path || typeof body.path !== "string") && (!body.source || typeof body.source !== "string")) return sendJson(res, { error: "path or source is required" }, 400);
-        const imported = await withPreparedSkillSource(config.memoryDir, body.source || body.path, { ref: body.ref || "" }, (prepared) => importSharedSkill(config.memoryDir, prepared.path, { id: body.id, version: body.version || "1.0.0", source: prepared.source }));
+        const imported = await withPreparedSkillSource(config.memoryDir, body.source || body.path, { ref: body.ref || "" }, async (prepared) => {
+          const pack = await readSkillPackManifest(prepared.path);
+          return pack
+            ? importSharedPack(config.memoryDir, prepared.path, { source: prepared.source })
+            : importSharedSkill(config.memoryDir, prepared.path, { id: body.id, version: body.version || "1.0.0", source: prepared.source });
+        });
         let manifest = null;
         let synced = [];
         if (body.project) {
-          manifest = await setProjectSkill(body.project, imported.id, body.version || imported.version);
+          const enabledSkills = imported.package ? imported.skills : [imported];
+          for (const skill of enabledSkills) manifest = await setProjectSkill(body.project, skill.id, body.version || skill.version);
           const packages = selectProjectSkills(manifest, await listSharedSkillPackages(config.memoryDir));
           synced = await syncSkillProjections(body.project, packages, Array.isArray(body.targets) && body.targets.length ? body.targets : ["codex", "claude", "gemini", "antigravity"]);
         }
@@ -8143,6 +8162,30 @@ function appCommand(argv) {
         const result = await syncSkillProjections(project, packages, Array.isArray(body.targets) && body.targets.length ? body.targets : (manifest.targets.length ? manifest.targets : ["codex", "claude", "gemini", "antigravity"]));
         broadcastDashboardUpdate("skills:sync");
         return sendJson(res, { ok: true, project, result });
+      }
+      if (req.method === "POST" && url.pathname === "/api/skills/select") {
+        const body = await readRequestJson(req);
+        const project = body.project || process.cwd();
+        if (typeof body.id !== "string" || !body.id) return sendJson(res, { error: "id is required" }, 400);
+        const manifest = body.enabled === false
+          ? await disableProjectSkill(project, body.id)
+          : await selectProjectSkillVersion(project, body.id, body.version || "*");
+        const packages = await listSharedSkillPackages(config.memoryDir);
+        broadcastDashboardUpdate("skills:select");
+        return sendJson(res, { ok: true, project, manifest, selected: selectProjectSkills(manifest, packages) });
+      }
+      if (req.method === "GET" && url.pathname === "/api/relations") {
+        const type = url.searchParams.get("entityType") || "";
+        const id = url.searchParams.get("entityId") || "";
+        return sendJson(res, listRelatedEntities(config.memoryDir, { type, id }, { includeSuggestions: url.searchParams.get("suggestions") !== "0" }));
+      }
+      if (req.method === "POST" && url.pathname === "/api/relations") {
+        const body = await readRequestJson(req);
+        return sendJson(res, { ok: true, relation: recordRelation(config.memoryDir, body) });
+      }
+      if (req.method === "POST" && url.pathname === "/api/relations/revoke") {
+        const body = await readRequestJson(req);
+        return sendJson(res, { ok: true, relation: revokeRelation(config.memoryDir, body.id, body.reason || "") });
       }
       if (req.method === "GET" && url.pathname === "/api/skills/doctor") {
         const project = url.searchParams.get("project") || process.cwd();
@@ -12446,6 +12489,7 @@ function createContextPack({ taskId, workflowId, project, query }) {
     relevantMemories: [],
     recentRadio: [],
     skills: [],
+    relations: [],
     sharedState: null,
     projectPath: process.cwd(),
     constraints: [],
@@ -12471,6 +12515,15 @@ function createContextPack({ taskId, workflowId, project, query }) {
       });
     }
   }
+
+  if (project) {
+    pack.relations.push(...listRelatedEntities(memoryDir, { type: "project", id: project }).explicit, ...listRelatedEntities(memoryDir, { type: "project", id: project }).suggestions);
+  }
+  for (const skillId of pack.task?.skills || []) {
+    const related = listRelatedEntities(memoryDir, { type: "skill", id: skillId });
+    pack.relations.push(...related.explicit, ...related.suggestions);
+  }
+  pack.relations = [...new Map(pack.relations.map((relation) => [relation.id, relation])).values()].slice(0, 40);
 
   // Search relevant memories
   if (query || pack.task || pack.workflow) {

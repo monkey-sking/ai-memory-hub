@@ -78,6 +78,16 @@ Use explicit promotion instead of mixing state classes:
 Promotion should be short and selective. Full logs remain in execution storage;
 the promoted summary captures the lesson or decision.
 
+### Relations are a separate bridge
+
+Links between durable memory and execution entities are stored append-only in
+`relations/events.jsonl`. A relation may connect a memory, Skill, Skill pack,
+project, task, workflow, Agent, or tool. Existing `metadata.project`, task
+`skills`, tags, and refs are compatibility signals used to generate inferred
+suggestions; they do not rewrite the memory ledger. Explicit links can be
+confirmed or revoked independently, and Context Packs include their source and
+confidence so agents can distinguish evidence from inference.
+
 ## Boundary Examples
 
 | Event | Correct Class | Reason |

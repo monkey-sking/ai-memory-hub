@@ -67,6 +67,24 @@ Skills 页面按“全部、需要处理、Registry、项目启用、Agent 同�
 - 增加包详情、更新检查、版本选择、投影差异和同步结果接口。
 - 导入响应必须包含 `id`、`version`、`contentHash`、`source`、`package`、`reused` 和依赖检查结果。
 
+## 关联层
+
+Skill、记忆、项目、任务、工作流和 Agent 之间的关联写入独立的 `relations/events.jsonl`，不改写 `memories/ledger.jsonl`。关系边使用统一结构：
+
+```json
+{
+  "from": { "type": "memory", "id": "..." },
+  "to": { "type": "skill", "id": "..." },
+  "relation": "supports",
+  "source": "explicit|inferred",
+  "confidence": 0.85,
+  "evidence": { "field": "metadata.tags" },
+  "status": "active|revoked|suggested"
+}
+```
+
+旧记录从 `metadata.project`、任务 `skills`、工作流/任务项目字段、标签和 refs 生成推断关系；推断关系展示为建议，用户确认后才写入显式关系。Context Pack 按任务项目、项目启用 Skill、Skill 关联记忆和任务/工作流关系组装上下文。
+
 ## 安全与兼容
 
 - 凭据只保存凭据 ID/环境变量映射，Skill 文件和 API 响应不返回密钥。

@@ -30,6 +30,17 @@ export async function setProjectSkill(projectRoot, id, constraint = "*") {
   return saveProjectSkillManifest(projectRoot, manifest);
 }
 
+export async function disableProjectSkill(projectRoot, id) {
+  const manifest = await loadProjectSkillManifest(projectRoot);
+  const skillId = normalizeSkillId(id);
+  if (manifest.skills[skillId]) manifest.skills[skillId].enabled = false;
+  return saveProjectSkillManifest(projectRoot, manifest);
+}
+
+export async function selectProjectSkillVersion(projectRoot, id, constraint = "*") {
+  return setProjectSkill(projectRoot, id, constraint);
+}
+
 export async function removeProjectSkill(projectRoot, id) {
   const manifest = await loadProjectSkillManifest(projectRoot);
   delete manifest.skills[normalizeSkillId(id)];
@@ -45,6 +56,24 @@ export function selectProjectSkills(manifest, packages) {
     if (candidates[0]) selected.push(candidates[0]);
   }
   return selected;
+}
+
+export function getSkillLifecycleState(manifest, packages, id) {
+  const skillId = normalizeSkillId(id);
+  const entry = manifest.skills?.[skillId] || null;
+  const candidates = packages.filter((item) => item.id === skillId);
+  const selected = entry?.enabled ? selectProjectSkills(manifest, candidates)[0] || null : null;
+  const versions = candidates.map((item) => item.version).sort(compareVersions);
+  return {
+    id: skillId,
+    registryVersions: versions,
+    selectedVersion: selected?.version || "",
+    enabled: Boolean(entry?.enabled),
+    constraint: entry?.constraint || "*",
+    updateAvailable: Boolean(selected && versions.some((version) => compareVersions(version, selected.version) > 0)),
+    dependencyStatus: "unknown",
+    projectionStatus: "unknown"
+  };
 }
 
 function normalizeManifest(value, root) {

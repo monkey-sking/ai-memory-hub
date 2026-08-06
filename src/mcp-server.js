@@ -10,8 +10,11 @@
 
 import { execFileSync } from "child_process";
 import readline from "readline";
+import { listExtensions, importExtensions, diffExtensions, syncExtensions, removeExtensions, statusExtensions, diffSkillExtensions, syncSkillExtensions } from "./extension-sync.js";
 
 const AMH_BIN = "ai-memory-hub";
+const HOME_DIR = process.env.USERPROFILE || process.env.HOME || process.cwd();
+const MEMORY_DIR = process.env.AMH_MEMORY_DIR || process.env.AI_MEMORY_DIR || `${HOME_DIR}/.ai-memory`;
 
 function runAmh(args) {
   try {
@@ -25,6 +28,26 @@ function runAmh(args) {
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: false });
 
 const TOOLS = [
+  {
+    name: "amh_extension_list",
+    description: "List extensions in registry (MCP or Skill)",
+    inputSchema: { type: "object", properties: { type: { type: "string", enum: ["mcp", "skill"], default: "mcp" }, app: { type: "string" } } }
+  },
+  {
+    name: "amh_extension_import",
+    description: "Import extensions from client files",
+    inputSchema: { type: "object", properties: { type: { type: "string", enum: ["mcp", "skill"], default: "mcp" }, app: { type: "string" }, all: { type: "boolean", default: false } } }
+  },
+  {
+    name: "amh_extension_diff",
+    description: "Show differences between registry and clients",
+    inputSchema: { type: "object", properties: { type: { type: "string", enum: ["mcp", "skill"], default: "mcp" }, app: { type: "string" }, all: { type: "boolean", default: false } } }
+  },
+  {
+    name: "amh_extension_sync",
+    description: "Sync extensions to clients",
+    inputSchema: { type: "object", properties: { type: { type: "string", enum: ["mcp", "skill"], default: "mcp" }, app: { type: "string" }, all: { type: "boolean", default: false }, apply: { type: "boolean", default: false }, force: { type: "boolean", default: false } } }
+  },
   {
     name: "amh_record",
     description: "Write a memory event to AMH shared memory hub",
@@ -139,10 +162,48 @@ const TOOLS = [
       },
       required: ["id"]
     }
+  },
+  {
+    name: "amh_extension_remove",
+    description: "Remove a managed MCP extension from registry and client files",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Extension ID to remove" },
+        apps: { type: "array", items: { type: "string" } },
+        apply: { type: "boolean", default: false }
+      },
+      required: ["id"]
+    }
+  },
+  {
+    name: "amh_extension_status",
+    description: "Show status of MCP extensions across registry and clients",
+    inputSchema: {
+      type: "object",
+      properties: {
+        apps: { type: "array", items: { type: "string" } }
+      }
+    }
+  }
+  ,{
+    name: "amh_skill_list",
+    description: "List managed Skill records",
+    inputSchema: { type: "object", properties: {} }
+  },
+  {
+    name: "amh_skill_diff",
+    description: "Preview Skill projection differences",
+    inputSchema: { type: "object", properties: { project: { type: "string" }, apps: { type: "array", items: { type: "string" } } } }
+  },
+  {
+    name: "amh_skill_sync",
+    description: "Preview or apply Skill projection synchronization",
+    inputSchema: { type: "object", properties: { project: { type: "string" }, apps: { type: "array", items: { type: "string" } }, apply: { type: "boolean" } } }
   }
 ];
 
-function handleRequest(msg) {
+async function handleRequest(msg) {
   const { id, method, params } = msg;
   if (method === "initialize") {
     return { id, result: { protocolVersion: "2024-11-05", capabilities: { tools: {} }, serverInfo: { name: "amh-mcp-server", version: "1.0.0" } } };
@@ -153,6 +214,40 @@ function handleRequest(msg) {
   if (method === "tools/call") {
     const { name, arguments: args } = params;
     let amhArgs = [];
+    if (name === "amh_extension_list") {
+      const kind = args?.type || "mcp";
+      const records = await listExtensions(MEMORY_DIR, { kind });
+      return { id, result: { content: [{ type: "text", text: JSON.stringify({ ok: true, type: kind, records }, null, 2) }] } };
+    }
+    if (name === "amh_extension_import") {
+      const kind = args?.type || "mcp";
+      const apps = args?.app ? [args.app] : (args?.all ? ["claude", "codex", "gemini", "opencode"] : undefined);
+      const result = kind === "skill"
+        ? await importExtensions(MEMORY_DIR, { apps, homeDir: HOME_DIR })
+        : await importExtensions(MEMORY_DIR, { apps, homeDir: HOME_DIR });
+      return { id, result: { content: [{ type: "text", text: JSON.stringify({ ok: true, type: kind, ...result }, null, 2) }] } };
+    }
+    if (name === "amh_extension_diff") {
+      const kind = args?.type || "mcp";
+      const apps = args?.app ? [args.app] : (args?.all ? ["claude", "codex", "gemini", "opencode"] : undefined);
+      const result = kind === "skill"
+        ? await diffSkillExtensions(MEMORY_DIR, { projectRoot: HOME_DIR, apps })
+        : await diffExtensions(MEMORY_DIR, { apps, homeDir: HOME_DIR });
+      return { id, result: { content: [{ type: "text", text: JSON.stringify({ ok: true, type: kind, ...result }, null, 2) }] } };
+    }
+    if (name === "amh_extension_sync") {
+      const kind = args?.type || "mcp";
+      const apps = args?.app ? [args.app] : (args?.all ? ["claude", "codex", "gemini", "opencode"] : undefined);
+      const result = kind === "skill"
+        ? await syncSkillExtensions(MEMORY_DIR, { projectRoot: HOME_DIR, apps, apply: args?.apply === true })
+        : await syncExtensions(MEMORY_DIR, { apps, homeDir: HOME_DIR, apply: args?.apply === true, force: args?.force === true });
+      return { id, result: { content: [{ type: "text", text: JSON.stringify({ ok: true, type: kind, ...result }, null, 2) }] } };
+    }
+    if (name === "amh_extension_remove") return { id, result: { content: [{ type: "text", text: JSON.stringify({ ok: true, ...(await removeExtensions(MEMORY_DIR, args?.id, { apps: args?.apps, apply: args?.apply === true })) }, null, 2) }] } };
+    if (name === "amh_extension_status") return { id, result: { content: [{ type: "text", text: JSON.stringify({ ok: true, ...(await statusExtensions(MEMORY_DIR, { apps: args?.apps, homeDir: HOME_DIR })) }, null, 2) }] } };
+    if (name === "amh_skill_list") return { id, result: { content: [{ type: "text", text: JSON.stringify({ ok: true, records: await listExtensions(MEMORY_DIR, { kind: "skill" }) }, null, 2) }] } };
+    if (name === "amh_skill_diff") return { id, result: { content: [{ type: "text", text: JSON.stringify({ ok: true, ...(await diffSkillExtensions(MEMORY_DIR, { projectRoot: args?.project || HOME_DIR, apps: args?.apps })) }, null, 2) }] } };
+    if (name === "amh_skill_sync") return { id, result: { content: [{ type: "text", text: JSON.stringify({ ok: true, ...(await syncSkillExtensions(MEMORY_DIR, { projectRoot: args?.project || HOME_DIR, apps: args?.apps, apply: args?.apply === true })) }, null, 2) }] } };
     switch (name) {
       case "amh_record":
         amhArgs = ["record", args.text, "--source", args.source, "--kind", args.kind || "note"];
@@ -207,10 +302,10 @@ function handleRequest(msg) {
   return { id, error: { code: -32601, message: "Unknown method: " + method } };
 }
 
-rl.on("line", (line) => {
+rl.on("line", async (line) => {
   try {
     const msg = JSON.parse(line);
-    const response = handleRequest(msg);
+    const response = await handleRequest(msg);
     process.stdout.write(JSON.stringify(response) + "\n");
   } catch (e) {
     process.stderr.write("MCP Server error: " + e.message + "\n");

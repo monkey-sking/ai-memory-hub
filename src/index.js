@@ -8364,7 +8364,7 @@ function appCommand(argv) {
         return sendJson(res, { ok: true, ...(await removeExtensions(config.memoryDir, body.id, { apps, apply })) });
       }
       if (req.method === "GET" && url.pathname === "/api/extensions/status") {
-        const homeDir = url.searchParams.get("homeDir") || undefined;
+        const homeDir = url.searchParams.get("homeDir") || os.homedir();
         return sendJson(res, { ok: true, ...(await statusExtensions(config.memoryDir, { homeDir })) });
       }
       if (req.method === "GET" && url.pathname === "/api/metrics") {
@@ -17568,6 +17568,7 @@ if (typeof module !== "undefined" && module.exports) {
     POLICY_OPERATIONS
   };
 }
+
 
 
 

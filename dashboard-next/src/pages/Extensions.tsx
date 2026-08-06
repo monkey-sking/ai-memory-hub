@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { AlertTriangle, CheckCircle2, Download, GitCompare, RefreshCw, Search, ShieldAlert, Trash2, Upload, XCircle } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Download, GitCompare, RefreshCw, Search, ShieldAlert, Upload, XCircle } from 'lucide-react'
 import { apiGet, apiPost, asArray } from '../lib/api'
 import { toolIconFiles, toolDisplayNames } from '../lib/toolMetadata'
 import type { AppOutletContext } from '../lib/i18n'
@@ -345,8 +345,7 @@ export default function Extensions() {
                       <Button size="sm" variant="ghost" onClick={() => setRemoveTarget(null)}>{zh ? '取消' : 'No'}</Button>
                     </span>
                   ) : (
-                    <Button size="sm" variant="ghost" title={zh ? '从注册表移除' : 'Remove from synced list'} aria-label={zh ? '从注册表移除' : 'Remove from synced list'} onClick={() => setRemoveTarget(item.id)} disabled={busy}>
-                      <Trash2 size={13} />
+                    <Button size="sm" variant="outline" title={zh ? '从注册表移除' : 'Remove from synced list'} aria-label={zh ? '从注册表移除' : 'Remove from synced list'} onClick={() => setRemoveTarget(item.id)} disabled={busy}>{zh ? '移除' : 'Remove'}
                     </Button>
                   )
                   )}
@@ -395,6 +394,7 @@ function Status({ app, client, zh, language }: { app: string; client?: StatusCli
     </Card>
   )
 }
+
 
 
 

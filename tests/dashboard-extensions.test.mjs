@@ -85,7 +85,7 @@ test("Extensions page supports remove action with confirmation", async () => {
 
   assert.match(extensions, /removeExtension/);
   assert.match(extensions, /apiPost.*extensions\/remove/);
-  assert.match(extensions, /Trash2/);
+  assert.match(extensions, /Remove/);
   assert.match(extensions, /removeTarget/);
   assert.match(extensions, /extensions-remove-confirm/);
 });
@@ -189,5 +189,6 @@ test("Extensions page has Status sub-component for per-app display", async () =>
   assert.match(extensions, /ext-status-good/);
   assert.match(extensions, /ext-status-missing/);
 });
+
 
 

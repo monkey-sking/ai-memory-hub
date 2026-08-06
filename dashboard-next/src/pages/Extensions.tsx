@@ -33,6 +33,7 @@ type StatusClient = {
   managed: { mcp: number; skills: number }
 }
 
+type SkillPackage = { id: string; version?: string; importedAt?: string; conflict?: boolean }
 type StatusResponse = {
   registry: { mcp: number; skills: number }
   clients: Record<string, StatusClient>
@@ -63,11 +64,12 @@ export default function Extensions() {
   const load = async () => {
     setBusy(true)
     try {
-      const [extRes, statusRes] = await Promise.all([
+      const [extRes, skillRes, statusRes] = await Promise.all([
         apiGet<{ ok: boolean; records: ExtensionRecord[] }>('/api/extensions'),
+        apiGet<{ packages?: SkillPackage[] }>('/api/skills'),
         apiGet<{ ok: boolean } & StatusResponse>('/api/extensions/status'),
       ])
-      setRecords(asArray<ExtensionRecord>(extRes.records))
+      setRecords([...asArray<ExtensionRecord>(extRes.records), ...asArray<SkillPackage>(skillRes.packages).map(skill => ({ id: skill.id, kind: 'skill' as const, managed: true, source: 'shared-skill-registry', updatedAt: skill.importedAt }))])
       if (statusRes.ok) {
         setStatus({ registry: statusRes.registry, clients: statusRes.clients })
       }
@@ -339,7 +341,7 @@ export default function Extensions() {
                 </div>
                 <div className="extensions-row-state">
                   {item.managed === false && <span className="ext-unmanaged-tag"><ShieldAlert size={13} />{zh ? '未受管' : 'Unmanaged'}</span>}
-                  {removeTarget === item.id ? (
+                  {item.kind === 'mcp' && (removeTarget === item.id ? (
                     <span className="extensions-remove-confirm">
                       <span>{zh ? '确定移除？' : 'Remove?'}</span>
                       <Button size="sm" variant="destructive" onClick={() => void removeExtension(item.id)} disabled={busy}>{zh ? '确定' : 'Yes'}</Button>
@@ -349,6 +351,7 @@ export default function Extensions() {
                     <Button size="sm" variant="ghost" onClick={() => setRemoveTarget(item.id)} disabled={busy}>
                       <Trash2 size={13} />
                     </Button>
+                  )
                   )}
                 </div>
               </div>
@@ -395,6 +398,12 @@ function Status({ app, client, zh, language }: { app: string; client?: StatusCli
     </Card>
   )
 }
+
+
+
+
+
+
 
 
 

@@ -64,10 +64,13 @@ export default function Extensions() {
     setBusy(true)
     try {
       const [extRes, statusRes] = await Promise.all([
-        apiGet<{ ok: boolean; records: ExtensionRecord[] }>('/api/extensions'),
+        apiGet<{ ok: boolean; records: ExtensionRecord[]; diff?: { changes?: DiffChange[] } }>('/api/extensions'),
         apiGet<{ ok: boolean } & StatusResponse>('/api/extensions/status'),
       ])
       setRecords(asArray<ExtensionRecord>(extRes.records))
+      const initialChanges = asArray<DiffChange>(extRes.diff?.changes)
+      setDiffChanges(initialChanges)
+      setShowPreview(initialChanges.length > 0)
       if (statusRes.ok) {
         setStatus({ registry: statusRes.registry, clients: statusRes.clients })
       }
@@ -394,6 +397,9 @@ function Status({ app, client, zh, language }: { app: string; client?: StatusCli
     </Card>
   )
 }
+
+
+
 
 
 

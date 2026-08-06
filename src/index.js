@@ -8237,11 +8237,12 @@ function appCommand(argv) {
         return sendJson(res, { ok: true, profiles: removeCredentialProfile(config.memoryDir, body.id) });
       }
       if (url.pathname === "/api/extensions") {
-        const app = url.searchParams.get("app") || "opencode";
-        const apps = [app];
+        const app = url.searchParams.get("app") || "";
+        const kind = url.searchParams.get("kind") || "mcp";
+        const apps = app ? [app] : ["claude", "codex", "gemini", "opencode"];
         if (req.method === "GET") {
           const [records, status, diff] = await Promise.all([
-            listExtensions(config.memoryDir),
+            listExtensions(config.memoryDir, { kind }),
             statusExtensions(config.memoryDir, { apps, homeDir: os.homedir() }),
             diffExtensions(config.memoryDir, { apps, homeDir: os.homedir() })
           ]);
@@ -17568,6 +17569,7 @@ if (typeof module !== "undefined" && module.exports) {
     POLICY_OPERATIONS
   };
 }
+
 
 
 

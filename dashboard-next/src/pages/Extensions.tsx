@@ -103,6 +103,18 @@ export default function Extensions() {
   const addCount = diffChanges.filter(c => c.action === 'add').length
   const currentCount = diffChanges.filter(c => c.action === 'current').length
 
+  const groupedDiffChanges = useMemo(() => {
+    const groups = new Map<string, { id: string; action: DiffChange['action']; apps: string[] }>()
+    const rank = { current: 0, add: 1, conflict: 2 }
+    for (const change of diffChanges) {
+      const existing = groups.get(change.id)
+      if (!existing) { groups.set(change.id, { id: change.id, action: change.action, apps: [change.app] }); continue }
+      if (!existing.apps.includes(change.app)) existing.apps.push(change.app)
+      if (rank[change.action] > rank[existing.action]) existing.action = change.action
+    }
+    return [...groups.values()].sort((a, b) => a.id.localeCompare(b.id))
+  }, [diffChanges])
+
   const activeApps = useMemo(() => APPS.filter(a => selectedApps[a]), [selectedApps])
 
   const importExtensions = async () => {
@@ -279,14 +291,14 @@ export default function Extensions() {
           </CardHeader>
           <CardContent>
             <div className="extensions-diff-list">
-              {diffChanges.map((change, i) => (
-                <div key={`${change.app}-${change.id}-${i}`} className={`extensions-diff-row extensions-diff-${change.action} extensions-diff-conflict`}>
-                  <span className="extensions-diff-action">{/* Badge variant="destructive" marks conflicts */}
+              {groupedDiffChanges.map(change => (
+                <div key={change.id} className={`extensions-diff-row extensions-diff-${change.action} extensions-diff-conflict`}>
+                  <span className="extensions-diff-action">
                     {change.action === 'add' ? <Download size={14} /> : change.action === 'conflict' ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />}
                     {change.action === 'add' ? (zh ? '添加' : 'ADD') : change.action === 'conflict' ? (zh ? '冲突' : 'CONFLICT') : (zh ? '一致' : 'CURRENT')}
                   </span>
                   <span className="extensions-diff-id">{change.id}</span>
-                  <span className="extensions-diff-app">{toolDisplayNames[language][change.app] || change.app}</span>
+                  <span className="extensions-diff-app">{change.apps.map(app => toolDisplayNames[language][app] || app).join(' · ')}</span>
                 </div>
               ))}
               {!diffChanges.length && <div className="extensions-empty">{zh ? '没有差异' : 'No differences'}</div>}

@@ -145,15 +145,13 @@ test("Sidebar includes Extensions navigation link", async () => {
   assert.match(sidebar, /label:\s*\{\s*zh:\s*['"]扩展['"],\s*en:\s*['"]Extensions['"]/);
 });
 
-test("Extensions page supports both MCP and Skill kinds", async () => {
+test("Extensions page keeps MCP and Skill surfaces separate", async () => {
   const extensions = await readSource("pages/Extensions.tsx");
 
   assert.match(extensions, /kindFilterValue/);
   assert.match(extensions, /kindFilter/);
   assert.match(extensions, /'mcp'/);
-  assert.match(extensions, /'skill'/);
-  assert.match(extensions, /mcpRecords/);
-  assert.match(extensions, /skillRecords/);
+  assert.match(extensions, /Skills page/);
 });
 
 test("Extensions page has preview vs apply toggle", async () => {
@@ -191,3 +189,5 @@ test("Extensions page has Status sub-component for per-app display", async () =>
   assert.match(extensions, /ext-status-good/);
   assert.match(extensions, /ext-status-missing/);
 });
+
+

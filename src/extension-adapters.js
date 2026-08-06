@@ -1,5 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import { existsSync } from "node:fs";
 import { normalizeMcpServer } from "./extension-registry.js";
 import { parseToml, stringifyToml, TOMLError } from "./toml-lite.js";
 
@@ -63,7 +65,44 @@ async function readConfigSafe(filePath, format) {
   }
 }
 
+function unwrapMcpEntry(raw = {}) {
+  if (raw.command || raw.url || raw.httpUrl || raw.type) {
+    return { ...raw, url: raw.url || raw.httpUrl };
+  }
+  const nested = Object.values(raw).filter(value => value && typeof value === "object" && !Array.isArray(value));
+  if (nested.length === 1) return unwrapMcpEntry(nested[0]);
+  return raw;
+}
+
+function ccSwitchDbPath(homeDir) {
+  return path.join(homeDir, ".cc-switch", "cc-switch.db");
+}
+
+function readCcSwitchMcp(app, homeDir) {
+  const dbPath = ccSwitchDbPath(homeDir);
+  const enabledColumn = "enabled_" + app;
+  if (!existsSync(dbPath)) return { records: [], diagnostics: [] };
+  try {
+    const db = new DatabaseSync(dbPath, { readOnly: true });
+    try {
+      const rows = db.prepare("SELECT id, name, server_config FROM mcp_servers WHERE " + enabledColumn + " = 1").all();
+      const records = []; const diagnostics = [];
+      for (const row of rows) {
+        try {
+          const server = normalizeMcpServer(unwrapMcpEntry(JSON.parse(row.server_config)));
+          records.push({ id: String(row.id), kind: "mcp", server, apps: { [app]: true }, managed: false, source: { type: "cc-switch", path: dbPath }, title: row.name || row.id });
+        } catch (error) { diagnostics.push({ level: "warn", message: "Invalid cc-switch MCP entry \"" + row.id + "\": " + error.message, path: dbPath }); }
+      }
+      return { records, diagnostics };
+    } finally { db.close(); }
+  } catch (error) {
+    if (error.code === "ENOENT") return { records: [], diagnostics: [] };
+    return { records: [], diagnostics: [{ level: "warn", message: "Unable to read cc-switch MCP database: " + error.message, path: dbPath }] };
+  }
+}
+
 function normalizeEntry(id, raw, app) {
+  raw = unwrapMcpEntry(raw);
   const knownServerKeys = new Set([
     "type",
     "command",
@@ -189,6 +228,12 @@ export function createAdapter({ app, homeDir }) {
         }
       }
 
+      const ccSwitch = readCcSwitchMcp(app, homeDir);
+      diagnostics.push(...ccSwitch.diagnostics);
+      for (const record of ccSwitch.records) {
+        if (!records.some((current) => current.id === record.id)) records.push(record);
+      }
+
       return {
         records,
         unmanaged,
@@ -270,3 +315,5 @@ export function createAdapter({ app, homeDir }) {
     },
   };
 }
+
+

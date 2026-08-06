@@ -21,11 +21,12 @@ function validateId(id, source) {
 
 export function normalizeMcpServer(input = {}) {
   const raw = { ...input };
-  const type = raw.type || (raw.url ? "http" : "stdio");
+  const requestedType = raw.type || (raw.url || raw.httpUrl ? "http" : "stdio");
+  const type = requestedType === "remote" ? "http" : requestedType;
   if (!["stdio", "http", "sse"].includes(type)) {
     throw new Error(`Unsupported MCP server type: ${type}`);
   }
-  if ((type === "http" || type === "sse") && !raw.url) {
+  if ((type === "http" || type === "sse") && !(raw.url || raw.httpUrl)) {
     throw new Error(`MCP ${type} server requires url`);
   }
   if (type === "stdio" && !raw.command) {
@@ -40,7 +41,7 @@ export function normalizeMcpServer(input = {}) {
   if (raw.command != null) server.command = String(raw.command);
   if (raw.args != null) server.args = raw.args.map(String);
   if (raw.env != null) server.env = { ...raw.env };
-  if (raw.url != null) server.url = String(raw.url);
+  if (raw.url != null || raw.httpUrl != null) server.url = String(raw.url || raw.httpUrl);
   if (raw.headers != null) server.headers = { ...raw.headers };
   if (Object.keys(extra).length > 0) server.extra = extra;
   return server;
@@ -151,3 +152,5 @@ export async function removeRecord(memoryDir, kind, id) {
   await writeRegistry(memoryDir, registry);
   return registry;
 }
+
+

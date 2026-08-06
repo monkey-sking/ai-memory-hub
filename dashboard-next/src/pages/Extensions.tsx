@@ -330,7 +330,7 @@ export default function Extensions() {
                       const enabled = item.apps?.[app] !== false
                       return (
                         <Badge key={app} variant={enabled ? 'default' : 'outline'} className="extensions-app-badge">
-                          {toolDisplayNames[language][app]?.charAt(0) || app.charAt(0)}
+                          {toolDisplayNames[language][app] || app}
                         </Badge>
                       )
                     })}
@@ -394,6 +394,7 @@ function Status({ app, client, zh, language }: { app: string; client?: StatusCli
     </Card>
   )
 }
+
 
 
 

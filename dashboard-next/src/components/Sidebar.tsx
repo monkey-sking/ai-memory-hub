@@ -18,7 +18,8 @@ import {
   MessageSquare,
   Zap,
   MoreHorizontal,
-  Puzzle
+  Puzzle,
+  Blocks
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -52,6 +53,7 @@ const navGroups: NavGroup[] = [
       { to: '/dispatch', icon: Zap, label: { zh: '调度', en: 'Dispatch' } },
       { to: '/tools', icon: Wrench, label: { zh: '工具', en: 'Tools' } },
       { to: '/skills', icon: Puzzle, label: { zh: 'Skills', en: 'Skills' } },
+      { to: '/extensions', icon: Blocks, label: { zh: '扩展', en: 'Extensions' } },
       { to: '/chat', icon: MessageSquare, label: { zh: '对话', en: 'Chat' } },
     ]
   },
@@ -168,3 +170,6 @@ export default function Sidebar({ language }: SidebarProps) {
     </aside>
   )
 }
+
+
+

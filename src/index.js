@@ -43,6 +43,7 @@ import { readSkillPackManifest } from "./shared-skill-pack.js";
 import { disableProjectSkill, getSkillLifecycleState, loadProjectSkillManifest, setProjectSkill, removeProjectSkill, selectProjectSkillVersion, selectProjectSkills } from "./shared-skill-project.js";
 import { doctorSkillProjections, syncSkillProjections } from "./shared-skill-materializer.js";
 import { withPreparedSkillSource } from "./shared-skill-sources.js";
+import { listExtensions, importExtensions, diffExtensions, syncExtensions, removeExtensions, statusExtensions, diffSkillExtensions, syncSkillExtensions, removeSkillExtension } from "./extension-sync.js";
 import { listCredentialProfiles, setCredentialProfile, removeCredentialProfile, resolveCredential } from "./credentials.js";
 import { listRelatedEntities, recordMemoryRelations, recordRelation, rebuildMemoryRelations, revokeRelation } from "./relations.js";
 import { auditMemories } from "./memory-audit.js";
@@ -635,6 +636,8 @@ async function main() {
       return skillCandidateCommand(rest);
     case "skill":
       return skillCommand(rest);
+    case "mcp":
+      return mcpCommand(rest);
     case "pack":
     case "domain-pack":
       return packCommand(rest);
@@ -7655,10 +7658,41 @@ function packCommand(argv) {
   else throw new Error("Usage: ai-memory-hub pack add|list|show|enable|disable|validate|discover");
 }
 
-async function skillCommand(argv) {
+async function mcpCommand(argv) {
   const action = argv[0] || "list";
+  if (action === "--help" || action === "-h") {
+    console.log("Usage: ai-memory-hub mcp list|import|diff|sync|remove|status [--app <client>] [--apply] [--force]");
+    return;
+  }
   const config = loadConfig();
   ensureHub(config.memoryDir);
+  const app = getOption(argv.slice(1), "--app");
+  const apps = app ? [app] : ["claude", "codex", "gemini", "opencode"];
+  const homeDir = os.homedir();
+  if (action === "list") console.log(JSON.stringify(await listExtensions(config.memoryDir), null, 2));
+  else if (action === "import") console.log(JSON.stringify(await importExtensions(config.memoryDir, { apps, homeDir }), null, 2));
+  else if (action === "diff") console.log(JSON.stringify(await diffExtensions(config.memoryDir, { apps, homeDir }), null, 2));
+  else if (action === "sync") console.log(JSON.stringify(await syncExtensions(config.memoryDir, { apps, homeDir, apply: argv.includes("--apply"), force: argv.includes("--force") }), null, 2));
+  else if (action === "remove") {
+    const id = argv[1];
+    if (!id) throw new Error("Usage: ai-memory-hub mcp remove <id> [--app <client>] [--apply]");
+    console.log(JSON.stringify(await removeExtensions(config.memoryDir, id, { apps, apply: argv.includes("--apply") }), null, 2));
+  }
+  else if (action === "status") console.log(JSON.stringify(await statusExtensions(config.memoryDir, { apps, homeDir }), null, 2));
+  else throw new Error("Usage: ai-memory-hub mcp list|import|diff|sync|remove|status [--app <client>] [--apply] [--force]");
+}
+
+async function skillCommand(argv) {
+  const action = argv[0] || "list";
+  if (action === "--help" || action === "-h") {
+    console.log("Usage: ai-memory-hub skill list|scan|import|install|show|update|rollback|enable|disable|sync|doctor|diff|remove|search|attach|render [--app <client>] [--all] [--apply] [--force]");
+    return;
+  }
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const app = getOption(argv.slice(1), "--app");
+  const allApps = argv.includes("--all");
+  const apps = allApps ? ["claude", "codex", "gemini", "opencode"] : (app ? [app] : ["claude", "codex", "gemini", "opencode"]);
   if (action === "list") {
     console.log(JSON.stringify(listSkills(config.memoryDir), null, 2)); return;
   }
@@ -7717,11 +7751,22 @@ async function skillCommand(argv) {
   }
   if (action === "sync" || action === "doctor") {
     const project = getOption(argv.slice(1), "--project") || process.cwd();
+    const apply = argv.includes("--apply");
+    const force = argv.includes("--force");
     const manifest = await loadProjectSkillManifest(project);
     const packages = selectProjectSkills(manifest, await listSharedSkillPackages(config.memoryDir));
-    const targets = getOption(argv.slice(1), "--tool") ? [getOption(argv.slice(1), "--tool")] : (manifest.targets.length ? manifest.targets : ["codex", "claude", "gemini", "antigravity"]);
+    const targets = apps;
     const result = action === "sync" ? await syncSkillProjections(project, packages, targets) : await doctorSkillProjections(project, packages, targets);
-    console.log(JSON.stringify({ project, packages: packages.map((item) => `${item.id}@${item.version}`), targets, result }, null, 2)); return;
+    console.log(JSON.stringify({ project, packages: packages.map((item) => `${item.id}@${item.version}`), targets, result, applied: apply, force }, null, 2)); return;
+  }
+  if (action === "diff") {
+    const project = getOption(argv.slice(1), "--project") || process.cwd();
+    console.log(JSON.stringify(await diffSkillExtensions(config.memoryDir, { projectRoot: project, apps }), null, 2)); return;
+  }
+  if (action === "remove") {
+    const id = getOption(argv.slice(1), "--id") || argv[1] || "";
+    const project = getOption(argv.slice(1), "--project") || process.cwd();
+    console.log(JSON.stringify(await removeSkillExtension(config.memoryDir, { projectRoot: project, id }), null, 2)); return;
   }
   if (action === "search") { console.log(JSON.stringify(searchSkills(config.memoryDir, argv.slice(1).join(" "),), null, 2)); return; }
   if (action === "attach") {
@@ -7740,7 +7785,7 @@ async function skillCommand(argv) {
     console.log(renderSkillMarkdown({ title, text, sourceTaskId: getOption(argv.slice(1), "--task") || "unknown", evidence: (getOption(argv.slice(1), "--evidence") || "").split(";").map((item) => item.trim()).filter(Boolean) }));
     return;
   }
-  throw new Error("Usage: ai-memory-hub skill list|scan|import|install|show|update|rollback|enable|disable|sync|doctor|search|attach|render");
+  throw new Error("Usage: ai-memory-hub skill list|scan|import|install|show|update|rollback|enable|disable|sync|doctor|diff|remove|search|attach|render");
 }
 
 function getSkillDeltasFile(memoryDir) {
@@ -8191,7 +8236,24 @@ function appCommand(argv) {
         const body = await readRequestJson(req);
         return sendJson(res, { ok: true, profiles: removeCredentialProfile(config.memoryDir, body.id) });
       }
-      if (req.method === "GET" && url.pathname === "/api/skills") {
+      if (url.pathname === "/api/extensions") {
+        const app = url.searchParams.get("app") || "opencode";
+        const apps = [app];
+        if (req.method === "GET") {
+          const [records, status, diff] = await Promise.all([
+            listExtensions(config.memoryDir),
+            statusExtensions(config.memoryDir, { apps, homeDir: os.homedir() }),
+            diffExtensions(config.memoryDir, { apps, homeDir: os.homedir() })
+          ]);
+          return sendJson(res, { records, extensions: records, status, diff });
+        }
+        if (req.method === "POST") {
+          const body = await readRequestJson(req);
+          const options = { apps, homeDir: os.homedir(), apply: body.apply === true, force: body.force === true };
+          if (body.action === "sync") return sendJson(res, await syncExtensions(config.memoryDir, options));
+          return sendJson(res, await diffExtensions(config.memoryDir, options));
+        }
+      }      if (req.method === "GET" && url.pathname === "/api/skills") {
         const packages = await listSharedSkillPackages(config.memoryDir);
         const project = url.searchParams.get("project") || process.cwd();
         const manifest = await loadProjectSkillManifest(project);
@@ -8269,6 +8331,41 @@ function appCommand(argv) {
         const manifest = await loadProjectSkillManifest(project);
         const packages = selectProjectSkills(manifest, await listSharedSkillPackages(config.memoryDir));
         return sendJson(res, { project, result: await doctorSkillProjections(project, packages, manifest.targets.length ? manifest.targets : ["codex", "claude", "gemini", "antigravity"]) });
+      }
+      if (req.method === "GET" && url.pathname === "/api/extensions") {
+        const kind = url.searchParams.get("kind") || "mcp";
+        return sendJson(res, { extensions: await listExtensions(config.memoryDir, { kind }) });
+      }
+      if (req.method === "POST" && url.pathname === "/api/extensions/import") {
+        const body = await readRequestJson(req);
+        const apps = Array.isArray(body.apps) && body.apps.length ? body.apps : undefined;
+        const homeDir = body.homeDir || undefined;
+        return sendJson(res, { ok: true, ...(await importExtensions(config.memoryDir, { apps, homeDir })) });
+      }
+      if (req.method === "POST" && url.pathname === "/api/extensions/diff") {
+        const body = await readRequestJson(req);
+        const apps = Array.isArray(body.apps) && body.apps.length ? body.apps : undefined;
+        const homeDir = body.homeDir || undefined;
+        return sendJson(res, { ok: true, ...(await diffExtensions(config.memoryDir, { apps, homeDir })) });
+      }
+      if (req.method === "POST" && url.pathname === "/api/extensions/sync") {
+        const body = await readRequestJson(req);
+        const apps = Array.isArray(body.apps) && body.apps.length ? body.apps : undefined;
+        const homeDir = body.homeDir || undefined;
+        const apply = body.apply === true;
+        const force = body.force === true;
+        return sendJson(res, { ok: true, ...(await syncExtensions(config.memoryDir, { apps, homeDir, apply, force })) });
+      }
+      if (req.method === "POST" && url.pathname === "/api/extensions/remove") {
+        const body = await readRequestJson(req);
+        if (!body.id || typeof body.id !== "string") return sendJson(res, { error: "id is required" }, 400);
+        const apps = Array.isArray(body.apps) && body.apps.length ? body.apps : undefined;
+        const apply = body.apply === true;
+        return sendJson(res, { ok: true, ...(await removeExtensions(config.memoryDir, body.id, { apps, apply })) });
+      }
+      if (req.method === "GET" && url.pathname === "/api/extensions/status") {
+        const homeDir = url.searchParams.get("homeDir") || undefined;
+        return sendJson(res, { ok: true, ...(await statusExtensions(config.memoryDir, { homeDir })) });
       }
       if (req.method === "GET" && url.pathname === "/api/metrics") {
         return sendJson(res, dashboardMetrics.calculateMetrics(config.memoryDir));
@@ -8504,6 +8601,48 @@ function appCommand(argv) {
         return sendJson(res, dashboardTools.buildCapabilityRegistry(config.memoryDir, {
           refresh: url.searchParams.get("refresh") === "1"
         }));
+      }
+      if (req.method === "GET" && url.pathname === "/api/extensions") {
+        const kind = url.searchParams.get("kind") || "mcp";
+        return sendJson(res, { ok: true, records: await listExtensions(config.memoryDir, { kind }) });
+      }
+      if (req.method === "POST" && url.pathname === "/api/extensions/import") {
+        const body = await readRequestJson(req);
+        const appParam = body.app || "";
+        const apps = appParam ? [appParam] : ["claude", "codex", "gemini", "opencode"];
+        return sendJson(res, { ok: true, ...(await importExtensions(config.memoryDir, { apps, homeDir: os.homedir() })) });
+      }
+      if (req.method === "POST" && url.pathname === "/api/extensions/diff") {
+        const body = await readRequestJson(req);
+        const appParam = body.app || "";
+        const apps = appParam ? [appParam] : ["claude", "codex", "gemini", "opencode"];
+        const kind = body.kind || "mcp";
+        if (kind === "skill") {
+          return sendJson(res, { ok: true, ...(await diffSkillExtensions(config.memoryDir, { projectRoot: body.project || process.cwd(), apps })) });
+        }
+        return sendJson(res, { ok: true, ...(await diffExtensions(config.memoryDir, { apps, homeDir: os.homedir() })) });
+      }
+      if (req.method === "POST" && url.pathname === "/api/extensions/sync") {
+        const body = await readRequestJson(req);
+        const appParam = body.app || "";
+        const apps = appParam ? [appParam] : ["claude", "codex", "gemini", "opencode"];
+        const kind = body.kind || "mcp";
+        if (kind === "skill") {
+          return sendJson(res, { ok: true, ...(await syncSkillExtensions(config.memoryDir, { projectRoot: body.project || process.cwd(), apps, apply: body.apply === true })) });
+        }
+        return sendJson(res, { ok: true, ...(await syncExtensions(config.memoryDir, { apps, homeDir: os.homedir(), apply: body.apply === true, force: body.force === true })) });
+      }
+      if (req.method === "POST" && url.pathname === "/api/extensions/remove") {
+        const body = await readRequestJson(req);
+        if (!body.id || typeof body.id !== "string") return sendJson(res, { error: "id is required" }, 400);
+        const kind = body.kind || "mcp";
+        if (kind === "skill") {
+          return sendJson(res, { ok: true, ...(await removeSkillExtension(config.memoryDir, { projectRoot: body.project || process.cwd(), id: body.id })) });
+        }
+        return sendJson(res, { ok: true, ...(await removeExtensions(config.memoryDir, body.id, { apps: body.apps || ["claude", "codex", "gemini", "opencode"], apply: body.apply === true })) });
+      }
+      if (req.method === "GET" && url.pathname === "/api/extensions/status") {
+        return sendJson(res, { ok: true, ...(await statusExtensions(config.memoryDir, { apps: ["claude", "codex", "gemini", "opencode"], homeDir: os.homedir() })) });
       }
       if (req.method === "GET" && url.pathname === "/api/policy") {
         const rules = readPolicyRules(config.memoryDir);

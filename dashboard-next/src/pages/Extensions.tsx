@@ -311,7 +311,7 @@ export default function Extensions() {
 
       <Card>
         <CardHeader>
-          <CardTitle>{zh ? '扩展注册表' : 'Extension Registry'}</CardTitle>
+          <CardTitle>{zh ? '已同步扩展' : 'Synced Extensions'}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="extensions-list">
@@ -348,7 +348,7 @@ export default function Extensions() {
                       <Button size="sm" variant="ghost" onClick={() => setRemoveTarget(null)}>{zh ? '取消' : 'No'}</Button>
                     </span>
                   ) : (
-                    <Button size="sm" variant="ghost" onClick={() => setRemoveTarget(item.id)} disabled={busy}>
+                    <Button size="sm" variant="ghost" title={zh ? '从注册表移除' : 'Remove from synced list'} aria-label={zh ? '从注册表移除' : 'Remove from synced list'} onClick={() => setRemoveTarget(item.id)} disabled={busy}>
                       <Trash2 size={13} />
                     </Button>
                   )
@@ -357,7 +357,7 @@ export default function Extensions() {
               </div>
             ))}
             {!filteredRecords.length && (
-              <div className="extensions-empty">{zh ? '没有注册的扩展。点击"导入全部"从客户端导入。' : 'No extensions registered. Click "Import All" to import from clients.'}</div>
+              <div className="extensions-empty">{zh ? '还没有同步扩展。可点击“导入全部”读取现有 MCP，Skill 请在 Skills 页面管理。' : 'No synced extensions yet. Import MCP here; manage Skills in the Skills page.'}</div>
             )}
           </div>
         </CardContent>
@@ -398,6 +398,7 @@ function Status({ app, client, zh, language }: { app: string; client?: StatusCli
     </Card>
   )
 }
+
 
 
 

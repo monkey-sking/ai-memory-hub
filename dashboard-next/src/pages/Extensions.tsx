@@ -12,7 +12,7 @@ import './Extensions.css'
 
 type ExtensionRecord = {
   id: string
-  kind: 'mcp' | 'skill'
+  kind: 'mcp'
   server?: { type?: string; command?: string; url?: string }
   apps?: Record<string, boolean>
   managed?: boolean
@@ -33,7 +33,6 @@ type StatusClient = {
   managed: { mcp: number; skills: number }
 }
 
-type SkillPackage = { id: string; version?: string; importedAt?: string; conflict?: boolean }
 type StatusResponse = {
   registry: { mcp: number; skills: number }
   clients: Record<string, StatusClient>
@@ -55,7 +54,7 @@ export default function Extensions() {
   const [selectedApps, setSelectedApps] = useState<Record<AppName, boolean>>({
     claude: true, codex: true, gemini: true, opencode: true,
   })
-  const [kindFilterValue, setKindFilterValue] = useState<'all' | 'mcp' | 'skill'>('all')
+  const [kindFilterValue, setKindFilterValue] = useState<'all' | 'mcp'>('all')
   const [showPreview, setShowPreview] = useState(false)
   const [previewApply, setPreviewApply] = useState(false)
   const [lastSyncResult, setLastSyncResult] = useState<{ applied?: boolean; changes?: DiffChange[] } | null>(null)
@@ -64,12 +63,11 @@ export default function Extensions() {
   const load = async () => {
     setBusy(true)
     try {
-      const [extRes, skillRes, statusRes] = await Promise.all([
+      const [extRes, statusRes] = await Promise.all([
         apiGet<{ ok: boolean; records: ExtensionRecord[] }>('/api/extensions'),
-        apiGet<{ packages?: SkillPackage[] }>('/api/skills'),
         apiGet<{ ok: boolean } & StatusResponse>('/api/extensions/status'),
       ])
-      setRecords([...asArray<ExtensionRecord>(extRes.records), ...asArray<SkillPackage>(skillRes.packages).map(skill => ({ id: skill.id, kind: 'skill' as const, managed: true, source: 'shared-skill-registry', updatedAt: skill.importedAt }))])
+      setRecords(asArray<ExtensionRecord>(extRes.records))
       if (statusRes.ok) {
         setStatus({ registry: statusRes.registry, clients: statusRes.clients })
       }
@@ -96,7 +94,6 @@ export default function Extensions() {
   }, [records, query, kindFilterValue])
 
   const mcpRecords = useMemo(() => records.filter(r => r.kind === 'mcp'), [records])
-  const skillRecords = useMemo(() => records.filter(r => r.kind === 'skill'), [records])
   const managedCount = useMemo(() => records.filter(r => r.managed !== false).length, [records])
 
   const conflictCount = diffChanges.filter(c => c.action === 'conflict').length
@@ -168,7 +165,7 @@ export default function Extensions() {
     }
   }
 
-  const kindFilter = (kind: 'all' | 'mcp' | 'skill') => {
+  const kindFilter = (kind: 'all' | 'mcp') => {
     setKindFilterValue(kind)
   }
 
@@ -179,8 +176,8 @@ export default function Extensions() {
       <header className="extensions-header">
         <div>
           <p className="extensions-eyebrow">AI MEMORY HUB / EXTENSIONS</p>
-          <h1>{zh ? 'MCP / Skill 同步中心' : 'MCP / Skill Sync Center'}</h1>
-          <p>{zh ? '管理注册表中的 MCP 和 Skill 扩展，同步到 Claude、Codex、Gemini、OpenCode。' : 'Manage MCP and Skill extensions in the registry, sync to Claude, Codex, Gemini, OpenCode.'}</p>
+          <h1>{zh ? 'MCP 同步中心' : 'MCP Sync Center'}</h1>
+          <p>{zh ? '管理 MCP 服务器配置，同步到 Claude、Codex、Gemini、OpenCode。Skill 请前往 Skills 页面管理。' : 'Manage MCP server configurations across Claude, Codex, Gemini, and OpenCode. Manage Skills on the Skills page.'}</p>
         </div>
         <div className="extensions-header-actions">
           <Button variant="outline" onClick={() => void load()} disabled={busy}>
@@ -204,8 +201,8 @@ export default function Extensions() {
         </Card>
         <Card>
           <CardContent>
-            <span>{zh ? '注册 Skill' : 'Registry Skills'}</span>
-            <strong>{skillRecords.length}</strong>
+            <span>{zh ? 'Skill 管理' : 'Skill management'}</span>
+            <a href="/skills" className="extensions-skill-link">{zh ? '前往 Skills 页面' : 'Open Skills page'}</a>
           </CardContent>
         </Card>
         <Card>
@@ -238,7 +235,7 @@ export default function Extensions() {
             <Input value={query} onChange={e => setQuery(e.target.value)} placeholder={zh ? '搜索扩展' : 'Search extensions'} />
           </label>
           <div className="extensions-filter-btn">
-            {(['all', 'mcp', 'skill'] as const).map(kind => (
+            {(['all', 'mcp'] as const).map(kind => (
               <Button key={kind} size="sm" variant={kindFilterValue === kind ? 'default' : 'outline'} onClick={() => kindFilter(kind)}>
                 {kind === 'all' ? (zh ? '全部' : 'All') : kind.toUpperCase()}
               </Button>
@@ -398,6 +395,7 @@ function Status({ app, client, zh, language }: { app: string; client?: StatusCli
     </Card>
   )
 }
+
 
 
 

@@ -287,3 +287,7 @@
 .sidebar-nav-item.active::before { background: #f59e0b; }
 .sidebar-nav-icon { stroke-width: 1.8; }
 @media (max-width: 768px) { .sidebar { width: 100%; height: calc(68px + env(safe-area-inset-bottom)); padding: 0 8px env(safe-area-inset-bottom); background: #111827; border-top: 1px solid rgba(255,255,255,.12); } .sidebar-mobile-nav-item { color: #a8b4c7; } .sidebar-mobile-nav-item:hover, .sidebar-mobile-nav-item.active { color: #fff; background: rgba(245,158,11,.18); } }
+
+.sidebar-version { margin: -22px 6px 18px; color: #64748b; font-size: 11px; font-weight: 700; letter-spacing: .04em; }
+@media (max-width: 768px) { .sidebar-version { display: none; } }
+

@@ -22,6 +22,7 @@ import {
   Blocks
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { APP_VERSION } from '../lib/version'
 
 interface SidebarProps {
   language: AppLanguage
@@ -87,6 +88,8 @@ export default function Sidebar({ language }: SidebarProps) {
           <span>{language === 'zh' ? '协作控制台' : 'Collaboration Console'}</span>
         </div>
       </div>
+
+      <div className="sidebar-version" aria-label={language === 'zh' ? '当前版本' : 'Current version'}>v{APP_VERSION}</div>
 
       {/* Navigation */}
       <nav className="sidebar-nav sidebar-desktop-nav" aria-label="Dashboard navigation">
@@ -170,6 +173,7 @@ export default function Sidebar({ language }: SidebarProps) {
     </aside>
   )
 }
+
 
 
 

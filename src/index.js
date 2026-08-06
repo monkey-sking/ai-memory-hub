@@ -7711,7 +7711,7 @@ async function skillCommand(argv) {
     if (project) {
       manifest = await setProjectSkill(project, imported.id, getOption(argv.slice(1), "--version") || imported.version);
       const packages = selectProjectSkills(manifest, await listSharedSkillPackages(config.memoryDir));
-      synced = await syncSkillProjections(project, packages, getOption(argv.slice(1), "--tool") ? [getOption(argv.slice(1), "--tool")] : (manifest.targets.length ? manifest.targets : ["codex", "claude", "gemini", "antigravity"]));
+      synced = await syncSkillProjections(project, packages, getOption(argv.slice(1), "--tool") ? [getOption(argv.slice(1), "--tool")] : (manifest.targets.length ? manifest.targets : ["codex", "claude", "gemini", "opencode", "antigravity"]));
     }
     console.log(JSON.stringify({ imported, project: project || "", manifest, synced }, null, 2)); return;
   }
@@ -7722,7 +7722,7 @@ async function skillCommand(argv) {
     const project = getOption(argv.slice(1), "--project");
     const manifest = project ? await setProjectSkill(project, imported.id, imported.version) : null;
     const packages = project ? selectProjectSkills(manifest, await listSharedSkillPackages(config.memoryDir)) : [];
-    const synced = project ? await syncSkillProjections(project, packages, getOption(argv.slice(1), "--tool") ? [getOption(argv.slice(1), "--tool")] : ["codex", "claude", "gemini", "antigravity"]) : [];
+    const synced = project ? await syncSkillProjections(project, packages, getOption(argv.slice(1), "--tool") ? [getOption(argv.slice(1), "--tool")] : ["codex", "claude", "gemini", "opencode", "antigravity"]) : [];
     console.log(JSON.stringify({ imported, manifest, synced }, null, 2)); return;
   }
   if (action === "rollback") {
@@ -7734,7 +7734,7 @@ async function skillCommand(argv) {
     if (!packageRecord) throw new Error(`Skill package not found: ${id}@${version}`);
     const manifest = await setProjectSkill(project, id, version);
     const packages = selectProjectSkills(manifest, await listSharedSkillPackages(config.memoryDir));
-    const synced = await syncSkillProjections(project, packages, getOption(argv.slice(1), "--tool") ? [getOption(argv.slice(1), "--tool")] : ["codex", "claude", "gemini", "antigravity"]);
+    const synced = await syncSkillProjections(project, packages, getOption(argv.slice(1), "--tool") ? [getOption(argv.slice(1), "--tool")] : ["codex", "claude", "gemini", "opencode", "antigravity"]);
     console.log(JSON.stringify({ package: packageRecord, manifest, synced }, null, 2)); return;
   }
   if (action === "show") {
@@ -8289,7 +8289,7 @@ function appCommand(argv) {
           const enabledSkills = imported.package ? imported.skills : [imported];
           for (const skill of enabledSkills) manifest = await setProjectSkill(body.project, skill.id, body.version || skill.version);
           const packages = selectProjectSkills(manifest, await listSharedSkillPackages(config.memoryDir));
-          synced = await syncSkillProjections(body.project, packages, Array.isArray(body.targets) && body.targets.length ? body.targets : ["codex", "claude", "gemini", "antigravity"]);
+          synced = await syncSkillProjections(body.project, packages, Array.isArray(body.targets) && body.targets.length ? body.targets : ["codex", "claude", "gemini", "opencode", "antigravity"]);
         }
         broadcastDashboardUpdate("skills:install");
         return sendJson(res, { ok: true, imported, manifest, synced });
@@ -8299,7 +8299,7 @@ function appCommand(argv) {
         const project = body.project || process.cwd();
         const manifest = await loadProjectSkillManifest(project);
         const packages = selectProjectSkills(manifest, await listSharedSkillPackages(config.memoryDir));
-        const result = await syncSkillProjections(project, packages, Array.isArray(body.targets) && body.targets.length ? body.targets : (manifest.targets.length ? manifest.targets : ["codex", "claude", "gemini", "antigravity"]));
+        const result = await syncSkillProjections(project, packages, Array.isArray(body.targets) && body.targets.length ? body.targets : (manifest.targets.length ? manifest.targets : ["codex", "claude", "gemini", "opencode", "antigravity"]));
         broadcastDashboardUpdate("skills:sync");
         return sendJson(res, { ok: true, project, result });
       }
@@ -8331,7 +8331,7 @@ function appCommand(argv) {
         const project = url.searchParams.get("project") || process.cwd();
         const manifest = await loadProjectSkillManifest(project);
         const packages = selectProjectSkills(manifest, await listSharedSkillPackages(config.memoryDir));
-        return sendJson(res, { project, result: await doctorSkillProjections(project, packages, manifest.targets.length ? manifest.targets : ["codex", "claude", "gemini", "antigravity"]) });
+        return sendJson(res, { project, result: await doctorSkillProjections(project, packages, manifest.targets.length ? manifest.targets : ["codex", "claude", "gemini", "opencode", "antigravity"]) });
       }
       if (req.method === "GET" && url.pathname === "/api/extensions") {
         const kind = url.searchParams.get("kind") || "mcp";

@@ -93,6 +93,7 @@ export function defaultSkillRoots(home = process.env.USERPROFILE || process.env.
     ["qclaw", path.join(home, ".qclaw", "skills")],
     ["openclaw", path.join(home, ".openclaw", "skills")],
     ["opencode", path.join(home, ".config", "opencode", "skills")],
-    ["mimocode", path.join(home, ".config", "mimocode", "skills")]
+    ["mimocode", path.join(home, ".config", "mimocode", "skills")],
+    ["cc-switch", path.join(home, ".cc-switch", "skills")]
   ].map(([tool, pathValue]) => ({ tool, path: pathValue }));
 }

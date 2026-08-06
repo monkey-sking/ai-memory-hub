@@ -25,6 +25,7 @@ export default function Skills() {
   const [message, setMessage] = useState('')
   const [credentials, setCredentials] = useState<CredentialProfile[]>([])
   const [sourceChoice, setSourceChoice] = useState<Record<string, string>>({})
+  const [selectedTargets, setSelectedTargets] = useState<Record<string, boolean>>({ codex: true, claude: true, gemini: true, antigravity: true })
   const zh = language === 'zh'
 
   const load = async () => {
@@ -81,7 +82,7 @@ export default function Skills() {
   const syncSkills = async () => {
     setBusy(true)
     try {
-      await apiPost('/api/skills/sync', { project: '.' })
+      await apiPost('/api/skills/sync', { project: '.', targets: Object.entries(selectedTargets).filter(([, enabled]) => enabled).map(([target]) => target) })
       await load()
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error))
@@ -98,7 +99,7 @@ export default function Skills() {
           <h1>{zh ? '共享 Skill 中心' : 'Shared Skill Center'}</h1>
           <p>{zh ? '统一安装一次，多个项目和 Agent 共用。' : 'Install once, reuse across projects and Agents.'}</p>
         </div>
-        <div className="skills-header-actions"><Button variant="outline" onClick={() => void load()} disabled={busy}><RefreshCw size={16} />{zh ? '刷新状态' : 'Refresh'}</Button><Button onClick={() => void syncSkills()} disabled={busy}><Upload size={16} />{zh ? '同步到 Agent' : 'Sync to Agents'}</Button></div>
+        <div className="skills-targets" aria-label={zh ? '同步目标' : 'Sync targets'}>{(['codex', 'claude', 'gemini', 'antigravity'] as const).map(target => <label key={target}><input type="checkbox" checked={selectedTargets[target]} onChange={event => setSelectedTargets(previous => ({ ...previous, [target]: event.target.checked }))} />{target}</label>)}</div>`r`n        <div className="skills-header-actions"><Button variant="outline" onClick={() => void load()} disabled={busy}><RefreshCw size={16} />{zh ? '刷新状态' : 'Refresh'}</Button><Button onClick={() => void syncSkills()} disabled={busy}><Upload size={16} />{zh ? '同步到 Agent' : 'Sync to Agents'}</Button></div>
       </header>
 
       <section className="skills-summary-grid">
@@ -137,3 +138,4 @@ export default function Skills() {
     </div>
   )
 }
+

@@ -25,3 +25,6 @@
 .skills-credential-note { margin: 0 0 14px; color: hsl(var(--muted-foreground)); font-size: 12px; }
 .skills-credential-list { display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; }
 @media (max-width: 760px) { .skills-page { padding: 20px 16px 36px; } .skills-header { flex-direction: column; } .skills-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .skills-toolbar { align-items: stretch; flex-direction: column; } .skills-toolbar label { min-width: 0; } .skill-row { align-items: flex-start; flex-direction: column; } .skill-row-state { flex-wrap: wrap; } }
+
+.skills-targets { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 12px; }.skills-targets label { display: inline-flex; align-items: center; gap: 5px; color: var(--text-muted); font-size: 12px; font-weight: 700; }
+

@@ -29,6 +29,8 @@ import { createDashboardCollaborationApi } from "./dashboard/collaboration.js";
 import { buildExecutionAdapters } from "./execution-adapters.js";
 import { buildWorktreeSnapshot } from "./worktree-snapshot.js";
 import { evaluateDaemonHeartbeat } from "./daemon-health.js";
+import { resolveAgentTarget } from "./agent-wake.js";
+import { createSessionSupervisor } from "./session-supervisor-service.js";
 import { buildWorkflowSharedState } from "./workflow-context.js";
 import { applyCandidateDecision, mineSkillCandidates } from "./skill-mining.js";
 import { formatGithubCommitMessage, normalizeGithubLinks } from "./github-links.js";
@@ -4846,7 +4848,8 @@ function dispatchJobFromRelayEntry(entry) {
     project: entry.project || "",
     text: "",
     refId: entry.sourceId || "",
-    thread: entry.thread || entry.sourceId || ""
+    thread: entry.thread || entry.sourceId || "",
+    sessionId: entry.sessionId || ""
   };
 }
 
@@ -5148,12 +5151,12 @@ function isDirectDispatchRadioMessage(message, to = "") {
   if (isClosedDispatchSourceState(message?.deliveryState || message?.status)) {
     return false;
   }
-  const target = normalizeToolName(message?.to || "");
-  if (!target || target === "all") {
+  const target = resolveAgentTarget(message?.to || "");
+  if (!target.tool || target.tool === "all") {
     return false;
   }
-  const requested = normalizeToolName(to || "");
-  return requested ? target === requested : true;
+  const requested = resolveAgentTarget(to || "").tool;
+  return requested ? target.tool === requested : true;
 }
 
 function isRadioLinkedToClosedSource(memoryDir, message) {
@@ -5190,8 +5193,8 @@ function buildDispatchJobs(memoryDir, { to, project, limit, force, respectRecipe
   const messages = allMessages
     .slice(0, limit)
     .flatMap((message) => {
-      const target = normalizeToolName(message.to);
-      if (target === "all") {
+      const target = resolveAgentTarget(message.to);
+      if (target.kind === "tool" && target.tool === "all") {
         const tools = ["codex", "gemini", "claude"];
         return tools
           .filter((tool) => to ? tool === to : true)
@@ -5209,7 +5212,8 @@ function buildDispatchJobs(memoryDir, { to, project, limit, force, respectRecipe
       return [{
         id: `radio:${message.id}`,
         kind: "radio",
-        tool: target,
+        tool: target.tool,
+        sessionId: target.sessionId,
         project: message.project || "",
         text: message.text,
         refId: message.id,
@@ -5661,7 +5665,22 @@ function runDispatchJob(memoryDir, job, runner, options = {}) {
   const startedAtMs = Date.now();
   const startedAt = new Date(startedAtMs).toISOString();
   const invocation = buildRunnerInvocation(runner, args);
-  const completed = invokeRunnerCommand(runner, args, input, DEFAULT_DISPATCH_RUN_TIMEOUT_MS, cwd, resolveCredentialEnvironment(memoryDir, job.credentialRefs || job.credentials || []));
+  const supervisor = createSessionSupervisor({ memoryDir });
+  const leaseSessionId = job.sessionId || `dispatch:${runId}`;
+  supervisor.start({
+    sessionId: leaseSessionId,
+    tool: job.tool || runner.tool || "unknown",
+    project: job.project || "",
+    cwd,
+    transport: "amh-dispatch"
+  });
+  let completed;
+  try {
+    completed = invokeRunnerCommand(runner, args, input, DEFAULT_DISPATCH_RUN_TIMEOUT_MS, cwd, resolveCredentialEnvironment(memoryDir, job.credentialRefs || job.credentials || []));
+  } catch (error) {
+    supervisor.finish(leaseSessionId, { status: "failed", error: error.message });
+    throw error;
+  }
   const finishedAtMs = Date.now();
   const finishedAt = new Date(finishedAtMs).toISOString();
   const parsed = parseRunnerOutput(memoryDir, jobWithWorktree, runner, completed.stdout);
@@ -5674,6 +5693,11 @@ function runDispatchJob(memoryDir, job, runner, options = {}) {
     ? collectDispatchWorktreeReviewMetadata(initialWorktree)
     : null;
   const errorSummary = summarizeText(completed.error?.message || normalizedStderr.stderr || "", 220);
+  supervisor.finish(leaseSessionId, {
+    status: runStatus === "completed" ? "completed" : "failed",
+    exitCode: completed.status ?? null,
+    error: errorSummary
+  });
   const runRecord = {
     runId,
     dispatchId: job.id,
@@ -5710,7 +5734,7 @@ function runDispatchJob(memoryDir, job, runner, options = {}) {
     stderr: trimOutput(normalizedStderr.stderr),
     stderrWarnings: normalizedStderr.warnings,
     error: completed.error ? completed.error.message : "",
-    sessionId: parsed.sessionId || "",
+    sessionId: parsed.sessionId || job.sessionId || "",
     runnerMode: runner.promptMode || "",
     runnerCommand: runner.commandName || runner.command || "",
     runnerShell: runner.usesShell ? runner.shell || "shell" : "",
@@ -5811,7 +5835,7 @@ function buildRunnerArgs(memoryDir, job, runner, prompt) {
     args.push(...runner.modelArgs(model));
   }
   const sessionId = runner.capabilities?.includes("session-resume")
-    ? readClaudeSessionState(memoryDir)[getDispatchThreadKey(job)] || ""
+    ? job.sessionId || readClaudeSessionState(memoryDir)[getDispatchThreadKey(job)] || ""
     : "";
   if (sessionId && typeof runner.resumeArgs === "function") {
     args.push(...runner.resumeArgs(sessionId));
@@ -17162,6 +17186,7 @@ function normalizeRadioMessage(message) {
     thread: content.thread || message.thread || "",
     replyTo: content.replyTo || content.reply_to || message.replyTo || message.reply_to || "",
     project: content.project || message.project || "",
+    metadata: message.metadata || content.metadata || {},
     deliveryState: message.deliveryState || "pending",
     deliveryUpdatedAt: message.deliveryUpdatedAt || "",
     dispatchId: message.dispatchId || "",

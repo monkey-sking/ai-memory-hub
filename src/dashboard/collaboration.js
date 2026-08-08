@@ -69,7 +69,9 @@ export function createDashboardCollaborationApi({ appendJsonl, createRadioMessag
 
   function sendFollowUp(memoryDir, body = {}) {
     if (!body.text) throw new Error("follow-up text is required");
-    const payload = createFollowUpPayload(body);
+    const session = body.sessionId ? readAgentSessions(memoryDir).find((item) => item.sessionId === body.sessionId || item.id === body.sessionId) : null;
+    const target = body.to && body.to !== "all" ? body.to : session?.agent ? `session:${session.agent}:${body.sessionId}` : body.to;
+    const payload = createFollowUpPayload({ ...body, to: target });
     const message = createRadioMessage(payload);
     appendJsonl(getRadioMessagesFile(memoryDir), { ...message, metadata: payload.metadata });
     if (body.taskId) updateTask(memoryDir, body.taskId, (current) => ({ ...current, updatedAt: new Date().toISOString(), notes: [...(current.notes || []), createTaskNote(body.by || body.from || "dashboard", `Follow-up sent to ${body.to || "all"}.`)] }));

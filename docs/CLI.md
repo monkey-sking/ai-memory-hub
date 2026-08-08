@@ -1527,3 +1527,16 @@ ai-memory-hub memory audit --limit 50
 ai-memory-hub memory audit --apply
 ai-memory-hub memory op apply
 ```
+
+### Session-targeted agent wake
+
+Send a durable message to a concrete agent session. Claude resumes with its session id; direct runners such as Codex/Gemini use a fresh invocation while retaining the session/thread linkage; shared-state-only tools remain queued.
+
+```bash
+ai-memory-hub radio send "Continue the implementation" --from codex --to session:claude:<session-id> --project ai-memory-hub
+ai-memory-hub radio send "Review the latest change" --from codex --to session:codex:<session-id> --project ai-memory-hub
+ai-memory-hub session follow-up --id <session-id> --text "Continue"
+ai-memory-hub daemon --tools codex,gemini,claude
+```
+
+AMH-owned dispatch lifecycle leases are persisted under `state/session-leases.jsonl`. This records lifecycle and recovery state; it is not a generic live terminal injection adapter.

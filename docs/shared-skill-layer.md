@@ -131,3 +131,14 @@ without turning all historical memory into executable Skill content.
 The dashboard exposes the same relation drawer from Skills, Projects, Memory,
 and Task detail views. It lists confirmed edges and lets the user confirm
 inferred suggestions; confirmation writes an append-only relation event.
+
+## Session-Targeted Wake Contract
+
+Use `session:<tool>:<sessionId>` when a message must reach a concrete Agent
+session. The receiving adapter preserves message and thread linkage, then
+chooses resume, fresh-run, or durable queue according to declared runner
+capabilities. Agents must not claim live delivery from a Radio append alone.
+
+AMH-owned dispatch lifecycle is recorded in `state/session-leases.jsonl`.
+Interactive terminal injection is outside the shared contract unless a verified
+live transport provides framing and acknowledgement.

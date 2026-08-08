@@ -1509,6 +1509,40 @@ single value.
 
 ---
 
+## Extension Synchronization
+
+Manage MCP server definitions and installed Skills across multiple AI tools from a unified registry.
+
+### MCP Commands
+
+```bash
+ai-memory-hub mcp list [--app <client>]
+ai-memory-hub mcp import [--app <client>|--all]
+ai-memory-hub mcp diff [--app <client>|--all]
+ai-memory-hub mcp sync [--app <client>|--all] [--apply] [--force]
+ai-memory-hub mcp remove <id> [--app <client>] [--apply]
+ai-memory-hub mcp status
+```
+
+### Skill Commands
+
+```bash
+ai-memory-hub skill list [--app <client>]
+ai-memory-hub skill diff [--app <client>|--all]
+ai-memory-hub skill sync [--app <client>|--all] [--apply]
+ai-memory-hub skill remove <id> [--app <client>] [--apply]
+```
+
+**Supported Clients:** Claude, Codex, Gemini, OpenCode
+
+**Behavior:**
+- Preview is the default for all sync operations
+- `--apply` writes changes; without it, only preview is shown
+- `--force` is required to replace conflicting managed entries
+- Unmanaged client entries are always preserved
+- Backups are created beside target files with timestamps
+- Writes use temporary file plus rename for atomicity
+
 ## See Also
 
 - [README](../README.md) - Project overview

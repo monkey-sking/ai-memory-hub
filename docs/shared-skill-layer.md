@@ -110,6 +110,27 @@ ai-memory-hub skill install --path <git-url> --ref <tag-or-branch> --project <pr
 
 Use `skill update` to import a new immutable version and `skill rollback` to select an earlier version. The dashboard exposes registry discovery, credential setup, sync, and projection health checks.
 
+### Extension Synchronization
+
+AMH provides a unified registry for MCP server definitions and installed Skills across multiple AI tools. The registry stores normalized records and synchronizes them to client-specific configuration files.
+
+```bash
+ai-memory-hub mcp import --all          # Import MCP servers from all clients
+ai-memory-hub mcp diff                  # Show differences between registry and clients
+ai-memory-hub mcp sync --apply          # Apply non-conflicting changes
+ai-memory-hub skill list                # List managed Skills
+ai-memory-hub skill diff --app claude   # Show Skill differences for Claude
+```
+
+**Supported Clients:** Claude, Codex, Gemini, OpenCode
+
+**Safety Rules:**
+- Preview is the default for all sync operations
+- Backups are created beside target files with timestamps
+- Unmanaged client entries are always preserved
+- Conflicts require explicit `--force` to resolve
+- Secrets are never logged or stored in event metadata
+
 ### Skill, memory, and project associations
 
 AMH does not copy memory text into a Skill and does not treat every Skill

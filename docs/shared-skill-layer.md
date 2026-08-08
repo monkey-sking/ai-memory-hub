@@ -112,24 +112,35 @@ Use `skill update` to import a new immutable version and `skill rollback` to sel
 
 ### Extension Synchronization
 
-AMH provides a unified registry for MCP server definitions and installed Skills across multiple AI tools. The registry stores normalized records and synchronizes them to client-specific configuration files.
+AMH exposes two related but separate mechanisms:
+
+- **MCP registry sync** normalizes MCP server definitions and synchronizes them
+  to Claude, Codex, Gemini, and OpenCode configuration files.
+- **Skill project projection** imports immutable Skill packages, selects them in
+  a project manifest, and projects them into the selected tool Skill folders.
+
+MCP registry examples:
 
 ```bash
-ai-memory-hub mcp import --all          # Import MCP servers from all clients
-ai-memory-hub mcp diff                  # Show differences between registry and clients
-ai-memory-hub mcp sync --apply          # Apply non-conflicting changes
-ai-memory-hub skill list                # List managed Skills
-ai-memory-hub skill diff --app claude   # Show Skill differences for Claude
+ai-memory-hub mcp import --app claude
+ai-memory-hub mcp diff
+ai-memory-hub mcp sync --app claude          # preview
+ai-memory-hub mcp sync --app claude --apply  # write
 ```
 
-**Supported Clients:** Claude, Codex, Gemini, OpenCode
+Skill project examples:
 
-**Safety Rules:**
-- Preview is the default for all sync operations
-- Backups are created beside target files with timestamps
-- Unmanaged client entries are always preserved
-- Conflicts require explicit `--force` to resolve
-- Secrets are never logged or stored in event metadata
+```bash
+ai-memory-hub skill import --path <directory> --version 1.0.0 --project <path>
+ai-memory-hub skill diff --project <path> --app claude
+ai-memory-hub skill sync --project <path> --all
+ai-memory-hub skill doctor --project <path> --all
+```
+
+MCP `--apply` and `--force` control registry writes and conflict replacement.
+Skill projection uses the project manifest and target selection; it is not the
+same preview/apply mechanism as MCP sync. Adapters preserve unmanaged client
+entries, create backups for MCP writes, and use atomic replacement.
 
 ### Skill, memory, and project associations
 

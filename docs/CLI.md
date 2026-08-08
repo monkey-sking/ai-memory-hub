@@ -1511,37 +1511,46 @@ single value.
 
 ## Extension Synchronization
 
-Manage MCP server definitions and installed Skills across multiple AI tools from a unified registry.
+AMH provides two related surfaces:
 
-### MCP Commands
+- **MCP registry sync** manages normalized MCP server records and writes them to client configuration files.
+- **Skill project projection** manages immutable Skill packages and projects selected packages into tool-specific Skill directories.
+
+### MCP registry commands
 
 ```bash
-ai-memory-hub mcp list [--app <client>]
-ai-memory-hub mcp import [--app <client>|--all]
-ai-memory-hub mcp diff [--app <client>|--all]
-ai-memory-hub mcp sync [--app <client>|--all] [--apply] [--force]
+ai-memory-hub mcp list
+ai-memory-hub mcp import [--app <client>]
+ai-memory-hub mcp diff [--app <client>]
+ai-memory-hub mcp sync [--app <client>] [--apply] [--force]
 ai-memory-hub mcp remove <id> [--app <client>] [--apply]
-ai-memory-hub mcp status
+ai-memory-hub mcp status [--app <client>]
 ```
 
-### Skill Commands
+When `--app` is omitted, MCP commands inspect the four supported clients:
+Claude, Codex, Gemini, and OpenCode. `mcp sync` is preview-only unless
+`--apply` is passed. `--force` allows replacing conflicts during MCP sync.
+`mcp remove` changes the registry only with `--apply`.
+
+### Skill project commands
 
 ```bash
-ai-memory-hub skill list [--app <client>]
-ai-memory-hub skill diff [--app <client>|--all]
-ai-memory-hub skill sync [--app <client>|--all] [--apply]
-ai-memory-hub skill remove <id> [--app <client>] [--apply]
+ai-memory-hub skill list
+ai-memory-hub skill import --path <directory|archive.zip|git-url> --version <version> [--project <path>]
+ai-memory-hub skill install --path <directory|archive.zip|git-url> --version <version> [--project <path>]
+ai-memory-hub skill diff --project <path> [--app <client>] [--all]
+ai-memory-hub skill sync --project <path> [--app <client>] [--all]
+ai-memory-hub skill doctor --project <path> [--app <client>] [--all]
 ```
 
-**Supported Clients:** Claude, Codex, Gemini, OpenCode
+`skill sync` writes the selected project packages to the target projections;
+`--project` defaults to the current working directory. `--app` selects one
+client, while `--all` selects Claude, Codex, Gemini, and OpenCode. Skill
+projection commands do not use MCP's `--apply`/`--force` preview semantics.
 
-**Behavior:**
-- Preview is the default for all sync operations
-- `--apply` writes changes; without it, only preview is shown
-- `--force` is required to replace conflicting managed entries
-- Unmanaged client entries are always preserved
-- Backups are created beside target files with timestamps
-- Writes use temporary file plus rename for atomicity
+Unmanaged client files are preserved by the adapters. MCP writes use backups
+and atomic replacement; malformed or conflicting entries are reported rather
+than silently overwritten.
 
 ## See Also
 

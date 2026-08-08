@@ -38,6 +38,7 @@
 - **工作流节点系统** - 节点级执行历史、自动创建节点、状态自动更新、工作流状态从节点派生
 - **工作流系统** - 多角色协作（planner/executor/reviewer/observer），支持 result/review/signal 交互
 - **Shared Skill Layer** - 为 Codex/Claude/Gemini/QClaw/OpenClaw/OpenCode/MiMo Code/Marvis 等工具安装统一协作流程
+- **Extension Synchronization** - 统一管理 MCP registry，并将 MCP 配置同步到 Claude/Codex/Gemini/OpenCode；项目 Skill 通过 project manifest 投影到目标工具
 - **Capability Registry** - 汇总工具能力、接入方式、自动执行状态和安全权限边界
 - **Session 切换** - 跨工具上下文传递
 - **Connect** - 跨工具连接管理，发送 request/review/handoff 消息
@@ -119,6 +120,7 @@
   │   └── daemon.pid         # 守护进程 PID
   ├── tools/                 # 工具适配器
   └── extensions/            # 扩展（VS Code等）
+  └── extension-registry.json # MCP/Skill registry
 ```
 
 ### 📦 安装

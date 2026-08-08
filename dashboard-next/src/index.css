@@ -1,80 +1,171 @@
 @import "tailwindcss";
 
+/*
+ * ============================================================================
+ * Design tokens — SINGLE SOURCE OF TRUTH
+ * ============================================================================
+ * Everything visual (color / type / radius / elevation / motion) is declared
+ * inside @theme so that Tailwind utilities AND hand-written CSS resolve to the
+ * exact same value. Never redeclare a radius/shadow/size outside this block:
+ * that is what produced the "8px vs 16px on the same screen" drift before.
+ *
+ * Legacy aliases (--bg, --text, --accent, --space-*) live in :root below and
+ * only ever point back at a @theme token.
+ * ============================================================================
+ */
+
 @theme {
-  --color-background: var(--bg);
-  --color-foreground: var(--foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--bg-soft);
-  --color-secondary-foreground: var(--text);
-  --color-muted: var(--bg-soft);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent-soft);
-  --color-accent-foreground: var(--accent-strong);
-  --color-destructive: var(--danger);
-  --color-destructive-foreground: var(--bg-panel);
-  --color-warning: var(--warning);
-  --color-border: var(--border);
-  --color-input: var(--bg-panel);
-  --color-ring: var(--accent);
-  --color-card: var(--card);
-  --color-card-foreground: var(--foreground);
+  /* ---- Typography ------------------------------------------------------ */
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI Variable Text", "Segoe UI",
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  --font-mono:
+    ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+
+  /* Dense console scale — 7 steps, no ad-hoc sizes allowed elsewhere. */
+  --text-xs: 11px;
+  --text-xs--line-height: 16px;
+  --text-xs--letter-spacing: 0.02em;
+  --text-sm: 12px;
+  --text-sm--line-height: 18px;
+  --text-sm--letter-spacing: 0.01em;
+  --text-base: 14px;
+  --text-base--line-height: 20px;
+  --text-lg: 16px;
+  --text-lg--line-height: 24px;
+  --text-lg--letter-spacing: -0.005em;
+  --text-xl: 20px;
+  --text-xl--line-height: 28px;
+  --text-xl--letter-spacing: -0.012em;
+  --text-2xl: 24px;
+  --text-2xl--line-height: 32px;
+  --text-2xl--letter-spacing: -0.018em;
+  --text-3xl: 30px;
+  --text-3xl--line-height: 38px;
+  --text-3xl--letter-spacing: -0.022em;
+
+  /* 4 weights only. */
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 680;
+
+  /* ---- Neutrals (warm-shifted toward teal so they stop fighting it) ---- */
+  --color-canvas: #f6f8f8;
+  --color-surface: #ffffff;
+  --color-surface-raised: #fbfcfc;
+  --color-surface-sunk: #f1f4f4;
+  --color-line: #e4e8e8;
+  --color-line-strong: #d1d7d7;
+  --color-ink: #131c1b;
+  --color-ink-2: #4a5654;
+  --color-ink-3: #6b7674;
+
+  /* ---- Teal accent ----------------------------------------------------- */
+  --color-accent-base: #0f766e;
+  --color-accent-hover: #115e59;
+  --color-accent-active: #134e4a;
+  --color-accent-bright: #2ea7a5;
+  --color-accent-tint: #eff6f5;
+  --color-accent-tint-2: #d9eae7;
+  --color-accent-ring: rgba(15, 118, 110, 0.22);
+
+  /* ---- Status (all >= 4.5:1 on white) ---------------------------------- */
+  --color-success: #15803d;
+  --color-success-tint: #eaf6ee;
+  --color-warning: #b45309;
+  --color-warning-tint: #fdf3e7;
+  --color-danger: #dc2626;
+  --color-danger-tint: #fdeeee;
+  --color-info: #1d4ed8;
+  --color-info-tint: #eef2fd;
+
+  /* ---- Semantic aliases consumed by the shadcn-style primitives -------- */
+  --color-background: var(--color-canvas);
+  --color-foreground: var(--color-ink);
+  --color-card: var(--color-surface);
+  --color-card-foreground: var(--color-ink);
+  --color-popover: var(--color-surface);
+  --color-popover-foreground: var(--color-ink);
+  --color-primary: var(--color-accent-base);
+  --color-primary-foreground: #ffffff;
+  --color-secondary: var(--color-surface-sunk);
+  --color-secondary-foreground: var(--color-ink);
+  --color-muted: var(--color-surface-sunk);
+  --color-muted-foreground: var(--color-ink-3);
+  --color-accent: var(--color-accent-tint);
+  --color-accent-foreground: var(--color-accent-hover);
+  --color-destructive: var(--color-danger);
+  --color-destructive-foreground: #ffffff;
+  --color-border: var(--color-line);
+  --color-input: var(--color-surface);
+  --color-ring: var(--color-accent-base);
+
+  /* ---- Radius — tight console geometry --------------------------------- */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+  --radius-2xl: 18px;
+  --radius-3xl: 24px;
+  --radius-full: 999px;
+
+  /* ---- Elevation — 5 levels, nothing else ------------------------------ */
+  --shadow-2xs: 0 1px 1px rgba(19, 28, 27, 0.04);
+  --shadow-xs: 0 1px 2px rgba(19, 28, 27, 0.05);
+  --shadow-sm: 0 1px 2px rgba(19, 28, 27, 0.04), 0 2px 6px rgba(19, 28, 27, 0.04);
+  --shadow-md: 0 2px 4px rgba(19, 28, 27, 0.04), 0 8px 20px rgba(19, 28, 27, 0.06);
+  --shadow-lg: 0 4px 8px rgba(19, 28, 27, 0.05), 0 16px 36px rgba(19, 28, 27, 0.08);
+  --shadow-xl: 0 8px 16px rgba(19, 28, 27, 0.06), 0 28px 64px rgba(19, 28, 27, 0.12);
+
+  /* ---- Motion ---------------------------------------------------------- */
+  --ease-out-quint: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
 }
 
-/*
- * Single light theme, single teal accent.
- * Text-bearing accents use --accent / --accent-strong / --primary, all of which
- * clear WCAG AA (>=4.5:1) against white. --accent-bright is decorative only
- * (fills, gradients, indicator bars) and must never carry text.
- */
 :root {
-  /* Surfaces */
-  --bg: #f6f7f9;
-  --bg-panel: #ffffff;
-  --bg-panel-strong: #fbfcfe;
-  --bg-soft: #eef3f8;
-  --bg-subtle: #f4f7fa;
-  --card: var(--bg-panel);
-  --border: #e5eaf0;
-  --border-soft: #d5dde7;
+  /* -- Legacy aliases: hand-written CSS keeps working, values stay unified. */
+  --bg: var(--color-canvas);
+  --bg-panel: var(--color-surface);
+  --bg-panel-strong: var(--color-surface-raised);
+  --bg-soft: var(--color-surface-sunk);
+  --bg-subtle: var(--color-surface-sunk);
+  --card: var(--color-surface);
+  --border: var(--color-line);
+  --border-soft: var(--color-line-strong);
 
-  /* Text */
-  --text: #172033;
-  --text-muted: #667085;
-  --text-subtle: #5d6b7f;
-  --foreground: var(--text);
-  --muted: var(--bg-soft);
-  --muted-foreground: var(--text-muted);
+  --text: var(--color-ink);
+  --text-muted: var(--color-ink-3);
+  --text-subtle: var(--color-ink-2);
+  --foreground: var(--color-ink);
+  --muted: var(--color-surface-sunk);
+  --muted-foreground: var(--color-ink-3);
 
-  /* Teal accent scale */
-  --primary: #0f766e;
-  --primary-hover: #115e59;
+  --primary: var(--color-accent-base);
+  --primary-hover: var(--color-accent-hover);
   --primary-foreground: #ffffff;
-  --accent: #0f766e;
-  --accent-strong: #115e59;
-  --accent-hover: #134e4a;
-  --accent-bright: #2ea7a5;
-  --accent-soft: rgba(15, 118, 110, 0.12);
-  --accent-blue: #4676e8;
-  --accent-blue-soft: rgba(70, 118, 232, 0.1);
+  --accent: var(--color-accent-base);
+  --accent-strong: var(--color-accent-hover);
+  --accent-hover: var(--color-accent-active);
+  --accent-bright: var(--color-accent-bright);
+  --accent-soft: var(--color-accent-tint-2);
+  --accent-blue: var(--color-info);
+  --accent-blue-soft: var(--color-info-tint);
 
-  /* Status */
-  --warning: #b45309;
-  --danger: #dc2626;
-  --success: #15803d;
+  --warning: var(--color-warning);
+  --danger: var(--color-danger);
+  --success: var(--color-success);
 
-  /* Layout */
+  /* -- Layout ------------------------------------------------------------ */
   --sidebar-width: 248px;
-  --sidebar-collapsed-width: 72px;
+  --sidebar-collapsed-width: 68px;
+  --topbar-height: 56px;
+  --page-max: 1440px;
+  --page-gutter: 24px;
 
-  /* Radius scale */
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-full: 999px;
-  --radius: var(--radius-md);
-
-  /* Spacing scale */
+  /* -- Spacing (4px base, mirrors Tailwind's 1/2/3/4/5/6/8) -------------- */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -83,13 +174,20 @@
   --space-6: 24px;
   --space-8: 32px;
 
-  --shadow: 0 1px 2px rgba(16, 24, 40, 0.03), 0 6px 18px rgba(16, 24, 40, 0.04);
-  --shadow-raised: 0 10px 28px rgba(16, 24, 40, 0.08);
-  color: var(--text);
-  background: var(--bg);
-  font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    Arial, sans-serif;
+  /* -- Back-compat aliases for the old radius/shadow names --------------- */
+  --radius: var(--radius-md);
+  --shadow: var(--shadow-sm);
+  --shadow-raised: var(--shadow-md);
+
+  /* -- Motion ------------------------------------------------------------ */
+  --dur-fast: 120ms;
+  --dur-base: 180ms;
+  --dur-slow: 260ms;
+  --ease-out: var(--ease-out-quint);
+
+  color: var(--color-ink);
+  background: var(--color-canvas);
+  font-family: var(--font-sans);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -103,7 +201,7 @@
 html {
   min-width: 320px;
   min-height: 100%;
-  background: var(--bg);
+  background: var(--color-canvas);
 }
 
 body {
@@ -111,8 +209,10 @@ body {
   min-height: 100vh;
   margin: 0;
   overflow-x: hidden;
-  background: var(--bg);
-  color: var(--text);
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-size: var(--text-base);
+  line-height: var(--text-base--line-height);
 }
 
 button,
@@ -130,12 +230,62 @@ a {
   color: inherit;
 }
 
+/* Numbers in metrics/tables must not jitter as they update. */
+table,
+[data-tabular],
+.tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
 :focus-visible {
-  outline: 2px solid var(--primary);
+  outline: 2px solid var(--color-accent-base);
   outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+
+::selection {
+  background: var(--color-accent-tint-2);
+  color: var(--color-accent-active);
+}
+
+/* Consistent, quiet scrollbars everywhere. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line-strong) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-clip: padding-box;
+  border: 3px solid transparent;
+  border-radius: var(--radius-full);
+  background-color: var(--color-line-strong);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-ink-3);
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 #root {
   min-height: 100vh;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

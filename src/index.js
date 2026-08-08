@@ -6901,6 +6901,8 @@ function searchCommand(argv) {
   const trackAccess = !hasFlag(argv, "--no-track") && !hasFlag(argv, "--no-access-track");
   // OPC v1.1 P1: semantic search mode
   const mode = getOption(argv, "--mode") || "fts";
+  // Emit a strict JSON array instead of human-readable text (consistent with `task list`).
+  const asJson = hasFlag(argv, "--json");
   if (!query && !hasFilter) {
     throw new Error("Usage: ai-memory-hub search [query] [--limit 10] [--type memory|task|radio|workflow|prompt] [--legacy] [--no-track] [--mode fts|semantic]");
   }
@@ -6917,6 +6919,10 @@ function searchCommand(argv) {
           .flatMap((record) => getMemoryIdentityKeys(record).map(normalizeSupersedeToken)));
         const results = rawResults.filter((item) => item.entityType !== "memory" || visibleMemoryIds.has(normalizeSupersedeToken(item.entityId)));
         db.close();
+        if (asJson) {
+          console.log(JSON.stringify(results, null, 2));
+          return;
+        }
         for (const item of results) {
           const preview = item.content ? item.content.slice(0, 120) : "";
           console.log(`[${item.score.toFixed(2)}] [${item.entityType}] ${item.entityId} ${item.title ? `(${item.title}) ` : ""}${item.project ? `project=${item.project} ` : ""}${preview}`);
@@ -6935,10 +6941,14 @@ function searchCommand(argv) {
         const visible = buildMemoryIndex(ledger, config).records.filter(isMemoryLifecycleVisible);
         const visibleIds = new Set(visible.flatMap((record) => getMemoryIdentityKeys(record).map(normalizeSupersedeToken)));
         const results = semanticSearch(ledger, query, limit).filter((item) => visibleIds.has(normalizeSupersedeToken(item.id)));
-        if (results.length > 0) {
+          if (results.length > 0) {
           if (trackAccess) {
             const updated = recordMemoryAccess(ledger, results);
             if (updated.updated > 0) writeLedger(config.memoryDir, updated.ledger);
+          }
+          if (asJson) {
+            console.log(JSON.stringify(results, null, 2));
+            return;
           }
           for (const item of results) {
             const preview = item.text ? item.text.slice(0, 120) : "";
@@ -6970,7 +6980,7 @@ function searchCommand(argv) {
       }
     }
 
-    printMemorySearchResults(results);
+    printMemorySearchResults(results, asJson);
   };
 
   if (trackAccess) {
@@ -7002,7 +7012,11 @@ function searchStatusCommand(argv) {
   }
 }
 
-function printMemorySearchResults(results) {
+function printMemorySearchResults(results, asJson = false) {
+  if (asJson) {
+    console.log(JSON.stringify(results, null, 2));
+    return;
+  }
   for (const item of results) {
     const kind = item.metadata?.kind || "note";
     const topics = (item.topics || []).slice(0, 4).join(",");

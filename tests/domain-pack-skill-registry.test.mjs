@@ -141,3 +141,26 @@ test("enabled pack projection excludes packs that are no longer valid", async ()
   }
 });
 
+test("multi-expert-doc-review skill pack is valid, registers, and is discoverable", async () => {
+  const memoryDir = await fs.mkdtemp(path.join(os.tmpdir(), "amh-medr-"));
+  const packRoot = path.resolve(process.cwd(), "skills", "multi-expert-doc-review");
+  try {
+    const manifest = JSON.parse(await fs.readFile(path.join(packRoot, "amh-pack.json"), "utf8"));
+    const validation = validatePack(packRoot, manifest);
+    assert.equal(validation.valid, true, validation.errors.join("; "));
+
+    addPack(memoryDir, { id: manifest.id, name: manifest.name, version: manifest.version, root: packRoot, entry: manifest.entry });
+    setPackEnabled(memoryDir, manifest.id, true);
+
+    const skills = listSkills(memoryDir);
+    const skill = skills.find((s) => s.id === "multi-expert-doc-review");
+    assert.ok(skill, "registered skill should be discoverable via listSkills");
+    assert.equal(skill.source, "domain-pack");
+
+    const found = searchSkills(memoryDir, "parallel document review").some((s) => s.id === "multi-expert-doc-review");
+    assert.ok(found, "skill should be found by searchSkills");
+  } finally {
+    await fs.rm(memoryDir, { recursive: true, force: true });
+  }
+});
+

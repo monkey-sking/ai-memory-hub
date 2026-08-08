@@ -2027,3 +2027,32 @@ test("models command reports supported tools and declared models", async () => {
     assert.ok(entry.declared.includes("opencode-go/deepseek-v4-flash"));
   });
 });
+
+test("search --json emits a strict JSON array while default stays human-readable text", async () => {
+  await withHub(async (memoryDir) => {
+    const marker = "jsonsearch-marker-9c2b";
+    const rec = runCli(memoryDir, [
+      "record", "--source", "codebuddy",
+      marker + " sample memory for json output",
+      "--metadata", JSON.stringify({ kind: "preference", project: "ai-memory-hub" })
+    ]);
+    assert.equal(rec.status, 0, rec.stderr || rec.stdout);
+    const sync = runCli(memoryDir, ["sync"]);
+    assert.equal(sync.status, 0, sync.stderr || sync.stdout);
+
+    // Default output is human-readable text, not valid JSON.
+    const text = runCli(memoryDir, ["search", marker]);
+    assert.equal(text.status, 0, text.stderr || text.stdout);
+    assert.throws(() => JSON.parse(text.stdout), "default search output should not be parseable as JSON");
+
+    // --json emits a strict JSON array.
+    const json = runCli(memoryDir, ["search", marker, "--json"]);
+    assert.equal(json.status, 0, json.stderr || json.stdout);
+    const parsed = JSON.parse(json.stdout);
+    assert.ok(Array.isArray(parsed), "search --json should return a JSON array");
+    assert.ok(
+      parsed.some((r) => (r.content || r.text || "").includes(marker)),
+      "search --json result should contain the marker"
+    );
+  });
+});

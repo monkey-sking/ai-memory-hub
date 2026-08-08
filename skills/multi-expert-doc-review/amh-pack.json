@@ -1,0 +1,17 @@
+{
+  "id": "multi-expert-doc-review",
+  "version": "1.0.0",
+  "name": "Multi-Expert Parallel Document Review",
+  "description": "Review a shared document (PRD, design doc, spec, contract) from multiple domain perspectives in parallel by dispatching one subagent per domain and merging their structured findings into one consolidated report.",
+  "type": "domain-pack",
+  "source": "external",
+  "entry": {
+    "skills": "skills"
+  },
+  "skills": [
+    {
+      "id": "multi-expert-doc-review",
+      "path": "skills/multi-expert-doc-review"
+    }
+  ]
+}

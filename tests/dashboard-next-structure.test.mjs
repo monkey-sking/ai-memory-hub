@@ -99,13 +99,24 @@ test("Task cards keep primary actions visible and move review actions into a men
 });
 
 test("Dashboard hides empty filter dropdowns instead of rendering unusable selects", async () => {
-  const dashboard = await readSource("pages/Dashboard.tsx");
+  // Filters moved out of the Dashboard monolith into the individual panels. The guard
+  // that matters is: a filter with no selectable options must not render at all,
+  // otherwise the user sees a control that looks interactive but does nothing.
+  const tasksPanel = await readSource("components/TasksPanel.tsx");
+  const radioPanel = await readSource("components/RadioPanel.tsx");
 
-  assert.match(dashboard, /function\s+FilterSelect/);
-  assert.match(dashboard, /if\s*\(!options\.length\)\s*return\s+null/);
-  assert.match(dashboard, /<FilterSelect[\s\S]+options=\{projectOptions\}/);
-  assert.match(dashboard, /<FilterSelect[\s\S]+options=\{priorityOptions\}/);
-  assert.match(dashboard, /<FilterSelect[\s\S]+options=\{senderOptions\}/);
+  // Tasks panel: shared MultiTaskFilter bails out early when there is nothing to pick.
+  assert.match(tasksPanel, /function\s+MultiTaskFilter/);
+  assert.match(tasksPanel, /if\s*\(!options\.length\)\s*return\s+null/);
+  assert.match(tasksPanel, /<MultiTaskFilter[^>]+options=\{projectOptions\}/);
+  assert.match(tasksPanel, /<MultiTaskFilter[^>]+options=\{priorityOptions\}/);
+  assert.match(tasksPanel, /<MultiTaskFilter[^>]+options=\{statusOptions\}/);
+
+  // Radio panel renders its selects inline, so each one is length-gated at the call site.
+  assert.match(radioPanel, /\{senderOptions\.length > 0 &&/);
+  assert.match(radioPanel, /\{recipientOptions\.length > 0 &&/);
+  assert.match(radioPanel, /\{typeOptions\.length > 0 &&/);
+  assert.match(radioPanel, /\{projectOptions\.length > 0 &&/);
 });
 
 test("Dashboard exposes a toast notification stack for async actions", async () => {

@@ -15,6 +15,7 @@ import { ToastStack } from '../components/ToastStack'
 import { TasksPanel as NewTasksPanel } from '../components/TasksPanel'
 import { MemoryPanel as NewMemoryPanel } from '../components/MemoryPanel'
 import { RadioPanel as NewRadioPanel } from '../components/RadioPanel'
+import { WorkflowsPanel } from '../components/WorkflowsPanel'
 import { AgentExecutionPanel } from '../components/AgentExecutionPanel'
 import {
   MetricCard as NewMetricCard,
@@ -420,32 +421,6 @@ function CommandCenter({ copy, model, language, onRefresh }: { copy: Copy; model
   const recentTasks = model.tasks.slice(0, 5)
   const recentMessages = model.radio.slice(0, 5)
   const selectedId = textOf(selected?.item.id)
-
-  const projectOptions = useMemo(
-    () => Array.from(new Set<string>([
-      ...model.visibleProjects.map(project => textOf(project.id)),
-      ...model.tasks.map(task => textOf(task.project))
-    ])).filter(Boolean).sort(),
-    [model]
-  )
-  const priorityOptions = useMemo(
-    () => Array.from(new Set<string>(model.tasks.map(task => textOf(task.priority)).filter(Boolean))).sort(),
-    [model]
-  )
-  const senderOptions = useMemo(
-    () => Array.from(new Set<string>(model.radio.flatMap(message => [textOf(message.from), textOf(message.to)]).filter(Boolean))).sort(),
-    [model]
-  )
-  const [projectFilter, setProjectFilter] = useState('')
-  const [priorityFilter, setPriorityFilter] = useState('')
-  const [senderFilter, setSenderFilter] = useState('')
-  const filteredAttentionTasks = attentionTasks.filter(task =>
-    (!projectFilter || textOf(task.project) === projectFilter) &&
-    (!priorityFilter || textOf(task.priority) === priorityFilter)
-  )
-  const filteredRecentMessages = recentMessages.filter(message =>
-    (!senderFilter || textOf(message.from) === senderFilter || textOf(message.to) === senderFilter)
-  )
 
   const choose = (kind: 'agent' | 'task' | 'radio', item: AnyRecord) => setSelected({ kind, item })
 

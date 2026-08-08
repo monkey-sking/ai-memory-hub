@@ -360,7 +360,9 @@ test("dashboard serves externalized virtual-scroll assets", async () => {
   const workflowsPanelSource = await fs.readFile(path.join(repoRoot, "dashboard-next", "src", "components", "WorkflowsPanel.tsx"), "utf8");
   const toastStackSource = await fs.readFile(path.join(repoRoot, "dashboard-next", "src", "components", "ToastStack.tsx"), "utf8");
   assert.match(dashboardSource, /TasksPanel as NewTasksPanel/);
-  assert.match(dashboardSource, /WorkflowsPanel as NewWorkflowsPanel/);
+  // The transitional `as NewWorkflowsPanel` alias existed only while the old in-file
+  // WorkflowsPanel still shadowed it. The old one is gone, so the alias is gone too.
+  assert.match(dashboardSource, /import \{ WorkflowsPanel \} from '\.\.\/components\/WorkflowsPanel'/);
   assert.match(dashboardSource, /import \{ ProjectsPanel \}/);
   assert.match(tasksPanelSource, /export function TasksPanel/);
   assert.match(workflowsPanelSource, /export function WorkflowsPanel/);
@@ -587,16 +589,20 @@ test("dashboard settings API persists editable runtime preferences", async () =>
 });
 
 test("dashboard workflow API supports CRUD actions and UI hooks", async () => {
-  const dashboardSource = await fs.readFile(path.join(repoRoot, "dashboard-next", "src", "pages", "Dashboard.tsx"), "utf8");
-  assert.match(dashboardSource, /function WorkflowsPanel/);
-  assert.match(dashboardSource, /function WorkflowCard/);
-  assert.match(dashboardSource, /createWorkflowForm/);
-  assert.match(dashboardSource, /apiPost<AnyRecord>\('\/api\/workflows'/);
-  assert.match(dashboardSource, /apiPatch<AnyRecord>\(`\/api\/workflows\/\$\{encodeURIComponent\(form\.id\)\}`/);
-  assert.match(dashboardSource, /apiDelete<AnyRecord>\(`\/api\/workflows\/\$\{encodeURIComponent\(id\)\}`/);
-  assert.match(dashboardSource, /apiPost<AnyRecord>\(`\/api\/workflows\/\$\{encodeURIComponent\(id\)\}\/status`/);
-  assert.match(dashboardSource, /apiPost<AnyRecord>\(`\/api\/workflows\/\$\{encodeURIComponent\(id\)\}\/signal`/);
-  assert.match(dashboardSource, /apiPost<AnyRecord>\(`\/api\/workflows\/\$\{encodeURIComponent\(id\)\}\/\$\{actionState\.action\}`/);
+  // The workflow UI now lives in its own component rather than inside the Dashboard monolith.
+  const workflowsPanelSource = await fs.readFile(path.join(repoRoot, "dashboard-next", "src", "components", "WorkflowsPanel.tsx"), "utf8");
+  assert.match(workflowsPanelSource, /export function WorkflowsPanel/);
+  assert.match(workflowsPanelSource, /function WorkflowCard/);
+  assert.match(workflowsPanelSource, /createWorkflowForm/);
+  assert.match(workflowsPanelSource, /apiPost\('\/api\/workflows'/);
+  assert.match(workflowsPanelSource, /apiPatch\(`\/api\/workflows\/\$\{encodeURIComponent\(editForm\.id\)\}`/);
+  assert.match(workflowsPanelSource, /apiDelete\(`\/api\/workflows\/\$\{encodeURIComponent\(id\)\}`/);
+  assert.match(workflowsPanelSource, /apiPost\(`\/api\/workflows\/\$\{encodeURIComponent\(id\)\}\/status`/);
+  assert.match(workflowsPanelSource, /apiPost\(`\/api\/workflows\/\$\{encodeURIComponent\(id\)\}\/signal`/);
+  assert.match(workflowsPanelSource, /apiPost\(`\/api\/workflows\/\$\{encodeURIComponent\(id\)\}\/\$\{action\}`/);
+  // These operations must go through the shared api helpers, not bare fetch(), so that
+  // error handling and JSON headers stay consistent with the rest of the dashboard.
+  assert.doesNotMatch(workflowsPanelSource, /fetch\(['"`]\/api\/workflows/);
 
   await withHub(async (memoryDir) => {
     const port = await getFreePort();

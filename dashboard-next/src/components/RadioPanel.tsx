@@ -38,6 +38,8 @@ interface RadioPanelProps {
     noData: string
     messageCount: string
     messagePlaceholder: string
+    refreshing: string
+    loadingMore: string
   }
   onRefresh: () => Promise<void>
   hasMore?: boolean
@@ -324,6 +326,7 @@ export function RadioPanel({ radio, visibleProjects, copy, onRefresh, hasMore = 
                 getKey={(message, index) => textOf(message.id, `message-${index}`)}
                 hasMore={visibleMessages.length < filteredMessages.length || hasMore}
                 loading={loadingMore}
+                loadingLabel={copy.loadingMore}
                 onEndReached={() => void loadMore()}
                 className="radio-virtual-list"
                 renderItem={message => {
@@ -425,12 +428,12 @@ export function RadioPanel({ radio, visibleProjects, copy, onRefresh, hasMore = 
         </Dialog>
       ) : null}
       <Dialog open={composeOpen} onOpenChange={setComposeOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl dialog-scroll-shell">
           <DialogHeader>
             <DialogTitle>{copy.broadcastMessage}</DialogTitle>
             <DialogDescription>{copy.broadcastMessage}</DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4">
+          <div className="grid gap-4 dialog-scroll-body">
             <div className="space-y-2">
               <Label htmlFor="message-text">{copy.message}</Label>
               <Textarea

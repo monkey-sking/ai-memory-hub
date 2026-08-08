@@ -33,6 +33,8 @@ interface MemoryPanelProps {
     running: string
     noData: string
     project: string
+    refreshing: string
+    loadingMore: string
   }
   onRefresh: () => Promise<void>
   hasMore?: boolean
@@ -209,7 +211,7 @@ export function MemoryPanel({ memory, copy, onRefresh, hasMore = false, onLoadMo
       {/* Memory Records */}
       <Card>
         <CardHeader className="border-b">
-          <CardTitle>记忆记录</CardTitle>
+          <CardTitle>{copy.memoryRecords}</CardTitle>
         </CardHeader>
         <CardContent className="pt-6">
           {memoryRecords.length ? (
@@ -220,6 +222,7 @@ export function MemoryPanel({ memory, copy, onRefresh, hasMore = false, onLoadMo
               getKey={(record, index) => textOf(record.localEventId || record.id, `memory-${index}`)}
               hasMore={visibleRecords.length < memoryRecords.length || hasMore}
               loading={loadingMore}
+              loadingLabel={copy.loadingMore}
               onEndReached={() => void loadMore()}
               className="memory-virtual-list"
               renderItem={record => {
@@ -304,12 +307,12 @@ export function MemoryPanel({ memory, copy, onRefresh, hasMore = false, onLoadMo
       </Dialog> : null}
       {/* Record Memory Dialog */}
       <Dialog open={recordOpen} onOpenChange={setRecordOpen}>
-        <DialogContent>
+        <DialogContent className="dialog-scroll-shell">
           <DialogHeader>
             <DialogTitle>{copy.recordMemory}</DialogTitle>
             <DialogDescription>{copy.memoryText}</DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4">
+          <div className="grid gap-4 dialog-scroll-body">
             <div className="space-y-2">
               <Label htmlFor="memory-text">{copy.memoryText}</Label>
               <Textarea
@@ -317,7 +320,7 @@ export function MemoryPanel({ memory, copy, onRefresh, hasMore = false, onLoadMo
                 value={text}
                 onChange={e => setText(e.target.value)}
                 rows={5}
-                placeholder="输入记忆内容..."
+                placeholder={copy.memoryText}
               />
             </div>
 
@@ -371,12 +374,12 @@ export function MemoryPanel({ memory, copy, onRefresh, hasMore = false, onLoadMo
       {/* Supersede Memory Dialog */}
       {supersedeTarget && (
         <Dialog open={!!supersedeTarget} onOpenChange={() => setSupersedeTarget(null)}>
-          <DialogContent>
+          <DialogContent className="dialog-scroll-shell">
             <DialogHeader>
               <DialogTitle>{copy.supersedeMemory}</DialogTitle>
               <DialogDescription>{copy.memoryText}</DialogDescription>
             </DialogHeader>
-            <div className="grid gap-4">
+            <div className="grid gap-4 dialog-scroll-body">
               <div className="space-y-2">
                 <Label htmlFor="supersede-text">{copy.memoryText}</Label>
                 <Textarea

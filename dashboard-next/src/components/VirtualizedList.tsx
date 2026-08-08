@@ -11,6 +11,8 @@ interface VirtualizedListProps<T> {
   className?: string
   hasMore?: boolean
   loading?: boolean
+  /** Localized label announced while the next page loads. */
+  loadingLabel: string
   onEndReached?: () => void
 }
 
@@ -24,6 +26,7 @@ export function VirtualizedList<T>({
   className = '',
   hasMore = false,
   loading = false,
+  loadingLabel,
   onEndReached
 }: VirtualizedListProps<T>) {
   const viewportRef = useRef<HTMLDivElement | null>(null)
@@ -95,7 +98,7 @@ export function VirtualizedList<T>({
         })}
         {hasMore ? <div ref={endRef} className="virtual-list-end-marker" style={{ top: `${Math.max(totalHeight - 1, 0)}px` }} aria-hidden="true" /> : null}
       </div>
-      {loading ? <div className="virtual-list-loading" role="status" aria-live="polite">加载中...</div> : null}
+      {loading ? <div className="virtual-list-loading" role="status" aria-live="polite">{loadingLabel}</div> : null}
     </div>
   )
 }

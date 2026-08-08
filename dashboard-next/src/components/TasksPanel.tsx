@@ -35,6 +35,7 @@ type TasksCopy = Pick<DashboardCopy,
   | 'executionInfo'
   | 'handoff'
   | 'id'
+  | 'loadingMore'
   | 'itemsSelected'
   | 'moreActions'
   | 'noData'
@@ -45,6 +46,7 @@ type TasksCopy = Pick<DashboardCopy,
   | 'project'
   | 'recentIssue'
   | 'recentTasks'
+  | 'refreshing'
   | 'activityLog'
   | 'reject'
   | 'reopen'
@@ -243,6 +245,7 @@ export function TasksPanel({ tasks, visibleProjects, copy, onMutate, hasMore = f
               getKey={(task, index) => textOf(task.id, `${textOf(task.title, 'task')}-${index}`)}
               hasMore={visibleTasks.length < filteredTasks.length || hasMore}
               loading={loadingMore}
+              loadingLabel={copy.loadingMore}
               onEndReached={() => void loadMore()}
               className="task-virtual-list"
               renderItem={task => <TaskCard task={task} copy={copy} busy={busy} onMutate={mutateTask} onOpen={() => setSelectedTask(task)} />}
@@ -255,10 +258,10 @@ export function TasksPanel({ tasks, visibleProjects, copy, onMutate, hasMore = f
       {selectedTask ? <TaskDetailsDialog task={selectedTask} copy={copy} busy={busy} onMutate={mutateTask} onClose={() => setSelectedTask(null)} /> : null}
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl dialog-scroll-shell">
           <DialogHeader><DialogTitle>{copy.addTask}</DialogTitle><DialogDescription>{copy.addTask}</DialogDescription></DialogHeader>
           {error ? <div role="alert" className="rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">{error}</div> : null}
-          <div className="grid gap-4">
+          <div className="grid gap-4 dialog-scroll-body">
             <div className="grid grid-cols-2 gap-4">
               <div className="col-span-2 space-y-2"><Label htmlFor="task-title">{copy.title}</Label><Input id="task-title" value={newTask.title} onChange={event => setNewTask(value => ({ ...value, title: event.target.value }))} /></div>
               <div className="space-y-2"><Label htmlFor="task-project">{copy.project}</Label><Input id="task-project" value={newTask.project} onChange={event => setNewTask(value => ({ ...value, project: event.target.value }))} list="task-project-options" /><datalist id="task-project-options">{formProjectOptions.map(project => <option value={project} key={project} />)}</datalist></div>

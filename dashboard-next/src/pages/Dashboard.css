@@ -2898,6 +2898,12 @@ td {
 .dashboard-section-radio .radio-message-row:focus-visible { outline: 3px solid rgba(37,99,235,.24); outline-offset: 2px; border-radius: var(--radius-md); }
 .dashboard-section-radio .radio-message-row > .hover\:shadow-md:hover { transform: none; }
 
+/* Standard §4.2: form dialogs cap at the viewport, scroll their body, and keep
+   the footer actions reachable on short windows. */
+.dialog-scroll-shell { display: flex; flex-direction: column; max-height: calc(100dvh - 24px); overflow: hidden; }
+.dialog-scroll-shell > .dialog-scroll-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; }
+@media (max-width: 640px) { .dialog-scroll-shell { max-height: calc(100dvh - 16px); } }
+
 /* Standard §4.2: the body scrolls, the footer actions stay pinned and visible. */
 .workflow-create-dialog { width: min(620px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow: hidden; grid-template-rows: auto minmax(0, 1fr) auto; }
 .workflow-create-form { display: grid; gap: 14px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 2px 6px 4px 2px; }

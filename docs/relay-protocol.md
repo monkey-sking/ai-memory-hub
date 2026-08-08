@@ -267,3 +267,16 @@ ai-memory-hub dispatch retry --project ai-memory-hub
 ```bash
 ai-memory-hub session list --tool claude
 ```
+
+## Current Session Wake Baseline
+
+The implemented baseline resolves concrete targets in the form
+`session:<tool>:<sessionId>`, preserves `threadKey` and `sessionId` in dispatch
+jobs, resumes runners that declare `session-resume`, and uses fresh-run for
+direct runners without resume support. Shared-state-only tools remain durable
+queue targets. AMH-owned dispatch leases are persisted in
+`state/session-leases.jsonl`.
+
+This is not a generic live terminal adapter. AMH only reports live delivery when
+a runner exposes a verified live transport; Radio append and arbitrary PTY stdin
+injection are not treated as delivery acknowledgements.

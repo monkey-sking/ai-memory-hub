@@ -699,3 +699,9 @@ ai-memory-hub backup --reason manual
 ### 📝 License
 
 Apache License 2.0
+
+### Agent 间唤醒与 Session Supervisor
+
+AMH 支持使用 `session:<tool>:<sessionId>` 定向发送消息。Claude runner 会使用 `--resume` 继续已有会话；Codex、Gemini、OpenCode、MiMo 等 direct CLI runner 在没有 resume 能力时使用 fresh-run，并保留 session/thread 关联；没有验证直连能力的工具进入 durable queue。
+
+AMH 自己发起的 dispatch 会把 session lease 事件写入 `state/session-leases.jsonl`，用于生命周期、失败和 stale/dead 检查。该机制不等同于通用的 live terminal adapter，也不会注入任意交互终端。

@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogD
 import { VirtualizedList } from './VirtualizedList'
 import { RelatedEntities } from './RelatedEntities'
 import type { AnyRecord } from '@/lib/api'
+import { formatDate, formatRelativeTime } from '@/lib/api'
 import type { DashboardCopy } from '@/lib/dashboardCopy'
 
 type TasksCopy = Pick<DashboardCopy,
@@ -89,13 +90,6 @@ function textOf(value: unknown, fallback = ''): string {
 
 function uniqueSorted(items: string[]): string[] {
   return Array.from(new Set(items)).sort()
-}
-
-function formatDate(value: string): string {
-  if (!value) return '-'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
 function statusLabel(copy: TasksCopy, status: string): string {
@@ -332,7 +326,7 @@ function TaskCard({ task, copy, busy, onMutate, onOpen }: { task: AnyRecord; cop
         <TaskMetadata label={copy.project} value={textOf(task.project, '-')} />
         <TaskMetadata label={copy.assignee} value={textOf(task.assignee || task.createdBy, '-')} />
         <TaskMetadata label={copy.priority} value={priorityLabel(copy, priority)} />
-        <TaskMetadata label={copy.updated} value={formatDate(textOf(task.updatedAt || task.createdAt))} />
+        <TaskMetadata label={copy.updated} value={formatRelativeTime(textOf(task.updatedAt || task.createdAt))} />
       </dl>
       <div className="task-actions">
         {status === 'open' ? <Button size="sm" disabled={isBusy} onClick={() => void onMutate(`${id}:claim`, '/api/task/claim', { id, by: 'dashboard-next' })}>{copy.claim}</Button> : null}

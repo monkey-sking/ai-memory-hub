@@ -16,13 +16,9 @@ import { TasksPanel as NewTasksPanel } from '../components/TasksPanel'
 import { MemoryPanel as NewMemoryPanel } from '../components/MemoryPanel'
 import { RadioPanel as NewRadioPanel } from '../components/RadioPanel'
 import { WorkflowsPanel } from '../components/WorkflowsPanel'
-import { AgentExecutionPanel } from '../components/AgentExecutionPanel'
 import {
   MetricCard as NewMetricCard,
   Panel as NewPanel,
-  TaskList as NewTaskList,
-  RadioList as NewRadioList,
-  ToolList as NewToolList,
   StatusBadge as NewStatusBadge
 } from '../components/OverviewComponents'
 import './Dashboard.css'
@@ -480,13 +476,13 @@ function CommandCenter({ copy, model, language, onRefresh }: { copy: Copy; model
           <section className="command-side-block command-next-block">
             <div className="command-side-heading"><span className="command-section-index">04</span><h2>{language === 'zh' ? '最近任务' : 'Recent work'}</h2></div>
             <div className="command-recent-list">
-              {recentTasks.map((task, index) => <div className={'command-recent-item '+(selectedId === textOf(task.id) ? 'is-selected' : '')} key={textOf(task.id)+'-'+index} role="button" tabIndex={0} aria-label={`${textOf(task.title, '—')}: ${humanStatus(task.status, language)}`} onClick={() => choose('task', task)} onKeyDown={activateOnKey(() => choose('task', task))}><NewStatusBadge status={textOf(task.status, 'open')} /><div><strong>{textOf(task.title, '—')}</strong><span>{textOf(task.assignee || task.createdBy, 'unassigned')}</span></div></div>)}
+              {recentTasks.length ? recentTasks.map((task, index) => <div className={'command-recent-item '+(selectedId === textOf(task.id) ? 'is-selected' : '')} key={textOf(task.id)+'-'+index} role="button" tabIndex={0} aria-label={`${textOf(task.title, '—')}: ${humanStatus(task.status, language)}`} onClick={() => choose('task', task)} onKeyDown={activateOnKey(() => choose('task', task))}><NewStatusBadge status={textOf(task.status, 'open')} /><div><strong>{textOf(task.title, '—')}</strong><span>{textOf(task.assignee || task.createdBy, 'unassigned')}</span></div></div>) : <div className="command-empty">{language === 'zh' ? '创建或认领任务后，近期进展会显示在这里' : 'Recent work appears here once tasks are created or claimed'}</div>}
             </div>
           </section>
           <section className="command-side-block command-radio-block">
             <div className="command-side-heading"><span className="command-section-index">05</span><h2>{language === 'zh' ? '协作广播' : 'Handoffs'}</h2></div>
             <div className="command-radio-list">
-              {recentMessages.map((message, index) => <div className="command-radio-item" key={textOf(message.id)+'-'+index} role="button" tabIndex={0} aria-label={`${textOf(message.from, 'agent')} → ${textOf(message.to, 'all')}: ${textOf(message.text, '—')}`} onClick={() => choose('radio', message)} onKeyDown={activateOnKey(() => choose('radio', message))}><span className="command-radio-dot" /><div><strong>{textOf(message.from, 'agent')} → {textOf(message.to, 'all')}</strong><p>{textOf(message.text, '—')}</p></div></div>)}
+              {recentMessages.length ? recentMessages.map((message, index) => <div className="command-radio-item" key={textOf(message.id)+'-'+index} role="button" tabIndex={0} aria-label={`${textOf(message.from, 'agent')} → ${textOf(message.to, 'all')}: ${textOf(message.text, '—')}`} onClick={() => choose('radio', message)} onKeyDown={activateOnKey(() => choose('radio', message))}><span className="command-radio-dot" /><div><strong>{textOf(message.from, 'agent')} → {textOf(message.to, 'all')}</strong><p>{textOf(message.text, '—')}</p></div></div>) : <div className="command-empty">{language === 'zh' ? '智能体发送协作消息后，会显示在这里' : 'Handoffs appear here once agents broadcast messages'}</div>}
             </div>
           </section>
         </aside>
@@ -506,121 +502,6 @@ function CommandCenter({ copy, model, language, onRefresh }: { copy: Copy; model
           </div>
         </Modal>
       ) : null}    </div>
-  )
-}
-void Overview
-
-function Overview({ copy, model, language, onRefresh }: { copy: Copy; model: ViewModel; language: AppLanguage; onRefresh: () => Promise<void> }) {
-  const statusTasks = asRecord(model.status.tasks)
-  const statusWorkflows = asRecord(model.status.workflows)
-  const index = asRecord(model.status.index)
-  const relay = asRecord(model.metrics.relay)
-  const capabilitySummary = asRecord(model.status.capabilitySummary)
-  const recentFailures = asArray<AnyRecord>(model.metrics.recentFailures).slice(0, 4)
-
-  return (
-    <div className="overview">
-      <AgentExecutionPanel agentSessions={model.agentSessions} worktrees={model.worktrees} timeline={model.agentTimeline} collaboration={model.collaboration} language={language} onMarkRead={async (id) => { await apiPost<AnyRecord>('/api/unread/read', { itemId: id, actor: 'dashboard' }); await onRefresh() }} />
-      <section className="overview-section" aria-label={copy.health}>
-        <div className="dashboard-grid overview-metric-grid">
-          <div className="metric-card">
-            <NewMetricCard label={copy.health} value={textOf(relay.successRate, copy.noData)} tone="success" />
-          </div>
-          <div className="metric-card">
-            <NewMetricCard label={copy.totalTasks} value={formatNumber(statusTasks.total)} />
-          </div>
-          <div className="metric-card">
-            <NewMetricCard label={copy.workflows} value={formatNumber(statusWorkflows.total)} />
-          </div>
-        </div>
-      </section>
-
-      <div className="panel-grid two overview-primary-grid">
-        <NewPanel title={copy.overviewSystemActivity} className="overview-panel overview-system-panel">
-          <div className="overview-property-grid">
-            <Property label={copy.activeTasks} value={formatNumber(statusTasks.active)} />
-            <Property label={copy.toolsReady} value={formatNumber(capabilitySummary.autoDispatch)} />
-            <Property label={copy.memoryRecords} value={formatNumber(index.records)} />
-          </div>
-          <div className="overview-activity">
-            <h4>{copy.recentFailures}</h4>
-            {recentFailures.length ? (
-              <div className="overview-failure-list">
-                {recentFailures.map((failure, indexValue) => (
-                  <div className="overview-failure-row" key={`${textOf(failure.id)}-${indexValue}`}>
-                    <NewStatusBadge status="failed" />
-                    <span>{textOf(failure.error, copy.noData)}</span>
-                  </div>
-                ))}
-              </div>
-            ) : <OverviewEmptyState text={copy.overviewNoFailures} actionLabel={copy.refresh} onAction={onRefresh} />}
-          </div>
-        </NewPanel>
-
-        <NewPanel title={copy.overviewCollaboration} className="overview-panel overview-collaboration-panel">
-          {model.radio.length ? (
-            <NewRadioList messages={model.radio.slice(-4).reverse()} emptyText={copy.overviewNoMessages} />
-          ) : <OverviewEmptyState text={copy.overviewNoMessages} actionLabel={copy.refresh} onAction={onRefresh} />}
-        </NewPanel>
-      </div>
-
-      <section className="overview-section overview-summary-section" aria-labelledby="overview-work-heading">
-        <div className="overview-section-heading">
-          <div>
-            <h3 id="overview-work-heading">{copy.overviewWork}</h3>
-            <p>{copy.overviewWorkDescription}</p>
-          </div>
-        </div>
-        <div className="panel-grid two">
-          <NewPanel title={copy.recentTasks} className="overview-panel">
-            {model.tasks.length ? (
-              <NewTaskList tasks={model.tasks.slice(0, 6)} emptyText={copy.overviewNoTasks} />
-            ) : <OverviewEmptyState text={copy.overviewNoTasks} actionLabel={copy.refresh} onAction={onRefresh} />}
-          </NewPanel>
-          <NewPanel title={copy.overviewWorkflows} className="overview-panel">
-            {model.workflows.length ? (
-              <NewTaskList tasks={model.workflows.slice(0, 6)} emptyText={copy.overviewNoWorkflows} />
-            ) : <OverviewEmptyState text={copy.overviewNoWorkflows} actionLabel={copy.refresh} onAction={onRefresh} />}
-          </NewPanel>
-        </div>
-      </section>
-
-      <section className="overview-section overview-summary-section" aria-labelledby="overview-system-heading">
-        <div className="overview-section-heading">
-          <div>
-            <h3 id="overview-system-heading">{copy.overviewSystem}</h3>
-            <p>{copy.overviewSystemDescription}</p>
-          </div>
-        </div>
-        <div className="panel-grid two">
-          <NewPanel title={copy.toolReadiness} className="overview-panel">
-            {model.tools.length ? (
-              <NewToolList tools={model.tools.slice(0, 7)} emptyText={copy.overviewNoTools} />
-            ) : <OverviewEmptyState text={copy.overviewNoTools} actionLabel={copy.refresh} onAction={onRefresh} />}
-          </NewPanel>
-          <NewPanel title={copy.overviewHealth} className="overview-panel">
-            <div className="overview-property-grid">
-              <Property label={copy.relayRate} value={textOf(relay.successRate, copy.noData)} />
-              <Property label={copy.pendingEvents} value={formatNumber(asArray<AnyRecord>(model.memory.pending).length)} />
-              <Property label={copy.memoryRecords} value={formatNumber(index.records)} />
-            </div>
-          </NewPanel>
-        </div>
-      </section>
-    </div>
-  )
-}
-
-function OverviewEmptyState({ text, actionLabel, onAction }: { text: string; actionLabel?: string; onAction?: () => Promise<void> }) {
-  return (
-    <div className="empty-state overview-empty-state">
-      <p>{text}</p>
-      {actionLabel && onAction ? (
-        <button className="btn small ghost" type="button" onClick={() => void onAction()}>
-          {actionLabel}
-        </button>
-      ) : null}
-    </div>
   )
 }
 

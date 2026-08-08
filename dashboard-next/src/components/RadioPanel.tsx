@@ -8,6 +8,7 @@ import { Textarea } from './ui/textarea'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription, DialogClose } from './ui/dialog'
 import { Send, Search, X, AlertCircle, Clock, Reply, Star } from 'lucide-react'
 import type { AnyRecord } from '@/lib/api'
+import { formatDate, formatRelativeTime } from '@/lib/api'
 import { VirtualizedList } from './VirtualizedList'
 
 interface RadioPanelProps {
@@ -50,18 +51,6 @@ function textOf(value: unknown, fallback = ''): string {
 
 function uniqueSorted(items: string[]): string[] {
   return Array.from(new Set(items)).sort()
-}
-
-function formatDate(value: string): string {
-  if (!value) return '-'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
 }
 
 export function RadioPanel({ radio, visibleProjects, copy, onRefresh, hasMore = false, onLoadMore }: RadioPanelProps) {
@@ -361,7 +350,7 @@ export function RadioPanel({ radio, visibleProjects, copy, onRefresh, hasMore = 
                           </div>
                           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                             <Clock className="w-3 h-3" />
-                            {formatDate(timestamp)}
+                            <time dateTime={timestamp} title={formatDate(timestamp, 'full')}>{formatRelativeTime(timestamp)}</time>
                           </div>
                         </div>
 
@@ -406,7 +395,35 @@ export function RadioPanel({ radio, visibleProjects, copy, onRefresh, hasMore = 
       </Card>
 
       {/* Compose Dialog */}
-      {selectedMessage ? <Dialog open onOpenChange={open => { if (!open) setSelectedMessage(null) }}><DialogContent className="radio-detail-dialog"><DialogHeader><DialogTitle>{copy.message}</DialogTitle><DialogDescription>{copy.message}</DialogDescription></DialogHeader><div className="radio-detail-content"><div className="radio-detail-route"><TypeBadge type={textOf(selectedMessage.type, 'note')} /><strong>{textOf(selectedMessage.from, '-')}</strong><span aria-hidden="true">→</span><strong>{textOf(selectedMessage.to, '-')}</strong><time>{formatDate(textOf(selectedMessage.ts || selectedMessage.createdAt))}</time></div><p className="radio-detail-text">{textOf(selectedMessage.text, '-')}</p><div className="radio-detail-meta"><span>{copy.project}: {textOf(selectedMessage.project, '-')}</span><span>{copy.thread}: {textOf(selectedMessage.thread || selectedMessage.id, '-')}</span></div><div className="radio-detail-actions"><Button onClick={() => { startReply(selectedMessage); setSelectedMessage(null) }}><Reply className="w-3 h-3 mr-1" />{copy.reply}</Button><Button variant="outline" onClick={() => void promote(textOf(selectedMessage.id))}><Star className="w-3 h-3 mr-1" />{copy.promoteToMemory}</Button></div></div><DialogClose asChild><Button variant="outline" className="mt-4">{copy.cancel}</Button></DialogClose></DialogContent></Dialog> : null}
+      {selectedMessage ? (
+        <Dialog open onOpenChange={open => { if (!open) setSelectedMessage(null) }}>
+          <DialogContent className="radio-detail-dialog">
+            <DialogHeader>
+              <DialogTitle>{copy.message}</DialogTitle>
+              <DialogDescription>{copy.message}</DialogDescription>
+            </DialogHeader>
+            <div className="radio-detail-content">
+              <div className="radio-detail-route">
+                <TypeBadge type={textOf(selectedMessage.type, 'note')} />
+                <strong>{textOf(selectedMessage.from, '-')}</strong>
+                <span aria-hidden="true">→</span>
+                <strong>{textOf(selectedMessage.to, '-')}</strong>
+                <time>{formatDate(textOf(selectedMessage.ts || selectedMessage.createdAt), 'compact')}</time>
+              </div>
+              <p className="radio-detail-text">{textOf(selectedMessage.text, '-')}</p>
+              <div className="radio-detail-meta">
+                <span>{copy.project}: {textOf(selectedMessage.project, '-')}</span>
+                <span>{copy.thread}: {textOf(selectedMessage.thread || selectedMessage.id, '-')}</span>
+              </div>
+            </div>
+            <DialogFooter className="radio-detail-actions">
+              <DialogClose asChild><Button variant="outline">{copy.cancel}</Button></DialogClose>
+              <Button onClick={() => { startReply(selectedMessage); setSelectedMessage(null) }}><Reply className="w-3 h-3 mr-1" />{copy.reply}</Button>
+              <Button variant="outline" onClick={() => void promote(textOf(selectedMessage.id))}><Star className="w-3 h-3 mr-1" />{copy.promoteToMemory}</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      ) : null}
       <Dialog open={composeOpen} onOpenChange={setComposeOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>

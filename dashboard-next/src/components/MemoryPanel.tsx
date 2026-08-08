@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { RelatedEntities } from './RelatedEntities'
 import { Plus, AlertCircle, Clock, Tag, User, RefreshCw } from 'lucide-react'
 import type { AnyRecord } from '@/lib/api'
+import { formatDate, formatRelativeTime } from '@/lib/api'
 import { VirtualizedList } from './VirtualizedList'
 
 interface MemoryPanelProps {
@@ -51,18 +52,6 @@ function asArray<T>(value: unknown): T[] {
 function asRecord(value: unknown): AnyRecord {
   if (value && typeof value === 'object' && !Array.isArray(value)) return value as AnyRecord
   return {}
-}
-
-function formatDate(value: string): string {
-  if (!value) return '-'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
 }
 
 function formatNumber(value: unknown): string {
@@ -196,7 +185,7 @@ export function MemoryPanel({ memory, copy, onRefresh, hasMore = false, onLoadMo
             </CardHeader>
             <CardContent>
               <div className="flex items-baseline gap-2">
-                <div className="text-3xl font-bold text-yellow-500">
+                <div className="text-3xl font-bold text-warning">
                   {formatNumber(pending.length)}
                 </div>
               </div>
@@ -255,7 +244,7 @@ export function MemoryPanel({ memory, copy, onRefresh, hasMore = false, onLoadMo
                             </div>
                             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                               <Clock className="w-3 h-3" />
-                              {formatDate(timestamp)}
+                              <time dateTime={timestamp} title={formatDate(timestamp, 'full')}>{formatRelativeTime(timestamp)}</time>
                             </div>
                           </div>
                           <Button
@@ -304,11 +293,11 @@ export function MemoryPanel({ memory, copy, onRefresh, hasMore = false, onLoadMo
 
       {selectedRecord ? <Dialog open onOpenChange={open => { if (!open) setSelectedRecord(null) }}>
         <DialogContent className="memory-detail-dialog">
-          <DialogHeader><DialogTitle>{textOf(selectedRecord.kind, copy.memoryRecords)} · {formatDate(textOf(selectedRecord.ts || selectedRecord.indexedAt))}</DialogTitle><DialogDescription>{copy.memoryRecords}</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>{textOf(selectedRecord.kind, copy.memoryRecords)} · {formatDate(textOf(selectedRecord.ts || selectedRecord.indexedAt), 'compact')}</DialogTitle><DialogDescription>{copy.memoryRecords}</DialogDescription></DialogHeader>
           <div className="memory-detail-content">
             <div className="memory-detail-meta"><KindBadge kind={textOf(selectedRecord.kind, 'note')} /><span>{textOf(selectedRecord.source, '-')}</span><span>{textOf(selectedRecord.project || asRecord(selectedRecord.metadata).project, '-')}</span><RelatedEntities entityType="memory" entityId={textOf(selectedRecord.localEventId || selectedRecord.id)} /></div>
             <p className="memory-detail-text">{textOf(selectedRecord.text, '-')}</p>
-            <dl className="memory-detail-grid"><div><dt>{copy.id}</dt><dd>{textOf(selectedRecord.localEventId || selectedRecord.id, '-')}</dd></div><div><dt>{copy.time}</dt><dd>{formatDate(textOf(selectedRecord.ts || selectedRecord.indexedAt))}</dd></div><div><dt>{copy.source}</dt><dd>{textOf(selectedRecord.source, '-')}</dd></div><div><dt>{copy.project}</dt><dd>{textOf(selectedRecord.project || asRecord(selectedRecord.metadata).project, '-')}</dd></div></dl>
+            <dl className="memory-detail-grid"><div><dt>{copy.id}</dt><dd>{textOf(selectedRecord.localEventId || selectedRecord.id, '-')}</dd></div><div><dt>{copy.time}</dt><dd>{formatDate(textOf(selectedRecord.ts || selectedRecord.indexedAt), 'compact')}</dd></div><div><dt>{copy.source}</dt><dd>{textOf(selectedRecord.source, '-')}</dd></div><div><dt>{copy.project}</dt><dd>{textOf(selectedRecord.project || asRecord(selectedRecord.metadata).project, '-')}</dd></div></dl>
           </div>
           <DialogFooter><DialogClose asChild><Button variant="outline">{copy.close}</Button></DialogClose><Button onClick={() => { setSelectedRecord(null); openSupersede(selectedRecord) }}><RefreshCw className="mr-2 h-3.5 w-3.5" />{copy.supersedeMemory}</Button></DialogFooter>
         </DialogContent>

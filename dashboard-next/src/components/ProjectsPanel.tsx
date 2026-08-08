@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { AnyRecord } from '@/lib/api'
-import { apiPatch, apiDelete, asArray, asRecord, textOf } from '@/lib/api'
+import { apiPatch, apiDelete, asArray, asRecord, formatRelativeTime, textOf } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -47,13 +47,6 @@ interface ProjectsPanelProps {
     unregisteredProjects: string[]
   }
   onRefresh: () => Promise<void>
-}
-
-function formatDate(value: string): string {
-  if (!value) return '-'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString()
 }
 
 function StatusBadge({ status, copy }: { status: string; copy: ProjectsPanelProps['copy'] }) {
@@ -235,7 +228,7 @@ export function ProjectsPanel({ copy, model, onRefresh }: ProjectsPanelProps) {
   }
 
   const updateProject = async (id: string, patch: AnyRecord) => {
-    setBusy('update')
+    setBusy(`${id}:update`)
     try {
       await apiPatch(`/api/projects/${encodeURIComponent(id)}`, patch)
       await onRefresh()
@@ -247,7 +240,7 @@ export function ProjectsPanel({ copy, model, onRefresh }: ProjectsPanelProps) {
 
   const archiveProject = async (id: string) => {
     if (!confirm(`Archive project "${id}"?`)) return
-    setBusy('archive')
+    setBusy(`${id}:archive`)
     try {
       await apiDelete(`/api/projects/${encodeURIComponent(id)}`, {})
       await onRefresh()
@@ -326,13 +319,13 @@ export function ProjectsPanel({ copy, model, onRefresh }: ProjectsPanelProps) {
                       </div>
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
-                      {formatDate(textOf(project.updatedAt))}
+                      {formatRelativeTime(textOf(project.updatedAt))}
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-2">
                         <Button size="sm" variant="outline" onClick={() => openEdit(project)}>{copy.editProject}</Button>
                         <RelatedEntities entityType="project" entityId={textOf(project.id || project.name)} />
-                        <Button size="sm" variant="ghost" onClick={() => void archiveProject(textOf(project.id))} disabled={busy === 'archive'}>
+                        <Button size="sm" variant="ghost" onClick={() => void archiveProject(textOf(project.id))} disabled={busy.startsWith(`${textOf(project.id)}:`)}>
                           {copy.archive}
                         </Button>
                       </div>

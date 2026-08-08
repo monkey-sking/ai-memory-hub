@@ -2644,7 +2644,9 @@ td {
 /* Message stream: compact rows with detail dialog on demand. */
 .dashboard-section-radio .radio-message-row { cursor: pointer; transition: border-color .18s ease, box-shadow .18s ease; }
 .dashboard-section-radio .radio-message-row:hover, .dashboard-section-radio .radio-message-row:focus-visible { border-color: var(--accent-strong); box-shadow: var(--shadow); outline: none; }
-.radio-detail-content { display: grid; gap: 18px; }
+.radio-detail-content { display: grid; gap: 18px; min-height: 0; overflow-y: auto; padding: 4px 4px 8px 2px; }
+.radio-detail-dialog { width: min(720px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow: hidden; grid-template-rows: auto minmax(0, 1fr) auto; }
+@media (max-width: 640px) { .radio-detail-dialog { max-height: calc(100dvh - 16px); } }
 .radio-detail-route { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; color: var(--text-muted); }
 .radio-detail-route time { margin-left: auto; font-size: 12px; }
 .radio-detail-text { margin: 0; padding: 16px; border-radius: var(--radius-md); background: var(--bg-soft); color: var(--text); line-height: 1.75; white-space: pre-wrap; }
@@ -2896,8 +2898,9 @@ td {
 .dashboard-section-radio .radio-message-row:focus-visible { outline: 3px solid rgba(37,99,235,.24); outline-offset: 2px; border-radius: var(--radius-md); }
 .dashboard-section-radio .radio-message-row > .hover\:shadow-md:hover { transform: none; }
 
-.workflow-create-dialog { width: min(620px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow: auto; }
-.workflow-create-form { display: grid; gap: 14px; }
+/* Standard §4.2: the body scrolls, the footer actions stay pinned and visible. */
+.workflow-create-dialog { width: min(620px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow: hidden; grid-template-rows: auto minmax(0, 1fr) auto; }
+.workflow-create-form { display: grid; gap: 14px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 2px 6px 4px 2px; }
 .workflow-create-form label { display: grid; gap: 6px; color: var(--text-subtle); font-size: 12px; font-weight: 700; }
 .workflow-create-form input { min-height: 38px; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 10px; background: var(--bg-panel); color: var(--text); font-weight: 400; }
 .workflow-create-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }

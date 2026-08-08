@@ -5,7 +5,7 @@ import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription, DialogClose } from './ui/dialog'
-import { apiDelete, apiGet, apiPatch, apiPost } from '@/lib/api'
+import { apiDelete, apiGet, apiPatch, apiPost, formatDate, formatRelativeTime } from '@/lib/api'
 import type { AnyRecord } from '@/lib/api'
 import type { DashboardCopy } from '@/lib/dashboardCopy'
 
@@ -93,13 +93,6 @@ function uniqueSorted(items: string[]): string[] {
 function formatNumber(value: unknown): string {
   const number = Number(value)
   return Number.isNaN(number) ? String(value) : number.toLocaleString()
-}
-
-function formatDate(value: string): string {
-  if (!value) return '-'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
 function statusLabel(copy: WorkflowsCopy, status: string): string {
@@ -378,7 +371,7 @@ function WorkflowCard({ workflow, copy, busy, onOpenGraph, onEdit, onStatus, onA
     {description ? <p className="workflow-description">{description}</p> : null}
     {roles.length ? <dl className="workflow-role-list">{roles.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl> : null}
     {linkedTasks.length ? <div className="workflow-linked"><span>{copy.linkedItems}</span><div>{linkedTasks.map(taskId => <span className="workflow-link-chip" key={taskId}>{taskId}</span>)}</div></div> : null}
-    <details className="workflow-details"><summary>{copy.workflowLogs}</summary><div className="task-notes">{logs.length ? logs.map((entry, index) => <p key={`${entry.type}-${entry.ts}-${index}`}><span>{[entry.type, entry.role, entry.by, formatDate(entry.ts)].filter(Boolean).join(' · ')}</span><span>{entry.text}</span></p>) : <span>{copy.noData}</span>}</div></details>
+    <details className="workflow-details"><summary>{copy.workflowLogs}</summary><div className="task-notes">{logs.length ? logs.map((entry, index) => <p key={`${entry.type}-${entry.ts}-${index}`}><span>{[entry.type, entry.role, entry.by, formatDate(entry.ts, 'short')].filter(Boolean).join(' · ')}</span><span>{entry.text}</span></p>) : <span>{copy.noData}</span>}</div></details>
     <div className="workflow-actions flex flex-wrap items-center gap-2">
       {canStart ? <Button variant="secondary" size="sm" disabled={busy} onClick={() => void onStatus(workflow, 'in_progress')}>{copy.startWorkflow}</Button> : null}
       {canReview ? <Button variant="ghost" size="sm" disabled={busy} onClick={() => void onStatus(workflow, 'review')}>{copy.markReview}</Button> : null}
@@ -391,7 +384,7 @@ function WorkflowCard({ workflow, copy, busy, onOpenGraph, onEdit, onStatus, onA
       <Button variant="ghost" size="sm" onClick={() => onAction(workflow, 'signal')}>{copy.workflowSignal}</Button>
       <Button variant="destructive" size="sm" onClick={() => onAction(workflow, 'delete')}>{copy.deleteWorkflow}</Button>
       <Button variant="outline" size="sm" onClick={() => void onOpenGraph(workflow)}><span>{copy.viewExecutionGraph}</span><ChevronDown className="h-3.5 w-3.5" /></Button>
-      <span className="workflow-updated">{copy.updated}: {formatDate(textOf(workflow.updatedAt || workflow.createdAt))}</span>
+      <span className="workflow-updated">{copy.updated}: {formatRelativeTime(textOf(workflow.updatedAt || workflow.createdAt))}</span>
     </div>
   </article>
 }

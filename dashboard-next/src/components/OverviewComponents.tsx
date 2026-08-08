@@ -3,7 +3,6 @@ import { Badge } from './ui/badge'
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react'
 import { useOutletContext } from 'react-router-dom'
 import { cn } from '@/lib/utils'
-import type { AnyRecord } from '@/lib/api'
 import { dashboardLabels } from '@/lib/dashboardCopy'
 import type { AppOutletContext } from '@/lib/i18n'
 
@@ -18,7 +17,7 @@ export function MetricCard({ label, value, tone = 'default', trend }: MetricCard
   const toneColors = {
     default: 'text-foreground',
     success: 'text-primary',
-    warning: 'text-yellow-500',
+    warning: 'text-warning',
     error: 'text-destructive'
   }
 
@@ -69,103 +68,6 @@ export function Panel({ title, children, className }: PanelProps) {
   )
 }
 
-interface TaskListProps {
-  tasks: AnyRecord[]
-  emptyText: string
-}
-
-export function TaskList({ tasks, emptyText }: TaskListProps) {
-  if (!tasks.length) {
-    return <p className="text-center text-muted-foreground py-8">{emptyText}</p>
-  }
-
-  return (
-    <ul className="overview-list" aria-label={emptyText}>
-      {tasks.map((task, idx) => {
-        const status = String(task.status || 'open')
-        const title = String(task.title || '-')
-        const project = String(task.project || '-')
-        const assignee = String(task.assignee || task.createdBy || '-')
-
-        return (
-          <li key={idx} className="overview-list-item">
-            <StatusBadge status={status} />
-            <span className="overview-list-title">{title}</span>
-            <span className="overview-list-meta">{project} · {assignee}</span>
-          </li>
-        )
-      })}
-    </ul>
-  )
-}
-
-interface RadioListProps {
-  messages: AnyRecord[]
-  emptyText: string
-  onSelect?: (message: AnyRecord) => void
-}
-
-export function RadioList({ messages, emptyText, onSelect }: RadioListProps) {
-  if (!messages.length) {
-    return <p className="text-center text-muted-foreground py-8">{emptyText}</p>
-  }
-
-  return (
-    <ul className="overview-list">
-      {messages.map((message, idx) => {
-        const type = String(message.type || 'note')
-        const from = String(message.from || '-')
-        const to = String(message.to || '-')
-        const text = String(message.text || '-')
-
-        return (
-          <li
-            key={idx}
-            className="overview-list-item overview-radio-item"
-            role={onSelect ? "button" : undefined}
-            tabIndex={onSelect ? 0 : undefined}
-            onClick={() => onSelect?.(message)}
-            onKeyDown={event => { if (onSelect && (event.key === "Enter" || event.key === " ")) onSelect(message) }}
-          >
-            <StatusBadge status={type} />
-            <span className="overview-radio-route"><strong>{from}</strong><span aria-hidden="true">→</span><strong>{to}</strong></span>
-            <span className="overview-list-meta overview-radio-text">{text}</span>
-          </li>
-        )
-      })}
-    </ul>
-  )
-}
-
-interface ToolListProps {
-  tools: AnyRecord[]
-  emptyText: string
-}
-
-export function ToolList({ tools, emptyText }: ToolListProps) {
-  if (!tools.length) {
-    return <p className="text-center text-muted-foreground py-8">{emptyText}</p>
-  }
-
-  return (
-    <ul className="overview-list">
-      {tools.map((tool, idx) => {
-        const name = String(tool.name || '-')
-        const status = String(tool.connectionStatus || 'missing')
-        const detail = String(tool.mode || tool.kind || 'runtime')
-
-        return (
-          <li key={idx} className="overview-list-item">
-            <span className="overview-tool-icon" aria-hidden="true">{name.slice(0, 1).toUpperCase()}</span>
-            <span className="overview-list-title">{name}</span>
-            <span className="overview-list-meta">{detail}</span>
-            <StatusBadge status={status} />
-          </li>
-        )
-      })}
-    </ul>
-  )
-}
 
 interface StatusBadgeProps {
   status: string

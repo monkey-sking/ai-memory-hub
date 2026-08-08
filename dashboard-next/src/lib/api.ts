@@ -77,6 +77,36 @@ export function formatDate(value: string, preset: DateFormatPreset = 'full'): st
   return date.toLocaleString(format.locale, format.options)
 }
 
+const RELATIVE_TIME_DIVISIONS: Array<{ amount: number; unit: Intl.RelativeTimeFormatUnit }> = [
+  { amount: 60, unit: 'second' },
+  { amount: 60, unit: 'minute' },
+  { amount: 24, unit: 'hour' },
+  { amount: 7, unit: 'day' },
+  { amount: 4.34524, unit: 'week' },
+  { amount: 12, unit: 'month' },
+  { amount: Number.POSITIVE_INFINITY, unit: 'year' }
+]
+
+/**
+ * Human-friendly relative time ("刚刚", "5 分钟前"). Falls back to the raw
+ * value for unparsable input, matching the guard behaviour of `formatDate`.
+ */
+export function formatRelativeTime(value: string): string {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  const diffSeconds = (date.getTime() - Date.now()) / 1000
+  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' })
+  let duration = diffSeconds
+  for (const division of RELATIVE_TIME_DIVISIONS) {
+    if (Math.abs(duration) < division.amount) {
+      return rtf.format(Math.round(duration), division.unit)
+    }
+    duration /= division.amount
+  }
+  return date.toLocaleString()
+}
+
 export function numberOf(value: unknown, fallback = 0): number {
   const next = Number(value)
   return Number.isFinite(next) ? next : fallback

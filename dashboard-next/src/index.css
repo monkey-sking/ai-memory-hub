@@ -13,6 +13,7 @@
   --color-accent-foreground: var(--accent-strong);
   --color-destructive: var(--danger);
   --color-destructive-foreground: var(--bg-panel);
+  --color-warning: var(--warning);
   --color-border: var(--border);
   --color-input: var(--bg-panel);
   --color-ring: var(--accent);

@@ -199,29 +199,44 @@ test("Dashboard visual contract keeps the light shell hierarchy and readable lab
 test("Dashboard keeps the overview-first section order", async () => {
   const dashboard = await readSource("pages/Dashboard.tsx");
 
-  assert.match(dashboard, /overview-section/);
-  assert.match(dashboard, /dashboard-grid/);
-  assert.match(dashboard, /metric-card/);
-  assert.match(dashboard, /panel-grid two/);
-  assert.ok(dashboard.indexOf("overview-section") < dashboard.indexOf("panel-grid two"));
+  // The overview renders <CommandCenter>; the legacy <Overview> tree was removed.
+  assert.match(dashboard, /section === 'overview' && <CommandCenter/);
+  assert.match(dashboard, /command-center-hero/);
+  assert.match(dashboard, /command-center-grid/);
+  assert.match(dashboard, /command-center-side/);
+
+  // Standard §2.1: hero, then agents, then tasks needing attention, then the side rail.
+  assert.ok(
+    dashboard.indexOf("command-center-hero") < dashboard.indexOf("command-center-grid")
+  );
+  assert.ok(
+    dashboard.indexOf("command-attention-section") < dashboard.indexOf("command-center-side")
+  );
 });
 
-test("Dashboard overview empty states retain an actionable recovery path", async () => {
+test("Dashboard overview empty states explain the next step", async () => {
   const dashboard = await readSource("pages/Dashboard.tsx");
 
-  assert.match(dashboard, /className="empty-state overview-empty-state"/);
-  for (const emptyState of [
-    "overviewNoFailures",
-    "overviewNoMessages",
-    "overviewNoTasks",
-    "overviewNoWorkflows",
-    "overviewNoTools"
-  ]) {
+  // Standard §1.5 / §6: every overview list needs an explicit empty state that
+  // tells the operator what to do next, never a silent blank region.
+  const emptyStates = dashboard.match(/className="command-empty"/g) || [];
+  assert.ok(
+    emptyStates.length >= 4,
+    `expected every command-center list to guard its empty state, found ${emptyStates.length}`
+  );
+
+  for (const list of ["agent-work-grid", "attention-task-grid", "command-recent-list", "command-radio-list"]) {
+    const region = dashboard.slice(dashboard.indexOf(list));
     assert.match(
-      dashboard,
-      new RegExp(`OverviewEmptyState[\\s\\S]{0,180}text=\\{copy\\.${emptyState}\\}[\\s\\S]{0,160}actionLabel=\\{copy\\.refresh\\}[\\s\\S]{0,120}onAction=\\{onRefresh\\}`)
+      region.slice(0, 1400),
+      /command-empty/,
+      `${list} renders no empty state`
     );
   }
+
+  // The guidance must name a next action, not just say "no data".
+  assert.match(dashboard, /创建或认领任务后，近期进展会显示在这里/);
+  assert.match(dashboard, /智能体发送协作消息后，会显示在这里/);
 });
 
 test("task and workflow cards expose readable operational hierarchy", async () => {

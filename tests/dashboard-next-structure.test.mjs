@@ -124,26 +124,30 @@ test("Dashboard exposes a toast notification stack for async actions", async () 
 });
 
 test("Memory panel supersedes records instead of editing the ledger directly", async () => {
-  const dashboard = await readSource("pages/Dashboard.tsx");
+  const memoryPanel = await readSource("components/MemoryPanel.tsx");
   const copyModule = await readSource("lib/dashboardCopy.ts");
 
-  assert.match(dashboard, /const\s+memoryRecords\s*=\s*asArray<AnyRecord>\(model\.memory\.records\)/);
-  assert.match(dashboard, /supersedeMemory/);
-  assert.match(dashboard, /\/api\/memory\/supersede/);
-  assert.match(dashboard, /metadata\.supersedes/);
-  assert.match(dashboard, /copy\.supersedeMemory/);
+  assert.match(memoryPanel, /const\s+memoryRecords\s*=\s*asArray<AnyRecord>\(memory\.records\)/);
+  assert.match(memoryPanel, /const\s+supersedeMemory\s*=\s*async\s*\(\)\s*=>/);
+  assert.match(memoryPanel, /fetch\('\/api\/memory\/supersede'/);
+  assert.match(memoryPanel, /supersedes:\s*textOf\(metadata\.supersedes\)/);
+  assert.match(memoryPanel, /copy\.supersedeMemory/);
   assert.match(copyModule, /supersedeMemory/);
+
+  // Superseding must go through the dedicated endpoint, never by rewriting the ledger.
+  assert.doesNotMatch(memoryPanel, /ledger\.jsonl/);
 });
 
 test("Radio messages can open compose as a threaded reply", async () => {
-  const dashboard = await readSource("pages/Dashboard.tsx");
+  const radioPanel = await readSource("components/RadioPanel.tsx");
   const copyModule = await readSource("lib/dashboardCopy.ts");
 
-  assert.match(dashboard, /replyTo:/);
-  assert.match(dashboard, /startReply/);
-  assert.match(dashboard, /replyTo:\s*textOf\(message\.id\)/);
-  assert.match(dashboard, /thread:\s*textOf\(message\.thread\s*\|\|\s*message\.id\)/);
-  assert.match(dashboard, /copy\.reply/);
+  assert.match(radioPanel, /replyTo:/);
+  assert.match(radioPanel, /const\s+startReply\s*=\s*\(message:\s*AnyRecord\)\s*=>/);
+  assert.match(radioPanel, /replyTo:\s*textOf\(message\.id\)/);
+  assert.match(radioPanel, /thread:\s*textOf\(message\.thread\s*\|\|\s*message\.id\)/);
+  assert.match(radioPanel, /onClick=\{\(\)\s*=>\s*startReply\(message\)\}/);
+  assert.match(radioPanel, /copy\.reply/);
   assert.match(copyModule, /reply:/);
 });
 

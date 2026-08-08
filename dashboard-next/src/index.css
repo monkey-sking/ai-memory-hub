@@ -2,13 +2,13 @@
 
 @theme {
   --color-background: var(--bg);
-  --color-foreground: var(--text);
-  --color-primary: var(--accent);
-  --color-primary-foreground: var(--bg-panel);
+  --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--bg-soft);
   --color-secondary-foreground: var(--text);
   --color-muted: var(--bg-soft);
-  --color-muted-foreground: var(--text-muted);
+  --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent-soft);
   --color-accent-foreground: var(--accent-strong);
   --color-destructive: var(--danger);
@@ -16,32 +16,72 @@
   --color-border: var(--border);
   --color-input: var(--bg-panel);
   --color-ring: var(--accent);
-  --color-card: var(--bg-panel);
-  --color-card-foreground: var(--text);
+  --color-card: var(--card);
+  --color-card-foreground: var(--foreground);
 }
 
+/*
+ * Single light theme, single teal accent.
+ * Text-bearing accents use --accent / --accent-strong / --primary, all of which
+ * clear WCAG AA (>=4.5:1) against white. --accent-bright is decorative only
+ * (fills, gradients, indicator bars) and must never carry text.
+ */
 :root {
+  /* Surfaces */
   --bg: #f6f7f9;
   --bg-panel: #ffffff;
   --bg-panel-strong: #fbfcfe;
   --bg-soft: #eef3f8;
+  --bg-subtle: #f4f7fa;
+  --card: var(--bg-panel);
   --border: #e5eaf0;
   --border-soft: #d5dde7;
+
+  /* Text */
   --text: #172033;
   --text-muted: #667085;
-  --text-subtle: #98a2b3;
-  --accent: #f59e0b;
-  --accent-strong: #d97706;
-  --accent-hover: #b45309;
-  --accent-soft: rgba(245, 158, 11, 0.14);
+  --text-subtle: #5d6b7f;
+  --foreground: var(--text);
+  --muted: var(--bg-soft);
+  --muted-foreground: var(--text-muted);
+
+  /* Teal accent scale */
+  --primary: #0f766e;
+  --primary-hover: #115e59;
+  --primary-foreground: #ffffff;
+  --accent: #0f766e;
+  --accent-strong: #115e59;
+  --accent-hover: #134e4a;
+  --accent-bright: #2ea7a5;
+  --accent-soft: rgba(15, 118, 110, 0.12);
   --accent-blue: #4676e8;
   --accent-blue-soft: rgba(70, 118, 232, 0.1);
-  --warning: #f59e0b;
-  --danger: #ef4444;
-  --success: #22c55e;
+
+  /* Status */
+  --warning: #b45309;
+  --danger: #dc2626;
+  --success: #15803d;
+
+  /* Layout */
   --sidebar-width: 248px;
   --sidebar-collapsed-width: 72px;
-  --radius: 12px;
+
+  /* Radius scale */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-full: 999px;
+  --radius: var(--radius-md);
+
+  /* Spacing scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
   --shadow: 0 1px 2px rgba(16, 24, 40, 0.03), 0 6px 18px rgba(16, 24, 40, 0.04);
   --shadow-raised: 0 10px 28px rgba(16, 24, 40, 0.08);
   color: var(--text);
@@ -90,7 +130,7 @@ a {
 }
 
 :focus-visible {
-  outline: 2px solid var(--accent-strong);
+  outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
 

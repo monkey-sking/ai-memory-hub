@@ -1,6 +1,9 @@
+import { useOutletContext } from 'react-router-dom'
 import { X, CheckCircle2, XCircle } from 'lucide-react'
 import { Button } from './ui/button'
 import { cn } from '@/lib/utils'
+import { dashboardLabels } from '@/lib/dashboardCopy'
+import type { AppOutletContext } from '@/lib/i18n'
 
 interface ToastMessage {
   id: string
@@ -14,6 +17,8 @@ interface ToastStackProps {
 }
 
 export function ToastStack({ toasts, onDismiss }: ToastStackProps) {
+  const { language } = useOutletContext<AppOutletContext>()
+  const closeLabel = dashboardLabels[language].close
   if (toasts.length === 0) return null
 
   return (
@@ -24,6 +29,7 @@ export function ToastStack({ toasts, onDismiss }: ToastStackProps) {
       {toasts.map(toast => (
         <div
           key={toast.id}
+          role={toast.tone === 'error' ? 'alert' : undefined}
           className={cn(
             'toast flex items-center gap-3 px-4 py-3 rounded-lg border shadow-lg animate-in slide-in-from-right',
             toast.tone,
@@ -40,6 +46,7 @@ export function ToastStack({ toasts, onDismiss }: ToastStackProps) {
             variant="ghost"
             size="sm"
             className="h-6 w-6 p-0 shrink-0"
+            aria-label={closeLabel}
             onClick={() => onDismiss(toast.id)}
           >
             <X className="w-4 h-4" />

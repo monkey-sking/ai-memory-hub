@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import type { AnyRecord } from '../lib/api'
-import { apiGet, apiPost, asArray, asRecord, boolOf, numberOf, textOf } from '../lib/api'
+import { apiGet, apiPost, asArray, asRecord, boolOf, formatDate, numberOf, textOf } from '../lib/api'
 import { createDashboardRealtimeClient } from '../lib/realtime'
 import { mergeDashboardPage } from '../lib/dashboardPagination'
 import type { AppLanguage, AppOutletContext } from '../lib/i18n'
@@ -15,7 +15,6 @@ import { ToastStack } from '../components/ToastStack'
 import { TasksPanel as NewTasksPanel } from '../components/TasksPanel'
 import { MemoryPanel as NewMemoryPanel } from '../components/MemoryPanel'
 import { RadioPanel as NewRadioPanel } from '../components/RadioPanel'
-import { WorkflowsPanel as NewWorkflowsPanel } from '../components/WorkflowsPanel'
 import { AgentExecutionPanel } from '../components/AgentExecutionPanel'
 import {
   MetricCard as NewMetricCard,
@@ -56,6 +55,8 @@ type ToastMessage = {
   message: string
 }
 
+type PagedCollection = 'memory' | 'tasks' | 'radio'
+
 export default function Dashboard({ section }: DashboardProps) {
   const { language, toggleLanguage } = useOutletContext<AppOutletContext>()
   const [data, setData] = useState<DashboardSnapshot | null>(null)
@@ -64,6 +65,12 @@ export default function Dashboard({ section }: DashboardProps) {
   const [busyAction, setBusyAction] = useState('')
   const [error, setError] = useState('')
   const [toasts, setToasts] = useState<ToastMessage[]>([])
+  // Mirrors `data` so loadMoreCollection can read the current page depth without
+  // being re-created (and re-subscribing every list observer) on every snapshot.
+  const dataRef = useRef<DashboardSnapshot | null>(null)
+  useEffect(() => {
+    dataRef.current = data
+  }, [data])
 
   const copy = dashboardLabels[language]
   const showToast = useCallback((message: string, tone: ToastMessage['tone'] = 'success') => {
@@ -81,7 +88,7 @@ export default function Dashboard({ section }: DashboardProps) {
     setError('')
     try {
       const { snapshot, health: nextHealth } = await fetchDashboardData(section)
-      setData(snapshot)
+      setData(previous => mergeDashboardSnapshot(previous, snapshot))
       setHealth(nextHealth)
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : String(nextError))
@@ -114,7 +121,7 @@ export default function Dashboard({ section }: DashboardProps) {
       onSnapshot: snapshot => {
         if (!active) return
         realtimeReceived = true
-        setData(snapshot as DashboardSnapshot)
+        setData(previous => mergeDashboardSnapshot(previous, snapshot as DashboardSnapshot))
         setError('')
         setLoading(false)
       }
@@ -123,7 +130,7 @@ export default function Dashboard({ section }: DashboardProps) {
     void fetchDashboardData(section)
       .then(({ snapshot, health: nextHealth }) => {
         if (!active || realtimeReceived) return
-        setData(snapshot)
+        setData(previous => mergeDashboardSnapshot(previous, snapshot))
         setHealth(nextHealth)
       })
       .catch(nextError => {
@@ -141,31 +148,19 @@ export default function Dashboard({ section }: DashboardProps) {
   }, [section])
 
   const viewModel = useMemo(() => buildViewModel(data), [data])
-  const loadMoreCollection = useCallback(async (collection: 'memory' | 'tasks' | 'radio') => {
-    const config: Record<typeof collection, { path: string; itemKey: string }> = {
-      memory: { path: '/api/memory', itemKey: 'records' },
-      tasks: { path: '/api/tasks', itemKey: 'tasks' },
-      radio: { path: '/api/radio', itemKey: 'messages' }
-    }
-    const request = config[collection]
-    const currentSection = asRecord(data?.[collection])
-    const currentItems = asArray<AnyRecord>(currentSection[request.itemKey])
-    const payload = await apiGet<AnyRecord>(`${request.path}?offset=${currentItems.length}&limit=200`)
-    const nextItems = asArray<AnyRecord>(payload[request.itemKey])
+  const loadMoreCollection = useCallback(async (collection: PagedCollection) => {
+    const itemKey = pagedCollections[collection]
+    const currentItems = asArray<AnyRecord>(asRecord(dataRef.current?.[collection])[itemKey])
+    const payload = await apiGet<AnyRecord>(`${pagedCollectionPaths[collection]}?offset=${currentItems.length}&limit=200`)
+    const nextItems = asArray<AnyRecord>(payload[itemKey])
     setData(previous => {
       const previousSection = asRecord(previous?.[collection])
-      const previousItems = asArray<AnyRecord>(previousSection[request.itemKey])
-      const mergedItems = mergeDashboardPage(
-        collection,
-        previousItems,
-        nextItems,
-        item => textOf(item.localEventId || item.id)
-      )
+      const previousItems = asArray<AnyRecord>(previousSection[itemKey])
       return {
         ...(previous || {}),
         [collection]: {
           ...previousSection,
-          [request.itemKey]: mergedItems,
+          [itemKey]: mergeDashboardPage(collection, previousItems, nextItems, pageItemKey),
           total: payload.total,
           offset: payload.offset,
           limit: payload.limit,
@@ -173,7 +168,7 @@ export default function Dashboard({ section }: DashboardProps) {
         }
       }
     })
-  }, [data])
+  }, [])
 
   return (
     <div className={`dashboard-page dashboard-section-${section}`}>
@@ -212,7 +207,7 @@ export default function Dashboard({ section }: DashboardProps) {
             }} hasMore={viewModel.tasksHasMore} onLoadMore={() => loadMoreCollection('tasks')} />}
             {section === 'radio' && <NewRadioPanel radio={viewModel.radio} visibleProjects={viewModel.visibleProjects} copy={copy} onRefresh={refresh} hasMore={viewModel.radioHasMore} onLoadMore={() => loadMoreCollection('radio')} />}
             {section === 'dispatch' && <DispatchPanel copy={copy} model={viewModel} onRefresh={refresh} />}
-            {section === 'workflows' && <NewWorkflowsPanel workflows={viewModel.workflows} visibleProjects={viewModel.visibleProjects} copy={copy} onRefresh={refresh} />}
+            {section === 'workflows' && <WorkflowsPanel workflows={viewModel.workflows} visibleProjects={viewModel.visibleProjects} copy={copy} onRefresh={refresh} />}
             {section === 'analytics' && <AnalyticsPanel copy={copy} model={viewModel} />}
             {section === 'backups' && <BackupsPanel copy={copy} model={viewModel} onRefresh={refresh} />}
             {section === 'search' && <SearchPanel copy={copy} />}
@@ -260,6 +255,96 @@ async function fetchDashboardData(section: DashboardSection): Promise<{ snapshot
   const snapshot = { [request.key]: payload, ...(projects ? { projects } : {}) } as DashboardSnapshot
   return { snapshot, health: section === 'health' ? payload : null }
 }
+
+const pagedCollections = {
+  memory: 'records',
+  tasks: 'tasks',
+  radio: 'messages'
+} as const satisfies Record<PagedCollection, string>
+
+const pagedCollectionPaths = {
+  memory: '/api/memory',
+  tasks: '/api/tasks',
+  radio: '/api/radio'
+} as const satisfies Record<PagedCollection, string>
+
+function pageItemKey(item: AnyRecord): string {
+  return textOf(item.localEventId || item.id)
+}
+
+/**
+ * Reconcile one paginated collection against an incoming snapshot.
+ *
+ * Snapshots (websocket pushes and section refetches) always carry only the first
+ * server page. Replacing state with them would discard every extra page the user
+ * has already scrolled in, so instead we refresh the records we already hold in
+ * place and splice in only the genuinely new ones.
+ */
+function mergeSnapshotCollection(
+  collection: PagedCollection,
+  previousSection: AnyRecord,
+  incomingSection: AnyRecord
+): AnyRecord {
+  const itemKey = pagedCollections[collection]
+  const previousItems = asArray<AnyRecord>(previousSection[itemKey])
+  const incomingItems = asArray<AnyRecord>(incomingSection[itemKey])
+  // Nothing paged in beyond the first page: the snapshot is already authoritative.
+  if (previousItems.length <= incomingItems.length) return incomingSection
+
+  const incomingByKey = new Map<string, AnyRecord>()
+  for (const item of incomingItems) {
+    const key = pageItemKey(item)
+    if (key) incomingByKey.set(key, item)
+  }
+  // Take the fresh copy of everything we already hold, keeping its position.
+  const refreshedItems = previousItems.map(item => {
+    const key = pageItemKey(item)
+    return key ? incomingByKey.get(key) ?? item : item
+  })
+
+  const knownKeys = new Set(previousItems.map(pageItemKey).filter(Boolean))
+  const newItems = incomingItems.filter(item => {
+    const key = pageItemKey(item)
+    return key ? !knownKeys.has(key) : false
+  })
+  // memory/tasks are newest-first (page 0 is the head), radio is ascending
+  // (page 0 is the tail), so new arrivals attach to opposite ends.
+  const mergedItems = collection === 'radio'
+    ? [...refreshedItems, ...newItems]
+    : [...newItems, ...refreshedItems]
+
+  return {
+    ...incomingSection,
+    [itemKey]: mergedItems,
+    // The loaded window is ours, not the snapshot's: keep our paging cursors.
+    offset: previousSection.offset ?? incomingSection.offset,
+    limit: previousSection.limit ?? incomingSection.limit,
+    hasMore: previousSection.hasMore ?? incomingSection.hasMore
+  }
+}
+
+/**
+ * Merge an incoming snapshot into existing state instead of replacing it.
+ * Section refetches are partial payloads, so untouched sections are preserved.
+ */
+function mergeDashboardSnapshot(
+  previous: DashboardSnapshot | null,
+  incoming: DashboardSnapshot
+): DashboardSnapshot {
+  if (!previous) return incoming
+  const merged: DashboardSnapshot = { ...previous, ...incoming }
+  for (const collection of Object.keys(pagedCollections) as PagedCollection[]) {
+    const incomingSection = incoming[collection]
+    if (!incomingSection) continue
+    merged[collection] = mergeSnapshotCollection(
+      collection,
+      asRecord(previous[collection]),
+      asRecord(incomingSection)
+    )
+  }
+  return merged
+}
+
 function buildViewModel(data: DashboardSnapshot | null) {
   const status = asRecord(data?.status)
   const metrics = asRecord(data?.metrics)
@@ -305,6 +390,22 @@ function buildViewModel(data: DashboardSnapshot | null) {
 type ViewModel = ReturnType<typeof buildViewModel>
 type Copy = DashboardCopy
 
+/**
+ * Keyboard activation for card-shaped `role="button"` containers.
+ *
+ * These cards hold flow content (<p>, <div>), so a real <button> would be invalid
+ * nesting. Instead we mirror native button behaviour: Enter and Space both
+ * activate, and Space is prevented from scrolling the page.
+ */
+function activateOnKey(handler: () => void) {
+  return (event: ReactKeyboardEvent<HTMLElement>) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    if (event.target !== event.currentTarget) return
+    event.preventDefault()
+    handler()
+  }
+}
+
 function humanStatus(value: unknown, language: AppLanguage): string {
   const status = textOf(value).toLowerCase()
   const zh: Record<string, string> = { open: '待处理', active: '进行中', in_progress: '进行中', claimed: '已领取', waiting_review: '待确认', blocked: '已阻塞', failed: '失败', completed: '已完成', done: '已完成', cancelled: '已取消', idle: '空闲', running: '运行中', success: '成功', pending: '待处理' }
@@ -319,6 +420,32 @@ function CommandCenter({ copy, model, language, onRefresh }: { copy: Copy; model
   const recentTasks = model.tasks.slice(0, 5)
   const recentMessages = model.radio.slice(0, 5)
   const selectedId = textOf(selected?.item.id)
+
+  const projectOptions = useMemo(
+    () => Array.from(new Set<string>([
+      ...model.visibleProjects.map(project => textOf(project.id)),
+      ...model.tasks.map(task => textOf(task.project))
+    ])).filter(Boolean).sort(),
+    [model]
+  )
+  const priorityOptions = useMemo(
+    () => Array.from(new Set<string>(model.tasks.map(task => textOf(task.priority)).filter(Boolean))).sort(),
+    [model]
+  )
+  const senderOptions = useMemo(
+    () => Array.from(new Set<string>(model.radio.flatMap(message => [textOf(message.from), textOf(message.to)]).filter(Boolean))).sort(),
+    [model]
+  )
+  const [projectFilter, setProjectFilter] = useState('')
+  const [priorityFilter, setPriorityFilter] = useState('')
+  const [senderFilter, setSenderFilter] = useState('')
+  const filteredAttentionTasks = attentionTasks.filter(task =>
+    (!projectFilter || textOf(task.project) === projectFilter) &&
+    (!priorityFilter || textOf(task.priority) === priorityFilter)
+  )
+  const filteredRecentMessages = recentMessages.filter(message =>
+    (!senderFilter || textOf(message.from) === senderFilter || textOf(message.to) === senderFilter)
+  )
 
   const choose = (kind: 'agent' | 'task' | 'radio', item: AnyRecord) => setSelected({ kind, item })
 
@@ -346,7 +473,7 @@ function CommandCenter({ copy, model, language, onRefresh }: { copy: Copy; model
             {activeAgents.length ? (
               <div className="agent-work-grid">
                 {activeAgents.map((agent, index) => (
-                  <article className={'agent-work-card '+(selectedId === textOf(agent.id) ? 'is-selected' : '')} key={textOf(agent.id)+'-'+index} role="button" tabIndex={0} onClick={() => choose('agent', agent)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') choose('agent', agent) }}>
+                  <article className={'agent-work-card '+(selectedId === textOf(agent.id) ? 'is-selected' : '')} key={textOf(agent.id)+'-'+index} role="button" tabIndex={0} aria-label={`${textOf(agent.tool || agent.agent || agent.actor, 'Agent')}: ${humanStatus(agent.status, language)}`} onClick={() => choose('agent', agent)} onKeyDown={activateOnKey(() => choose('agent', agent))}>
                     <div className="agent-work-card-top"><span className={'agent-presence '+textOf(agent.status)}></span><strong>{textOf(agent.tool || agent.agent || agent.actor, 'Agent')}</strong><NewStatusBadge status={textOf(agent.status, 'idle')} /></div>
                     <h3>{textOf(agent.title || agent.taskTitle || agent.project, language === 'zh' ? '未命名工作' : 'Untitled work')}</h3>
                     <div className="agent-work-card-meta"><span>{textOf(agent.project, '—')}</span><span>{textOf(agent.updatedAt || agent.lastSeenAt, '—')}</span></div>
@@ -364,7 +491,7 @@ function CommandCenter({ copy, model, language, onRefresh }: { copy: Copy; model
             </div>
             <div className="attention-task-grid">
               {attentionTasks.length ? attentionTasks.map((task, index) => (
-                <article className={'attention-task-card '+(selectedId === textOf(task.id) ? 'is-selected' : '')} key={textOf(task.id)+'-'+index} role="button" tabIndex={0} onClick={() => choose('task', task)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') choose('task', task) }}>
+                <article className={'attention-task-card '+(selectedId === textOf(task.id) ? 'is-selected' : '')} key={textOf(task.id)+'-'+index} role="button" tabIndex={0} aria-label={`${textOf(task.title, '—')}: ${humanStatus(task.status, language)}`} onClick={() => choose('task', task)} onKeyDown={activateOnKey(() => choose('task', task))}>
                   <div className="attention-task-top"><NewStatusBadge status={textOf(task.status, 'open')} /><span>{textOf(task.priority, 'normal')}</span></div>
                   <h3>{textOf(task.title, '—')}</h3>
                   <div><span>{textOf(task.project, '—')}</span><span>{textOf(task.assignee || task.createdBy, 'unassigned')}</span></div>
@@ -378,13 +505,13 @@ function CommandCenter({ copy, model, language, onRefresh }: { copy: Copy; model
           <section className="command-side-block command-next-block">
             <div className="command-side-heading"><span className="command-section-index">04</span><h2>{language === 'zh' ? '最近任务' : 'Recent work'}</h2></div>
             <div className="command-recent-list">
-              {recentTasks.map((task, index) => <div className={'command-recent-item '+(selectedId === textOf(task.id) ? 'is-selected' : '')} key={textOf(task.id)+'-'+index} role="button" tabIndex={0} onClick={() => choose('task', task)}><NewStatusBadge status={textOf(task.status, 'open')} /><div><strong>{textOf(task.title, '—')}</strong><span>{textOf(task.assignee || task.createdBy, 'unassigned')}</span></div></div>)}
+              {recentTasks.map((task, index) => <div className={'command-recent-item '+(selectedId === textOf(task.id) ? 'is-selected' : '')} key={textOf(task.id)+'-'+index} role="button" tabIndex={0} aria-label={`${textOf(task.title, '—')}: ${humanStatus(task.status, language)}`} onClick={() => choose('task', task)} onKeyDown={activateOnKey(() => choose('task', task))}><NewStatusBadge status={textOf(task.status, 'open')} /><div><strong>{textOf(task.title, '—')}</strong><span>{textOf(task.assignee || task.createdBy, 'unassigned')}</span></div></div>)}
             </div>
           </section>
           <section className="command-side-block command-radio-block">
             <div className="command-side-heading"><span className="command-section-index">05</span><h2>{language === 'zh' ? '协作广播' : 'Handoffs'}</h2></div>
             <div className="command-radio-list">
-              {recentMessages.map((message, index) => <div className="command-radio-item" key={textOf(message.id)+'-'+index} role="button" tabIndex={0} onClick={() => choose('radio', message)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') choose('radio', message) }}><span className="command-radio-dot" /><div><strong>{textOf(message.from, 'agent')} → {textOf(message.to, 'all')}</strong><p>{textOf(message.text, '—')}</p></div></div>)}
+              {recentMessages.map((message, index) => <div className="command-radio-item" key={textOf(message.id)+'-'+index} role="button" tabIndex={0} aria-label={`${textOf(message.from, 'agent')} → ${textOf(message.to, 'all')}: ${textOf(message.text, '—')}`} onClick={() => choose('radio', message)} onKeyDown={activateOnKey(() => choose('radio', message))}><span className="command-radio-dot" /><div><strong>{textOf(message.from, 'agent')} → {textOf(message.to, 'all')}</strong><p>{textOf(message.text, '—')}</p></div></div>)}
             </div>
           </section>
         </aside>
@@ -522,926 +649,6 @@ function OverviewEmptyState({ text, actionLabel, onAction }: { text: string; act
   )
 }
 
-// Old MemoryPanel commented out - using new component from MemoryPanel.tsx
-/*
-function MemoryPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; onRefresh: () => Promise<void> }) {
-  const pending = asArray<AnyRecord>(model.memory.pending)
-  const memoryRecords = asArray<AnyRecord>(model.memory.records)
-  const [text, setText] = useState('')
-  const [kind, setKind] = useState('note')
-  const [source, setSource] = useState('dashboard-next')
-  const [recordOpen, setRecordOpen] = useState(false)
-  const [supersedeTarget, setSupersedeTarget] = useState<AnyRecord | null>(null)
-  const [supersedeText, setSupersedeText] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
-
-  const submitMemory = async () => {
-    const nextText = text.trim()
-    if (!nextText || saving) return
-    setSaving(true)
-    setError('')
-    try {
-      await apiPost<AnyRecord>('/api/record', { text: nextText, kind, source })
-      setText('')
-      await onRefresh()
-      setRecordOpen(false)
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : String(nextError))
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const openSupersede = (record: AnyRecord) => {
-    setError('')
-    setSupersedeTarget(record)
-    setSupersedeText(textOf(record.text))
-  }
-
-  const supersedeMemory = async () => {
-    const target = asRecord(supersedeTarget)
-    const metadata = asRecord(target.metadata)
-    const nextText = supersedeText.trim()
-    const targetId = textOf(target.localEventId || target.id)
-    if (!targetId || !nextText || saving) return
-    setSaving(true)
-    setError('')
-    try {
-      await apiPost<AnyRecord>('/api/memory/supersede', {
-        id: targetId,
-        text: nextText,
-        kind: textOf(target.kind || metadata.kind, 'note'),
-        project: textOf(target.project || metadata.project),
-        source,
-        supersedes: textOf(metadata.supersedes)
-      })
-      setSupersedeTarget(null)
-      setSupersedeText('')
-      await onRefresh()
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : String(nextError))
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div className="panel-grid two">
-      <Panel title={copy.memorySnapshot}>
-        <pre className="text-snapshot">{textOf(model.memory.memory, copy.noData)}</pre>
-      </Panel>
-      <div className="stack">
-        <Panel title={copy.recordMemory}>
-          <div className="section-actions compact">
-            <button className="btn full-width" type="button" onClick={() => { setError(''); setRecordOpen(true) }}>
-            {copy.recordMemory}
-            </button>
-          </div>
-        </Panel>
-        <MetricCard label={copy.pendingEvents} value={formatNumber(pending.length)} tone="warning" />
-        <Panel title={copy.profile}>
-          <pre className="text-snapshot small">{textOf(model.memory.profile, copy.noData)}</pre>
-        </Panel>
-      </div>
-      <Panel title={copy.memoryRecords} className="span-2">
-        {memoryRecords.length ? (
-          <div className="memory-record-list">
-            {memoryRecords.slice(0, 12).map(record => {
-              const metadata = asRecord(record.metadata)
-              const recordId = textOf(record.localEventId || record.id)
-              return (
-                <article className="memory-record-card" key={recordId || textOf(record.ts)}>
-                  <div className="memory-record-header">
-                    <div className="message-meta">
-                      <StatusBadge status={textOf(record.kind || metadata.kind, 'note')} />
-                      <span>{textOf(record.source, '-')} · {formatDate(textOf(record.ts || record.indexedAt))}</span>
-                    </div>
-                    <button className="btn small ghost" type="button" onClick={() => openSupersede(record)}>
-                      {copy.supersedeMemory}
-                    </button>
-                  </div>
-                  <p>{textOf(record.text, '-')}</p>
-                  <div className="radio-card-footer">
-                    {record.project || metadata.project ? <span className="chip">{textOf(record.project || metadata.project)}</span> : null}
-                    {metadata.supersedes ? <span className="chip">{textOf(metadata.supersedes)}</span> : null}
-                  </div>
-                </article>
-              )
-            })}
-          </div>
-        ) : <EmptyState text={copy.noData} />}
-      </Panel>
-      {recordOpen ? (
-        <Modal title={copy.recordMemory} onClose={() => setRecordOpen(false)}>
-          <div className="form-grid">
-            <label className="field span-all">
-              <span>{copy.memoryText}</span>
-              <textarea value={text} onChange={event => setText(event.target.value)} rows={5} />
-            </label>
-            <label className="field">
-              <span>{copy.kind}</span>
-              <select value={kind} onChange={event => setKind(event.target.value)}>
-                <option value="preference">preference</option>
-                <option value="workflow">workflow</option>
-                <option value="project">project</option>
-                <option value="correction">correction</option>
-                <option value="note">note</option>
-              </select>
-            </label>
-            <label className="field">
-              <span>{copy.source}</span>
-              <input value={source} onChange={event => setSource(event.target.value)} />
-            </label>
-            {error ? <div className="inline-error span-all">{error}</div> : null}
-            <div className="form-actions span-all">
-              <button className="btn ghost" type="button" onClick={() => setRecordOpen(false)}>
-                {copy.cancel}
-              </button>
-              <button className="btn" type="button" onClick={() => void submitMemory()} disabled={saving || !text.trim()}>
-                {saving ? copy.running : copy.save}
-              </button>
-            </div>
-          </div>
-        </Modal>
-      ) : null}
-      {supersedeTarget ? (
-        <Modal title={copy.supersedeMemory} onClose={() => setSupersedeTarget(null)}>
-          <div className="form-grid">
-            <label className="field span-all">
-              <span>{copy.memoryText}</span>
-              <textarea value={supersedeText} onChange={event => setSupersedeText(event.target.value)} rows={6} />
-            </label>
-            <label className="field">
-              <span>{copy.source}</span>
-              <input value={source} onChange={event => setSource(event.target.value)} />
-            </label>
-            <Property label="id" value={textOf(supersedeTarget.localEventId || supersedeTarget.id, '-')} />
-            {error ? <div className="inline-error span-all">{error}</div> : null}
-            <div className="form-actions span-all">
-              <button className="btn ghost" type="button" onClick={() => setSupersedeTarget(null)}>
-                {copy.cancel}
-              </button>
-              <button className="btn" type="button" onClick={() => void supersedeMemory()} disabled={saving || !supersedeText.trim()}>
-                {saving ? copy.running : copy.supersedeMemory}
-              </button>
-            </div>
-          </div>
-        </Modal>
-      ) : null}
-    </div>
-  )
-}
-*/
-
-// Old TasksPanel commented out - using new component from TasksPanel.tsx
-/*
-function TasksPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; onRefresh: () => Promise<void> }) {
-  const [projectFilter, setProjectFilter] = useState('')
-  const [priorityFilter, setPriorityFilter] = useState('')
-  const [query, setQuery] = useState('')
-  const [newTask, setNewTask] = useState({ title: '', project: 'ai-memory-hub', priority: 'normal', description: '', handoff: '' })
-  const [createOpen, setCreateOpen] = useState(false)
-  const [busy, setBusy] = useState('')
-  const [error, setError] = useState('')
-
-  const projectOptions = useMemo(() => uniqueSorted(model.tasks.map(task => textOf(task.project)).filter(Boolean)), [model.tasks])
-  const formProjectOptions = useMemo(() => uniqueSorted([
-    ...model.visibleProjects.map(project => textOf(project.id || project.name || project.displayName)).filter(Boolean),
-    ...projectOptions
-  ]), [model.visibleProjects, projectOptions])
-  const priorityOptions = useMemo(() => uniqueSorted(model.tasks.map(task => textOf(task.priority)).filter(Boolean)), [model.tasks])
-  const cleanQuery = query.trim().toLowerCase()
-  const activeProjectFilter = projectOptions.includes(projectFilter) ? projectFilter : ''
-  const activePriorityFilter = priorityOptions.includes(priorityFilter) ? priorityFilter : ''
-
-  const filteredTasks = model.tasks.filter(task => {
-    if (activeProjectFilter && textOf(task.project) !== activeProjectFilter) return false
-    if (activePriorityFilter && textOf(task.priority) !== activePriorityFilter) return false
-    if (!cleanQuery) return true
-    return [
-      task.title,
-      task.description,
-      task.handoff,
-      task.assignee,
-      task.createdBy,
-      task.status,
-      task.project
-    ].some(value => textOf(value).toLowerCase().includes(cleanQuery))
-  })
-  const columns = {
-    open: filteredTasks.filter(task => textOf(task.status, 'open') === 'open'),
-    active: filteredTasks.filter(task => ['claimed', 'in_progress', 'blocked'].includes(textOf(task.status))),
-    verification: filteredTasks.filter(task => textOf(task.status) === 'needs_verification'),
-    completed: filteredTasks.filter(task => ['done', 'cancelled'].includes(textOf(task.status)))
-  }
-
-  const mutateTask = async (action: string, path: string, body: AnyRecord) => {
-    setBusy(action)
-    setError('')
-    try {
-      await apiPost<AnyRecord>(path, body)
-      await onRefresh()
-      return true
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : String(nextError))
-      return false
-    } finally {
-      setBusy('')
-    }
-  }
-
-  const submitTask = async () => {
-    const title = newTask.title.trim()
-    if (!title) return
-    const succeeded = await mutateTask('add-task', '/api/task/add', {
-      ...newTask,
-      title,
-      from: 'dashboard-next'
-    })
-    if (succeeded) {
-      setNewTask({ title: '', project: newTask.project, priority: 'normal', description: '', handoff: '' })
-      setCreateOpen(false)
-    }
-  }
-
-  return (
-    <div className="stack">
-      <Panel title={copy.recentTasks}>
-        <div className="section-actions">
-          <button className="btn" type="button" onClick={() => { setError(''); setCreateOpen(true) }}>
-            {copy.addTask}
-          </button>
-        </div>
-        <div className="filter-strip">
-          <label className="field">
-            <span>{copy.searchText}</span>
-            <input value={query} onChange={event => setQuery(event.target.value)} />
-          </label>
-          <FilterSelect label={copy.project} value={activeProjectFilter} onChange={setProjectFilter} allLabel={copy.allProjects} options={projectOptions} />
-          <FilterSelect label={copy.priority} value={activePriorityFilter} onChange={setPriorityFilter} allLabel={copy.allPriorities} options={priorityOptions} />
-          <button className="btn ghost" type="button" onClick={() => { setQuery(''); setProjectFilter(''); setPriorityFilter('') }}>
-            {copy.clear}
-          </button>
-        </div>
-        {error ? <div className="inline-error">{error}</div> : null}
-        <div className="kanban-grid kanban-grid-4">
-          <TaskColumn title={copy.open} count={columns.open.length} tasks={columns.open} copy={copy} busy={busy} onMutate={mutateTask} />
-          <TaskColumn title={copy.active} count={columns.active.length} tasks={columns.active} copy={copy} busy={busy} onMutate={mutateTask} />
-          <TaskColumn title={copy.needsVerification} count={columns.verification.length} tasks={columns.verification} copy={copy} busy={busy} onMutate={mutateTask} />
-          <TaskColumn title={copy.completed} count={columns.completed.length} tasks={columns.completed} copy={copy} busy={busy} onMutate={mutateTask} />
-        </div>
-      </Panel>
-      {createOpen ? (
-        <Modal title={copy.addTask} onClose={() => setCreateOpen(false)}>
-          <div className="form-grid task-form-grid">
-            <label className="field span-2">
-              <span>{copy.title}</span>
-              <input value={newTask.title} onChange={event => setNewTask(value => ({ ...value, title: event.target.value }))} />
-            </label>
-            <label className="field">
-              <span>{copy.project}</span>
-              <input value={newTask.project} onChange={event => setNewTask(value => ({ ...value, project: event.target.value }))} list="task-project-options" />
-            </label>
-            <label className="field">
-              <span>{copy.priority}</span>
-              <select value={newTask.priority} onChange={event => setNewTask(value => ({ ...value, priority: event.target.value }))}>
-                <option value="low">low</option>
-                <option value="normal">normal</option>
-                <option value="high">high</option>
-                <option value="urgent">urgent</option>
-              </select>
-            </label>
-            <label className="field span-2">
-              <span>{copy.description}</span>
-              <textarea value={newTask.description} onChange={event => setNewTask(value => ({ ...value, description: event.target.value }))} rows={3} />
-            </label>
-            <label className="field span-2">
-              <span>{copy.handoff}</span>
-              <textarea value={newTask.handoff} onChange={event => setNewTask(value => ({ ...value, handoff: event.target.value }))} rows={3} />
-            </label>
-            <datalist id="task-project-options">
-              {formProjectOptions.map(project => <option value={project} key={project} />)}
-            </datalist>
-            {error ? <div className="inline-error span-all">{error}</div> : null}
-            <div className="form-actions span-all">
-              <button className="btn ghost" type="button" onClick={() => setCreateOpen(false)}>
-                {copy.cancel}
-              </button>
-              <button className="btn" type="button" onClick={() => void submitTask()} disabled={busy === 'add-task' || !newTask.title.trim()}>
-                {busy === 'add-task' ? copy.running : copy.addTask}
-              </button>
-            </div>
-          </div>
-        </Modal>
-      ) : null}
-    </div>
-  )
-}
-*/
-
-/*
-type TaskMutator = (action: string, path: string, body: AnyRecord) => Promise<boolean>
-type TaskMenuAction = {
-  key: string
-  label: string
-  disabled?: boolean
-  onSelect: () => void
-}
-*/
-
-// Old Task-related components commented out
-/*
-function TaskColumn({ title, count, tasks, copy, busy, onMutate }: {
-  title: string
-  count: number
-  tasks: AnyRecord[]
-  copy: Copy
-  busy: string
-  onMutate: TaskMutator
-}) {
-  return (
-    <section className="kanban-column">
-      <header className="kanban-header">
-        <h4>{title}</h4>
-        <span className="count-pill">{formatNumber(count)}</span>
-      </header>
-      <div className="kanban-list">
-        {tasks.length ? tasks.map(task => (
-          <TaskCard key={textOf(task.id)} task={task} copy={copy} busy={busy} onMutate={onMutate} />
-        )) : <EmptyState text={copy.noData} />}
-      </div>
-    </section>
-  )
-}
-
-function TaskCard({ task, copy, busy, onMutate }: { task: AnyRecord; copy: Copy; busy: string; onMutate: TaskMutator }) {
-  const [note, setNote] = useState('')
-  const [issueReportOpen, setIssueReportOpen] = useState(false)
-  const [issueNote, setIssueNote] = useState('')
-  const [shouldReopen, setShouldReopen] = useState(true)
-  const [purgeConfirmOpen, setPurgeConfirmOpen] = useState(false)
-  const [purgeConfirmText, setPurgeConfirmText] = useState('')
-  const id = textOf(task.id)
-  const status = textOf(task.status, 'open')
-  const actionBase = `${id}:`
-  const isBusy = busy.startsWith(actionBase)
-  const notes = asArray<AnyRecord>(task.notes).slice(-3)
-
-  const setStatus = async (nextStatus: string, fallbackNote = '') => {
-    const nextNote = note.trim() || fallbackNote
-    const succeeded = await onMutate(`${actionBase}${nextStatus}`, '/api/task/status', {
-      id,
-      status: nextStatus,
-      by: 'dashboard-next',
-      note: nextNote
-    })
-    if (succeeded) setNote('')
-  }
-
-  const review = async (decision: 'approved' | 'rejected') => {
-    await onMutate(`${actionBase}${decision}`, '/api/task/review', {
-      id,
-      decision,
-      by: 'dashboard-next',
-      note: note.trim()
-    })
-    setNote('')
-  }
-
-  const sendRadioRequest = async () => {
-    const taskTitle = textOf(task.title, id)
-    const message = note.trim() || `Task request: ${taskTitle}`
-    const succeeded = await onMutate(`${actionBase}radio-request`, '/api/radio/send', {
-      from: 'dashboard-next',
-      to: textOf(task.assignee, 'all') || 'all',
-      type: 'request',
-      project: textOf(task.project),
-      thread: id,
-      replyTo: id,
-      text: message
-    })
-    if (succeeded) setNote('')
-  }
-
-  const reportIssue = () => {
-    setIssueNote('')
-    setShouldReopen(true)
-    setIssueReportOpen(true)
-  }
-
-  const submitIssueReport = async () => {
-    const succeeded = await onMutate(
-      `${actionBase}report-issue`,
-      '/api/task/review',
-      {
-        id,
-        decision: 'rejected',
-        by: 'dashboard-next',
-        note: issueNote.trim() || 'Issue reported',
-        reopen: shouldReopen
-      }
-    )
-    if (succeeded) {
-      setIssueReportOpen(false)
-      setIssueNote('')
-    }
-  }
-
-  const openPurgeConfirm = () => {
-    setPurgeConfirmText('')
-    setPurgeConfirmOpen(true)
-  }
-
-  const submitPurge = async () => {
-    const taskTitle = textOf(task.title, '')
-    if (purgeConfirmText !== taskTitle) {
-      alert(copy.purgeWarning)
-      return
-    }
-    const succeeded = await onMutate(
-      `${actionBase}purge`,
-      '/api/task/purge',
-      {
-        id,
-        confirm: taskTitle
-      }
-    )
-    if (succeeded) {
-      setPurgeConfirmOpen(false)
-      setPurgeConfirmText('')
-    }
-  }
-
-  const secondaryActions: TaskMenuAction[] = [
-    {
-      key: 'note',
-      label: copy.addNote,
-      disabled: isBusy || !note.trim(),
-      onSelect: () => void setStatus(status)
-    },
-    {
-      key: 'radio-request',
-      label: copy.sendRadioRequest,
-      disabled: isBusy,
-      onSelect: () => void sendRadioRequest()
-    }
-  ]
-
-  // Add cancel option for active tasks (not already cancelled or done)
-  if (!['cancelled', 'done'].includes(status)) {
-    secondaryActions.push({
-      key: 'cancel',
-      label: copy.cancel,
-      disabled: isBusy,
-      onSelect: () => void setStatus('cancelled')
-    })
-  }
-
-  if (status !== 'cancelled') {
-    secondaryActions.push(
-      {
-        key: 'approved',
-        label: copy.approve,
-        disabled: isBusy,
-        onSelect: () => void review('approved')
-      },
-      {
-        key: 'rejected',
-        label: copy.reject,
-        disabled: isBusy,
-        onSelect: () => void review('rejected')
-      }
-    )
-  }
-
-  return (
-    <article className="task-card">
-      <div className="task-card-top">
-        <StatusBadge status={status} />
-        <StatusBadge status={textOf(task.priority, 'normal')} />
-      </div>
-      <h4>{textOf(task.title, '-')}</h4>
-      {task.description ? <p className="task-description">{textOf(task.description)}</p> : null}
-      {task.handoff ? <p className="task-handoff"><strong>{copy.handoff}:</strong> {textOf(task.handoff)}</p> : null}
-      <div className="task-meta-grid">
-        <Property label={copy.project} value={textOf(task.project, '-')} />
-        <Property label={copy.assignee} value={textOf(task.assignee || task.createdBy, '-')} />
-        <Property label={copy.created} value={formatDate(textOf(task.createdAt))} />
-        <Property label={copy.updated} value={formatDate(textOf(task.updatedAt || task.createdAt))} />
-      </div>
-      {task.reviewStatus ? (
-        <div className="task-review">
-          <strong>{copy.review}: {textOf(task.reviewStatus)}</strong>
-          <span>{textOf(task.reviewedBy, '-')} · {formatDate(textOf(task.reviewedAt))}</span>
-          {task.reviewNote ? <p>{textOf(task.reviewNote)}</p> : null}
-        </div>
-      ) : null}
-      {notes.length ? (
-        <div className="task-notes">
-          <strong>{copy.notes}</strong>
-          {notes.map((item, indexValue) => (
-            <p key={`${textOf(item.ts)}-${indexValue}`}>
-              <span>{textOf(item.by, '-')} · {formatDate(textOf(item.ts))}</span>
-              {textOf(item.text, '-')}
-            </p>
-          ))}
-        </div>
-      ) : null}
-      <label className="field note-field">
-        <span>{copy.addNote}</span>
-        <input value={note} onChange={event => setNote(event.target.value)} placeholder={copy.notePlaceholder} />
-      </label>
-      <div className="task-actions">
-        {status === 'open' ? (
-          <button className="btn small" type="button" disabled={isBusy} onClick={() => onMutate(`${actionBase}claim`, '/api/task/claim', { id, by: 'dashboard-next' })}>
-            {copy.claim}
-          </button>
-        ) : null}
-        {['claimed', 'blocked'].includes(status) ? (
-          <button className="btn small" type="button" disabled={isBusy} onClick={() => void setStatus('in_progress')}>
-            {status === 'blocked' ? copy.unblock : copy.start}
-          </button>
-        ) : null}
-        {['claimed', 'in_progress'].includes(status) ? (
-          <button className="btn small ghost" type="button" disabled={isBusy} onClick={() => void setStatus('blocked', 'Blocked from dashboard-next')}>
-            {copy.block}
-          </button>
-        ) : null}
-        {status === 'in_progress' ? (
-          <>
-            <button className="btn small" type="button" disabled={isBusy} onClick={() => void setStatus('done', 'Completed directly')}>
-              {copy.completeDirectly}
-            </button>
-            <button className="btn small ghost" type="button" disabled={isBusy} onClick={() => void setStatus('needs_verification', 'Requested verification')}>
-              {copy.requestVerification}
-            </button>
-          </>
-        ) : null}
-        {status === 'needs_verification' ? (
-          <>
-            <button className="btn small" type="button" disabled={isBusy} onClick={() => void review('approved')}>
-              {copy.approveAndComplete}
-            </button>
-            <button className="btn small ghost" type="button" disabled={isBusy} onClick={() => reportIssue()}>
-              {copy.reportIssue}
-            </button>
-          </>
-        ) : null}
-        {status === 'done' ? (
-          <>
-            <button className="btn small ghost" type="button" disabled={isBusy} onClick={() => void setStatus('open')}>
-              {copy.reopen}
-            </button>
-            <button className="btn small ghost" type="button" disabled={isBusy} onClick={() => reportIssue()}>
-              {copy.reportIssue}
-            </button>
-          </>
-        ) : null}
-        {status === 'cancelled' ? (
-          <>
-            <button className="btn small ghost" type="button" disabled={isBusy} onClick={() => void setStatus('open')}>
-              {copy.reopen}
-            </button>
-            <button className="btn small danger" type="button" disabled={isBusy} onClick={() => openPurgeConfirm()}>
-              {copy.purge}
-            </button>
-          </>
-        ) : null}
-        <TaskActionMenu label={copy.moreActions} actions={secondaryActions} />
-      </div>
-      {issueReportOpen ? (
-        <Modal title={copy.reportIssue} onClose={() => setIssueReportOpen(false)}>
-          <div className="form-grid">
-            <label className="field span-all">
-              <span>{copy.issueDescription}</span>
-              <textarea
-                value={issueNote}
-                onChange={e => setIssueNote(e.target.value)}
-                rows={4}
-                placeholder={copy.issueDescriptionPlaceholder}
-              />
-            </label>
-            <label className="field checkbox-field span-all">
-              <input
-                type="checkbox"
-                checked={shouldReopen}
-                onChange={e => setShouldReopen(e.target.checked)}
-              />
-              <span>{copy.reopenTask}</span>
-            </label>
-            <div className="form-actions span-all">
-              <button
-                className="btn ghost"
-                type="button"
-                onClick={() => setIssueReportOpen(false)}
-              >
-                {copy.cancel}
-              </button>
-              <button
-                className="btn"
-                type="button"
-                onClick={() => void submitIssueReport()}
-                disabled={isBusy}
-              >
-                {isBusy ? copy.running : copy.save}
-              </button>
-            </div>
-          </div>
-        </Modal>
-      ) : null}
-      {purgeConfirmOpen ? (
-        <Modal title={copy.purgeTask} onClose={() => setPurgeConfirmOpen(false)}>
-          <div className="form-grid">
-            <div className="field span-all">
-              <p style={{ marginBottom: '1rem', color: 'var(--text-danger)' }}>
-                ⚠️ {copy.purgeWarning}
-              </p>
-              <p style={{ marginBottom: '0.5rem', fontWeight: 'bold' }}>
-                {textOf(task.title)}
-              </p>
-            </div>
-            <label className="field span-all">
-              <span>{copy.purgeConfirm}</span>
-              <input
-                type="text"
-                value={purgeConfirmText}
-                onChange={e => setPurgeConfirmText(e.target.value)}
-                placeholder={textOf(task.title)}
-              />
-            </label>
-            <div className="form-actions span-all">
-              <button
-                className="btn ghost"
-                type="button"
-                onClick={() => setPurgeConfirmOpen(false)}
-              >
-                {copy.cancel}
-              </button>
-              <button
-                className="btn danger"
-                type="button"
-                onClick={() => void submitPurge()}
-                disabled={isBusy || purgeConfirmText !== textOf(task.title)}
-              >
-                {isBusy ? copy.running : copy.purge}
-              </button>
-            </div>
-          </div>
-        </Modal>
-      ) : null}
-    </article>
-  )
-}
-
-function TaskActionMenu({ label, actions }: { label: string; actions: TaskMenuAction[] }) {
-  const [open, setOpen] = useState(false)
-  const menuId = useId()
-  const menuRef = useRef<HTMLDivElement | null>(null)
-
-  useEffect(() => {
-    if (!open) return
-
-    const onPointerDown = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setOpen(false)
-      }
-    }
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false)
-    }
-
-    window.addEventListener('mousedown', onPointerDown)
-    window.addEventListener('keydown', onKeyDown)
-    return () => {
-      window.removeEventListener('mousedown', onPointerDown)
-      window.removeEventListener('keydown', onKeyDown)
-    }
-  }, [open])
-
-  return (
-    <div className="task-action-menu" ref={menuRef}>
-      <button
-        className="btn small ghost"
-        type="button"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-controls={menuId}
-        onClick={() => setOpen(value => !value)}
-      >
-        {label}
-      </button>
-      {open ? (
-        <div className="task-action-menu-items" id={menuId} role="menu">
-          {actions.map(action => (
-            <button
-              key={action.key}
-              type="button"
-              role="menuitem"
-              disabled={action.disabled}
-              onClick={() => {
-                setOpen(false)
-                action.onSelect()
-              }}
-            >
-              {action.label}
-            </button>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  )
-}
-*/
-
-// Old RadioPanel commented out - using new component from RadioPanel.tsx
-/*
-function RadioPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; onRefresh: () => Promise<void> }) {
-  const [form, setForm] = useState({ text: '', from: 'dashboard-next', to: 'all', type: 'note', project: 'ai-memory-hub', thread: '', replyTo: '' })
-  const [query, setQuery] = useState('')
-  const [fromFilter, setFromFilter] = useState('')
-  const [toFilter, setToFilter] = useState('')
-  const [typeFilter, setTypeFilter] = useState('')
-  const [projectFilter, setProjectFilter] = useState('')
-  const [composeOpen, setComposeOpen] = useState(false)
-  const [busy, setBusy] = useState('')
-  const [error, setError] = useState('')
-  const senderOptions = useMemo(() => uniqueSorted(model.radio.map(message => textOf(message.from)).filter(Boolean)), [model.radio])
-  const recipientOptions = useMemo(() => uniqueSorted(model.radio.map(message => textOf(message.to)).filter(Boolean)), [model.radio])
-  const typeOptions = useMemo(() => uniqueSorted(model.radio.map(message => textOf(message.type)).filter(Boolean)), [model.radio])
-  const projectOptions = useMemo(() => uniqueSorted(model.radio.map(message => textOf(message.project)).filter(Boolean)), [model.radio])
-  const formProjectOptions = useMemo(() => uniqueSorted([
-    ...model.visibleProjects.map(project => textOf(project.id || project.name || project.displayName)).filter(Boolean),
-    ...projectOptions
-  ]), [model.visibleProjects, projectOptions])
-  const cleanQuery = query.trim().toLowerCase()
-  const activeFromFilter = senderOptions.includes(fromFilter) ? fromFilter : ''
-  const activeToFilter = recipientOptions.includes(toFilter) ? toFilter : ''
-  const activeTypeFilter = typeOptions.includes(typeFilter) ? typeFilter : ''
-  const activeProjectFilter = projectOptions.includes(projectFilter) ? projectFilter : ''
-
-  const filteredMessages = model.radio.filter(message => {
-    if (activeFromFilter && textOf(message.from) !== activeFromFilter) return false
-    if (activeToFilter && textOf(message.to) !== activeToFilter) return false
-    if (activeTypeFilter && textOf(message.type) !== activeTypeFilter) return false
-    if (activeProjectFilter && textOf(message.project) !== activeProjectFilter) return false
-    if (!cleanQuery) return true
-    return [message.text, message.thread, message.project, message.from, message.to, message.type]
-      .some(value => textOf(value).toLowerCase().includes(cleanQuery))
-  }).slice().reverse()
-
-  const submitRadio = async () => {
-    const text = form.text.trim()
-    if (!text || busy) return
-    setBusy('send')
-    setError('')
-    try {
-      await apiPost<AnyRecord>('/api/radio/send', { ...form, text })
-      setForm(value => ({ ...value, text: '', thread: '', replyTo: '' }))
-      setComposeOpen(false)
-      await onRefresh()
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : String(nextError))
-    } finally {
-      setBusy('')
-    }
-  }
-
-  const promote = async (id: string) => {
-    if (!id) return
-    setBusy(`promote:${id}`)
-    setError('')
-    try {
-      await apiPost<AnyRecord>('/api/radio/promote', { id })
-      await onRefresh()
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : String(nextError))
-    } finally {
-      setBusy('')
-    }
-  }
-
-  const startReply = (message: AnyRecord) => {
-    setError('')
-    setForm(value => ({
-      ...value,
-      text: '',
-      to: textOf(message.from, 'all'),
-      type: 'reply',
-      project: textOf(message.project, value.project),
-      thread: textOf(message.thread || message.id),
-      replyTo: textOf(message.id)
-    }))
-    setComposeOpen(true)
-  }
-
-  return (
-    <div className="stack">
-      <Panel title={copy.recentRadio}>
-        <div className="section-actions">
-          <button className="btn" type="button" onClick={() => { setError(''); setComposeOpen(true) }}>
-            {copy.broadcastMessage}
-          </button>
-        </div>
-        <div className="filter-strip">
-          <label className="field">
-            <span>{copy.searchText}</span>
-            <input value={query} onChange={event => setQuery(event.target.value)} />
-          </label>
-          <FilterSelect label={copy.from} value={activeFromFilter} onChange={setFromFilter} allLabel={copy.allSenders} options={senderOptions} />
-          <FilterSelect label={copy.to} value={activeToFilter} onChange={setToFilter} allLabel={copy.allRecipients} options={recipientOptions} />
-          <FilterSelect label={copy.type} value={activeTypeFilter} onChange={setTypeFilter} allLabel={copy.allTypes} options={typeOptions} />
-          <FilterSelect label={copy.project} value={activeProjectFilter} onChange={setProjectFilter} allLabel={copy.allProjects} options={projectOptions} />
-          <button className="btn ghost" type="button" onClick={() => { setQuery(''); setFromFilter(''); setToFilter(''); setTypeFilter(''); setProjectFilter('') }}>
-            {copy.clear}
-          </button>
-        </div>
-        {error ? <div className="inline-error">{error}</div> : null}
-        <div className="radio-stream">
-          {filteredMessages.length ? filteredMessages.map(message => (
-            <article className="radio-card" key={textOf(message.id) || `${textOf(message.ts)}-${textOf(message.from)}`}>
-              <div className="radio-card-header">
-                <div className="message-meta">
-                  <StatusBadge status={textOf(message.type, 'note')} />
-                  <span>{textOf(message.from, '-')} {'->'} {textOf(message.to, '-')}</span>
-                </div>
-                <span className="muted-text">{formatDate(textOf(message.ts || message.createdAt))}</span>
-              </div>
-              <p>{textOf(message.text, '-')}</p>
-              <div className="radio-card-footer">
-                <span className="chip">{textOf(message.project, '-')}</span>
-                {message.thread ? <span className="chip">{textOf(message.thread)}</span> : null}
-                <button className="btn small ghost" type="button" onClick={() => startReply(message)}>
-                  {copy.reply}
-                </button>
-                <button className="btn small ghost" type="button" disabled={busy === `promote:${textOf(message.id)}`} onClick={() => void promote(textOf(message.id))}>
-                  {copy.promoteToMemory}
-                </button>
-              </div>
-            </article>
-          )) : <EmptyState text={copy.noData} />}
-        </div>
-      </Panel>
-      {composeOpen ? (
-        <Modal title={copy.broadcastMessage} onClose={() => setComposeOpen(false)}>
-          <div className="form-grid">
-            <label className="field span-all">
-              <span>{copy.message}</span>
-              <textarea value={form.text} onChange={event => setForm(value => ({ ...value, text: event.target.value }))} rows={4} />
-            </label>
-            <label className="field">
-              <span>{copy.from}</span>
-              <input value={form.from} onChange={event => setForm(value => ({ ...value, from: event.target.value }))} />
-            </label>
-            <label className="field">
-              <span>{copy.to}</span>
-              <input value={form.to} onChange={event => setForm(value => ({ ...value, to: event.target.value }))} list="radio-recipient-options" />
-            </label>
-            <label className="field">
-              <span>{copy.type}</span>
-              <select value={form.type} onChange={event => setForm(value => ({ ...value, type: event.target.value }))}>
-                <option value="note">note</option>
-                <option value="reply">reply</option>
-                <option value="review">review</option>
-                <option value="handoff">handoff</option>
-                <option value="risk">risk</option>
-                <option value="request">request</option>
-                <option value="done">done</option>
-              </select>
-            </label>
-            <label className="field">
-              <span>{copy.project}</span>
-              <input value={form.project} onChange={event => setForm(value => ({ ...value, project: event.target.value }))} list="radio-project-options" />
-            </label>
-            {form.thread || form.replyTo ? (
-              <div className="property-grid span-all">
-                <Property label={copy.thread} value={form.thread || '-'} />
-                <Property label={copy.replyTo} value={form.replyTo || '-'} />
-              </div>
-            ) : null}
-            <datalist id="radio-recipient-options">
-              {recipientOptions.map(to => <option value={to} key={to} />)}
-            </datalist>
-            <datalist id="radio-project-options">
-              {formProjectOptions.map(project => <option value={project} key={project} />)}
-            </datalist>
-            {error ? <div className="inline-error span-all">{error}</div> : null}
-            <div className="form-actions span-all">
-              <button className="btn ghost" type="button" onClick={() => setComposeOpen(false)}>
-                {copy.cancel}
-              </button>
-              <button className="btn" type="button" onClick={() => void submitRadio()} disabled={busy === 'send' || !form.text.trim()}>
-                {busy === 'send' ? copy.running : copy.broadcastMessage}
-              </button>
-            </div>
-          </div>
-        </Modal>
-      ) : null}
-    </div>
-  )
-}
-*/
-
 function DispatchPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; onRefresh: () => Promise<void> }) {
   const [force, setForce] = useState(false)
   const [limit, setLimit] = useState(10)
@@ -1480,564 +687,6 @@ function DispatchPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewMode
     <Panel title={copy.dispatchLogs} className="dispatch-history-panel"><DataTable emptyText={copy.noData} columns={[copy.status, copy.to, copy.project, copy.message]} rows={model.dispatchLogs.slice(0, 30).map(log => [<StatusBadge status={textOf(log.runStatus || log.status || log.exitCode, 'log')} />, textOf(log.tool, '-'), textOf(log.project, '-'), textOf(log.message || log.text || log.error || log.lastError, '-')])} /></Panel>
   </div>
 }
-/* OLD workflow helpers - commented out, kept for reference
-const workflowStatusOptions = ['open', 'planned', 'in_progress', 'review', 'blocked', 'done', 'cancelled']
-const workflowPriorityOptions = ['low', 'normal', 'high', 'urgent']
-
-interface WorkflowFormState {
-  id: string
-  title: string
-  by: string
-  project: string
-  priority: string
-  status: string
-  planner: string
-  executor: string
-  reviewer: string
-  observer: string
-  plan: string
-  acceptance: string
-  risks: string
-}
-
-type WorkflowEntryAction = 'result' | 'review' | 'note' | 'signal' | 'delete'
-
-interface WorkflowActionState {
-  action: WorkflowEntryAction
-  workflow: AnyRecord
-}
-*/
-
-/* OLD WorkflowsPanel - replaced by NewWorkflowsPanel component
-function WorkflowsPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel; onRefresh: () => Promise<void> }) {
-  const workflows = model.workflows
-  const [query, setQuery] = useState('')
-  const [statusFilter, setStatusFilter] = useState('all')
-  const [projectFilter, setProjectFilter] = useState('all')
-  const [formOpen, setFormOpen] = useState(false)
-  const [form, setForm] = useState<WorkflowFormState>(() => createWorkflowForm())
-  const [actionState, setActionState] = useState<WorkflowActionState | null>(null)
-  const [actionText, setActionText] = useState('')
-  const [signalTo, setSignalTo] = useState('')
-  const [busy, setBusy] = useState('')
-  const [error, setError] = useState('')
-
-  const projectOptions = useMemo(() => uniqueSorted(workflows.map(workflow => textOf(workflow.project)).filter(Boolean)), [workflows])
-  const formProjectOptions = useMemo(() => uniqueSorted([
-    ...model.visibleProjects.map(project => textOf(project.id || project.name || project.displayName)).filter(Boolean),
-    ...projectOptions,
-    ...model.tasks.map(task => textOf(task.project)).filter(Boolean)
-  ]), [model.tasks, model.visibleProjects, projectOptions])
-
-  const normalizedQuery = query.trim().toLowerCase()
-  const filteredWorkflows = workflows.filter(workflow => {
-    if (statusFilter !== 'all' && textOf(workflow.status, 'open') !== statusFilter) return false
-    if (projectFilter !== 'all' && textOf(workflow.project) !== projectFilter) return false
-    return !normalizedQuery || getWorkflowSearchText(workflow).includes(normalizedQuery)
-  })
-
-  const stageCounts = workflowStatusOptions.map(status => ({
-    status,
-    count: workflows.filter(workflow => textOf(workflow.status, 'open') === status).length
-  }))
-
-  const defaultProject = projectFilter !== 'all'
-    ? projectFilter
-    : formProjectOptions[0] || textOf(workflows[0]?.project, 'default')
-
-  const openWorkflowForm = (workflow?: AnyRecord) => {
-    setError('')
-    setForm(createWorkflowForm(workflow, defaultProject))
-    setFormOpen(true)
-  }
-
-  const updateFormField = (field: keyof WorkflowFormState, value: string) => {
-    setForm(current => ({ ...current, [field]: value }))
-  }
-
-  const saveWorkflow = async () => {
-    if (!form.title.trim()) {
-      setError(`${copy.workflowTitle} ${copy.missing}`)
-      return
-    }
-    setBusy('save')
-    setError('')
-    const body = {
-      title: form.title.trim(),
-      by: form.by.trim() || 'dashboard',
-      from: form.by.trim() || 'dashboard',
-      project: form.project.trim() || 'default',
-      priority: form.priority || 'normal',
-      status: form.status || 'open',
-      planner: form.planner,
-      executor: form.executor,
-      reviewer: form.reviewer,
-      observer: form.observer,
-      plan: form.plan,
-      acceptance: form.acceptance,
-      risks: form.risks
-    }
-    try {
-      if (form.id) {
-        await apiPatch<AnyRecord>(`/api/workflows/${encodeURIComponent(form.id)}`, body)
-      } else {
-        await apiPost<AnyRecord>('/api/workflows', body)
-      }
-      setFormOpen(false)
-      await onRefresh()
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : String(nextError))
-    } finally {
-      setBusy('')
-    }
-  }
-
-  const setWorkflowStatus = async (workflow: AnyRecord, status: string) => {
-    const id = textOf(workflow.id)
-    if (!id) return
-    setBusy(`status:${id}:${status}`)
-    setError('')
-    try {
-      await apiPost<AnyRecord>(`/api/workflows/${encodeURIComponent(id)}/status`, { status, by: 'dashboard' })
-      await onRefresh()
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : String(nextError))
-    } finally {
-      setBusy('')
-    }
-  }
-
-  const openWorkflowAction = (workflow: AnyRecord, action: WorkflowEntryAction) => {
-    setError('')
-    setActionText('')
-    setSignalTo(action === 'signal' ? getWorkflowRoleValues(workflow, 'reviewer')[0] || getWorkflowRoleValues(workflow, 'executor')[0] || 'all' : '')
-    setActionState({ workflow, action })
-  }
-
-  const submitWorkflowAction = async () => {
-    if (!actionState) return
-    const id = textOf(actionState.workflow.id)
-    if (!id) return
-    setBusy(`action:${id}:${actionState.action}`)
-    setError('')
-    try {
-      if (actionState.action === 'delete') {
-        await apiDelete<AnyRecord>(`/api/workflows/${encodeURIComponent(id)}`, { by: 'dashboard' })
-      } else if (actionState.action === 'signal') {
-        if (!signalTo.trim() || !actionText.trim()) {
-          setError(`${copy.signalTo} / ${copy.actionText} ${copy.missing}`)
-          return
-        }
-        await apiPost<AnyRecord>(`/api/workflows/${encodeURIComponent(id)}/signal`, {
-          to: signalTo.trim(),
-          text: actionText.trim(),
-          type: 'handoff',
-          by: 'dashboard'
-        })
-      } else {
-        if (!actionText.trim()) {
-          setError(`${copy.actionText} ${copy.missing}`)
-          return
-        }
-        await apiPost<AnyRecord>(`/api/workflows/${encodeURIComponent(id)}/${actionState.action}`, {
-          text: actionText.trim(),
-          role: actionState.action === 'review' ? 'reviewer' : actionState.action === 'result' ? 'executor' : '',
-          by: 'dashboard'
-        })
-      }
-      setActionState(null)
-      await onRefresh()
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : String(nextError))
-    } finally {
-      setBusy('')
-    }
-  }
-
-  return (
-    <div className="stack">
-      <div className="dashboard-grid">
-        <MetricCard label={copy.workflowTotal} value={formatNumber(workflows.length)} />
-        <MetricCard label={copy.workflowActive} value={formatNumber(workflows.filter(workflow => ['open', 'planned', 'in_progress'].includes(textOf(workflow.status, 'open'))).length)} tone="success" />
-        <MetricCard label={copy.workflowReview} value={formatNumber(workflows.filter(workflow => textOf(workflow.status) === 'review').length)} tone="warning" />
-        <MetricCard label={copy.workflowBlocked} value={formatNumber(workflows.filter(workflow => textOf(workflow.status) === 'blocked').length)} />
-      </div>
-
-      <Panel title={copy.workflows}>
-        <div className="section-actions">
-          <button className="btn" type="button" onClick={() => openWorkflowForm()}>
-            {copy.createWorkflow}
-          </button>
-        </div>
-        <div className="workflow-stage-strip">
-          <button className={`chip button-chip ${statusFilter === 'all' ? 'active' : ''}`} type="button" onClick={() => setStatusFilter('all')}>
-            {copy.allStatuses} {formatNumber(workflows.length)}
-          </button>
-          {stageCounts.map(item => (
-            <button className={`chip button-chip ${statusFilter === item.status ? 'active' : ''}`} type="button" key={item.status} onClick={() => setStatusFilter(item.status)}>
-              {item.status} {formatNumber(item.count)}
-            </button>
-          ))}
-        </div>
-        <div className="form-grid workflow-filter-grid">
-          <label className="field span-2">
-            <span>{copy.searchText}</span>
-            <input value={query} onChange={event => setQuery(event.target.value)} placeholder={copy.searchPlaceholder} />
-          </label>
-          <label className="field">
-            <span>{copy.status}</span>
-            <select value={statusFilter} onChange={event => setStatusFilter(event.target.value)}>
-              <option value="all">{copy.allStatuses}</option>
-              {workflowStatusOptions.map(status => <option value={status} key={status}>{status}</option>)}
-            </select>
-          </label>
-          <label className="field">
-            <span>{copy.project}</span>
-            <select value={projectFilter} onChange={event => setProjectFilter(event.target.value)}>
-              <option value="all">{copy.allProjects}</option>
-              {projectOptions.map(project => <option value={project} key={project}>{project}</option>)}
-            </select>
-          </label>
-          <div className="form-actions">
-            <button className="btn ghost" type="button" onClick={() => { setQuery(''); setStatusFilter('all'); setProjectFilter('all') }}>
-              {copy.clear}
-            </button>
-          </div>
-        </div>
-        {error ? <div className="inline-error">{error}</div> : null}
-        <div className="workflow-list">
-          {filteredWorkflows.length ? filteredWorkflows.map(workflow => (
-            <WorkflowCard
-              busy={busy}
-              copy={copy}
-              key={textOf(workflow.id)}
-              workflow={workflow}
-              onAction={openWorkflowAction}
-              onEdit={openWorkflowForm}
-              onStatus={setWorkflowStatus}
-            />
-          )) : <EmptyState text={workflows.length ? copy.noMatches : copy.noData} />}
-        </div>
-      </Panel>
-
-      {formOpen ? (
-        <Modal title={form.id ? copy.editWorkflow : copy.createWorkflow} onClose={() => setFormOpen(false)}>
-          <div className="form-grid task-form-grid">
-            <label className="field span-2">
-              <span>{copy.workflowTitle}</span>
-              <input value={form.title} onChange={event => updateFormField('title', event.target.value)} />
-            </label>
-            <label className="field">
-              <span>{copy.createdBy}</span>
-              <input value={form.by} onChange={event => updateFormField('by', event.target.value)} />
-            </label>
-            <label className="field">
-              <span>{copy.project}</span>
-              <input value={form.project} onChange={event => updateFormField('project', event.target.value)} list="workflow-project-options" />
-            </label>
-            <label className="field">
-              <span>{copy.priority}</span>
-              <select value={form.priority} onChange={event => updateFormField('priority', event.target.value)}>
-                {workflowPriorityOptions.map(priority => <option value={priority} key={priority}>{priority}</option>)}
-              </select>
-            </label>
-            <label className="field">
-              <span>{copy.status}</span>
-              <select value={form.status} onChange={event => updateFormField('status', event.target.value)}>
-                {workflowStatusOptions.map(status => <option value={status} key={status}>{status}</option>)}
-              </select>
-            </label>
-            <label className="field">
-              <span>{copy.planner}</span>
-              <input value={form.planner} onChange={event => updateFormField('planner', event.target.value)} />
-            </label>
-            <label className="field">
-              <span>{copy.executor}</span>
-              <input value={form.executor} onChange={event => updateFormField('executor', event.target.value)} />
-            </label>
-            <label className="field">
-              <span>{copy.reviewer}</span>
-              <input value={form.reviewer} onChange={event => updateFormField('reviewer', event.target.value)} />
-            </label>
-            <label className="field">
-              <span>{copy.observer}</span>
-              <input value={form.observer} onChange={event => updateFormField('observer', event.target.value)} />
-            </label>
-            <label className="field span-2">
-              <span>{copy.workflowPlan}</span>
-              <textarea value={form.plan} onChange={event => updateFormField('plan', event.target.value)} />
-            </label>
-            <label className="field span-2">
-              <span>{copy.workflowAcceptance}</span>
-              <textarea value={form.acceptance} onChange={event => updateFormField('acceptance', event.target.value)} />
-            </label>
-            <label className="field span-all">
-              <span>{copy.workflowRisks}</span>
-              <textarea value={form.risks} onChange={event => updateFormField('risks', event.target.value)} />
-            </label>
-            <datalist id="workflow-project-options">
-              {formProjectOptions.map(project => <option value={project} key={project} />)}
-            </datalist>
-            {error ? <div className="inline-error span-all">{error}</div> : null}
-            <div className="form-actions span-all">
-              <button className="btn ghost" type="button" onClick={() => setFormOpen(false)}>
-                {copy.cancel}
-              </button>
-              <button className="btn" type="button" disabled={busy === 'save'} onClick={() => void saveWorkflow()}>
-                {busy === 'save' ? copy.running : copy.save}
-              </button>
-            </div>
-          </div>
-        </Modal>
-      ) : null}
-
-      {actionState ? (
-        <Modal title={getWorkflowActionTitle(actionState.action, copy)} onClose={() => setActionState(null)}>
-          <div className="form-grid">
-            <div className="workflow-action-summary span-all">
-              <StatusBadge status={textOf(actionState.workflow.status, 'open')} />
-              <strong>{textOf(actionState.workflow.title, '-')}</strong>
-              <span>{textOf(actionState.workflow.project, '-')}</span>
-            </div>
-            {actionState.action === 'delete' ? (
-              <p className="task-description span-all">{copy.confirmDeleteWorkflow}</p>
-            ) : null}
-            {actionState.action === 'signal' ? (
-              <label className="field span-all">
-                <span>{copy.signalTo}</span>
-                <input value={signalTo} onChange={event => setSignalTo(event.target.value)} />
-              </label>
-            ) : null}
-            {actionState.action !== 'delete' ? (
-              <label className="field span-all">
-                <span>{copy.actionText}</span>
-                <textarea value={actionText} onChange={event => setActionText(event.target.value)} />
-              </label>
-            ) : null}
-            {error ? <div className="inline-error span-all">{error}</div> : null}
-            <div className="form-actions span-all">
-              <button className="btn ghost" type="button" onClick={() => setActionState(null)}>
-                {copy.cancel}
-              </button>
-              <button className={`btn ${actionState.action === 'delete' ? 'danger' : ''}`} type="button" disabled={Boolean(busy)} onClick={() => void submitWorkflowAction()}>
-                {busy ? copy.running : getWorkflowActionTitle(actionState.action, copy)}
-              </button>
-            </div>
-          </div>
-        </Modal>
-      ) : null}
-    </div>
-  )
-}
-
-function WorkflowCard({
-  busy,
-  copy,
-  workflow,
-  onAction,
-  onEdit,
-  onStatus
-}: {
-  busy: string
-  copy: Copy
-  workflow: AnyRecord
-  onAction: (workflow: AnyRecord, action: WorkflowEntryAction) => void
-  onEdit: (workflow: AnyRecord) => void
-  onStatus: (workflow: AnyRecord, status: string) => Promise<void>
-}) {
-  const status = textOf(workflow.status, 'open')
-  const priority = textOf(workflow.priority, 'normal')
-  const roles = [
-    [copy.planner, getWorkflowRoleValues(workflow, 'planner')],
-    [copy.executor, getWorkflowRoleValues(workflow, 'executor')],
-    [copy.reviewer, getWorkflowRoleValues(workflow, 'reviewer')],
-    [copy.observer, getWorkflowRoleValues(workflow, 'observer')]
-  ].filter(([, values]) => Array.isArray(values) && values.length > 0) as Array<[string, string[]]>
-  const logs = collectWorkflowLogs(workflow, copy).slice(0, 8)
-  const linkedItems = [
-    ...asArray<string>(workflow.linkedTasks).map(item => `task:${item}`),
-    ...asArray<string>(workflow.linkedRadio).map(item => `radio:${item}`)
-  ]
-  const canStart = !['in_progress', 'review', 'done', 'cancelled'].includes(status)
-  const canReview = !['review', 'done', 'cancelled'].includes(status)
-  const canDone = !['done', 'cancelled'].includes(status)
-  const disabled = Boolean(busy)
-
-  return (
-    <article className="workflow-card">
-      <header className="workflow-card-header">
-        <div className="workflow-title-block">
-          <h4>{textOf(workflow.title, '-')}</h4>
-          <p>
-            {copy.project}: {textOf(workflow.project, '-')} · {copy.priority}: {priority} · {copy.createdBy}: {textOf(workflow.createdBy, '-')}
-          </p>
-          <p>{copy.updated}: {formatDate(textOf(workflow.updatedAt || workflow.createdAt))}</p>
-        </div>
-        <div className="workflow-badges">
-          <StatusBadge status={status} />
-          <StatusBadge status={priority} />
-        </div>
-      </header>
-
-      {roles.length ? (
-        <div className="chip-list">
-          {roles.map(([label, values]) => <span className="chip" key={label}>{label}: {values.join(', ')}</span>)}
-        </div>
-      ) : null}
-
-      <WorkflowTextBlock label={copy.workflowPlan} value={workflow.plan} />
-      <WorkflowTextBlock label={copy.workflowAcceptance} value={workflow.acceptance} />
-      <WorkflowTextBlock label={copy.workflowRisks} value={workflow.risks} />
-
-      {linkedItems.length ? (
-        <div className="workflow-linked">
-          <span>{copy.linkedItems}</span>
-          <div className="chip-list">
-            {linkedItems.map(item => <span className="chip" key={item}>{item}</span>)}
-          </div>
-        </div>
-      ) : null}
-
-      <details className="workflow-details">
-        <summary>{copy.workflowLogs}</summary>
-        <div className="task-notes">
-          {logs.length ? logs.map((entry, indexValue) => (
-            <p key={`${entry.type}-${entry.ts}-${indexValue}`}>
-              <span>{[entry.type, entry.role, entry.by, formatDate(entry.ts)].filter(Boolean).join(' · ')}</span>
-              <span>{entry.text}</span>
-            </p>
-          )) : <span>{copy.noData}</span>}
-        </div>
-      </details>
-
-      <div className="workflow-actions">
-        {canStart ? (
-          <button className="btn small" type="button" disabled={disabled} onClick={() => void onStatus(workflow, 'in_progress')}>
-            {copy.startWorkflow}
-          </button>
-        ) : null}
-        {canReview ? (
-          <button className="btn small ghost" type="button" disabled={disabled} onClick={() => void onStatus(workflow, 'review')}>
-            {copy.markReview}
-          </button>
-        ) : null}
-        {canDone ? (
-          <button className="btn small" type="button" disabled={disabled} onClick={() => void onStatus(workflow, 'done')}>
-            {copy.markDone}
-          </button>
-        ) : null}
-        <button className="btn small ghost" type="button" disabled={disabled} onClick={() => onEdit(workflow)}>
-          {copy.editWorkflow}
-        </button>
-        <button className="btn small ghost" type="button" disabled={disabled} onClick={() => onAction(workflow, 'result')}>
-          {copy.workflowResult}
-        </button>
-        <button className="btn small ghost" type="button" disabled={disabled} onClick={() => onAction(workflow, 'review')}>
-          {copy.workflowReview}
-        </button>
-        <button className="btn small ghost" type="button" disabled={disabled} onClick={() => onAction(workflow, 'note')}>
-          {copy.workflowNote}
-        </button>
-        <button className="btn small ghost" type="button" disabled={disabled} onClick={() => onAction(workflow, 'signal')}>
-          {copy.workflowSignal}
-        </button>
-        <button className="btn small danger" type="button" disabled={disabled} onClick={() => onAction(workflow, 'delete')}>
-          {copy.deleteWorkflow}
-        </button>
-      </div>
-    </article>
-  )
-}
-
-function WorkflowTextBlock({ label, value }: { label: string; value: unknown }) {
-  const text = Array.isArray(value)
-    ? value.map(item => textOf(item)).filter(Boolean).join('\n')
-    : textOf(value).trim()
-  if (!text) return null
-  return (
-    <div className="workflow-text-block">
-      <strong>{label}</strong>
-      <p>{text}</p>
-    </div>
-  )
-}
-
-function createWorkflowForm(workflow?: AnyRecord, defaultProject = 'default'): WorkflowFormState {
-  return {
-    id: textOf(workflow?.id),
-    title: textOf(workflow?.title),
-    by: textOf(workflow?.createdBy, 'dashboard'),
-    project: textOf(workflow?.project, defaultProject),
-    priority: textOf(workflow?.priority, 'normal'),
-    status: textOf(workflow?.status, 'open'),
-    planner: getWorkflowRoleValues(workflow, 'planner').join(', '),
-    executor: getWorkflowRoleValues(workflow, 'executor').join(', '),
-    reviewer: getWorkflowRoleValues(workflow, 'reviewer').join(', '),
-    observer: getWorkflowRoleValues(workflow, 'observer').join(', '),
-    plan: textOf(workflow?.plan),
-    acceptance: textOf(workflow?.acceptance),
-    risks: Array.isArray(workflow?.risks)
-      ? workflow.risks.map(item => textOf(item)).filter(Boolean).join('\n')
-      : textOf(workflow?.risks)
-  }
-}
-
-function getWorkflowActionTitle(action: WorkflowEntryAction, copy: Copy): string {
-  if (action === 'result') return copy.workflowResult
-  if (action === 'review') return copy.workflowReview
-  if (action === 'note') return copy.workflowNote
-  if (action === 'signal') return copy.workflowSignal
-  return copy.confirmDelete
-}
-
-function getWorkflowRoleValues(workflow: AnyRecord | undefined, role: string): string[] {
-  const value = workflow?.[role]
-  if (Array.isArray(value)) {
-    return value.map(item => textOf(item).trim()).filter(Boolean)
-  }
-  return textOf(value)
-    .split(',')
-    .map(item => item.trim())
-    .filter(Boolean)
-}
-
-function getWorkflowSearchText(workflow: AnyRecord): string {
-  const logs = ['results', 'reviews', 'notes']
-    .flatMap(field => asArray<AnyRecord>(workflow[field]))
-    .map(item => [item.by, item.from, item.role, item.text].map(value => textOf(value)).filter(Boolean).join(' '))
-  return [
-    workflow.id,
-    workflow.title,
-    workflow.project,
-    workflow.status,
-    workflow.priority,
-    workflow.createdBy,
-    workflow.plan,
-    workflow.acceptance,
-    summarizeRoles(workflow),
-    ...asArray<string>(workflow.risks),
-    ...logs
-  ].map(value => textOf(value)).filter(Boolean).join(' ').toLowerCase()
-}
-
-function collectWorkflowLogs(workflow: AnyRecord, copy: Copy): Array<{ type: string; ts: string; by: string; role: string; text: string }> {
-  const normalizeEntries = (items: unknown, type: string) => asArray<AnyRecord>(items)
-    .map(item => ({
-      type,
-      ts: textOf(item.ts || item.createdAt || item.updatedAt),
-      by: textOf(item.by || item.from),
-      role: textOf(item.role),
-      text: textOf(item.text)
-    }))
-    .filter(item => item.text || item.by || item.role)
-  return [
-    ...normalizeEntries(workflow.results, copy.workflowResult),
-    ...normalizeEntries(workflow.reviews, copy.workflowReview),
-    ...normalizeEntries(workflow.notes, copy.workflowNote)
-  ].sort((left, right) => right.ts.localeCompare(left.ts))
-}
-
-/* ========== END OF OLD WorkflowsPanel ========== */
 
 function AnalyticsPanel({ copy, model }: { copy: Copy; model: ViewModel }) {
   const statusTasks = asRecord(model.status.tasks)
@@ -2484,7 +1133,7 @@ function SearchPanel({ copy }: { copy: Copy }) {
       {error ? <div className="inline-error">{error}</div> : null}
     </Panel>
     <div className="search-result-summary"><span><strong>{formatNumber(payload?.count)}</strong>{copy.resultCount}</span><span><strong>{formatNumber(payload?.elapsedMs)} ms</strong>{copy.elapsed}</span><span><strong>{type === 'all' ? copy.allTypes : type}</strong>{copy.type}</span><span><strong>{tag || '—'}</strong>{copy.tags}</span></div>
-    <div className="search-content-grid"><Panel title={copy.facets} className="search-facets-panel"><div className="search-facet-group"><h4>{copy.type}</h4><div className="chip-list">{types.map(item => <button className={`chip button-chip ${type === textOf(item.key) ? 'active' : ''}`} type="button" key={textOf(item.key)} onClick={() => { setType(textOf(item.key, 'all')); void runSearch({ type: textOf(item.key, 'all') }) }}>{textOf(item.label || item.key)} {formatNumber(item.count)}</button>)}</div></div><div className="search-facet-group"><h4>{copy.tags}</h4><div className="chip-list">{tags.length ? tags.slice(0, 24).map(item => <button className={`chip button-chip ${tag === textOf(item.key) ? 'active' : ''}`} type="button" key={textOf(item.key)} onClick={() => { setTag(textOf(item.key)); void runSearch({ tag: textOf(item.key) }) }}>{textOf(item.key)} {formatNumber(item.count)}</button>) : <EmptyState text={copy.noData} />}</div></div><div className="search-facet-group"><h4>{copy.project}</h4><div className="chip-list">{projects.length ? projects.slice(0, 16).map(item => <span className="chip" key={textOf(item.key)}>{textOf(item.key)} {formatNumber(item.count)}</span>) : <EmptyState text={copy.noData} />}</div></div></Panel><Panel title={copy.results} className="search-results-panel"><div className="search-results">{results.length ? results.map((result, indexValue) => { const meta = asRecord(result.meta); const title = textOf(result.title, '-'); return <article className="search-result-card" role="button" tabIndex={0} key={`${textOf(result.kind)}-${textOf(meta.id)}-${indexValue}`} onClick={() => setSelectedResult(result)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') setSelectedResult(result) }}><div className="search-result-header"><StatusBadge status={textOf(result.kind, 'result')} /><strong>{title}</strong><span>{formatDate(textOf(result.ts))}</span></div><p>{textOf(result.preview || result.text, '-')}</p><div className="chip-list">{textOf(meta.project) ? <span className="chip">{textOf(meta.project)}</span> : null}{asArray<string>(result.tags).slice(0, 6).map(item => <span className="chip" key={item}>{item}</span>)}<span className="chip">{copy.score}: {formatNumber(result.score)}</span></div></article> }) : <EmptyState text={copy.noData} />}</div></Panel></div>
+    <div className="search-content-grid"><Panel title={copy.facets} className="search-facets-panel"><div className="search-facet-group"><h4>{copy.type}</h4><div className="chip-list">{types.map(item => <button className={`chip button-chip ${type === textOf(item.key) ? 'active' : ''}`} type="button" key={textOf(item.key)} onClick={() => { setType(textOf(item.key, 'all')); void runSearch({ type: textOf(item.key, 'all') }) }}>{textOf(item.label || item.key)} {formatNumber(item.count)}</button>)}</div></div><div className="search-facet-group"><h4>{copy.tags}</h4><div className="chip-list">{tags.length ? tags.slice(0, 24).map(item => <button className={`chip button-chip ${tag === textOf(item.key) ? 'active' : ''}`} type="button" key={textOf(item.key)} onClick={() => { setTag(textOf(item.key)); void runSearch({ tag: textOf(item.key) }) }}>{textOf(item.key)} {formatNumber(item.count)}</button>) : <EmptyState text={copy.noData} />}</div></div><div className="search-facet-group"><h4>{copy.project}</h4><div className="chip-list">{projects.length ? projects.slice(0, 16).map(item => <span className="chip" key={textOf(item.key)}>{textOf(item.key)} {formatNumber(item.count)}</span>) : <EmptyState text={copy.noData} />}</div></div></Panel><Panel title={copy.results} className="search-results-panel"><div className="search-results">{results.length ? results.map((result, indexValue) => { const meta = asRecord(result.meta); const title = textOf(result.title, '-'); return <article className="search-result-card" role="button" tabIndex={0} aria-label={`${textOf(result.kind, 'result')}: ${title}`} key={`${textOf(result.kind)}-${textOf(meta.id)}-${indexValue}`} onClick={() => setSelectedResult(result)} onKeyDown={activateOnKey(() => setSelectedResult(result))}><div className="search-result-header"><StatusBadge status={textOf(result.kind, 'result')} /><strong>{title}</strong><span>{formatDate(textOf(result.ts))}</span></div><p>{textOf(result.preview || result.text, '-')}</p><div className="chip-list">{textOf(meta.project) ? <span className="chip">{textOf(meta.project)}</span> : null}{asArray<string>(result.tags).slice(0, 6).map(item => <span className="chip" key={item}>{item}</span>)}<span className="chip">{copy.score}: {formatNumber(result.score)}</span></div></article> }) : <EmptyState text={copy.noData} />}</div></Panel></div>
     {selectedResult ? <Modal title={textOf(selectedResult.title, copy.results)} onClose={() => setSelectedResult(null)}><div className="search-result-detail"><div className="chip-list"><StatusBadge status={textOf(selectedResult.kind, 'result')} /><span>{formatDate(textOf(selectedResult.ts))}</span></div><p className="search-result-detail-text">{textOf(selectedResult.text || selectedResult.preview, '-')}</p><Property label={copy.project} value={textOf(asRecord(selectedResult.meta).project, '-')} /><Property label={copy.score} value={formatNumber(selectedResult.score)} /></div></Modal> : null}
   </div>
 }
@@ -3198,7 +1847,6 @@ function SettingsPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewMode
       <Panel title={copy.settingsPanel}>
         <div className="property-grid settings-grid">
           <Property label={copy.memoryDir} value={textOf(model.settings.memoryDir, '-')} />
-          <Property label={copy.theme} value={textOf(dashboard.theme, '-')} />
           <Property label={copy.autoRefresh} value={formatBool(boolSetting(dashboard.autoRefresh, true), copy)} />
           <Property label={copy.notifications} value={formatBool(boolSetting(dashboard.notifications, true), copy)} />
           <Property label={copy.refreshInterval} value={`${formatNumber(dashboard.refreshIntervalMs)} ms`} />
@@ -3244,13 +1892,6 @@ function SettingsPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewMode
                 <select value={form.language} onChange={event => updateForm('language', event.target.value)}>
                   <option value="zh">中文</option>
                   <option value="en">English</option>
-                </select>
-              </label>
-              <label className="field">
-                <span>{copy.theme}</span>
-                <select value={form.theme} onChange={event => updateForm('theme', event.target.value)}>
-                  <option value="dark">{copy.darkMode}</option>
-                  <option value="light">{copy.lightMode}</option>
                 </select>
               </label>
               <label className="field checkbox-field">
@@ -3318,7 +1959,8 @@ function createSettingsForm(settings: AnyRecord): SettingsFormState {
     autoRefresh: boolSetting(dashboard.autoRefresh, true),
     refreshIntervalMs: String(numberOf(dashboard.refreshIntervalMs, 5000)),
     language: ['zh', 'en'].includes(textOf(dashboard.language)) ? textOf(dashboard.language) : 'zh',
-    theme: ['dark', 'light'].includes(textOf(dashboard.theme)) ? textOf(dashboard.theme) : 'dark',
+    // The dashboard ships a single light theme; the field is kept only to preserve the settings payload shape.
+    theme: 'light',
     notifications: boolSetting(dashboard.notifications, true),
     shortcutsEnabled: boolSetting(shortcuts.enabled, true),
     daily: String(numberOf(backupPolicy.daily, 14)),
@@ -3497,29 +2139,6 @@ function MetricCard({ label, value, tone = 'default' }: { label: string; value: 
   return <NewMetricCard label={label} value={value} tone={tone} />
 }
 
-// Old FilterSelect commented out - using inline select elements in new components
-/*
-function FilterSelect({ label, value, onChange, allLabel, options }: {
-  label: string
-  value: string
-  onChange: (value: string) => void
-  allLabel: string
-  options: string[]
-}) {
-  if (!options.length) return null
-
-  return (
-    <label className="field">
-      <span>{label}</span>
-      <select value={value} onChange={event => onChange(event.target.value)}>
-        <option value="">{allLabel}</option>
-        {options.map(option => <option value={option} key={option}>{option}</option>)}
-      </select>
-    </label>
-  )
-}
-*/
-
 const focusableSelectors = [
   'a[href]',
   'button:not([disabled])',
@@ -3668,21 +2287,6 @@ function EmptyState({ text }: { text: string }) {
   return <div className="empty-state">{text}</div>
 }
 
-/* OLD workflow helper - commented out
-function summarizeRoles(workflow: AnyRecord): string {
-  const roles = ['planner', 'executor', 'reviewer', 'observer']
-    .flatMap(role => asArray<string>(workflow[role]).map(value => `${role}:${value}`))
-  return roles.join(', ') || '-'
-}
-*/
-
-function formatDate(value: string): string {
-  if (!value) return '-'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString()
-}
-
 function formatNumber(value: unknown): string {
   return numberOf(value).toLocaleString()
 }
@@ -3724,13 +2328,6 @@ function toolMatchesStatusFilter(tool: AnyRecord, filter: string): boolean {
   return true
 }
 
-/* OLD helper - commented out, used in component files now
-function uniqueSorted(values: string[]): string[] {
-  return Array.from(new Set(values.map(value => value.trim()).filter(Boolean)))
-    .sort((left, right) => left.localeCompare(right))
-}
-*/
-
 function countValues(values: string[], limit = 8): Array<{ key: string; count: number }> {
   const counts = new Map<string, number>()
   values
@@ -3742,10 +2339,3 @@ function countValues(values: string[], limit = 8): Array<{ key: string; count: n
     .sort((left, right) => right.count - left.count || left.key.localeCompare(right.key))
     .slice(0, limit)
 }
-
-
-
-
-
-
-

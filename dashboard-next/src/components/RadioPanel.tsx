@@ -5,7 +5,7 @@ import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { Textarea } from './ui/textarea'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription, DialogClose } from './ui/dialog'
 import { Send, Search, X, AlertCircle, Clock, Reply, Star } from 'lucide-react'
 import type { AnyRecord } from '@/lib/api'
 import { VirtualizedList } from './VirtualizedList'
@@ -35,6 +35,8 @@ interface RadioPanelProps {
     cancel: string
     running: string
     noData: string
+    messageCount: string
+    messagePlaceholder: string
   }
   onRefresh: () => Promise<void>
   hasMore?: boolean
@@ -130,6 +132,7 @@ export function RadioPanel({ radio, visibleProjects, copy, onRefresh, hasMore = 
     .reverse()
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset load-more window when filters change
     setVisibleCount(60)
   }, [cleanQuery, activeFromFilter, activeToFilter, activeTypeFilter, activeProjectFilter])
 
@@ -210,7 +213,7 @@ export function RadioPanel({ radio, visibleProjects, copy, onRefresh, hasMore = 
           <div className="flex items-center justify-between">
             <div>
               <CardTitle>{copy.recentRadio}</CardTitle>
-              <p className="text-sm text-muted-foreground mt-1">共 {filteredMessages.length} 条消息</p>
+              <p className="text-sm text-muted-foreground mt-1">{filteredMessages.length} {copy.messageCount}</p>
             </div>
             <Button onClick={() => { setError(''); setComposeOpen(true) }}>
               <Send className="w-4 h-4 mr-2" />
@@ -229,7 +232,7 @@ export function RadioPanel({ radio, visibleProjects, copy, onRefresh, hasMore = 
               </div>
             </div>
 
-            <div className="space-y-2">
+            {senderOptions.length > 0 && <div className="space-y-2">
               <Label htmlFor="from-filter">{copy.from}</Label>
               <select
                 id="from-filter"
@@ -244,9 +247,9 @@ export function RadioPanel({ radio, visibleProjects, copy, onRefresh, hasMore = 
                   </option>
                 ))}
               </select>
-            </div>
+            </div>}
 
-            <div className="space-y-2">
+            {recipientOptions.length > 0 && <div className="space-y-2">
               <Label htmlFor="to-filter">{copy.to}</Label>
               <select
                 id="to-filter"
@@ -261,9 +264,9 @@ export function RadioPanel({ radio, visibleProjects, copy, onRefresh, hasMore = 
                   </option>
                 ))}
               </select>
-            </div>
+            </div>}
 
-            <div className="space-y-2">
+            {typeOptions.length > 0 && <div className="space-y-2">
               <Label htmlFor="type-filter">{copy.type}</Label>
               <select
                 id="type-filter"
@@ -278,9 +281,9 @@ export function RadioPanel({ radio, visibleProjects, copy, onRefresh, hasMore = 
                   </option>
                 ))}
               </select>
-            </div>
+            </div>}
 
-            <div className="space-y-2">
+            {projectOptions.length > 0 && <div className="space-y-2">
               <Label htmlFor="project-filter">{copy.project}</Label>
               <select
                 id="project-filter"
@@ -295,7 +298,7 @@ export function RadioPanel({ radio, visibleProjects, copy, onRefresh, hasMore = 
                   </option>
                 ))}
               </select>
-            </div>
+            </div>}
 
             <div className="flex items-end">
               <Button
@@ -316,7 +319,7 @@ export function RadioPanel({ radio, visibleProjects, copy, onRefresh, hasMore = 
           </div>
 
           {error && (
-            <div className="flex items-center gap-2 p-3 mb-4 rounded-lg border border-destructive/20 bg-destructive/10">
+            <div className="flex items-center gap-2 p-3 mb-4 rounded-lg border border-destructive/20 bg-destructive/10" role="alert">
               <AlertCircle className="w-4 h-4 text-destructive shrink-0" />
               <p className="text-sm text-destructive">{error}</p>
             </div>
@@ -325,6 +328,7 @@ export function RadioPanel({ radio, visibleProjects, copy, onRefresh, hasMore = 
           {/* Messages Stream */}
           <div className="space-y-4 max-h-[600px] overflow-y-auto">
             {filteredMessages.length ? (
+            <div aria-live="polite" aria-busy={loadingMore}>
               <VirtualizedList
                 items={visibleMessages}
                 itemHeight={190}
@@ -393,6 +397,7 @@ export function RadioPanel({ radio, visibleProjects, copy, onRefresh, hasMore = 
                 )
                 }}
               />
+            </div>
             ) : (
               <div className="text-center text-muted-foreground py-8">{copy.noData}</div>
             )}
@@ -401,11 +406,12 @@ export function RadioPanel({ radio, visibleProjects, copy, onRefresh, hasMore = 
       </Card>
 
       {/* Compose Dialog */}
-      {selectedMessage ? <Dialog open onOpenChange={open => { if (!open) setSelectedMessage(null) }}><DialogContent className="radio-detail-dialog"><DialogHeader><DialogTitle>{copy.message}</DialogTitle></DialogHeader><div className="radio-detail-content"><div className="radio-detail-route"><TypeBadge type={textOf(selectedMessage.type, 'note')} /><strong>{textOf(selectedMessage.from, '-')}</strong><span>→</span><strong>{textOf(selectedMessage.to, '-')}</strong><time>{formatDate(textOf(selectedMessage.ts || selectedMessage.createdAt))}</time></div><p className="radio-detail-text">{textOf(selectedMessage.text, '-')}</p><div className="radio-detail-meta"><span>{copy.project}: {textOf(selectedMessage.project, '-')}</span><span>{copy.thread}: {textOf(selectedMessage.thread || selectedMessage.id, '-')}</span></div><div className="radio-detail-actions"><Button onClick={() => { startReply(selectedMessage); setSelectedMessage(null) }}><Reply className="w-3 h-3 mr-1" />{copy.reply}</Button><Button variant="outline" onClick={() => void promote(textOf(selectedMessage.id))}><Star className="w-3 h-3 mr-1" />{copy.promoteToMemory}</Button></div></div></DialogContent></Dialog> : null}
+      {selectedMessage ? <Dialog open onOpenChange={open => { if (!open) setSelectedMessage(null) }}><DialogContent className="radio-detail-dialog"><DialogHeader><DialogTitle>{copy.message}</DialogTitle><DialogDescription>{copy.message}</DialogDescription></DialogHeader><div className="radio-detail-content"><div className="radio-detail-route"><TypeBadge type={textOf(selectedMessage.type, 'note')} /><strong>{textOf(selectedMessage.from, '-')}</strong><span aria-hidden="true">→</span><strong>{textOf(selectedMessage.to, '-')}</strong><time>{formatDate(textOf(selectedMessage.ts || selectedMessage.createdAt))}</time></div><p className="radio-detail-text">{textOf(selectedMessage.text, '-')}</p><div className="radio-detail-meta"><span>{copy.project}: {textOf(selectedMessage.project, '-')}</span><span>{copy.thread}: {textOf(selectedMessage.thread || selectedMessage.id, '-')}</span></div><div className="radio-detail-actions"><Button onClick={() => { startReply(selectedMessage); setSelectedMessage(null) }}><Reply className="w-3 h-3 mr-1" />{copy.reply}</Button><Button variant="outline" onClick={() => void promote(textOf(selectedMessage.id))}><Star className="w-3 h-3 mr-1" />{copy.promoteToMemory}</Button></div></div><DialogClose asChild><Button variant="outline" className="mt-4">{copy.cancel}</Button></DialogClose></DialogContent></Dialog> : null}
       <Dialog open={composeOpen} onOpenChange={setComposeOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>{copy.broadcastMessage}</DialogTitle>
+            <DialogDescription>{copy.broadcastMessage}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4">
             <div className="space-y-2">
@@ -415,7 +421,7 @@ export function RadioPanel({ radio, visibleProjects, copy, onRefresh, hasMore = 
                 value={form.text}
                 onChange={e => setForm(v => ({ ...v, text: e.target.value }))}
                 rows={4}
-                placeholder="输入消息内容..."
+                placeholder={copy.messagePlaceholder}
               />
             </div>
 
@@ -488,16 +494,18 @@ export function RadioPanel({ radio, visibleProjects, copy, onRefresh, hasMore = 
             )}
 
             {error && (
-              <div className="flex items-center gap-2 p-3 rounded-lg border border-destructive/20 bg-destructive/10">
+              <div className="flex items-center gap-2 p-3 rounded-lg border border-destructive/20 bg-destructive/10" role="alert">
                 <AlertCircle className="w-4 h-4 text-destructive shrink-0" />
                 <p className="text-sm text-destructive">{error}</p>
               </div>
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setComposeOpen(false)}>
-              {copy.cancel}
-            </Button>
+            <DialogClose asChild>
+              <Button variant="outline">
+                {copy.cancel}
+              </Button>
+            </DialogClose>
             <Button onClick={() => void submitRadio()} disabled={busy === 'send' || !form.text.trim()}>
               {busy === 'send' ? copy.running : copy.broadcastMessage}
             </Button>

@@ -4,7 +4,7 @@ import { apiPatch, apiDelete, asArray, asRecord, textOf } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription, DialogClose } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -21,6 +21,26 @@ interface ProjectsPanelProps {
     title: string
     updated: string
     actions: string
+    editProject: string
+    archive: string
+    repo: string
+    feishu: string
+    close: string
+    id: string
+    createdLabel: string
+    nameLabel: string
+    displayNameLabel: string
+    typeLabel: string
+    descriptionLabel: string
+    aliasesLabel: string
+    metadataLabel: string
+    resourcesLabel: string
+    cancel: string
+    save: string
+    saving: string
+    invalidMetadataJson: string
+    invalidResourcesJson: string
+    projectStatusLabels: Record<string, string>
   }
   model: {
     visibleProjects: AnyRecord[]
@@ -36,26 +56,29 @@ function formatDate(value: string): string {
   return date.toLocaleString()
 }
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ status, copy }: { status: string; copy: ProjectsPanelProps['copy'] }) {
   const variants: Record<string, 'default' | 'secondary' | 'outline'> = {
     active: 'default',
     paused: 'secondary',
     archived: 'outline',
     hidden: 'outline'
   }
-  return <Badge variant={variants[status] || 'outline'}>{status}</Badge>
+  const label = copy.projectStatusLabels[status] || status
+  return <Badge variant={variants[status] || 'outline'}>{label}</Badge>
 }
 
 function ProjectEditDialog({
   project,
   open,
   onClose,
-  onSave
+  onSave,
+  copy
 }: {
   project: AnyRecord
   open: boolean
   onClose: () => void
   onSave: (id: string, patch: AnyRecord) => Promise<void>
+  copy: ProjectsPanelProps['copy']
 }) {
   const metadata = asRecord(project.metadata)
   const resources = asRecord(project.resources)
@@ -95,8 +118,8 @@ function ProjectEditDialog({
         if (form.metadataJson.trim()) {
           patch.metadata = JSON.parse(form.metadataJson)
         }
-      } catch (e) {
-        setError('Invalid metadata JSON')
+      } catch {
+        setError(copy.invalidMetadataJson)
         return
       }
 
@@ -104,8 +127,8 @@ function ProjectEditDialog({
         if (form.resourcesJson.trim()) {
           patch.resources = JSON.parse(form.resourcesJson)
         }
-      } catch (e) {
-        setError('Invalid resources JSON')
+      } catch {
+        setError(copy.invalidResourcesJson)
         return
       }
 
@@ -122,45 +145,46 @@ function ProjectEditDialog({
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Edit Project: {textOf(project.id)}</DialogTitle>
+          <DialogTitle>{copy.editProject}: {textOf(project.id)}</DialogTitle>
+          <DialogDescription>{copy.editProject}</DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label htmlFor="name">Name</Label>
+            <Label htmlFor="name">{copy.nameLabel}</Label>
             <Input id="name" value={form.name} onChange={e => updateField('name', e.target.value)} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="displayName">Display Name</Label>
+            <Label htmlFor="displayName">{copy.displayNameLabel}</Label>
             <Input id="displayName" value={form.displayName} onChange={e => updateField('displayName', e.target.value)} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="status">Status</Label>
+            <Label htmlFor="status">{copy.status}</Label>
             <select 
               id="status" 
               value={form.status} 
               onChange={e => updateField('status', e.target.value)}
               className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
             >
-              <option value="active">active</option>
-              <option value="paused">paused</option>
-              <option value="archived">archived</option>
-              <option value="hidden">hidden</option>
+              <option value="active">{copy.projectStatusLabels.active}</option>
+              <option value="paused">{copy.projectStatusLabels.paused}</option>
+              <option value="archived">{copy.projectStatusLabels.archived}</option>
+              <option value="hidden">{copy.projectStatusLabels.hidden}</option>
             </select>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="type">Type</Label>
+            <Label htmlFor="type">{copy.typeLabel}</Label>
             <Input id="type" value={form.type} onChange={e => updateField('type', e.target.value)} placeholder="game, tool, etc." />
           </div>
           <div className="col-span-2 space-y-2">
-            <Label htmlFor="description">Description</Label>
+            <Label htmlFor="description">{copy.descriptionLabel}</Label>
             <Textarea id="description" value={form.description} onChange={e => updateField('description', e.target.value)} rows={2} />
           </div>
           <div className="col-span-2 space-y-2">
-            <Label htmlFor="aliases">Aliases (comma separated)</Label>
+            <Label htmlFor="aliases">{copy.aliasesLabel}</Label>
             <Input id="aliases" value={form.aliases} onChange={e => updateField('aliases', e.target.value)} placeholder="alias1, alias2" />
           </div>
           <div className="col-span-2 space-y-2">
-            <Label htmlFor="metadata">Metadata (JSON)</Label>
+            <Label htmlFor="metadata">{copy.metadataLabel}</Label>
             <Textarea
               id="metadata"
               value={form.metadataJson}
@@ -171,7 +195,7 @@ function ProjectEditDialog({
             />
           </div>
           <div className="col-span-2 space-y-2">
-            <Label htmlFor="resources">Resources (JSON)</Label>
+            <Label htmlFor="resources">{copy.resourcesLabel}</Label>
             <Textarea
               id="resources"
               value={form.resourcesJson}
@@ -182,14 +206,16 @@ function ProjectEditDialog({
             />
           </div>
           <div className="col-span-2 grid grid-cols-2 gap-4 p-3 bg-muted rounded-md text-sm">
-            <div><span className="text-muted-foreground">Created:</span> {textOf(project.createdAt, '-')}</div>
-            <div><span className="text-muted-foreground">Updated:</span> {textOf(project.updatedAt, '-')}</div>
+            <div><span className="text-muted-foreground">{copy.createdLabel}:</span> {textOf(project.createdAt, '-')}</div>
+            <div><span className="text-muted-foreground">{copy.updated}:</span> {textOf(project.updatedAt, '-')}</div>
           </div>
-          {error && <div className="col-span-2 text-sm text-destructive">{error}</div>}
+          {error && <div className="col-span-2 text-sm text-destructive" role="alert">{error}</div>}
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button onClick={handleSave} disabled={busy}>{busy ? 'Saving...' : 'Save'}</Button>
+          <DialogClose asChild>
+            <Button variant="outline" disabled={busy}>{copy.cancel}</Button>
+          </DialogClose>
+          <Button onClick={handleSave} disabled={busy}>{busy ? copy.saving : copy.save}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -214,8 +240,6 @@ export function ProjectsPanel({ copy, model, onRefresh }: ProjectsPanelProps) {
       await apiPatch(`/api/projects/${encodeURIComponent(id)}`, patch)
       await onRefresh()
       closeEdit()
-    } catch (err) {
-      throw err
     } finally {
       setBusy('')
     }
@@ -261,7 +285,7 @@ export function ProjectsPanel({ copy, model, onRefresh }: ProjectsPanelProps) {
                 model.visibleProjects.map((project, idx) => (
                   <TableRow key={idx} className="project-row-clickable" tabIndex={0} onClick={event => { if (!(event.target as HTMLElement).closest('button, a, input, select')) openEdit(project) }} onKeyDown={event => { if ((event.key === 'Enter' || event.key === ' ') && event.target === event.currentTarget) openEdit(project) }}>
                     <TableCell>
-                      <StatusBadge status={textOf(project.status, 'active')} />
+                      <StatusBadge status={textOf(project.status, 'active')} copy={copy} />
                     </TableCell>
                     <TableCell>
                       <div className="space-y-1">
@@ -286,16 +310,16 @@ export function ProjectsPanel({ copy, model, onRefresh }: ProjectsPanelProps) {
                           if (!repoUrl && !feishuUrl) return null
                           return (
                             <div className="flex gap-2">
-                              {repoUrl && (
-                                <a href={repoUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline">
-                                  Repo
-                                </a>
-                              )}
-                              {feishuUrl && (
-                                <a href={feishuUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline">
-                                  飞书
-                                </a>
-                              )}
+                        {repoUrl && (
+                          <a href={repoUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline">
+                            {copy.repo}
+                          </a>
+                        )}
+                        {feishuUrl && (
+                          <a href={feishuUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline">
+                            {copy.feishu}
+                          </a>
+                        )}
                             </div>
                           )
                         })()}
@@ -306,10 +330,10 @@ export function ProjectsPanel({ copy, model, onRefresh }: ProjectsPanelProps) {
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-2">
-                        <Button size="sm" variant="outline" onClick={() => openEdit(project)}>Edit</Button>
-                        <RelatedEntities entityType="project" entityId={textOf(project.id || project.name)} title="关联" />
+                        <Button size="sm" variant="outline" onClick={() => openEdit(project)}>{copy.editProject}</Button>
+                        <RelatedEntities entityType="project" entityId={textOf(project.id || project.name)} />
                         <Button size="sm" variant="ghost" onClick={() => void archiveProject(textOf(project.id))} disabled={busy === 'archive'}>
-                          Archive
+                          {copy.archive}
                         </Button>
                       </div>
                     </TableCell>
@@ -344,6 +368,7 @@ export function ProjectsPanel({ copy, model, onRefresh }: ProjectsPanelProps) {
           open={true}
           onClose={closeEdit}
           onSave={updateProject}
+          copy={copy}
         />
       )}
     </div>

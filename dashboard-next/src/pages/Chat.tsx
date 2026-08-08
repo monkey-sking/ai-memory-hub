@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import type { AnyRecord } from '../lib/api'
 import { apiGet, apiPost, asArray, asRecord, textOf } from '../lib/api'
-import type { AppLanguage, AppOutletContext } from '../lib/i18n'
+import type { AppOutletContext } from '../lib/i18n'
+import { dashboardLabels } from '../lib/dashboardCopy'
 import './Chat.css'
 
 interface Message {
@@ -15,41 +16,6 @@ interface Message {
 interface ToolOption {
   name: string
   label: string
-}
-
-const chatLabels: Record<AppLanguage, {
-  title: string
-  language: string
-  empty: string
-  placeholder: string
-  send: string
-  sending: string
-  to: string
-  project: string
-  toolsUnavailable: string
-}> = {
-  zh: {
-    title: '对话',
-    language: 'English',
-    empty: '暂无消息',
-    placeholder: '输入消息',
-    send: '发送',
-    sending: '发送中',
-    to: '发往',
-    project: '项目',
-    toolsUnavailable: '暂无可选工具'
-  },
-  en: {
-    title: 'Chat',
-    language: '中文',
-    empty: 'No messages',
-    placeholder: 'Type a message',
-    send: 'Send',
-    sending: 'Sending',
-    to: 'To',
-    project: 'Project',
-    toolsUnavailable: 'No tools available'
-  }
 }
 
 function formatToolOptions(payload: AnyRecord): ToolOption[] {
@@ -73,7 +39,7 @@ function formatRadioReceipt(message: AnyRecord, fallbackTo: string): string {
 
 export default function Chat() {
   const { language, toggleLanguage } = useOutletContext<AppOutletContext>()
-  const copy = chatLabels[language]
+  const copy = dashboardLabels[language].chat
   const [messages, setMessages] = useState<Message[]>([])
   const [tools, setTools] = useState<ToolOption[]>([])
   const [toolsLoading, setToolsLoading] = useState(true)
@@ -175,7 +141,7 @@ export default function Chat() {
           ) : toolsLoading ? (
             <div className="chat-tool-empty" role="status" aria-live="polite">
               <span className="chat-loading-dot" aria-hidden="true" />
-              {language === 'zh' ? '正在加载可用工具…' : 'Loading available tools…'}
+              {copy.loadingTools}
             </div>
           ) : (
             <div className="chat-tool-empty" role={toolError ? 'alert' : 'status'}>

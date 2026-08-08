@@ -370,8 +370,9 @@ test("dashboard serves externalized virtual-scroll assets", async () => {
   assert.match(toastStackSource, /aria-live="polite"/);
   assert.match(dashboardSource, /function Modal/);
   assert.match(dashboardSource, /apiGet<DashboardSnapshot>\('\/api\/dashboard'\)/);
-  assert.match(dashboardSource, /'\/api\/task\/status'/);
-  assert.match(dashboardSource, /'\/api\/task\/review'/);
+  // Task status/review mutations moved from Dashboard.tsx into the extracted TasksPanel component.
+  assert.match(tasksPanelSource, /'\/api\/task\/status'/);
+  assert.match(tasksPanelSource, /'\/api\/task\/review'/);
   assert.match(dashboardSource, /apiGet<AnyRecord>\('\/api\/health'\)/);
   assert.match(dashboardSource, /toolIconFiles/);
   assert.match(dashboardCss, /\.kanban-grid/);

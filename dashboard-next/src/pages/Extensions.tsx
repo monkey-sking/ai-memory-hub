@@ -3,7 +3,8 @@ import { useOutletContext } from 'react-router-dom'
 import { AlertTriangle, CheckCircle2, Download, GitCompare, RefreshCw, Search, ShieldAlert, Upload, XCircle } from 'lucide-react'
 import { apiGet, apiPost, asArray } from '../lib/api'
 import { toolIconFiles, toolDisplayNames } from '../lib/toolMetadata'
-import type { AppOutletContext } from '../lib/i18n'
+import { dashboardLabels, type DashboardCopy } from '../lib/dashboardCopy'
+import type { AppOutletContext, AppLanguage } from '../lib/i18n'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
@@ -43,8 +44,7 @@ type AppName = typeof APPS[number]
 
 export default function Extensions() {
   const { language } = useOutletContext<AppOutletContext>()
-  const zh = language === 'zh'
-
+  const copy = dashboardLabels[language]
   const [records, setRecords] = useState<ExtensionRecord[]>([])
   const [status, setStatus] = useState<StatusResponse | null>(null)
   const [diffChanges, setDiffChanges] = useState<DiffChange[]>([])
@@ -82,6 +82,7 @@ export default function Extensions() {
     }
   }
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- initial data load on mount
   useEffect(() => { void load() }, [])
 
   function toggleApp(app: AppName) {
@@ -159,7 +160,7 @@ export default function Extensions() {
         setDiffChanges(asArray<DiffChange>(res.changes))
         setShowPreview(true)
       }
-      setMessage(res.applied ? (zh ? '同步已应用' : 'Sync applied') : (zh ? '预览完成，未修改文件' : 'Preview complete, no files modified'))
+      setMessage(res.applied ? copy.extensions.syncApplied : copy.extensions.previewComplete)
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error))
     } finally {
@@ -191,18 +192,18 @@ export default function Extensions() {
       <header className="extensions-header">
         <div>
           <p className="extensions-eyebrow">AI MEMORY HUB / EXTENSIONS</p>
-          <h1>{zh ? 'MCP 同步中心' : 'MCP Sync Center'}</h1>
-          <p>{zh ? '管理 MCP 服务器配置，同步到 Claude、Codex、Gemini、OpenCode。Skill 请前往 Skills 页面管理。' : 'Manage MCP server configurations across Claude, Codex, Gemini, and OpenCode. Manage Skills on the Skills page.'}</p>
+          <h1>{copy.extensions.title}</h1>
+          <p>{copy.extensions.subtitle}</p>
         </div>
         <div className="extensions-header-actions">
           <Button variant="outline" onClick={() => void load()} disabled={busy}>
-            <RefreshCw size={16} />{zh ? '刷新' : 'Refresh'}
+            <RefreshCw size={16} />{copy.extensions.refresh}
           </Button>
           <Button variant="outline" onClick={() => void importExtensions()} disabled={busy}>
-            <Download size={16} />{zh ? '导入全部' : 'Import All'}
+            <Download size={16} />{copy.extensions.importAll}
           </Button>
           <Button onClick={() => void runDiff()} disabled={busy}>
-            <GitCompare size={16} />{zh ? '查看差异' : 'Diff'}
+            <GitCompare size={16} />{copy.extensions.diff}
           </Button>
         </div>
       </header>
@@ -210,25 +211,25 @@ export default function Extensions() {
       <section className="extensions-summary-grid">
         <Card>
           <CardContent>
-            <span>{zh ? '注册 MCP' : 'Registry MCP'}</span>
+            <span>{copy.extensions.registryMcp}</span>
             <strong>{mcpRecords.length}</strong>
           </CardContent>
         </Card>
         <Card>
           <CardContent>
-            <span>{zh ? 'Skill 管理' : 'Skill management'}</span>
-            <a href="/skills" className="extensions-skill-link">{zh ? '前往 Skills 页面' : 'Open Skills page'}</a>
+            <span>{copy.extensions.skillManagement}</span>
+            <a href="/skills" className="extensions-skill-link">{copy.extensions.openSkillsPage}</a>
           </CardContent>
         </Card>
         <Card>
           <CardContent>
-            <span>{zh ? '受管扩展' : 'Managed'}</span>
+            <span>{copy.extensions.managed}</span>
             <strong>{managedCount}</strong>
           </CardContent>
         </Card>
         <Card>
           <CardContent>
-            <span>{zh ? '冲突' : 'Conflicts'}</span>
+            <span>{copy.extensions.conflicts}</span>
             <strong className={conflictCount > 0 ? 'extensions-conflict-count' : ''}>{conflictCount}</strong>
           </CardContent>
         </Card>
@@ -238,7 +239,7 @@ export default function Extensions() {
         {APPS.map(app => {
           const client = appStatus[app]
           return (
-            <Status key={app} app={app} client={client} zh={zh} language={language} />
+            <Status key={app} app={app} client={client} copy={copy} language={language} />
           )
         })}
       </section>
@@ -247,12 +248,12 @@ export default function Extensions() {
         <div className="extensions-toolbar-filters">
           <label className="extensions-search">
             <Search size={16} />
-            <Input value={query} onChange={e => setQuery(e.target.value)} placeholder={zh ? '搜索扩展' : 'Search extensions'} />
+            <Input value={query} onChange={e => setQuery(e.target.value)} placeholder={copy.extensions.searchPlaceholder} />
           </label>
           <div className="extensions-filter-btn">
             {(['all', 'mcp'] as const).map(kind => (
               <Button key={kind} size="sm" variant={kindFilterValue === kind ? 'default' : 'outline'} onClick={() => kindFilter(kind)}>
-                {kind === 'all' ? (zh ? '全部' : 'All') : kind.toUpperCase()}
+                {kind === 'all' ? copy.extensions.all : kind.toUpperCase()}
               </Button>
             ))}
           </div>
@@ -270,10 +271,10 @@ export default function Extensions() {
       <div className="extensions-toolbar">
         <label className="extensions-preview-toggle">
           <input type="checkbox" checked={previewApply} onChange={e => setPreviewApply(e.target.checked)} />
-          <span>{zh ? '应用（否则仅预览）' : 'Apply (else preview only)'}</span>
+          <span>{copy.extensions.applyElsePreview}</span>
         </label>
         <Button size="sm" onClick={() => void runSync()} disabled={busy}>
-          <Upload size={14} />{previewApply ? (zh ? '应用同步' : 'Apply Sync') : (zh ? '预览同步' : 'Preview Sync')}
+          <Upload size={14} />{previewApply ? copy.extensions.applySync : copy.extensions.previewSync}
         </Button>
       </div>
 
@@ -282,11 +283,11 @@ export default function Extensions() {
           <CardHeader>
             <CardTitle className="extensions-diff-header">
               <GitCompare size={18} />
-              {zh ? '差异预览' : 'Diff Preview'}
+              {copy.extensions.diffPreview}
               <span className="extensions-diff-count">
-                {addCount} {zh ? '待添加' : 'to add'} · {conflictCount} {zh ? '冲突' : 'conflicts'} · {currentCount} {zh ? '一致' : 'current'}
+                {addCount} {copy.extensions.toAdd} · {conflictCount} {copy.extensions.conflicts} · {currentCount} {copy.extensions.current}
               </span>
-              <Button size="sm" variant="ghost" onClick={() => setShowPreview(false)}>{zh ? '关闭' : 'Close'}</Button>
+              <Button size="sm" variant="ghost" onClick={() => setShowPreview(false)}>{copy.close}</Button>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -295,13 +296,13 @@ export default function Extensions() {
                 <div key={change.id} className={`extensions-diff-row extensions-diff-${change.action} extensions-diff-conflict`}>
                   <span className="extensions-diff-action">
                     {change.action === 'add' ? <Download size={14} /> : change.action === 'conflict' ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />}
-                    {change.action === 'add' ? (zh ? '添加' : 'ADD') : change.action === 'conflict' ? (zh ? '冲突' : 'CONFLICT') : (zh ? '一致' : 'CURRENT')}
+                    {change.action === 'add' ? copy.extensions.add : change.action === 'conflict' ? copy.extensions.conflict : copy.extensions.currentBadge}
                   </span>
                   <span className="extensions-diff-id">{change.id}</span>
                   <span className="extensions-diff-app">{change.apps.map(app => toolDisplayNames[language][app] || app).join(' · ')}</span>
                 </div>
               ))}
-              {!diffChanges.length && <div className="extensions-empty">{zh ? '没有差异' : 'No differences'}</div>}
+              {!diffChanges.length && <div className="extensions-empty">{copy.extensions.noDifferences}</div>}
             </div>
           </CardContent>
         </Card>
@@ -312,10 +313,10 @@ export default function Extensions() {
           <CardContent>
             <span className={lastSyncResult.applied ? 'ext-status-good' : 'ext-status-preview'}>
               {lastSyncResult.applied ? <CheckCircle2 size={14} /> : <GitCompare size={14} />}
-              {lastSyncResult.applied ? (zh ? '已应用' : 'Applied') : (zh ? '仅预览' : 'Preview only')}
+              {lastSyncResult.applied ? copy.extensions.applied : copy.extensions.previewOnly}
             </span>
             {lastSyncResult.changes && (
-              <span>{lastSyncResult.changes.length} {zh ? '项变更' : 'changes'}</span>
+              <span>{lastSyncResult.changes.length} {copy.extensions.changes}</span>
             )}
           </CardContent>
         </Card>
@@ -323,7 +324,7 @@ export default function Extensions() {
 
       <Card>
         <CardHeader>
-          <CardTitle>{zh ? '已同步扩展' : 'Synced Extensions'}</CardTitle>
+          <CardTitle>{copy.extensions.syncedExtensions}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="extensions-list">
@@ -333,7 +334,7 @@ export default function Extensions() {
                   <div className="extensions-row-info">
                     <strong>{item.id}</strong>
                     <small>
-                      {item.kind === 'mcp' ? 'MCP' : 'Skill'}
+                      {item.kind === 'mcp' ? copy.extensions.mcp : copy.extensions.skillKind}
                       {item.server?.type ? ` · ${item.server.type}` : ''}
                       {item.server?.command ? ` · ${item.server.command}` : ''}
                       {item.server?.url ? ` · ${item.server.url}` : ''}
@@ -352,15 +353,15 @@ export default function Extensions() {
                   </div>
                 </div>
                 <div className="extensions-row-state">
-                  {item.managed === false && <span className="ext-unmanaged-tag"><ShieldAlert size={13} />{zh ? '未受管' : 'Unmanaged'}</span>}
+                  {item.managed === false && <span className="ext-unmanaged-tag"><ShieldAlert size={13} />{copy.extensions.unmanaged}</span>}
                   {item.kind === 'mcp' && (removeTarget === item.id ? (
                     <span className="extensions-remove-confirm">
-                      <span>{zh ? '确定移除？' : 'Remove?'}</span>
-                      <Button size="sm" variant="destructive" onClick={() => void removeExtension(item.id)} disabled={busy}>{zh ? '确定' : 'Yes'}</Button>
-                      <Button size="sm" variant="ghost" onClick={() => setRemoveTarget(null)}>{zh ? '取消' : 'No'}</Button>
+                      <span>{copy.extensions.removeQuestion}</span>
+                      <Button size="sm" variant="destructive" onClick={() => void removeExtension(item.id)} disabled={busy}>{copy.extensions.confirmYes}</Button>
+                      <Button size="sm" variant="ghost" onClick={() => setRemoveTarget(null)}>{copy.extensions.confirmNo}</Button>
                     </span>
                   ) : (
-                    <Button size="sm" variant="outline" title={zh ? '从注册表移除' : 'Remove from synced list'} aria-label={zh ? '从注册表移除' : 'Remove from synced list'} onClick={() => setRemoveTarget(item.id)} disabled={busy}>{zh ? '移除' : 'Remove'}
+                    <Button size="sm" variant="outline" title={copy.extensions.removeFromList} aria-label={copy.extensions.removeFromList} onClick={() => setRemoveTarget(item.id)} disabled={busy}>{copy.extensions.remove}
                     </Button>
                   )
                   )}
@@ -368,7 +369,7 @@ export default function Extensions() {
               </div>
             ))}
             {!filteredRecords.length && (
-              <div className="extensions-empty">{zh ? '还没有同步扩展。可点击“导入全部”读取现有 MCP，Skill 请在 Skills 页面管理。' : 'No synced extensions yet. Import MCP here; manage Skills in the Skills page.'}</div>
+              <div className="extensions-empty">{copy.extensions.emptySynced}</div>
             )}
           </div>
         </CardContent>
@@ -379,23 +380,23 @@ export default function Extensions() {
   )
 }
 
-function Status({ app, client, zh, language }: { app: string; client?: StatusClient; zh: boolean; language: string }) {
+function Status({ app, client, copy, language }: { app: string; client?: StatusClient; copy: DashboardCopy; language: AppLanguage }) {
   return (
     <Card className="extensions-status-card">
       <CardContent className="extensions-client-card">
         <div className="extensions-client-header">
           <span className={`extensions-client-dot ${client ? 'dot-good' : 'dot-missing'}`} />
-          <strong>{toolDisplayNames[language as 'zh' | 'en'][app] || app}</strong>
+          <strong>{toolDisplayNames[language][app] || app}</strong>
           {client ? (
-            <span className="ext-status-good"><CheckCircle2 size={14} />{zh ? '已检测' : 'Detected'}</span>
+            <span className="ext-status-good"><CheckCircle2 size={14} />{copy.extensions.detected}</span>
           ) : (
-            <span className="ext-status-missing"><XCircle size={14} />{zh ? '未检测' : 'Not detected'}</span>
+            <span className="ext-status-missing"><XCircle size={14} />{copy.extensions.notDetected}</span>
           )}
         </div>
         {client && (
           <div className="extensions-client-stats">
-            <span>{zh ? 'MCP' : 'MCP'}: {client.managed.mcp} / {client.mcp}</span>
-            <span>{zh ? 'Skill' : 'Skill'}: {client.managed.skills} / {client.skills}</span>
+            <span>{copy.extensions.mcp}: {client.managed.mcp} / {client.mcp}</span>
+            <span>{copy.extensions.skillKind}: {client.managed.skills} / {client.skills}</span>
           </div>
         )}
         {(client?.diagnostics?.length ?? 0) > 0 && (
@@ -409,19 +410,3 @@ function Status({ app, client, zh, language }: { app: string; client?: StatusCli
     </Card>
   )
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

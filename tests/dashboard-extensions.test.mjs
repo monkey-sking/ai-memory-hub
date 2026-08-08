@@ -10,6 +10,31 @@ async function readSource(relativePath) {
   return readFile(path.join(srcRoot, relativePath), "utf8");
 }
 
+// Returns the balanced `{ ... }` body that follows `marker` inside `source`.
+function extractObjectBlock(source, marker) {
+  const start = source.indexOf(marker);
+  assert.notEqual(start, -1, `Missing object literal: ${marker}`);
+  const openingBrace = source.indexOf("{", start);
+  let depth = 0;
+  for (let index = openingBrace; index < source.length; index += 1) {
+    if (source[index] === "{") depth += 1;
+    if (source[index] === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  assert.fail(`Unbalanced object literal: ${marker}`);
+}
+
+// Splits the `const labels = { zh: {...}, en: {...} }` dictionary into its two locale bodies.
+function splitLabelLocales(copyModule) {
+  const labels = extractObjectBlock(copyModule, "const labels = {");
+  return {
+    zh: extractObjectBlock(labels, "\n  zh: {"),
+    en: extractObjectBlock(labels, "\n  en: {")
+  };
+}
+
 test("Extensions page is lazy-loaded and routed correctly", async () => {
   const app = await readSource("App.tsx");
 
@@ -101,10 +126,25 @@ test("Extensions page has filter and search functionality", async () => {
 
 test("Extensions page has i18n support for zh/en", async () => {
   const extensions = await readSource("pages/Extensions.tsx");
+  const copyModule = await readSource("lib/dashboardCopy.ts");
 
-  assert.match(extensions, /useOutletContext<AppOutletContext>/);
-  assert.match(extensions, /language\s*===\s*['"]zh['"]/);
-  assert.match(extensions, /zh\s*\?\s*['"][^'"]+['"]\s*:\s*['"][^'"]+['"]/);
+  // The page reads its language from the app shell and resolves every string
+  // through the centralized dictionary instead of inline `language === 'zh' ? ...` ternaries.
+  assert.match(extensions, /from\s+['"]\.\.\/lib\/dashboardCopy['"]/);
+  assert.match(extensions, /const\s*\{\s*language\s*\}\s*=\s*useOutletContext<AppOutletContext>\(\)/);
+  assert.match(extensions, /const\s+copy\s*=\s*dashboardLabels\[language\]/);
+  assert.match(extensions, /copy\.extensions\./);
+  assert.doesNotMatch(extensions, /language\s*===\s*['"]zh['"]\s*\?/);
+
+  // Both locales must actually carry the `extensions` section of the dictionary.
+  const { zh, en } = splitLabelLocales(copyModule);
+  const zhExtensions = extractObjectBlock(zh, "extensions: {");
+  const enExtensions = extractObjectBlock(en, "extensions: {");
+  for (const key of ["title", "subtitle", "openSkillsPage", "applyElsePreview"]) {
+    assert.match(zhExtensions, new RegExp(`\\b${key}:\\s*'[^']+'`), `zh extensions copy missing ${key}`);
+    assert.match(enExtensions, new RegExp(`\\b${key}:\\s*'[^']+'`), `en extensions copy missing ${key}`);
+  }
+  assert.notEqual(zhExtensions, enExtensions);
 });
 
 test("Extensions page imports from shared UI components", async () => {
@@ -130,11 +170,15 @@ test("Extensions CSS has responsive breakpoints for mobile", async () => {
 test("Extensions CSS uses design tokens from root", async () => {
   const css = await readSource("pages/Extensions.css");
 
-  assert.match(css, /hsl\(var\(--border\)\)/);
-  assert.match(css, /hsl\(var\(--muted-foreground\)\)/);
-  assert.match(css, /hsl\(var\(--primary\)\)/);
-  assert.match(css, /hsl\(var\(--accent\)\)/);
-  assert.match(css, /hsl\(var\(--muted\)\)/);
+  assert.match(css, /var\(--border\)/);
+  assert.match(css, /var\(--muted-foreground\)/);
+  assert.match(css, /var\(--primary\)/);
+  assert.match(css, /var\(--accent\)/);
+  assert.match(css, /var\(--muted\)/);
+
+  // The design tokens in src/index.css are raw hex values, so `hsl(var(--token))`
+  // is invalid CSS and the whole declaration gets silently dropped by the browser.
+  assert.doesNotMatch(css, /hsl\(var\(--/);
 });
 
 test("Sidebar includes Extensions navigation link", async () => {
@@ -147,20 +191,33 @@ test("Sidebar includes Extensions navigation link", async () => {
 
 test("Extensions page keeps MCP and Skill surfaces separate", async () => {
   const extensions = await readSource("pages/Extensions.tsx");
+  const copyModule = await readSource("lib/dashboardCopy.ts");
 
   assert.match(extensions, /kindFilterValue/);
   assert.match(extensions, /kindFilter/);
   assert.match(extensions, /'mcp'/);
-  assert.match(extensions, /Skills page/);
+
+  // The "go manage Skills elsewhere" signpost now lives in the shared copy dictionary.
+  assert.match(extensions, /copy\.extensions\.openSkillsPage/);
+  const { zh, en } = splitLabelLocales(copyModule);
+  assert.match(extractObjectBlock(en, "extensions: {"), /openSkillsPage:\s*'[^']*Skills page[^']*'/);
+  assert.match(extractObjectBlock(zh, "extensions: {"), /openSkillsPage:\s*'[^']*Skills[^']*'/);
 });
 
 test("Extensions page has preview vs apply toggle", async () => {
   const extensions = await readSource("pages/Extensions.tsx");
 
+  const copyModule = await readSource("lib/dashboardCopy.ts");
+
   assert.match(extensions, /previewApply/);
   assert.match(extensions, /setPreviewApply/);
   assert.match(extensions, /extensions-preview-toggle/);
-  assert.match(extensions, /Apply \(else preview only\)/);
+
+  // The toggle label moved into the shared copy dictionary; the page renders it via `copy.`.
+  assert.match(extensions, /extensions-preview-toggle[\s\S]{0,320}\{copy\.extensions\.applyElsePreview\}/);
+  const { zh, en } = splitLabelLocales(copyModule);
+  assert.match(extractObjectBlock(en, "extensions: {"), /applyElsePreview:\s*'Apply \(else preview only\)'/);
+  assert.match(extractObjectBlock(zh, "extensions: {"), /applyElsePreview:\s*'[^']+'/);
 });
 
 test("Extensions page shows diff counts for add/conflict/current", async () => {

@@ -5,7 +5,7 @@ import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { Textarea } from './ui/textarea'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription, DialogClose } from './ui/dialog'
 import { RelatedEntities } from './RelatedEntities'
 import { Plus, AlertCircle, Clock, Tag, User, RefreshCw } from 'lucide-react'
 import type { AnyRecord } from '@/lib/api'
@@ -19,14 +19,19 @@ interface MemoryPanelProps {
     pendingEvents: string
     profile: string
     memoryRecords: string
+    memoryOverview: string
     supersedeMemory: string
     memoryText: string
     kind: string
     source: string
     cancel: string
     save: string
+    close: string
+    id: string
+    time: string
     running: string
     noData: string
+    project: string
   }
   onRefresh: () => Promise<void>
   hasMore?: boolean
@@ -161,7 +166,7 @@ export function MemoryPanel({ memory, copy, onRefresh, hasMore = false, onLoadMo
         {/* Memory Snapshot */}
         <Card className="lg:col-span-2">
           <CardHeader className="border-b">
-            <CardTitle>记忆总览</CardTitle>
+            <CardTitle>{copy.memoryOverview}</CardTitle>
           </CardHeader>
           <CardContent className="pt-6">
             <pre className="text-sm bg-muted p-4 rounded-lg overflow-auto max-h-96 whitespace-pre-wrap">
@@ -219,6 +224,7 @@ export function MemoryPanel({ memory, copy, onRefresh, hasMore = false, onLoadMo
         </CardHeader>
         <CardContent className="pt-6">
           {memoryRecords.length ? (
+            <div aria-live="polite" aria-busy={loadingMore}>
             <VirtualizedList
               items={visibleRecords}
               itemHeight={190}
@@ -257,6 +263,7 @@ export function MemoryPanel({ memory, copy, onRefresh, hasMore = false, onLoadMo
                             size="sm"
                             onClick={() => openSupersede(record)}
                             className="shrink-0"
+                            aria-label={copy.supersedeMemory}
                           >
                             <RefreshCw className="w-3 h-3" />
                           </Button>
@@ -288,6 +295,7 @@ export function MemoryPanel({ memory, copy, onRefresh, hasMore = false, onLoadMo
                 )
               }}
             />
+            </div>
           ) : (
             <div className="text-center text-muted-foreground py-8">{copy.noData}</div>
           )}
@@ -296,13 +304,13 @@ export function MemoryPanel({ memory, copy, onRefresh, hasMore = false, onLoadMo
 
       {selectedRecord ? <Dialog open onOpenChange={open => { if (!open) setSelectedRecord(null) }}>
         <DialogContent className="memory-detail-dialog">
-          <DialogHeader><DialogTitle>{textOf(selectedRecord.kind, copy.memoryRecords)} · {formatDate(textOf(selectedRecord.ts || selectedRecord.indexedAt))}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{textOf(selectedRecord.kind, copy.memoryRecords)} · {formatDate(textOf(selectedRecord.ts || selectedRecord.indexedAt))}</DialogTitle><DialogDescription>{copy.memoryRecords}</DialogDescription></DialogHeader>
           <div className="memory-detail-content">
-            <div className="memory-detail-meta"><KindBadge kind={textOf(selectedRecord.kind, 'note')} /><span>{textOf(selectedRecord.source, '-')}</span><span>{textOf(selectedRecord.project || asRecord(selectedRecord.metadata).project, '-')}</span><RelatedEntities entityType="memory" entityId={textOf(selectedRecord.localEventId || selectedRecord.id)} title="关联上下文" /></div>
+            <div className="memory-detail-meta"><KindBadge kind={textOf(selectedRecord.kind, 'note')} /><span>{textOf(selectedRecord.source, '-')}</span><span>{textOf(selectedRecord.project || asRecord(selectedRecord.metadata).project, '-')}</span><RelatedEntities entityType="memory" entityId={textOf(selectedRecord.localEventId || selectedRecord.id)} /></div>
             <p className="memory-detail-text">{textOf(selectedRecord.text, '-')}</p>
-            <dl className="memory-detail-grid"><div><dt>ID</dt><dd>{textOf(selectedRecord.localEventId || selectedRecord.id, '-')}</dd></div><div><dt>时间</dt><dd>{formatDate(textOf(selectedRecord.ts || selectedRecord.indexedAt))}</dd></div><div><dt>来源</dt><dd>{textOf(selectedRecord.source, '-')}</dd></div><div><dt>项目</dt><dd>{textOf(selectedRecord.project || asRecord(selectedRecord.metadata).project, '-')}</dd></div></dl>
+            <dl className="memory-detail-grid"><div><dt>{copy.id}</dt><dd>{textOf(selectedRecord.localEventId || selectedRecord.id, '-')}</dd></div><div><dt>{copy.time}</dt><dd>{formatDate(textOf(selectedRecord.ts || selectedRecord.indexedAt))}</dd></div><div><dt>{copy.source}</dt><dd>{textOf(selectedRecord.source, '-')}</dd></div><div><dt>{copy.project}</dt><dd>{textOf(selectedRecord.project || asRecord(selectedRecord.metadata).project, '-')}</dd></div></dl>
           </div>
-          <DialogFooter><Button variant="outline" onClick={() => setSelectedRecord(null)}>关闭</Button><Button onClick={() => { setSelectedRecord(null); openSupersede(selectedRecord) }}><RefreshCw className="mr-2 h-3.5 w-3.5" />{copy.supersedeMemory}</Button></DialogFooter>
+          <DialogFooter><DialogClose asChild><Button variant="outline">{copy.close}</Button></DialogClose><Button onClick={() => { setSelectedRecord(null); openSupersede(selectedRecord) }}><RefreshCw className="mr-2 h-3.5 w-3.5" />{copy.supersedeMemory}</Button></DialogFooter>
         </DialogContent>
       </Dialog> : null}
       {/* Record Memory Dialog */}
@@ -310,6 +318,7 @@ export function MemoryPanel({ memory, copy, onRefresh, hasMore = false, onLoadMo
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{copy.recordMemory}</DialogTitle>
+            <DialogDescription>{copy.memoryText}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4">
             <div className="space-y-2">
@@ -351,16 +360,18 @@ export function MemoryPanel({ memory, copy, onRefresh, hasMore = false, onLoadMo
             </div>
 
             {error && (
-              <div className="flex items-center gap-2 p-3 rounded-lg border border-destructive/20 bg-destructive/10">
+              <div className="flex items-center gap-2 p-3 rounded-lg border border-destructive/20 bg-destructive/10" role="alert">
                 <AlertCircle className="w-4 h-4 text-destructive shrink-0" />
                 <p className="text-sm text-destructive">{error}</p>
               </div>
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setRecordOpen(false)}>
-              {copy.cancel}
-            </Button>
+            <DialogClose asChild>
+              <Button variant="outline">
+                {copy.cancel}
+              </Button>
+            </DialogClose>
             <Button onClick={() => void submitMemory()} disabled={saving || !text.trim()}>
               {saving ? copy.running : copy.save}
             </Button>
@@ -374,6 +385,7 @@ export function MemoryPanel({ memory, copy, onRefresh, hasMore = false, onLoadMo
           <DialogContent>
             <DialogHeader>
               <DialogTitle>{copy.supersedeMemory}</DialogTitle>
+              <DialogDescription>{copy.memoryText}</DialogDescription>
             </DialogHeader>
             <div className="grid gap-4">
               <div className="space-y-2">
@@ -403,20 +415,22 @@ export function MemoryPanel({ memory, copy, onRefresh, hasMore = false, onLoadMo
               </div>
 
               {error && (
-                <div className="flex items-center gap-2 p-3 rounded-lg border border-destructive/20 bg-destructive/10">
+                <div className="flex items-center gap-2 p-3 rounded-lg border border-destructive/20 bg-destructive/10" role="alert">
                   <AlertCircle className="w-4 h-4 text-destructive shrink-0" />
                   <p className="text-sm text-destructive">{error}</p>
                 </div>
               )}
             </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setSupersedeTarget(null)}>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">
                 {copy.cancel}
               </Button>
-              <Button onClick={() => void supersedeMemory()} disabled={saving || !supersedeText.trim()}>
-                {saving ? copy.running : copy.supersedeMemory}
-              </Button>
-            </DialogFooter>
+            </DialogClose>
+            <Button onClick={() => void supersedeMemory()} disabled={saving || !supersedeText.trim()}>
+              {saving ? copy.running : copy.supersedeMemory}
+            </Button>
+          </DialogFooter>
           </DialogContent>
         </Dialog>
       )}

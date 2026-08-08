@@ -1,8 +1,11 @@
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Badge } from './ui/badge'
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { useOutletContext } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import type { AnyRecord } from '@/lib/api'
+import { dashboardLabels } from '@/lib/dashboardCopy'
+import type { AppOutletContext } from '@/lib/i18n'
 
 interface MetricCardProps {
   label: string
@@ -73,11 +76,11 @@ interface TaskListProps {
 
 export function TaskList({ tasks, emptyText }: TaskListProps) {
   if (!tasks.length) {
-    return <div className="text-center text-muted-foreground py-8">{emptyText}</div>
+    return <p className="text-center text-muted-foreground py-8">{emptyText}</p>
   }
 
   return (
-    <div className="overview-task-cards">
+    <ul className="overview-list" aria-label={emptyText}>
       {tasks.map((task, idx) => {
         const status = String(task.status || 'open')
         const title = String(task.title || '-')
@@ -85,20 +88,14 @@ export function TaskList({ tasks, emptyText }: TaskListProps) {
         const assignee = String(task.assignee || task.createdBy || '-')
 
         return (
-          
-          <article key={idx} className="overview-task-card">
-            <div className="overview-task-card-top">
-              <StatusBadge status={status} />
-              <span className="overview-card-index">{String(idx + 1).padStart(2, '0')}</span>
-            </div>
-            <div className="overview-task-card-body">
-              <p className="overview-task-card-title">{title}</p>
-              <div className="overview-task-card-meta"><span>{project}</span><span>{assignee}</span></div>
-            </div>
-          </article>
+          <li key={idx} className="overview-list-item">
+            <StatusBadge status={status} />
+            <span className="overview-list-title">{title}</span>
+            <span className="overview-list-meta">{project} · {assignee}</span>
+          </li>
         )
       })}
-    </div>
+    </ul>
   )
 }
 
@@ -110,11 +107,11 @@ interface RadioListProps {
 
 export function RadioList({ messages, emptyText, onSelect }: RadioListProps) {
   if (!messages.length) {
-    return <div className="text-center text-muted-foreground py-8">{emptyText}</div>
+    return <p className="text-center text-muted-foreground py-8">{emptyText}</p>
   }
 
   return (
-    <div className="overview-radio-cards">
+    <ul className="overview-list">
       {messages.map((message, idx) => {
         const type = String(message.type || 'note')
         const from = String(message.from || '-')
@@ -122,16 +119,21 @@ export function RadioList({ messages, emptyText, onSelect }: RadioListProps) {
         const text = String(message.text || '-')
 
         return (
-          <article key={idx} className="overview-radio-card" role={onSelect ? "button" : undefined} tabIndex={onSelect ? 0 : undefined} onClick={() => onSelect?.(message)} onKeyDown={event => { if (onSelect && (event.key === "Enter" || event.key === " ")) onSelect(message) }}>
-            <div className="overview-radio-card-header">
-              <StatusBadge status={type} />
-              <span className="overview-radio-route"><strong>{from}</strong><span>→</span><strong>{to}</strong></span>
-            </div>
-            <p className="overview-radio-text">{text}</p>
-            <span className="overview-card-index">{String(idx + 1).padStart(2, '0')}</span>
-          </article>        )
+          <li
+            key={idx}
+            className="overview-list-item overview-radio-item"
+            role={onSelect ? "button" : undefined}
+            tabIndex={onSelect ? 0 : undefined}
+            onClick={() => onSelect?.(message)}
+            onKeyDown={event => { if (onSelect && (event.key === "Enter" || event.key === " ")) onSelect(message) }}
+          >
+            <StatusBadge status={type} />
+            <span className="overview-radio-route"><strong>{from}</strong><span aria-hidden="true">→</span><strong>{to}</strong></span>
+            <span className="overview-list-meta overview-radio-text">{text}</span>
+          </li>
+        )
       })}
-    </div>
+    </ul>
   )
 }
 
@@ -142,23 +144,26 @@ interface ToolListProps {
 
 export function ToolList({ tools, emptyText }: ToolListProps) {
   if (!tools.length) {
-    return <div className="text-center text-muted-foreground py-8">{emptyText}</div>
+    return <p className="text-center text-muted-foreground py-8">{emptyText}</p>
   }
 
   return (
-    <div className="overview-tool-cards">
+    <ul className="overview-list">
       {tools.map((tool, idx) => {
         const name = String(tool.name || '-')
         const status = String(tool.connectionStatus || 'missing')
+        const detail = String(tool.mode || tool.kind || 'runtime')
 
         return (
-          <article key={idx} className="overview-tool-card">
-            <div className="overview-tool-icon">{name.slice(0, 1).toUpperCase()}</div>
-            <div className="overview-tool-copy"><strong>{name}</strong><span>{String(tool.mode || tool.kind || 'runtime')}</span></div>
+          <li key={idx} className="overview-list-item">
+            <span className="overview-tool-icon" aria-hidden="true">{name.slice(0, 1).toUpperCase()}</span>
+            <span className="overview-list-title">{name}</span>
+            <span className="overview-list-meta">{detail}</span>
             <StatusBadge status={status} />
-          </article>        )
+          </li>
+        )
       })}
-    </div>
+    </ul>
   )
 }
 
@@ -167,29 +172,33 @@ interface StatusBadgeProps {
 }
 
 export function StatusBadge({ status }: StatusBadgeProps) {
-  const statusVariants: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'outline'; label?: string }> = {
+  const { language } = useOutletContext<AppOutletContext>()
+  const statusLabels = dashboardLabels[language].statusLabels
+
+  const statusVariants: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
     // Task statuses
-    open: { variant: 'secondary', label: 'Open' },
-    claimed: { variant: 'default', label: 'Claimed' },
-    active: { variant: 'default', label: 'Active' },
-    completed: { variant: 'outline', label: 'Done' },
-    failed: { variant: 'destructive', label: 'Failed' },
+    open: { variant: 'secondary' },
+    claimed: { variant: 'default' },
+    active: { variant: 'default' },
+    completed: { variant: 'outline' },
+    failed: { variant: 'destructive' },
 
     // Connection statuses
-    connected: { variant: 'default', label: 'Connected' },
-    ready: { variant: 'default', label: 'Ready' },
-    missing: { variant: 'outline', label: 'Missing' },
-    error: { variant: 'destructive', label: 'Error' },
+    connected: { variant: 'default' },
+    ready: { variant: 'default' },
+    missing: { variant: 'outline' },
+    error: { variant: 'destructive' },
 
     // Message types
-    note: { variant: 'secondary', label: 'Note' },
-    request: { variant: 'default', label: 'Request' },
-    response: { variant: 'outline', label: 'Response' },
-    handoff: { variant: 'default', label: 'Handoff' },
+    note: { variant: 'secondary' },
+    request: { variant: 'default' },
+    response: { variant: 'outline' },
+    handoff: { variant: 'default' },
   }
 
-  const config = statusVariants[status.toLowerCase()] || { variant: 'outline' as const }
-  const label = config.label || status
+  const key = String(status || '').toLowerCase()
+  const config = statusVariants[key] || { variant: 'outline' as const }
+  const label = statusLabels[key as keyof typeof statusLabels] || status
 
   return (
     <Badge variant={config.variant} className="shrink-0">

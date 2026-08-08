@@ -419,10 +419,10 @@ const RUNNER_PROFILES = {
   opencode: {
     tool: "opencode",
     commandCandidates: ["opencode.cmd", "opencode", "qoder-cn.cmd", "qoder-cn"],
-    args: ["-"],
+    args: ["run"],
     promptMode: "stdin",
     outputMode: "text",
-    preview: "opencode - <stdin>",
+    preview: "opencode run <stdin>",
     versionArgs: ["--version"],
     probeArgs: ["--help"],
     modelArgs: (model) => ["--model", model],
@@ -17608,10 +17608,6 @@ if (typeof module !== "undefined" && module.exports) {
     POLICY_OPERATIONS
   };
 }
-
-
-
-
 
 
 

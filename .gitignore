@@ -10,7 +10,7 @@ dashboard-next/dist/
 dashboard-next/node_modules/
 dashboard-next/test-results/
 tmp/
-.tmp-amh-test-*/
+.tmp-amh-*/
 
 # Local runtime state. Shared memory is personal machine state and should not be
 # committed or uploaded with this repository.

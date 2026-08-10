@@ -64,6 +64,38 @@ async function createFakeCodexRunner(memoryDir) {
   return binDir;
 }
 
+async function createFakeOpencodeRunner(memoryDir) {
+  const binDir = path.join(memoryDir, "fake-opencode-bin");
+  await fs.mkdir(binDir, { recursive: true });
+  const runnerScript = path.join(binDir, "fake-opencode.mjs");
+  await fs.writeFile(runnerScript, [
+    'import fs from "node:fs";',
+    'const input = fs.readFileSync(0, "utf8");',
+    "const args = process.argv.slice(2);",
+    'if (args.includes("--version")) { console.log("fake-opencode 1.0.0"); process.exit(0); }',
+    'if (args.includes("--help")) { console.log("fake opencode help"); process.exit(0); }',
+    "console.log(JSON.stringify({ args, stdin: input, cwd: process.cwd() }));"
+  ].join("\n"), "utf8");
+
+  if (process.platform === "win32") {
+    await fs.writeFile(
+      path.join(binDir, "opencode.cmd"),
+      `@echo off\r\n"${process.execPath}" "${runnerScript}" %*\r\n`,
+      "utf8"
+    );
+  } else {
+    const runnerPath = path.join(binDir, "opencode");
+    await fs.writeFile(
+      runnerPath,
+      `#!/bin/sh\nexec "${process.execPath}" "${runnerScript}" "$@"\n`,
+      "utf8"
+    );
+    await fs.chmod(runnerPath, 0o755);
+  }
+
+  return binDir;
+}
+
 async function createFakeGitRunner(memoryDir) {
   const binDir = path.join(memoryDir, "fake-git-bin");
   await fs.mkdir(binDir, { recursive: true });
@@ -1557,6 +1589,61 @@ test("doctor recognizes CodeBuddy CLI as a stdin runner", async () => {
     assert.equal(payload.tools[0].available, true);
     assert.equal(payload.tools[0].profile.promptMode, "stdin");
     assert.ok(payload.tools[0].command.path);
+  });
+});
+
+test("doctor exposes an opencode runner profile using run --auto", async () => {
+  await withHub(async (memoryDir) => {
+    const result = runCli(memoryDir, ["doctor", "--tool", "opencode", "--skip-version"]);
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.tools[0].tool, "opencode");
+    assert.equal(payload.tools[0].profile.promptMode, "stdin");
+    assert.equal(payload.tools[0].profile.outputMode, "text");
+    assert.doesNotMatch(payload.tools[0].reason || "", /no verified CLI runner/);
+  });
+});
+
+test("dispatch launches opencode runner with run --auto and feeds prompt on stdin", async () => {
+  await withHub(async (memoryDir) => {
+    const binDir = await createFakeOpencodeRunner(memoryDir);
+    const now = new Date().toISOString();
+    await appendJsonl(path.join(memoryDir, "tasks", "tasks.jsonl"), {
+      id: "task-opencode",
+      createdAt: now,
+      updatedAt: now,
+      completedAt: "",
+      createdBy: "test",
+      assignee: "opencode",
+      status: "claimed",
+      priority: "normal",
+      project: "test-project",
+      title: "Verify opencode stdin dispatch path",
+      description: "",
+      handoff: "opencode should receive run --auto and the prompt via stdin.",
+      notes: []
+    });
+
+    const result = runCli(
+      memoryDir,
+      ["dispatch", "--run", "--to", "opencode", "--project", "test-project", "--limit", "1"],
+      prependPathEnv(binDir)
+    );
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.results.length, 1);
+    assert.equal(payload.results[0].exitCode, 0, JSON.stringify(payload.results[0], null, 2));
+    assert.equal(payload.results[0].runnerMode, "stdin");
+    assert.match(payload.results[0].runnerCommand, /^opencode(\.cmd)?$/);
+    assert.equal(payload.results[0].relayState, "completed");
+
+    const stdout = JSON.parse(payload.results[0].stdout);
+    assert.deepEqual(stdout.args, ["run", "--auto"]);
+    assert.match(stdout.stdin, /Verify opencode stdin dispatch path/);
+
+    const tasks = await readJsonl(path.join(memoryDir, "tasks", "tasks.jsonl"));
+    assert.equal(tasks[0].status, "done");
+    assert.equal(tasks[0].deliveryState, "completed");
   });
 });
 

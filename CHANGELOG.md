@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `doctor --tool codebuddy` no longer reports "has shared instructions but no verified CLI runner on this machine". Runner resolution reads only the built-in `RUNNER_PROFILES` table, so the `tools.codebuddy.runner` / `runnerProfile` keys in `config.json` were inert and never consulted.
 
+### Changed
+
+- **OpenCode runner** - `args` changed from `["run"]` (without auto-approve) to `["run", "--auto"]` so dispatched runs do not hang waiting on permission prompts. Verified locally with `opencode run --auto`.
+- **qoder-cn runner** - `args` changed from `["-"]` (launches the interactive TUI and hangs) to `["run"]`, matching the OpenCode CLI fix in `876b74b`. qoder-cn is the same OpenCode CLI (see commit `8fc26bd`); the `--auto` flag was intentionally left off here because it is not machine-verified for the qoder-cn fork — revisit if permission prompts hang in practice.
+
 ## [0.3.0] - 2026-07-13
 
 ### Added

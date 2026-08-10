@@ -30,16 +30,21 @@ function walk(dir, acc) {
 }
 const srcFiles = []
 walk(join(REPO, 'src'), srcFiles)
+// Strip comments so a class name mentioned only in a comment (e.g. a stale
+// `.task-action-menu-*` note) is not mistaken for a live reference.
+const srcText = srcFiles
+  .map((f) => f.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, ''))
+  .join('\n')
 const srcTokens = new Set()
 const tokenRe = /[a-zA-Z][\w-]*/g
-for (const f of srcFiles) {
-  let m; while ((m = tokenRe.exec(f))) srcTokens.add(m[0])
-}
+for (let m; (m = tokenRe.exec(srcText)); ) srcTokens.add(m[0])
+// A selector is "referenced" only if EVERY class token it names exists in source.
+// If any token is absent, the compound can never match a rendered element, so it
+// is safe to delete (AND semantics — the previous OR over-kept interactive rules).
 function referencedInSource(sel) {
-  for (const t of [...sel.matchAll(/\.([\w-]+)/g)].map((x) => x[1])) {
-    if (srcTokens.has(t)) return true
-  }
-  return false
+  const tokens = [...sel.matchAll(/\.([\w-]+)/g)].map((x) => x[1])
+  if (!tokens.length) return false
+  return tokens.every((t) => srcTokens.has(t))
 }
 const safeDead = new Set([...dead].filter((s) => !referencedInSource(s)))
 console.log(`safe-to-delete (unreferenced in source): ${safeDead.size}`)
@@ -61,7 +66,7 @@ function scan(css, start, end, rules) {
       const closeBrace = j, ruleEnd = j + 1
       const selText = css.slice(selStart, selEnd).trim()
       rules.push({ selStart, selEnd, ruleStart: selStart, ruleEnd, selText, at: selText.startsWith('@') })
-      if (!selText.startsWith('@')) scan(css, i + 1, j, rules) // nested rules inside @media
+      if (selText.startsWith('@')) scan(css, i + 1, j, rules) // recurse into @media / at-rules
       lastEnd = ruleEnd; i = ruleEnd
     } else if (css[i] === '}') { lastEnd = i + 1; i++ }
     else i++

@@ -12,7 +12,7 @@ import { toolDisplayNames, toolIconAssetVersion, toolIconFiles, toolKindBadges, 
 import { ProjectsPanel } from '../components/ProjectsPanel'
 import { DashboardHeader } from '../components/DashboardHeader'
 import { ToastStack } from '../components/ToastStack'
-import { TasksPanel as NewTasksPanel } from '../components/TasksPanel'
+import { TasksPanel as NewTasksPanel, statusDotClass } from '../components/TasksPanel'
 import { MemoryPanel as NewMemoryPanel } from '../components/MemoryPanel'
 import { RadioPanel as NewRadioPanel } from '../components/RadioPanel'
 import { WorkflowsPanel } from '../components/WorkflowsPanel'
@@ -21,12 +21,14 @@ import {
   Panel as NewPanel,
   StatusBadge as NewStatusBadge
 } from '../components/OverviewComponents'
+import { ListRow } from '../components/ListRow'
 import {
   Callout,
   EmptyState,
   ErrorState,
   LoadingState,
   PageShell,
+  Panel as ShellPanel,
   Sheet,
   SheetBody,
   SheetContent,
@@ -192,11 +194,6 @@ export default function Dashboard({ section }: DashboardProps) {
     })
   }, [])
 
-  // `CommandCenter` opens the overview with its own hero `<h1>`, so the overview
-  // is the one section that must not ask `PageShell` for a heading — every other
-  // section gets its `<h1>` and description from the shell.
-  const isOverview = section === 'overview'
-
   return (
     <div className={`dashboard-page dashboard-section-${section}`}>
       <DashboardHeader
@@ -211,8 +208,8 @@ export default function Dashboard({ section }: DashboardProps) {
       />
 
       <PageShell
-        title={isOverview ? undefined : dashboardTitles[language][section]}
-        description={isOverview ? undefined : dashboardSubtitles[language][section]}
+        title={dashboardTitles[language][section]}
+        description={dashboardSubtitles[language][section]}
       >
         {error ? (
           <ErrorState variant="inline" title={copy.connectionError} description={error} />
@@ -477,71 +474,80 @@ function CommandCenter({ model, language }: { model: ViewModel; language: AppLan
 
   const choose = (kind: 'agent' | 'task' | 'radio', item: AnyRecord) => setSelected({ kind, item })
 
+  // Every row on this page is a `ListRow` inside a `Panel` — the same pair every
+  // other section uses. The overview used to ship its own `command-*` card
+  // vocabulary, which made the landing page read as a different product.
+  const row = (
+    kind: 'agent' | 'task' | 'radio',
+    item: AnyRecord,
+    props: { leading?: ReactNode; title: string; subtitle?: string; meta?: ReactNode; timestamp?: string }
+  ) => (
+    <div className="h-14 last:[&>div]:border-b-0" key={`${kind}-${textOf(item.id)}`}>
+      <ListRow
+        onOpen={() => choose(kind, item)}
+        ariaLabel={`${props.title}: ${humanStatus(item.status, language)}`}
+        leading={props.leading}
+        title={props.title}
+        subtitle={props.subtitle}
+        meta={props.meta}
+        timestamp={props.timestamp}
+        className={selectedId && selectedId === textOf(item.id) ? 'bg-accent-tint' : undefined}
+      />
+    </div>
+  )
+
   return (
-    <div className="command-center">
-      <section className="command-center-hero">
-        <div>
-          <p className="command-center-kicker">{language === 'zh' ? '团队工作台' : 'Team workspace'}</p>
-          <h1>{language === 'zh' ? '团队现在在推进什么？' : 'What is the team moving forward?'}</h1>
-          <p>{language === 'zh' ? '查看正在运行的智能体、需要你关注的任务，以及最新协作进展。' : 'See active agents, tasks that need your attention, and the latest collaboration updates.'}</p>
+    <div className="flex min-w-0 flex-col gap-6">
+      <div className="grid min-w-0 items-start gap-6 xl:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]">
+        <div className="flex min-w-0 flex-col gap-6">
+          <ShellPanel title={language === 'zh' ? 'Agent 活动' : 'Agent activity'} count={activeAgents.length} flushBody>
+            {activeAgents.length
+              ? activeAgents.map((agent, index) => row('agent', { ...agent, id: textOf(agent.id) || `agent-${index}` }, {
+                  leading: <span className={'size-2 shrink-0 rounded-full ' + statusDotClass(textOf(agent.status))} aria-hidden="true" />,
+                  title: textOf(agent.title || agent.taskTitle || agent.project, language === 'zh' ? '未命名工作' : 'Untitled work'),
+                  subtitle: [textOf(agent.tool || agent.agent || agent.actor, 'Agent'), textOf(agent.project)].filter(Boolean).join(' · '),
+                  meta: <NewStatusBadge status={textOf(agent.status, 'idle')} />,
+                  timestamp: textOf(agent.updatedAt || agent.lastSeenAt) || undefined
+                }))
+              : <div className="p-4"><EmptyState size="sm" title={language === 'zh' ? '当前没有活跃 Agent' : 'No active agents right now'} /></div>}
+          </ShellPanel>
+
+          <ShellPanel title={language === 'zh' ? '需要关注' : 'Needs attention'} count={attentionTasks.length} flushBody>
+            {attentionTasks.length
+              ? attentionTasks.map((task, index) => row('task', { ...task, id: textOf(task.id) || `attention-${index}` }, {
+                  leading: <span className={'size-2 shrink-0 rounded-full ' + statusDotClass(textOf(task.status))} aria-hidden="true" />,
+                  title: textOf(task.title, '—'),
+                  subtitle: [textOf(task.project), textOf(task.assignee || task.createdBy, 'unassigned')].filter(Boolean).join(' · '),
+                  meta: <NewStatusBadge status={textOf(task.status, 'open')} />,
+                  timestamp: textOf(task.updatedAt || task.createdAt) || undefined
+                }))
+              : <div className="p-4"><EmptyState size="sm" title={language === 'zh' ? '没有需要立即介入的任务' : 'Nothing needs intervention right now'} /></div>}
+          </ShellPanel>
         </div>
-        <div className="command-center-hero-actions">
-          <div className="command-center-live"><span />{language === 'zh' ? '实时同步' : 'Live updates'}</div>
+
+        <div className="flex min-w-0 flex-col gap-6">
+          <ShellPanel title={language === 'zh' ? '最近任务' : 'Recent work'} count={recentTasks.length} flushBody>
+            {recentTasks.length
+              ? recentTasks.map((task, index) => row('task', { ...task, id: textOf(task.id) || `recent-${index}` }, {
+                  leading: <span className={'size-2 shrink-0 rounded-full ' + statusDotClass(textOf(task.status))} aria-hidden="true" />,
+                  title: textOf(task.title, '—'),
+                  subtitle: textOf(task.assignee || task.createdBy, 'unassigned'),
+                  meta: <NewStatusBadge status={textOf(task.status, 'open')} />
+                }))
+              : <div className="p-4"><EmptyState size="sm" title={language === 'zh' ? '创建或认领任务后，近期进展会显示在这里' : 'Recent work appears here once tasks are created or claimed'} /></div>}
+          </ShellPanel>
+
+          <ShellPanel title={language === 'zh' ? '协作广播' : 'Handoffs'} count={recentMessages.length} flushBody>
+            {recentMessages.length
+              ? recentMessages.map((message, index) => row('radio', { ...message, id: textOf(message.id) || `radio-${index}` }, {
+                  leading: <span className="size-2 shrink-0 rounded-full bg-accent-solid" aria-hidden="true" />,
+                  title: textOf(message.text, '—'),
+                  subtitle: `${textOf(message.from, 'agent')} → ${textOf(message.to, 'all')}`,
+                  timestamp: textOf(message.ts || message.createdAt) || undefined
+                }))
+              : <div className="p-4"><EmptyState size="sm" title={language === 'zh' ? '智能体发送协作消息后，会显示在这里' : 'Handoffs appear here once agents broadcast messages'} /></div>}
+          </ShellPanel>
         </div>
-      </section>
-
-      <div className="command-center-grid">
-        <main className="command-center-main">
-          <section className="command-section">
-            <div className="command-section-heading">
-              <div><div><h2>{language === 'zh' ? 'Agent 活动' : 'Agent activity'}</h2><p>{language === 'zh' ? '当前正在执行或保持上下文的智能体' : 'Agents currently executing or holding context'}</p></div></div>
-              <strong className="command-section-count">{activeAgents.length}</strong>
-            </div>
-            {activeAgents.length ? (
-              <div className="agent-work-grid">
-                {activeAgents.map((agent, index) => (
-                  <article className={'agent-work-card '+(selectedId === textOf(agent.id) ? 'is-selected' : '')} key={textOf(agent.id)+'-'+index} role="button" tabIndex={0} aria-label={`${textOf(agent.tool || agent.agent || agent.actor, 'Agent')}: ${humanStatus(agent.status, language)}`} onClick={() => choose('agent', agent)} onKeyDown={activateOnKey(() => choose('agent', agent))}>
-                    <div className="agent-work-card-top"><span className={'agent-presence '+textOf(agent.status)}></span><strong>{textOf(agent.tool || agent.agent || agent.actor, 'Agent')}</strong><NewStatusBadge status={textOf(agent.status, 'idle')} /></div>
-                    <h3>{textOf(agent.title || agent.taskTitle || agent.project, language === 'zh' ? '未命名工作' : 'Untitled work')}</h3>
-                    <div className="agent-work-card-meta"><span>{textOf(agent.project, '—')}</span><span>{textOf(agent.updatedAt || agent.lastSeenAt, '—')}</span></div>
-                    <div className="agent-work-card-footer"><span>{language === 'zh' ? '点击查看上下文' : 'Click to inspect'}</span><strong>{textOf(agent.sessionId || agent.threadKey, 'local')}</strong></div>
-                  </article>
-                ))}
-              </div>
-            ) : <div className="command-empty">{language === 'zh' ? '当前没有活跃 Agent' : 'No active agents right now'}</div>}
-          </section>
-
-          <section className="command-section command-attention-section">
-            <div className="command-section-heading">
-              <div><div><h2>{language === 'zh' ? '需要关注' : 'Needs attention'}</h2><p>{language === 'zh' ? '失败、阻塞或正在推进中的任务' : 'Failed, blocked, or currently moving tasks'}</p></div></div>
-              <strong className="command-section-count danger">{attentionTasks.length}</strong>
-            </div>
-            <div className="attention-task-grid">
-              {attentionTasks.length ? attentionTasks.map((task, index) => (
-                <article className={'attention-task-card '+(selectedId === textOf(task.id) ? 'is-selected' : '')} key={textOf(task.id)+'-'+index} role="button" tabIndex={0} aria-label={`${textOf(task.title, '—')}: ${humanStatus(task.status, language)}`} onClick={() => choose('task', task)} onKeyDown={activateOnKey(() => choose('task', task))}>
-                  <div className="attention-task-top"><NewStatusBadge status={textOf(task.status, 'open')} /><span>{textOf(task.priority, 'normal')}</span></div>
-                  <h3>{textOf(task.title, '—')}</h3>
-                  <div><span>{textOf(task.project, '—')}</span><span>{textOf(task.assignee || task.createdBy, 'unassigned')}</span></div>
-                </article>
-              )) : <div className="command-empty">{language === 'zh' ? '没有需要立即介入的任务' : 'Nothing needs intervention right now'}</div>}
-            </div>
-          </section>
-        </main>
-
-        <aside className="command-center-side">
-          <section className="command-side-block command-next-block">
-            <div className="command-side-heading"><h2>{language === 'zh' ? '最近任务' : 'Recent work'}</h2></div>
-            <div className="command-recent-list">
-              {recentTasks.length ? recentTasks.map((task, index) => <div className={'command-recent-item '+(selectedId === textOf(task.id) ? 'is-selected' : '')} key={textOf(task.id)+'-'+index} role="button" tabIndex={0} aria-label={`${textOf(task.title, '—')}: ${humanStatus(task.status, language)}`} onClick={() => choose('task', task)} onKeyDown={activateOnKey(() => choose('task', task))}><NewStatusBadge status={textOf(task.status, 'open')} /><div><strong>{textOf(task.title, '—')}</strong><span>{textOf(task.assignee || task.createdBy, 'unassigned')}</span></div></div>) : <div className="command-empty">{language === 'zh' ? '创建或认领任务后，近期进展会显示在这里' : 'Recent work appears here once tasks are created or claimed'}</div>}
-            </div>
-          </section>
-          <section className="command-side-block command-radio-block">
-            <div className="command-side-heading"><h2>{language === 'zh' ? '协作广播' : 'Handoffs'}</h2></div>
-            <div className="command-radio-list">
-              {recentMessages.length ? recentMessages.map((message, index) => <div className="command-radio-item" key={textOf(message.id)+'-'+index} role="button" tabIndex={0} aria-label={`${textOf(message.from, 'agent')} → ${textOf(message.to, 'all')}: ${textOf(message.text, '—')}`} onClick={() => choose('radio', message)} onKeyDown={activateOnKey(() => choose('radio', message))}><span className="command-radio-dot" /><div><strong>{textOf(message.from, 'agent')} → {textOf(message.to, 'all')}</strong><p>{textOf(message.text, '—')}</p></div></div>) : <div className="command-empty">{language === 'zh' ? '智能体发送协作消息后，会显示在这里' : 'Handoffs appear here once agents broadcast messages'}</div>}
-            </div>
-          </section>
-        </aside>
       </div>
       <Sheet open={selected !== null} onOpenChange={open => { if (!open) setSelected(null) }}>
         <SheetContent side="right" closeLabel={language === 'zh' ? '关闭' : 'Close'}>
@@ -1590,15 +1596,19 @@ function getFallbackGradient(name: string): string {
   for (let index = 0; index < name.length; index += 1) {
     hash = name.charCodeAt(index) + ((hash << 5) - hash)
   }
+  // Every stop is dark enough for the white initial to clear 4.5:1 (measured by
+  // scripts/verify-text-contrast.mjs, which scores each gradient stop separately).
+  // The old palette topped out at 2.52:1 on #bc8cff -- the letter was barely there.
+  // Hue and saturation are unchanged from the original palette; only lightness moved.
   const gradients = [
-    'linear-gradient(135deg, #388bfd, #bc8cff)',
-    'linear-gradient(135deg, #10a37f, #0e7f62)',
-    'linear-gradient(135deg, #ea7a50, #d9531e)',
-    'linear-gradient(135deg, #00a7c8, #4f7cff)',
-    'linear-gradient(135deg, #e5534b, #8f1f1f)',
+    'linear-gradient(135deg, #046dfc, #9447ff)',
+    'linear-gradient(135deg, #0d8568, #0a6650)',
+    'linear-gradient(135deg, #ce4a19, #a63a11)',
+    'linear-gradient(135deg, #00819a, #3468ff)',
+    'linear-gradient(135deg, #e03026, #8f1f1f)',
     'linear-gradient(135deg, #cf3d73, #7d2f99)',
-    'linear-gradient(135deg, #c98518, #8c4f12)',
-    'linear-gradient(135deg, #7b61ff, #d65db1)'
+    'linear-gradient(135deg, #a16a13, #7a4410)',
+    'linear-gradient(135deg, #7459ff, #cc369e)'
   ]
   return gradients[Math.abs(hash) % gradients.length]
 }

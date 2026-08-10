@@ -74,6 +74,9 @@ const SheetContent = React.forwardRef<
         ref={ref}
         data-slot="sheet-content"
         data-side={side}
+        // See dialog.tsx: aria-hidden never hides an [aria-live] ancestor, so the
+        // page behind this sheet stays reachable without an explicit aria-modal.
+        aria-modal="true"
         className={cn(
           'fixed z-50 flex flex-col gap-0 overflow-hidden bg-surface p-0 shadow-lg',
           sheetSideClasses[side],

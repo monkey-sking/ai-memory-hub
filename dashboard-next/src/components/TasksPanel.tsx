@@ -455,7 +455,7 @@ const STATUS_DOT_CLASSES: Record<string, string> = {
   cancelled: 'bg-line-strong'
 }
 
-function statusDotClass(status: string) {
+export function statusDotClass(status: string) {
   return STATUS_DOT_CLASSES[status] || 'bg-muted-foreground'
 }
 

@@ -492,7 +492,7 @@ function WorkflowActionMenu({ label, actions }: { label: string; actions: Workfl
   const menuId = useId()
   const triggerRef = useRef<HTMLButtonElement | null>(null)
   const menuContentRef = useRef<HTMLDivElement | null>(null)
-  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null)
+  const [coords, setCoords] = useState<{ top: number; right: number } | null>(null)
 
   const closeAndFocusTrigger = useCallback(() => {
     setOpen(false)
@@ -510,17 +510,19 @@ function WorkflowActionMenu({ label, actions }: { label: string; actions: Workfl
     if (!tr) return
     const rect = tr.getBoundingClientRect()
     const menuH = actions.length * 34 + 16
-    const menuW = 184
     const down = rect.bottom + menuH + 8 <= window.innerHeight
-    const top = down ? rect.bottom + 8 : rect.top - menuH - 8
-    const left = Math.max(8, Math.min(rect.right - menuW, window.innerWidth - menuW - 8))
-    setCoords({ top, left })
+    const top = down ? rect.bottom + 8 : Math.max(8, rect.top - menuH - 8)
+    // Anchor the menu's right edge to the trigger and clamp inside the viewport.
+    // (No width measurement needed — the menu sizes to its content, min-w 168px;
+    // long labels just extend further left and the clamp keeps the right edge in.)
+    const right = Math.max(8, Math.min(window.innerWidth - rect.right, window.innerWidth - 8 - 184))
+    setCoords({ top, right })
   }, [open, actions.length])
 
   // Close on scroll/resize so the fixed menu can't drift from the trigger.
   useEffect(() => {
     if (!open) return
-    const close = () => setOpen(false)
+    const close = () => closeAndFocusTrigger()
     window.addEventListener('scroll', close, true)
     window.addEventListener('resize', close)
     return () => {
@@ -542,6 +544,16 @@ function WorkflowActionMenu({ label, actions }: { label: string; actions: Workfl
       const list = items()
       if (!list.length) return
       const currentIndex = list.indexOf(document.activeElement as HTMLButtonElement)
+      if (event.key === 'Tab') {
+        // Trap focus inside the menu (cycle), since the portal sits outside the
+        // card and a bare Tab would otherwise escape to the page background.
+        event.preventDefault()
+        const next = event.shiftKey
+          ? (currentIndex <= 0 ? list.length - 1 : currentIndex - 1)
+          : (currentIndex >= list.length - 1 ? 0 : currentIndex + 1)
+        list[next]?.focus()
+        return
+      }
       if (event.key === 'ArrowDown') {
         event.preventDefault()
         list[(currentIndex + 1) % list.length]?.focus()
@@ -572,7 +584,7 @@ function WorkflowActionMenu({ label, actions }: { label: string; actions: Workfl
     if (!open) return
     const onPointerDown = (event: PointerEvent) => {
       const t = event.target as Node
-      if (!menuContentRef.current?.contains(t) && !triggerRef.current?.contains(t)) setOpen(false)
+      if (!menuContentRef.current?.contains(t) && !triggerRef.current?.contains(t)) closeAndFocusTrigger()
     }
     window.addEventListener('pointerdown', onPointerDown)
     return () => window.removeEventListener('pointerdown', onPointerDown)
@@ -582,7 +594,7 @@ function WorkflowActionMenu({ label, actions }: { label: string; actions: Workfl
     <div
       ref={menuContentRef}
       className="fixed z-50 grid min-w-[168px] gap-0.5 rounded-lg border border-line bg-surface p-2 shadow-lg"
-      style={{ top: coords.top, left: coords.left }}
+      style={{ top: coords.top, right: coords.right, left: 'auto' }}
       id={menuId}
       role="menu"
       aria-label={label}

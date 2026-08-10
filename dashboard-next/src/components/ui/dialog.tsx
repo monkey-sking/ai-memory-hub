@@ -87,6 +87,12 @@ const DialogContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       data-slot="dialog-content"
+      // Radix conveys modality only by putting aria-hidden on the dialog's siblings,
+      // and aria-hidden deliberately refuses to hide any ancestor of an [aria-live]
+      // region (aria-hidden/index.js:133). Every list panel here owns a polite live
+      // region, so #root can never be hidden and a screen reader can still walk the
+      // page behind the overlay. aria-modal is the ARIA 1.2 signal for exactly this.
+      aria-modal="true"
       className={cn(
         "fixed left-1/2 top-1/2 z-50 flex w-[calc(100vw-24px)] max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col gap-0 overflow-hidden p-0 sm:max-w-lg",
         "max-h-[calc(100dvh-24px)] rounded-2xl border border-line bg-surface shadow-lg",

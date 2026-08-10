@@ -19,6 +19,7 @@
 ### 当前自动执行 Runner
 
 - `codex`、`claude`、`opencode`、`mimocode` 等使用各自 CLI runner。
+- `codebuddy` 使用 CodeBuddy Code CLI 的 `-p` 非交互模式，prompt 走 stdin，输出为纯文本；命令名支持 `codebuddy` / `codebuddy-code`。不固定模型，默认走用户自己的 `~/.codebuddy/settings.json`，可用 `dispatch --model` 覆盖。凭证绑定在 `$HOME/.codebuddy/local_storage`，dispatch 时必须保留真实 `HOME`，否则会退化成未登录并提示 `/login`。
 - `antigravity` 使用官方 `agy` CLI 的 `--print` 非交互模式，不调用桌面 APP。
 - Windows 默认查找 `C:\Users\<user>\AppData\Local\agy\bin\agy.exe`，也支持 PATH 中的 `agy.cmd` / `agy`。
 - `antigravity-gemini` 仅表示共享记忆适配器，不是另一个执行 agent。

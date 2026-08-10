@@ -1524,6 +1524,42 @@ test("doctor recognizes Antigravity CLI as an argv runner", async () => {
     assert.equal(payload.tools[0].profile.outputMode, "text");
   });
 });
+test("doctor exposes a codebuddy runner profile instead of an unknown-tool warning", async () => {
+  await withHub(async (memoryDir) => {
+    const result = runCli(memoryDir, ["doctor", "--tool", "codebuddy", "--skip-version"]);
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.tools[0].tool, "codebuddy");
+    assert.equal(payload.tools[0].sharedStateOnly, false);
+    assert.equal(payload.tools[0].profile.promptMode, "stdin");
+    assert.equal(payload.tools[0].profile.outputMode, "text");
+    assert.doesNotMatch(payload.tools[0].reason, /no verified CLI runner/);
+  });
+});
+
+test("doctor recognizes CodeBuddy CLI as a stdin runner", async () => {
+  await withHub(async (memoryDir) => {
+    const binDir = path.join(memoryDir, "fake-codebuddy-bin");
+    await fs.mkdir(binDir, { recursive: true });
+    if (process.platform === "win32") {
+      await fs.writeFile(path.join(binDir, "codebuddy.cmd"), "@echo off\r\nexit /b 0\r\n", "utf8");
+    } else {
+      const script = path.join(binDir, "codebuddy");
+      await fs.writeFile(script, "#!/bin/sh\nexit 0\n", "utf8");
+      await fs.chmod(script, 0o755);
+    }
+    const result = runCli(memoryDir, ["doctor", "--tool", "codebuddy", "--skip-version"], {
+      PATH: `${binDir}${path.delimiter}${process.env.PATH || ""}`
+    });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.summary.runnable, 1);
+    assert.equal(payload.tools[0].available, true);
+    assert.equal(payload.tools[0].profile.promptMode, "stdin");
+    assert.ok(payload.tools[0].command.path);
+  });
+});
+
 test("doctor reports unknown runner profiles clearly", async () => {
   await withHub(async (memoryDir) => {
     const result = runCli(memoryDir, ["doctor", "--tool", "missing-runner", "--skip-version"]);

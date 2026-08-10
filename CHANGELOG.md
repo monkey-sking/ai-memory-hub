@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **CodeBuddy Code runner** - Registered `codebuddy` in `RUNNER_PROFILES` so `doctor` and `dispatch --run` treat it as a verified CLI runner. Uses `-p --permission-mode bypassPermissions` with stdin prompts and text output; resolves `codebuddy` or `codebuddy-code` from PATH. No model is pinned, so each machine keeps its own default from `~/.codebuddy/settings.json`; `dispatch --model` overrides per job.
+- **CodeBuddy install targets** - `ai-memory-hub install` now writes `~/.codebuddy/CODEBUDDY.md` and `<memoryDir>/tools/codebuddy-shared-memory.md`.
+
+### Fixed
+
+- `doctor --tool codebuddy` no longer reports "has shared instructions but no verified CLI runner on this machine". Runner resolution reads only the built-in `RUNNER_PROFILES` table, so the `tools.codebuddy.runner` / `runnerProfile` keys in `config.json` were inert and never consulted.
+
 ## [0.3.0] - 2026-07-13
 
 ### Added

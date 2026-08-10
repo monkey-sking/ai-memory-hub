@@ -392,6 +392,18 @@ const RUNNER_PROFILES = {
     modelArgs: (model) => ["--model", model],
     capabilities: ["direct-dispatch", "stdin-prompt", "json-output", "session-resume"]
   },
+  codebuddy: {
+    tool: "codebuddy",
+    commandCandidates: ["codebuddy.cmd", "codebuddy", "codebuddy-code"],
+    args: ["-p", "--permission-mode", "bypassPermissions"],
+    promptMode: "stdin",
+    outputMode: "text",
+    preview: "codebuddy -p --permission-mode bypassPermissions <stdin>",
+    versionArgs: ["--version"],
+    probeArgs: ["--help"],
+    modelArgs: (model) => ["--model", model],
+    capabilities: ["direct-dispatch", "stdin-prompt", "text-output"]
+  },
   gemini: {
     tool: "gemini",
     commandCandidates: ["gemini.cmd", "gemini"],
@@ -10553,6 +10565,16 @@ function getInstallTargets(memoryDir) {
       tool: "gemini",
       file: path.join(home, ".gemini", "GEMINI.md"),
       template: readTemplate("GEMINI.md")
+    },
+    {
+      tool: "codebuddy",
+      file: path.join(home, ".codebuddy", "CODEBUDDY.md"),
+      template: readTemplate("AGENTS.md")
+    },
+    {
+      tool: "codebuddy",
+      file: path.join(memoryDir, "tools", "codebuddy-shared-memory.md"),
+      template: readTemplate("shared-instructions.md")
     },
     {
       tool: "antigravity",

@@ -1,6 +1,7 @@
 export function createDashboardMetricsApi({
   readDispatchQueue,
   readLatestRelayStatusByThread,
+  readRadioMessages,
   readRelayStatus,
   readTasks,
   readWorkflows
@@ -8,6 +9,7 @@ export function createDashboardMetricsApi({
   function calculateMetrics(memoryDir) {
     const tasks = readTasks(memoryDir);
     const workflows = readWorkflows(memoryDir);
+    const radioMessages = readRadioMessages(memoryDir);
     const relayEvents = readRelayStatus(memoryDir);
     const relayStatus = Object.values(readLatestRelayStatusByThread(memoryDir));
     const dispatchQueue = readDispatchQueue(memoryDir);
@@ -37,6 +39,22 @@ export function createDashboardMetricsApi({
 
     const workflowsByStatus = workflows.reduce((acc, workflow) => {
       acc[workflow.status] = (acc[workflow.status] || 0) + 1;
+      return acc;
+    }, {});
+
+    const radioByType = radioMessages.reduce((acc, message) => {
+      const type = message.type || "note";
+      acc[type] = (acc[type] || 0) + 1;
+      return acc;
+    }, {});
+
+    // Project activity counts every task, radio message, and workflow that names a
+    // project. Entries with no project are skipped instead of being bucketed under an
+    // empty key, so the ranking only contains projects that really exist.
+    const projectActivity = [...tasks, ...radioMessages, ...workflows].reduce((acc, entry) => {
+      const project = String(entry.project || "").trim();
+      if (!project) return acc;
+      acc[project] = (acc[project] || 0) + 1;
       return acc;
     }, {});
 
@@ -102,6 +120,14 @@ export function createDashboardMetricsApi({
         byStatus: workflowsByStatus,
         avgDurationMs: Math.round(avgWorkflowDuration),
         avgDurationHuman: formatDuration(avgWorkflowDuration)
+      },
+      radio: {
+        total: radioMessages.length,
+        byType: radioByType
+      },
+      projects: {
+        total: Object.keys(projectActivity).length,
+        byActivity: projectActivity
       },
       relay: {
         total: relayStatus.length,

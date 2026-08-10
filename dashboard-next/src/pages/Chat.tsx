@@ -1,10 +1,15 @@
 import { useEffect, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
+import { MessageSquare } from 'lucide-react'
 import type { AnyRecord } from '../lib/api'
 import { apiGet, apiPost, asArray, asRecord, textOf } from '../lib/api'
 import type { AppOutletContext } from '../lib/i18n'
 import { dashboardLabels } from '../lib/dashboardCopy'
-import './Chat.css'
+import { EmptyState, ErrorState, LoadingState, PageShell, Panel } from '../components/shell'
+import { Button } from '../components/ui/button'
+import { Input, fieldBaseStyles } from '../components/ui/input'
+import { Label } from '../components/ui/label'
+import { cn } from '../lib/utils'
 
 interface Message {
   id: string
@@ -116,69 +121,111 @@ export default function Chat() {
   }
 
   return (
-    <div className="chat-page">
-      <header className="chat-header">
-        <div>
-          <p className="eyebrow">Agent Radio</p>
-          <h2>{copy.title}</h2>
-        </div>
-        <button className="btn ghost" type="button" onClick={toggleLanguage}>
+    <PageShell
+      title={copy.title}
+      description={copy.subtitle}
+      actions={
+        /* Language is a page-level preference, not an action on the Agent Radio
+           panel, so it lives in the PageShell action row at the default 36px —
+           a panel header would require `size="sm"` (32px). */
+        <Button variant="ghost" onClick={toggleLanguage}>
           {copy.language}
-        </button>
-      </header>
-
-      <section className="chat-shell">
-        <div className="chat-toolbar">
-          {tools.length ? (
-            <label htmlFor="chat-to">
-              <span>{copy.to}</span>
-              <select id="chat-to" value={to} onChange={event => setTo(event.target.value)}>
-                {tools.map(tool => (
-                  <option key={tool.name} value={tool.name}>{tool.label}</option>
-                ))}
-              </select>
-            </label>
-          ) : toolsLoading ? (
-            <div className="chat-tool-empty" role="status" aria-live="polite">
-              <span className="chat-loading-dot" aria-hidden="true" />
-              {copy.loadingTools}
-            </div>
-          ) : (
-            <div className="chat-tool-empty" role={toolError ? 'alert' : 'status'}>
-              {toolError || copy.toolsUnavailable}
-            </div>
-          )}
-          <label htmlFor="chat-project">
-            <span>{copy.project}</span>
-            <input id="chat-project" value={project} onChange={event => setProject(event.target.value)} />
-          </label>
-        </div>
-
-        <div className="chat-messages">
-          {messages.length ? messages.map(message => (
-            <div key={message.id} className={`message ${message.role}`}>
-              <div className="message-content">{message.content}</div>
-              <time>{message.timestamp.toLocaleTimeString()}</time>
-            </div>
-          )) : (
-            <div className="chat-empty">{copy.empty}</div>
-          )}
-        </div>
-
-        <div className="chat-input">
-          <input
-            type="text"
-            value={input}
-            onChange={event => setInput(event.target.value)}
-            onKeyDown={event => event.key === 'Enter' && handleSend()}
-            placeholder={copy.placeholder}
-            disabled={loading}
+        </Button>
+      }
+    >
+      <Panel
+        title="Agent Radio"
+        toolbar={
+          <>
+            {tools.length ? (
+              <>
+                <Label htmlFor="chat-to" className="shrink-0">{copy.to}</Label>
+                <select
+                  id="chat-to"
+                  value={to}
+                  onChange={event => setTo(event.target.value)}
+                  className={cn(fieldBaseStyles, 'h-8 w-auto min-w-40 shrink-0 px-2 py-0')}
+                >
+                  {tools.map(tool => (
+                    <option key={tool.name} value={tool.name}>{tool.label}</option>
+                  ))}
+                </select>
+              </>
+            ) : toolsLoading ? (
+              <LoadingState
+                size="sm"
+                label={copy.loadingTools}
+                className="shrink-0 flex-row gap-2 py-0 text-sm"
+              />
+            ) : toolError ? (
+              <ErrorState variant="inline" title={toolError} className="min-w-0 py-1" />
+            ) : (
+              <span role="status" className="shrink-0 text-sm text-ink-3">{copy.toolsUnavailable}</span>
+            )}
+            <Label htmlFor="chat-project" className="ml-2 shrink-0">{copy.project}</Label>
+            <Input
+              id="chat-project"
+              value={project}
+              onChange={event => setProject(event.target.value)}
+              className="h-8 w-auto max-w-56 min-w-0 px-2"
+            />
+          </>
+        }
+        footer={
+          <>
+            <Input
+              type="text"
+              value={input}
+              onChange={event => setInput(event.target.value)}
+              onKeyDown={event => event.key === 'Enter' && handleSend()}
+              placeholder={copy.placeholder}
+              aria-label={copy.placeholder}
+              disabled={loading}
+              className="h-8 min-w-0 flex-1 px-2"
+            />
+            <Button size="sm" onClick={handleSend} disabled={loading || !input.trim()}>
+              {loading ? copy.sending : copy.send}
+            </Button>
+          </>
+        }
+        flushBody
+        /* The body is the panel's only scroll container, so the panel needs a
+           bounded height: the app shell's `<main>` scrolls on content, and
+           without this the message list would grow the page instead of the
+           stream. The subtrahend is the chrome above and below it (topbar +
+           shell and main padding, plus the PageShell heading block and its
+           24px gap), rounded up so the page itself never scrolls too. Below
+           `sm` the heading block stacks above the action row instead of
+           sitting beside it, which costs another 16px. */
+        className="h-[calc(100svh-16rem)] min-h-96 sm:h-[calc(100svh-15rem)]"
+      >
+        {messages.length ? (
+          <div className="flex flex-col gap-3 p-4">
+            {messages.map(message => (
+              <div
+                key={message.id}
+                className={cn(
+                  'flex max-w-[min(760px,86%)] flex-col gap-1.5 rounded-md border px-3.5 py-3',
+                  message.role === 'user'
+                    ? 'self-end border-accent-line bg-accent-tint'
+                    : 'self-start border-line bg-fill'
+                )}
+              >
+                <p className="text-sm leading-relaxed whitespace-pre-wrap text-ink wrap-anywhere">
+                  {message.content}
+                </p>
+                <time className="text-xs text-ink-3">{message.timestamp.toLocaleTimeString()}</time>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <EmptyState
+            className="h-full"
+            icon={<MessageSquare className="h-5 w-5" />}
+            title={copy.empty}
           />
-          <button type="button" onClick={handleSend} disabled={loading || !input.trim()}>
-            {loading ? copy.sending : copy.send}
-          </button>
-        </div>
-      </section>
-    </div>
+        )}
+      </Panel>
+    </PageShell>
   )
 }

@@ -147,8 +147,14 @@ test("dashboard dispatch read model lives outside the CLI entrypoint", async () 
 
   assert.match(dispatchModule, /export\s+function\s+createDashboardDispatchApi/);
   assert.match(dispatchModule, /function\s+getDashboardDispatch\(/);
-  assert.match(dispatchModule, /readDispatchLog\(memoryDir\)\.slice\(-100\)\.reverse\(\)/);
+  assert.match(dispatchModule, /readDispatchLog\(memoryDir\)/);
+  assert.match(dispatchModule, /\.slice\(-100\)\.reverse\(\)/);
   assert.match(dispatchModule, /readLatestRelayStatusByThread\(memoryDir\)/);
+  // `logs` and `relay` are display windows capped at 100 entries. The uncapped counts
+  // must stay in the payload, or the dashboard is back to rendering an array length as
+  // if it were a total.
+  assert.match(dispatchModule, /logsTotal:/);
+  assert.match(dispatchModule, /relayActive:/);
 });
 
 test("dashboard tools and capabilities API lives outside the CLI entrypoint", async () => {

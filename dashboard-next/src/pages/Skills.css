@@ -1,31 +1,27 @@
-.skills-page { display: grid; gap: 20px; padding: 28px 32px 48px; max-width: 1280px; margin: 0 auto; }
-.skills-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
-.skills-eyebrow { margin: 0 0 8px; color: var(--muted-foreground); font-size: 11px; letter-spacing: .16em; font-weight: 700; }
-.skills-header h1 { margin: 0; font-size: clamp(26px, 3vw, 38px); letter-spacing: -.04em; }
-.skills-header p:last-child { margin: 8px 0 0; color: var(--muted-foreground); }
-.skills-header-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-.skills-summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
-.skills-summary-grid .p-6 { display: grid; gap: 8px; }
-.skills-summary-grid span { color: var(--muted-foreground); font-size: 12px; }
-.skills-summary-grid strong { font-size: 28px; }
-.skills-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 14px; color: var(--muted-foreground); font-size: 12px; }
-.skills-toolbar label { display: flex; align-items: center; gap: 8px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; min-width: min(420px, 100%); }
-.skills-toolbar input { border: 0; outline: 0; background: transparent; width: 100%; }
-.skills-list { display: grid; gap: 8px; }
-.skill-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
-.skill-row.is-protected { border-color: color-mix(in srgb, var(--warning) 45%, transparent); background: color-mix(in srgb, var(--warning) 5%, transparent); }
-.skill-row > div:first-child { min-width: 0; display: grid; gap: 4px; }
-.skill-row strong { overflow: hidden; text-overflow: ellipsis; }
-.skill-row small { color: var(--muted-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.skill-row-state, .skill-good, .skill-warning { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; font-size: 12px; }
-.skill-row-state select, .skill-row > div:first-child select { max-width: 260px; border: 1px solid var(--border); border-radius: 6px; padding: 5px 7px; background: transparent; color: inherit; }
-.skill-good { color: #16834b; }.skill-warning { color: #b45309; }
-.skills-empty { padding: 28px 12px; color: var(--muted-foreground); text-align: center; }
-.skills-error { color: #b42318; margin: 0; }
-.skills-credential-note { margin: 0 0 14px; color: var(--muted-foreground); font-size: 12px; }
-.skills-credential-list { display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; }
-@media (max-width: 760px) { .skills-page { padding: 20px 16px 36px; } .skills-header { flex-direction: column; } .skills-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .skills-toolbar { align-items: stretch; flex-direction: column; } .skills-toolbar label { min-width: 0; } .skill-row { align-items: flex-start; flex-direction: column; } .skill-row-state { flex-wrap: wrap; } }
-
-.skills-targets { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 12px; }
-.skills-targets label { display: inline-flex; align-items: center; gap: 5px; color: var(--text-muted); font-size: 12px; font-weight: 700; }
-
+/*
+ * Everything else on this page is now expressed with `components/shell` and
+ * Tailwind utilities. What is left is the credential form, which is rendered by
+ * `components/CredentialForm.tsx` with a bare `.skills-credential-form`
+ * wrapper and unstyled `<input>`s; that class had no rule anywhere, so the
+ * fields rendered as UA-default boxes inside an otherwise L1 panel. The
+ * geometry deliberately matches the 32px toolbar control in `ui/input.tsx`.
+ */
+.skills-credential-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.skills-credential-form input {
+  flex: 1 1 180px;
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font-size: 14px;
+}
+.skills-credential-form input::placeholder { color: var(--color-ink-3); }
+.skills-credential-form input:hover { border-color: var(--color-line-strong); }
+.skills-credential-form input:focus-visible {
+  border-color: var(--color-focus);
+  outline: none;
+  box-shadow: var(--shadow-focus-field);
+}

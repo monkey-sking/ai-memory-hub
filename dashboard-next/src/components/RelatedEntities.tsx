@@ -3,7 +3,7 @@ import { useOutletContext } from 'react-router-dom'
 import { Link2, RefreshCw } from 'lucide-react'
 import { apiGet, asArray, type AnyRecord } from '@/lib/api'
 import { Button } from './ui/button'
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription, DialogClose } from './ui/dialog'
+import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription, DialogClose } from './ui/dialog'
 import { dashboardLabels } from '@/lib/dashboardCopy'
 import type { AppOutletContext } from '@/lib/i18n'
 
@@ -39,19 +39,31 @@ export function RelatedEntities({ entityType, entityId, title }: { entityType: s
   const suggestions = asArray<Relation>(data.suggestions)
   const titleText = title ?? copy.relationContext
   return <>
-    <Button size="sm" variant="outline" onClick={() => setOpen(true)}><Link2 className="mr-1.5 h-3.5 w-3.5" />{titleText}</Button>
+    <Button size="sm" variant="outline" onClick={() => setOpen(true)}><Link2 className="h-3.5 w-3.5" />{titleText}</Button>
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>{titleText} · {entityType}:{entityId}</DialogTitle>
           <DialogDescription>{copy.relationContext}</DialogDescription>
         </DialogHeader>
-        {error ? <p className="text-sm text-destructive" role="alert">{error}</p> : null}
-        {busy ? <p className="flex items-center gap-2 text-sm text-muted-foreground"><RefreshCw className="h-4 w-4 animate-spin" />{copy.loadingRelations}</p> : null}
-        <div className="space-y-4">
+        <DialogBody className="flex flex-col gap-4">
+          {error ? <p className="text-sm text-destructive" role="alert">{error}</p> : null}
+          {busy ? <p className="flex items-center gap-2 text-sm text-ink-3"><RefreshCw className="h-4 w-4 animate-spin" />{copy.loadingRelations}</p> : null}
           <RelationList title={copy.confirmedRelations} items={explicit} copy={copy} />
-          <section className="space-y-2"><h4 className="text-sm font-medium">{copy.inferredContext}</h4>{suggestions.length ? suggestions.map((item, index) => <div className="rounded-md border p-3 text-sm" key={`${label(item.from)}-${label(item.to)}-${index}`}><div>{label(item.from)} <span className="text-muted-foreground">→ {item.relation || 'related-to'} →</span> {label(item.to)}</div><small className="text-muted-foreground">置信度 {Math.round(Number(item.confidence || 0) * 100)}% · {textOfEvidence(item.evidence, copy.contentContext)}</small></div>) : <p className="text-sm text-muted-foreground">{copy.inferredNone}</p>}</section>
-        </div>
+          <section className="flex flex-col gap-2">
+            <h4 className="text-sm font-medium">{copy.inferredContext}</h4>
+            {suggestions.length ? (
+              <div className="flex flex-col gap-2">
+                {suggestions.map((item, index) => (
+                  <div className="flex flex-col gap-1 rounded-md border border-line p-3 text-sm" key={`${label(item.from)}-${label(item.to)}-${index}`}>
+                    <div>{label(item.from)} <span className="text-ink-3">→ {item.relation || 'related-to'} →</span> {label(item.to)}</div>
+                    <small className="text-ink-3">{copy.confidence} {Math.round(Number(item.confidence || 0) * 100)}% · {textOfEvidence(item.evidence, copy.contentContext)}</small>
+                  </div>
+                ))}
+              </div>
+            ) : <p className="text-sm text-ink-3">{copy.inferredNone}</p>}
+          </section>
+        </DialogBody>
         <DialogFooter>
           <DialogClose asChild>
             <Button variant="outline">{copy.close}</Button>
@@ -68,5 +80,18 @@ function textOfEvidence(evidence: AnyRecord | undefined, fallback: string): stri
 }
 
 function RelationList({ title, items, copy }: { title: string; items: Relation[]; copy: typeof dashboardLabels.zh }) {
-  return <section className="space-y-2"><h4 className="text-sm font-medium">{title}</h4>{items.length ? <div className="space-y-1">{items.map((item, index) => <div className="rounded-md bg-muted/50 px-3 py-2 text-sm" key={`${item.id || index}`}>{label(item.from)} <span className="text-muted-foreground">→ {item.relation || 'related-to'} →</span> {label(item.to)}</div>)}</div> : <p className="text-sm text-muted-foreground">{copy.noRelations}</p>}</section>
+  return (
+    <section className="flex flex-col gap-2">
+      <h4 className="text-sm font-medium">{title}</h4>
+      {items.length ? (
+        <div className="flex flex-col gap-1">
+          {items.map((item, index) => (
+            <div className="rounded-md bg-surface-sunk px-3 py-2 text-sm" key={`${item.id || index}`}>
+              {label(item.from)} <span className="text-ink-3">→ {item.relation || 'related-to'} →</span> {label(item.to)}
+            </div>
+          ))}
+        </div>
+      ) : <p className="text-sm text-ink-3">{copy.noRelations}</p>}
+    </section>
+  )
 }

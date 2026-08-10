@@ -1,9 +1,12 @@
-import { useMemo, useState } from 'react'
-import { ChevronDown, LoaderCircle, Plus, Search, X } from 'lucide-react'
-import { Card, CardContent, CardHeader } from './ui/card'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { MoreHorizontal, Plus, Search, X } from 'lucide-react'
+import { EmptyState, ErrorState, LoadingState, PageShell, Panel, StatusTabs } from './shell'
 import { Button } from './ui/button'
-import { Input } from './ui/input'
+import { Input, fieldBaseStyles } from './ui/input'
 import { Label } from './ui/label'
+import { Textarea } from './ui/textarea'
+import { cn } from '@/lib/utils'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription, DialogClose } from './ui/dialog'
 import { apiDelete, apiGet, apiPatch, apiPost, formatDate, formatRelativeTime } from '@/lib/api'
 import type { AnyRecord } from '@/lib/api'
@@ -12,7 +15,7 @@ import type { DashboardCopy } from '@/lib/dashboardCopy'
 type WorkflowsCopy = Pick<DashboardCopy,
   | 'actionText' | 'actionTextPlaceholder' | 'allProjects' | 'allStatuses' | 'block' | 'cancel' | 'clear' | 'close'
   | 'confirmDelete' | 'confirmDeleteWorkflow' | 'createdBy' | 'createWorkflow' | 'deleteWorkflow' | 'editWorkflow'
-  | 'executor' | 'linkedItems' | 'markDone' | 'markReview' | 'noData' | 'noMatches' | 'observer' | 'planner'
+  | 'executor' | 'linkedItems' | 'markDone' | 'markReview' | 'moreActions' | 'noData' | 'noMatches' | 'observer' | 'planner'
   | 'priority' | 'priorityLabels' | 'project' | 'reviewer' | 'running' | 'save' | 'searchPlaceholder' | 'searchText'
   | 'signalTo' | 'signalToPlaceholder' | 'startWorkflow' | 'status' | 'statusLabels' | 'title' | 'titlePlaceholder'
   | 'updated' | 'viewExecutionGraph' | 'workflowAcceptance' | 'workflowActive' | 'workflowBlocked' | 'workflowCount'
@@ -35,6 +38,16 @@ interface WorkflowNode {
 }
 
 type WorkflowEntryAction = 'result' | 'review' | 'note' | 'signal' | 'delete'
+
+/** One row of the card's `⋯` overflow menu. Same shape as `TaskMenuAction` in TasksPanel.tsx. */
+type WorkflowMenuAction = {
+  key: string
+  label: string
+  disabled?: boolean
+  /** Renders the row in danger colours without giving it a filled button on the card. */
+  tone?: 'danger'
+  onSelect: () => void
+}
 
 interface WorkflowActionState {
   action: WorkflowEntryAction
@@ -74,8 +87,14 @@ interface WorkflowsPanelProps {
 
 const workflowStatusOptions = ['open', 'planned', 'in_progress', 'review', 'blocked', 'done', 'cancelled']
 const workflowPriorityOptions = ['low', 'normal', 'high', 'urgent']
-const dialogFieldClass = 'min-h-[38px] rounded-md border border-input bg-background px-2 text-sm font-normal text-foreground'
-const dialogTextareaClass = 'min-h-[84px] rounded-md border border-input bg-background p-2 text-sm font-normal text-foreground'
+/**
+ * `.workflow-create-form label` is `font-weight: 700`, so a bare select would
+ * inherit bold — hence `font-normal`. `h-9`/`px-3` deliberately match
+ * `.workflow-create-form input { min-height: 36px; padding: 0 12px }` in
+ * Dashboard.css: that rule targets `input` only, so before this the selects
+ * sat 2px taller and 4px narrower than the inputs beside them.
+ */
+const dialogFieldClass = cn(fieldBaseStyles, 'flex h-9 px-3 py-0 font-normal')
 
 function textOf(value: unknown, fallback = ''): string {
   if (value === null || value === undefined) return fallback
@@ -317,30 +336,67 @@ export function WorkflowsPanel({ workflows, visibleProjects, copy, onRefresh }: 
   }
 
   return (
-    <div className="space-y-6">
-      <Card className="workflow-console-card">
-        <CardHeader className="border-b workflow-console-header">
-          <div className="workflow-list-header"><span className="workflow-result-count">{filteredWorkflows.length} {copy.workflowCount}</span><Button onClick={() => { setCreateError(''); setCreateOpen(true) }}><Plus className="mr-2 h-4 w-4" />{copy.createWorkflow}</Button></div>        </CardHeader>
-        <CardContent className="pt-6">
-          <div className="workflow-stage-strip" role="tablist" aria-label={copy.status}>
-            <Button className={`workflow-stage-item ${statusFilter === 'all' ? 'selected' : ''}`} variant="ghost" size="sm" onClick={() => setStatusFilter('all')}><span className="workflow-stage-dot" />{copy.allStatuses}<strong>{formatNumber(workflows.length)}</strong></Button>
-            {stageCounts.map(item => <Button className={`workflow-stage-item ${item.status} ${statusFilter === item.status ? 'selected' : ''}`} key={item.status} variant="ghost" size="sm" onClick={() => setStatusFilter(item.status)}><span className="workflow-stage-dot" />{statusLabel(copy, item.status)}<strong>{formatNumber(item.count)}</strong></Button>)}
-          </div>          <div className="workflow-filter-bar">
-            <div className="workflow-search-field"><Search className="h-4 w-4" /><Input id="workflow-search" value={query} onChange={event => setQuery(event.target.value)} placeholder={copy.searchPlaceholder} aria-label={copy.searchText} /></div>
-            <div className="workflow-project-field"><Label htmlFor="workflow-project-filter">{copy.project}</Label><select id="workflow-project-filter" value={projectFilter} onChange={event => setProjectFilter(event.target.value)}><option value="all">{copy.allProjects}</option>{projectOptions.map(project => <option value={project} key={project}>{project}</option>)}</select></div>
-            <Button variant="outline" onClick={() => { setQuery(''); setStatusFilter('all'); setProjectFilter('all') }}><X className="mr-2 h-4 w-4" />{copy.clear}</Button>
-          </div>
+    <PageShell>
+      <Panel
+        title={copy.workflows}
+        count={formatNumber(filteredWorkflows.length)}
+        actions={
+          /* Panel.tsx:9 — buttons in a panel header MUST be size="sm" (32px). */
+          <Button size="sm" onClick={() => { setCreateError(''); setCreateOpen(true) }}>
+            <Plus className="h-4 w-4" />
+            {copy.createWorkflow}
+          </Button>
+        }
+        tabs={
+          <StatusTabs
+            label={copy.status}
+            variant="pill"
+            value={statusFilter}
+            onChange={setStatusFilter}
+            allItem={{ value: 'all', label: copy.allStatuses, count: workflows.length }}
+            items={stageCounts.map(item => ({
+              value: item.status,
+              label: statusLabel(copy, item.status),
+              count: item.count,
+            }))}
+          />
+        }
+        toolbar={
+          <>
+            <div className="relative w-full min-w-0 max-w-xs shrink">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-3" aria-hidden="true" />
+              <Input id="workflow-search" className="h-8 pl-8" value={query} onChange={event => setQuery(event.target.value)} placeholder={copy.searchPlaceholder} aria-label={copy.searchText} />
+            </div>
+            <Label htmlFor="workflow-project-filter" className="sr-only">{copy.project}</Label>
+            <select
+              id="workflow-project-filter"
+              value={projectFilter}
+              onChange={event => setProjectFilter(event.target.value)}
+              className={cn(fieldBaseStyles, 'h-8 w-auto shrink-0 px-2 py-0')}
+            >
+              <option value="all">{copy.allProjects}</option>
+              {projectOptions.map(project => <option value={project} key={project}>{project}</option>)}
+            </select>
+            <Button variant="ghost" size="sm" className="ml-auto shrink-0" onClick={() => { setQuery(''); setStatusFilter('all'); setProjectFilter('all') }}>
+              <X className="h-4 w-4" />
+              {copy.clear}
+            </Button>
+          </>
+        }
+      >
+        <div className="flex min-w-0 flex-col gap-4">
+          {panelError ? <ErrorState variant="inline" title={panelError} /> : null}
+          {filteredWorkflows.length
+            ? <div className="workflow-card-grid workflow-list">{filteredWorkflows.map(workflow => <WorkflowCard key={textOf(workflow.id)} workflow={workflow} copy={copy} busy={Boolean(statusBusy)} onOpenGraph={openWorkflowGraph} onEdit={openWorkflowEdit} onStatus={setWorkflowStatus} onAction={openWorkflowAction} />)}</div>
+            : <EmptyState title={workflows.length ? copy.noMatches : copy.noData} />}
+        </div>
+      </Panel>
 
-          {panelError ? <div className="inline-error" role="alert">{panelError}</div> : null}
-          {filteredWorkflows.length ? <div className="workflow-card-grid workflow-list">{filteredWorkflows.map(workflow => <WorkflowCard key={textOf(workflow.id)} workflow={workflow} copy={copy} busy={Boolean(statusBusy)} onOpenGraph={openWorkflowGraph} onEdit={openWorkflowEdit} onStatus={setWorkflowStatus} onAction={openWorkflowAction} />)}</div> : <div className="py-8 text-center text-muted-foreground">{workflows.length ? copy.noMatches : copy.noData}</div>}
-        </CardContent>
-      </Card>
-
-      {createOpen ? <Dialog open onOpenChange={open => { if (!open && !createBusy) setCreateOpen(false) }}><DialogContent className="workflow-create-dialog"><DialogHeader><DialogTitle>{copy.createWorkflow}</DialogTitle><DialogDescription>{copy.createWorkflow}</DialogDescription></DialogHeader><div className="workflow-create-form"><label><span>{copy.title}</span><input value={createForm.title} onChange={event => setCreateForm(current => ({ ...current, title: event.target.value }))} placeholder={copy.titlePlaceholder} /></label><label><span>{copy.project}</span><input value={createForm.project} onChange={event => setCreateForm(current => ({ ...current, project: event.target.value }))} /></label><div className="workflow-create-grid"><label><span>{copy.planner}</span><input value={createForm.planner} onChange={event => setCreateForm(current => ({ ...current, planner: event.target.value }))} /></label><label><span>{copy.executor}</span><input value={createForm.executor} onChange={event => setCreateForm(current => ({ ...current, executor: event.target.value }))} /></label><label><span>{copy.reviewer}</span><input value={createForm.reviewer} onChange={event => setCreateForm(current => ({ ...current, reviewer: event.target.value }))} /></label></div>{createError ? <div className="inline-error" role="alert">{createError}</div> : null}</div><DialogFooter><DialogClose asChild><Button variant="outline" disabled={createBusy}>{copy.cancel}</Button></DialogClose><Button onClick={() => void createWorkflow()} disabled={createBusy || !createForm.title.trim()}>{createBusy ? copy.running : copy.createWorkflow}</Button></DialogFooter></DialogContent></Dialog> : null}
+      {createOpen ? <Dialog open onOpenChange={open => { if (!open && !createBusy) setCreateOpen(false) }}><DialogContent className="workflow-create-dialog" aria-describedby={undefined}><DialogHeader><DialogTitle>{copy.createWorkflow}</DialogTitle></DialogHeader><div className="workflow-create-form"><label><span>{copy.title}</span><input value={createForm.title} onChange={event => setCreateForm(current => ({ ...current, title: event.target.value }))} placeholder={copy.titlePlaceholder} /></label><label><span>{copy.project}</span><input value={createForm.project} onChange={event => setCreateForm(current => ({ ...current, project: event.target.value }))} /></label><div className="workflow-create-grid"><label><span>{copy.planner}</span><input value={createForm.planner} onChange={event => setCreateForm(current => ({ ...current, planner: event.target.value }))} /></label><label><span>{copy.executor}</span><input value={createForm.executor} onChange={event => setCreateForm(current => ({ ...current, executor: event.target.value }))} /></label><label><span>{copy.reviewer}</span><input value={createForm.reviewer} onChange={event => setCreateForm(current => ({ ...current, reviewer: event.target.value }))} /></label></div>{createError ? <ErrorState variant="inline" title={createError} /> : null}</div><DialogFooter><DialogClose asChild><Button variant="outline" disabled={createBusy}>{copy.cancel}</Button></DialogClose><Button onClick={() => void createWorkflow()} disabled={createBusy || !createForm.title.trim()}>{createBusy ? copy.running : copy.createWorkflow}</Button></DialogFooter></DialogContent></Dialog> : null}
       {editForm ? <WorkflowEditDialog copy={copy} form={editForm} busy={editBusy} error={editError} projectOptions={formProjectOptions} onChange={patch => setEditForm(current => (current ? { ...current, ...patch } : current))} onClose={() => setEditForm(null)} onSave={saveWorkflow} /> : null}
       {actionState ? <WorkflowActionDialog copy={copy} state={actionState} text={actionText} signalTo={signalTo} busy={actionBusy} error={actionError} onTextChange={setActionText} onSignalToChange={setSignalTo} onClose={() => setActionState(null)} onSubmit={submitWorkflowAction} /> : null}
       {selectedWorkflow ? <WorkflowGraphDialog workflow={selectedWorkflow} copy={copy} nodes={workflowNodes} loading={loadingNodes} error={nodeError} onClose={() => setSelectedWorkflow(null)} /> : null}
-    </div>
+    </PageShell>
   )
 }
 
@@ -365,28 +421,197 @@ function WorkflowCard({ workflow, copy, busy, onOpenGraph, onEdit, onStatus, onA
   const canReview = !['review', 'done', 'cancelled'].includes(status)
   const canBlock = !['blocked', 'done', 'cancelled'].includes(status)
   const canDone = !['done', 'cancelled'].includes(status)
+  /**
+   * Ordered forward path through the lifecycle, so the first still-available
+   * step is by definition "what to do next with this workflow". That one gets
+   * the card's single filled button; the rest drop into the overflow menu, so
+   * a card can never show two primaries.
+   */
+  const forwardTransitions = [
+    { status: 'in_progress', label: copy.startWorkflow, available: canStart },
+    { status: 'review', label: copy.markReview, available: canReview },
+    { status: 'done', label: copy.markDone, available: canDone }
+  ].filter(item => item.available)
+  const nextTransition = forwardTransitions[0]
+  const menuActions: WorkflowMenuAction[] = [
+    ...forwardTransitions.slice(1).map(item => ({
+      key: `status-${item.status}`,
+      label: item.label,
+      disabled: busy,
+      onSelect: () => void onStatus(workflow, item.status)
+    })),
+    { key: 'edit', label: copy.editWorkflow, onSelect: () => onEdit(workflow) },
+    { key: 'result', label: copy.workflowResult, onSelect: () => onAction(workflow, 'result') },
+    { key: 'review-entry', label: copy.workflowReviewEntry, onSelect: () => onAction(workflow, 'review') },
+    { key: 'note', label: copy.workflowNote, onSelect: () => onAction(workflow, 'note') },
+    { key: 'signal', label: copy.workflowSignal, onSelect: () => onAction(workflow, 'signal') },
+    { key: 'delete', label: copy.deleteWorkflow, tone: 'danger', onSelect: () => onAction(workflow, 'delete') }
+  ]
 
-  return <article className="workflow-card workflow-card-clickable" role="button" tabIndex={0} onClick={event => { if (!(event.target as HTMLElement).closest('button, a, input, select, summary, details')) void onOpenGraph(workflow) }} onKeyDown={event => { if ((event.key === 'Enter' || event.key === ' ') && event.target === event.currentTarget) void onOpenGraph(workflow) }}>
+  return <article
+    className="workflow-card workflow-card-clickable"
+    role="button"
+    tabIndex={0}
+    aria-label={`${title} — ${copy.viewExecutionGraph}`}
+    onClick={event => { if (!(event.target as HTMLElement).closest('button, a, input, select, summary, details')) void onOpenGraph(workflow) }}
+    onKeyDown={event => {
+      if ((event.key !== 'Enter' && event.key !== ' ') || event.target !== event.currentTarget) return
+      // Without preventDefault the browser runs Enter's default activation
+      // *after* this handler — by then Radix has moved focus into the graph
+      // dialog, so the synthesized click lands on the dialog's close button
+      // and shuts it again (measured: opened at +0ms, closed at +41ms).
+      // Space would additionally scroll the panel.
+      event.preventDefault()
+      void onOpenGraph(workflow)
+    }}
+  >
     <header className="workflow-card-header"><div className="workflow-title-block"><h3>{title}</h3><span className="workflow-project-chip">{project}</span></div><div className="workflow-badges"><StatusBadge status={status} copy={copy} /><span className={`status-badge ${priority}`}>{priorityLabel(copy, priority)}</span></div></header>
     {description ? <p className="workflow-description">{description}</p> : null}
     {roles.length ? <dl className="workflow-role-list">{roles.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl> : null}
     {linkedTasks.length ? <div className="workflow-linked"><span>{copy.linkedItems}</span><div>{linkedTasks.map(taskId => <span className="workflow-link-chip" key={taskId}>{taskId}</span>)}</div></div> : null}
     <details className="workflow-details"><summary>{copy.workflowLogs}</summary><div className="task-notes">{logs.length ? logs.map((entry, index) => <p key={`${entry.type}-${entry.ts}-${index}`}><span>{[entry.type, entry.role, entry.by, formatDate(entry.ts, 'short')].filter(Boolean).join(' · ')}</span><span>{entry.text}</span></p>) : <span>{copy.noData}</span>}</div></details>
     <div className="workflow-actions flex flex-wrap items-center gap-2">
-      {canStart ? <Button variant="secondary" size="sm" disabled={busy} onClick={() => void onStatus(workflow, 'in_progress')}>{copy.startWorkflow}</Button> : null}
-      {canReview ? <Button variant="ghost" size="sm" disabled={busy} onClick={() => void onStatus(workflow, 'review')}>{copy.markReview}</Button> : null}
-      {canDone ? <Button variant="ghost" size="sm" disabled={busy} onClick={() => void onStatus(workflow, 'done')}>{copy.markDone}</Button> : null}
-      {canBlock ? <Button variant="ghost" size="sm" disabled={busy} onClick={() => void onStatus(workflow, 'blocked')}>{copy.block}</Button> : null}
-      <Button variant="outline" size="sm" onClick={() => onEdit(workflow)}>{copy.editWorkflow}</Button>
-      <Button variant="ghost" size="sm" onClick={() => onAction(workflow, 'result')}>{copy.workflowResult}</Button>
-      <Button variant="ghost" size="sm" onClick={() => onAction(workflow, 'review')}>{copy.workflowReviewEntry}</Button>
-      <Button variant="ghost" size="sm" onClick={() => onAction(workflow, 'note')}>{copy.workflowNote}</Button>
-      <Button variant="ghost" size="sm" onClick={() => onAction(workflow, 'signal')}>{copy.workflowSignal}</Button>
-      <Button variant="destructive" size="sm" onClick={() => onAction(workflow, 'delete')}>{copy.deleteWorkflow}</Button>
-      <Button variant="outline" size="sm" onClick={() => void onOpenGraph(workflow)}><span>{copy.viewExecutionGraph}</span><ChevronDown className="h-3.5 w-3.5" /></Button>
+      {nextTransition ? <Button size="sm" disabled={busy} onClick={() => void onStatus(workflow, nextTransition.status)}>{nextTransition.label}</Button> : null}
+      {canBlock ? <Button variant="secondary" size="sm" disabled={busy} onClick={() => void onStatus(workflow, 'blocked')}>{copy.block}</Button> : null}
+      <WorkflowActionMenu label={copy.moreActions} actions={menuActions} />
       <span className="workflow-updated">{copy.updated}: {formatRelativeTime(textOf(workflow.updatedAt || workflow.createdAt))}</span>
     </div>
   </article>
+}
+
+/**
+ * Overflow menu for the card's secondary verbs. Behaviour is a local copy of
+ * `TaskActionMenu` in TasksPanel.tsx (roving focus with arrows/Home/End,
+ * Escape closes and restores focus to the trigger); only the styling is
+ * expressed in design-system utilities rather than the legacy
+ * `.task-action-menu-*` rules, so the danger row can be tinted without
+ * fighting that stylesheet's specificity.
+ */
+function WorkflowActionMenu({ label, actions }: { label: string; actions: WorkflowMenuAction[] }) {
+  const [open, setOpen] = useState(false)
+  const menuId = useId()
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const menuContentRef = useRef<HTMLDivElement | null>(null)
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null)
+
+  const closeAndFocusTrigger = useCallback(() => {
+    setOpen(false)
+    triggerRef.current?.focus()
+  }, [])
+
+  // Position the portal menu (fixed) from the trigger rect, flipping up when
+  // there isn't room below. Rendering in a portal keeps it above the panel's
+  // scroll/stacking context so the sticky toolbar can't cover its items
+  // (previously the menu rendered inside the scroll body and the panel
+  // toolbar's search input intercepted the item clicks).
+  useEffect(() => {
+    if (!open) { setCoords(null); return }
+    const tr = triggerRef.current
+    if (!tr) return
+    const rect = tr.getBoundingClientRect()
+    const menuH = actions.length * 34 + 16
+    const menuW = 184
+    const down = rect.bottom + menuH + 8 <= window.innerHeight
+    const top = down ? rect.bottom + 8 : rect.top - menuH - 8
+    const left = Math.max(8, Math.min(rect.right - menuW, window.innerWidth - menuW - 8))
+    setCoords({ top, left })
+  }, [open, actions.length])
+
+  // Close on scroll/resize so the fixed menu can't drift from the trigger.
+  useEffect(() => {
+    if (!open) return
+    const close = () => setOpen(false)
+    window.addEventListener('scroll', close, true)
+    window.addEventListener('resize', close)
+    return () => {
+      window.removeEventListener('scroll', close, true)
+      window.removeEventListener('resize', close)
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    const items = () => Array.from(menuContentRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? []).filter(item => !item.disabled)
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        closeAndFocusTrigger()
+        return
+      }
+      const list = items()
+      if (!list.length) return
+      const currentIndex = list.indexOf(document.activeElement as HTMLButtonElement)
+      if (event.key === 'ArrowDown') {
+        event.preventDefault()
+        list[(currentIndex + 1) % list.length]?.focus()
+      } else if (event.key === 'ArrowUp') {
+        event.preventDefault()
+        list[(currentIndex - 1 + list.length) % list.length]?.focus()
+      } else if (event.key === 'Home') {
+        event.preventDefault()
+        list[0]?.focus()
+      } else if (event.key === 'End') {
+        event.preventDefault()
+        list[list.length - 1]?.focus()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [open, closeAndFocusTrigger])
+
+  useEffect(() => {
+    if (!open) return
+    const first = menuContentRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')
+    first?.focus()
+  }, [open, coords])
+
+  // The card behind this menu is itself a click target, so an unclosed menu
+  // would linger under the dialog that click opens.
+  useEffect(() => {
+    if (!open) return
+    const onPointerDown = (event: PointerEvent) => {
+      const t = event.target as Node
+      if (!menuContentRef.current?.contains(t) && !triggerRef.current?.contains(t)) setOpen(false)
+    }
+    window.addEventListener('pointerdown', onPointerDown)
+    return () => window.removeEventListener('pointerdown', onPointerDown)
+  }, [open])
+
+  const menu = open && coords ? createPortal(
+    <div
+      ref={menuContentRef}
+      className="fixed z-50 grid min-w-[168px] gap-0.5 rounded-lg border border-line bg-surface p-2 shadow-lg"
+      style={{ top: coords.top, left: coords.left }}
+      id={menuId}
+      role="menu"
+      aria-label={label}
+    >
+      {actions.map(action => <button
+        key={action.key}
+        type="button"
+        role="menuitem"
+        disabled={action.disabled}
+        className={cn(
+          'flex h-8 items-center rounded-sm px-2 text-left text-xs text-ink-2',
+          'transition-colors duration-[var(--dur-fast)] hover:bg-surface-sunk hover:text-ink',
+          'focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]',
+          'disabled:pointer-events-none disabled:opacity-45',
+          action.tone === 'danger' && 'text-danger hover:bg-danger-tint hover:text-danger-text'
+        )}
+        onClick={() => { closeAndFocusTrigger(); action.onSelect() }}
+      >{action.label}</button>)}
+    </div>,
+    document.body
+  ) : null
+
+  return <div className="relative shrink-0">
+    <Button ref={triggerRef} variant="ghost" size="sm" aria-haspopup="menu" aria-expanded={open} aria-controls={menuId} onClick={() => setOpen(value => !value)}>
+      <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
+      {label}
+    </Button>
+    {menu}
+  </div>
 }
 
 function WorkflowEditDialog({ copy, form, busy, error, projectOptions, onChange, onClose, onSave }: {
@@ -399,7 +624,7 @@ function WorkflowEditDialog({ copy, form, busy, error, projectOptions, onChange,
   onClose: () => void
   onSave: () => Promise<void>
 }) {
-  return <Dialog open onOpenChange={open => { if (!open && !busy) onClose() }}><DialogContent className="workflow-create-dialog"><DialogHeader><DialogTitle>{copy.editWorkflow}</DialogTitle><DialogDescription>{form.id}</DialogDescription></DialogHeader>
+  return <Dialog open onOpenChange={open => { if (!open && !busy) onClose() }}><DialogContent className="workflow-create-dialog" aria-describedby={undefined}><DialogHeader><DialogTitle>{copy.editWorkflow}</DialogTitle></DialogHeader>
     <div className="workflow-create-form">
       <label><span>{copy.workflowTitle}</span><input value={form.title} onChange={event => onChange({ title: event.target.value })} placeholder={copy.titlePlaceholder} /></label>
       <div className="workflow-create-grid">
@@ -414,11 +639,11 @@ function WorkflowEditDialog({ copy, form, busy, error, projectOptions, onChange,
         <label><span>{copy.reviewer}</span><input value={form.reviewer} onChange={event => onChange({ reviewer: event.target.value })} /></label>
       </div>
       <label><span>{copy.observer}</span><input value={form.observer} onChange={event => onChange({ observer: event.target.value })} /></label>
-      <label><span>{copy.workflowPlan}</span><textarea className={dialogTextareaClass} value={form.plan} onChange={event => onChange({ plan: event.target.value })} /></label>
-      <label><span>{copy.workflowAcceptance}</span><textarea className={dialogTextareaClass} value={form.acceptance} onChange={event => onChange({ acceptance: event.target.value })} /></label>
-      <label><span>{copy.workflowRisks}</span><textarea className={dialogTextareaClass} value={form.risks} onChange={event => onChange({ risks: event.target.value })} /></label>
+      <label><span>{copy.workflowPlan}</span><Textarea className="font-normal" value={form.plan} onChange={event => onChange({ plan: event.target.value })} /></label>
+      <label><span>{copy.workflowAcceptance}</span><Textarea className="font-normal" value={form.acceptance} onChange={event => onChange({ acceptance: event.target.value })} /></label>
+      <label><span>{copy.workflowRisks}</span><Textarea className="font-normal" value={form.risks} onChange={event => onChange({ risks: event.target.value })} /></label>
       <datalist id="workflow-edit-project-options">{projectOptions.map(project => <option value={project} key={project} />)}</datalist>
-      {error ? <div className="inline-error" role="alert">{error}</div> : null}
+      {error ? <ErrorState variant="inline" title={error} /> : null}
     </div>
     <DialogFooter><DialogClose asChild><Button variant="outline" disabled={busy}>{copy.cancel}</Button></DialogClose><Button onClick={() => void onSave()} disabled={busy || !form.title.trim()}>{busy ? copy.running : copy.save}</Button></DialogFooter>
   </DialogContent></Dialog>
@@ -443,8 +668,8 @@ function WorkflowActionDialog({ copy, state, text, signalTo, busy, error, onText
       <div className="workflow-action-summary"><StatusBadge status={textOf(state.workflow.status, 'open')} copy={copy} /><strong>{textOf(state.workflow.title, '-')}</strong><span>{textOf(state.workflow.project, '-')}</span></div>
       {isDelete ? <p className="workflow-description">{copy.confirmDeleteWorkflow}</p> : null}
       {state.action === 'signal' ? <label><span>{copy.signalTo}</span><input value={signalTo} onChange={event => onSignalToChange(event.target.value)} placeholder={copy.signalToPlaceholder} /></label> : null}
-      {isDelete ? null : <label><span>{copy.actionText}</span><textarea className={dialogTextareaClass} value={text} onChange={event => onTextChange(event.target.value)} placeholder={copy.actionTextPlaceholder} /></label>}
-      {error ? <div className="inline-error" role="alert">{error}</div> : null}
+      {isDelete ? null : <label><span>{copy.actionText}</span><Textarea className="font-normal" value={text} onChange={event => onTextChange(event.target.value)} placeholder={copy.actionTextPlaceholder} /></label>}
+      {error ? <ErrorState variant="inline" title={error} /> : null}
     </div>
     <DialogFooter><DialogClose asChild><Button variant="outline" disabled={busy}>{copy.cancel}</Button></DialogClose><Button variant={isDelete ? 'destructive' : 'default'} onClick={() => void onSubmit()} disabled={busy}>{busy ? copy.running : isDelete ? copy.deleteWorkflow : title}</Button></DialogFooter>
   </DialogContent></Dialog>
@@ -453,7 +678,7 @@ function WorkflowActionDialog({ copy, state, text, signalTo, busy, error, onText
 function WorkflowGraphDialog({ workflow, copy, nodes, loading, error, onClose }: { workflow: AnyRecord; copy: WorkflowsCopy; nodes: WorkflowNode[]; loading: boolean; error: string; onClose: () => void }) {
   const title = textOf(workflow.title, '-')
   const project = textOf(workflow.project, '-')
-  return <Dialog open onOpenChange={open => { if (!open) onClose() }}><DialogContent className="workflow-graph-dialog"><DialogHeader><DialogTitle>{title}</DialogTitle><DialogDescription className="workflow-graph-subtitle">{project} · {statusLabel(copy, textOf(workflow.status, 'open'))}</DialogDescription></DialogHeader><div className="workflow-graph-body">{loading ? <div className="workflow-graph-loading"><LoaderCircle className="h-5 w-5 animate-spin" />{copy.running}</div> : error ? <div className="workflow-graph-error" role="alert">{error}</div> : nodes.length ? <div className="workflow-graph-list">{nodes.map((node, index) => <div className="workflow-graph-node" key={node.nodeId || `${node.slug}-${index}`}><div className="workflow-graph-node-marker"><span>{index + 1}</span>{index < nodes.length - 1 ? <i /> : null}</div><div className="workflow-graph-node-content"><div className="workflow-graph-node-heading"><strong>{node.label || node.slug || '-'}</strong><StatusBadge status={node.status} copy={copy} /></div><p className="workflow-graph-node-meta">{node.role || '-'} · {node.actor || '-'}</p>{node.note ? <p>{node.note}</p> : null}{node.error ? <p className="workflow-node-error">{node.error}</p> : null}</div></div>)}</div> : <p className="workflow-graph-empty">{copy.noData}</p>}</div><DialogFooter><DialogClose asChild><Button variant="outline">{copy.close}</Button></DialogClose></DialogFooter></DialogContent></Dialog>
+  return <Dialog open onOpenChange={open => { if (!open) onClose() }}><DialogContent className="workflow-graph-dialog"><DialogHeader><DialogTitle>{title}</DialogTitle><DialogDescription className="workflow-graph-subtitle">{project} · {statusLabel(copy, textOf(workflow.status, 'open'))}</DialogDescription></DialogHeader><div className="workflow-graph-body">{loading ? <LoadingState label={copy.running} /> : error ? <ErrorState variant="inline" title={error} /> : nodes.length ? <div className="workflow-graph-list">{nodes.map((node, index) => <div className="workflow-graph-node" key={node.nodeId || `${node.slug}-${index}`}><div className="workflow-graph-node-marker"><span>{index + 1}</span>{index < nodes.length - 1 ? <i /> : null}</div><div className="workflow-graph-node-content"><div className="workflow-graph-node-heading"><strong>{node.label || node.slug || '-'}</strong><StatusBadge status={node.status} copy={copy} /></div><p className="workflow-graph-node-meta">{node.role || '-'} · {node.actor || '-'}</p>{node.note ? <p>{node.note}</p> : null}{node.error ? <p className="workflow-node-error">{node.error}</p> : null}</div></div>)}</div> : <EmptyState size="sm" title={copy.noData} />}</div><DialogFooter><DialogClose asChild><Button variant="outline">{copy.close}</Button></DialogClose></DialogFooter></DialogContent></Dialog>
 }
 
 function StatusBadge({ status, copy }: { status: string; copy: WorkflowsCopy }) {

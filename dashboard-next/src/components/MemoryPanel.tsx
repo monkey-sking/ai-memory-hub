@@ -1,16 +1,18 @@
 import { useState } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
+import { Panel } from '@/components/shell'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
-import { Input } from './ui/input'
+import { Input, fieldBaseStyles } from './ui/input'
 import { Label } from './ui/label'
 import { Textarea } from './ui/textarea'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription, DialogClose } from './ui/dialog'
 import { RelatedEntities } from './RelatedEntities'
-import { Plus, AlertCircle, Clock, Tag, User, RefreshCw } from 'lucide-react'
+import { Plus, AlertCircle, Tag, User, RefreshCw } from 'lucide-react'
 import type { AnyRecord } from '@/lib/api'
-import { formatDate, formatRelativeTime } from '@/lib/api'
+import { formatDate } from '@/lib/api'
+import { cn } from '@/lib/utils'
 import { VirtualizedList } from './VirtualizedList'
+import { ListRow, LIST_ROW_HEIGHT } from './ListRow'
 
 interface MemoryPanelProps {
   memory: AnyRecord
@@ -152,151 +154,99 @@ export function MemoryPanel({ memory, copy, onRefresh, hasMore = false, onLoadMo
   }
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Memory Snapshot */}
-        <Card className="lg:col-span-2">
-          <CardHeader className="border-b">
-            <CardTitle>{copy.memoryOverview}</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-6">
-            <pre className="text-sm bg-muted p-4 rounded-lg overflow-auto max-h-96 whitespace-pre-wrap">
-              {textOf(memory.memory, copy.noData)}
-            </pre>
-          </CardContent>
-        </Card>
+        <Panel title={copy.memoryOverview} className="lg:col-span-2">
+          <pre className="text-sm bg-muted p-4 rounded-sm overflow-auto max-h-96 whitespace-pre-wrap">
+            {textOf(memory.memory, copy.noData)}
+          </pre>
+        </Panel>
 
         {/* Right Sidebar */}
-        <div className="space-y-6">
+        <div className="flex flex-col gap-6">
           {/* Record Memory Button */}
-          <Card>
-            <CardContent className="pt-6">
-              <Button onClick={() => { setError(''); setRecordOpen(true) }} className="w-full">
-                <Plus className="w-4 h-4 mr-2" />
-                {copy.recordMemory}
-              </Button>
-            </CardContent>
-          </Card>
+          <Panel>
+            <Button onClick={() => { setError(''); setRecordOpen(true) }} className="w-full">
+              <Plus className="h-4 w-4" />
+              {copy.recordMemory}
+            </Button>
+          </Panel>
 
           {/* Pending Events */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                {copy.pendingEvents}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-baseline gap-2">
-                <div className="text-3xl font-bold text-warning">
-                  {formatNumber(pending.length)}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <Panel title={copy.pendingEvents}>
+            <div className="text-3xl font-bold text-warning">
+              {formatNumber(pending.length)}
+            </div>
+          </Panel>
 
           {/* Profile */}
-          <Card>
-            <CardHeader className="border-b">
-              <CardTitle className="text-sm">{copy.profile}</CardTitle>
-            </CardHeader>
-            <CardContent className="pt-4">
-              <pre className="text-xs bg-muted p-3 rounded-lg overflow-auto max-h-48 whitespace-pre-wrap">
-                {textOf(memory.profile, copy.noData)}
-              </pre>
-            </CardContent>
-          </Card>
+          <Panel title={copy.profile}>
+            <pre className="text-xs bg-muted p-3 rounded-sm overflow-auto max-h-48 whitespace-pre-wrap">
+              {textOf(memory.profile, copy.noData)}
+            </pre>
+          </Panel>
         </div>
       </div>
 
       {/* Memory Records */}
-      <Card>
-        <CardHeader className="border-b">
-          <CardTitle>{copy.memoryRecords}</CardTitle>
-        </CardHeader>
-        <CardContent className="pt-6">
-          {memoryRecords.length ? (
-            <div aria-live="polite" aria-busy={loadingMore}>
-            <VirtualizedList
-              items={visibleRecords}
-              itemHeight={190}
-              getKey={(record, index) => textOf(record.localEventId || record.id, `memory-${index}`)}
-              hasMore={visibleRecords.length < memoryRecords.length || hasMore}
-              loading={loadingMore}
-              loadingLabel={copy.loadingMore}
-              onEndReached={() => void loadMore()}
-              className="memory-virtual-list"
-              renderItem={record => {
-                const metadata = asRecord(record.metadata)
-                const kindValue = textOf(record.kind || metadata.kind, 'note')
-                const sourceValue = textOf(record.source, '-')
-                const timestamp = textOf(record.ts || record.indexedAt)
-                const project = textOf(record.project || metadata.project)
-                const supersedes = textOf(metadata.supersedes)
+      <Panel title={copy.memoryRecords} flushBody>
+        {memoryRecords.length ? (
+          <div aria-live="polite" aria-busy={loadingMore}>
+          <VirtualizedList
+            items={visibleRecords}
+            itemHeight={LIST_ROW_HEIGHT}
+            getKey={(record, index) => textOf(record.localEventId || record.id, `memory-${index}`)}
+            hasMore={visibleRecords.length < memoryRecords.length || hasMore}
+            loading={loadingMore}
+            loadingLabel={copy.loadingMore}
+            onEndReached={() => void loadMore()}
+            className="memory-virtual-list"
+            renderItem={record => {
+              const metadata = asRecord(record.metadata)
+              const kindValue = textOf(record.kind || metadata.kind, 'note')
+              const sourceValue = textOf(record.source, '-')
+              const timestamp = textOf(record.ts || record.indexedAt)
+              const project = textOf(record.project || metadata.project)
 
-                return (
-                  <div className="memory-record-item" role="button" tabIndex={0} onClick={(event: React.MouseEvent<HTMLDivElement>) => { if (!(event.target as HTMLElement).closest('button, a, input, textarea, select')) setSelectedRecord(record) }} onKeyDown={(event: React.KeyboardEvent<HTMLDivElement>) => { if ((event.key === 'Enter' || event.key === ' ') && event.target === event.currentTarget) setSelectedRecord(record) }}><Card className="hover:shadow-md transition-shadow">
-                    <CardContent className="p-4">
-                      <div className="space-y-3">
-                        {/* Header */}
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <KindBadge kind={kindValue} />
-                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                              <User className="w-3 h-3" />
-                              {sourceValue}
-                            </div>
-                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                              <Clock className="w-3 h-3" />
-                              <time dateTime={timestamp} title={formatDate(timestamp, 'full')}>{formatRelativeTime(timestamp)}</time>
-                            </div>
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => openSupersede(record)}
-                            className="shrink-0"
-                            aria-label={copy.supersedeMemory}
-                          >
-                            <RefreshCw className="w-3 h-3" />
-                          </Button>
-                        </div>
-
-                        {/* Text */}
-                        <p className="text-sm line-clamp-3">{textOf(record.text, '-')}</p>
-
-                        {/* Footer Tags */}
-                        {(project || supersedes) && (
-                          <div className="flex items-center gap-2 flex-wrap">
-                            {project && (
-                              <div className="flex items-center gap-1 text-xs bg-secondary px-2 py-1 rounded">
-                                <Tag className="w-3 h-3" />
-                                {project}
-                              </div>
-                            )}
-                            {supersedes && (
-                              <div className="flex items-center gap-1 text-xs bg-muted px-2 py-1 rounded">
-                                <RefreshCw className="w-3 h-3" />
-                                {supersedes}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card></div>
-                )
-              }}
-            />
-            </div>
-          ) : (
-            <div className="text-center text-muted-foreground py-8">{copy.noData}</div>
-          )}
-        </CardContent>
-      </Card>
+              return (
+                <ListRow
+                  onOpen={() => setSelectedRecord(record)}
+                  ariaLabel={textOf(record.text, copy.memoryRecords)}
+                  leading={<KindBadge kind={kindValue} />}
+                  title={textOf(record.text, '-')}
+                  subtitle={
+                    <span className="inline-flex items-center gap-2">
+                      <User className="h-3 w-3 shrink-0" />
+                      {sourceValue}
+                      {project ? (
+                        <>
+                          <span aria-hidden="true">·</span>
+                          <Tag className="h-3 w-3 shrink-0" />
+                          {project}
+                        </>
+                      ) : null}
+                    </span>
+                  }
+                  timestamp={timestamp}
+                  actions={
+                    <Button variant="ghost" size="sm" onClick={() => openSupersede(record)} aria-label={copy.supersedeMemory}>
+                      <RefreshCw className="h-3 w-3" />
+                    </Button>
+                  }
+                />
+              )
+            }}
+          />
+          </div>
+        ) : (
+          <div className="text-center text-muted-foreground py-8">{copy.noData}</div>
+        )}
+      </Panel>
 
       {selectedRecord ? <Dialog open onOpenChange={open => { if (!open) setSelectedRecord(null) }}>
-        <DialogContent className="memory-detail-dialog">
-          <DialogHeader><DialogTitle>{textOf(selectedRecord.kind, copy.memoryRecords)} · {formatDate(textOf(selectedRecord.ts || selectedRecord.indexedAt), 'compact')}</DialogTitle><DialogDescription>{copy.memoryRecords}</DialogDescription></DialogHeader>
+        <DialogContent className="memory-detail-dialog" aria-describedby={undefined}>
+          <DialogHeader><DialogTitle>{textOf(selectedRecord.kind, copy.memoryRecords)} · {formatDate(textOf(selectedRecord.ts || selectedRecord.indexedAt), 'compact')}</DialogTitle></DialogHeader>
           <div className="memory-detail-content">
             <div className="memory-detail-meta"><KindBadge kind={textOf(selectedRecord.kind, 'note')} /><span>{textOf(selectedRecord.source, '-')}</span><span>{textOf(selectedRecord.project || asRecord(selectedRecord.metadata).project, '-')}</span><RelatedEntities entityType="memory" entityId={textOf(selectedRecord.localEventId || selectedRecord.id)} /></div>
             <p className="memory-detail-text">{textOf(selectedRecord.text, '-')}</p>
@@ -313,7 +263,7 @@ export function MemoryPanel({ memory, copy, onRefresh, hasMore = false, onLoadMo
             <DialogDescription>{copy.memoryText}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 dialog-scroll-body">
-            <div className="space-y-2">
+            <div className="grid gap-2">
               <Label htmlFor="memory-text">{copy.memoryText}</Label>
               <Textarea
                 id="memory-text"
@@ -325,13 +275,13 @@ export function MemoryPanel({ memory, copy, onRefresh, hasMore = false, onLoadMo
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
+              <div className="grid gap-2">
                 <Label htmlFor="memory-kind">{copy.kind}</Label>
                 <select
                   id="memory-kind"
                   value={kind}
                   onChange={e => setKind(e.target.value)}
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                  className={cn(fieldBaseStyles, 'flex h-9 px-3 py-0')}
                 >
                   <option value="preference">preference</option>
                   <option value="workflow">workflow</option>
@@ -341,7 +291,7 @@ export function MemoryPanel({ memory, copy, onRefresh, hasMore = false, onLoadMo
                 </select>
               </div>
 
-              <div className="space-y-2">
+              <div className="grid gap-2">
                 <Label htmlFor="memory-source">{copy.source}</Label>
                 <Input
                   id="memory-source"
@@ -352,9 +302,9 @@ export function MemoryPanel({ memory, copy, onRefresh, hasMore = false, onLoadMo
             </div>
 
             {error && (
-              <div className="flex items-center gap-2 p-3 rounded-lg border border-destructive/20 bg-destructive/10" role="alert">
-                <AlertCircle className="w-4 h-4 text-destructive shrink-0" />
-                <p className="text-sm text-destructive">{error}</p>
+              <div className="flex items-center gap-2 p-3 rounded-sm border border-danger-line bg-danger-tint" role="alert">
+                <AlertCircle className="w-4 h-4 text-danger shrink-0" />
+                <p className="text-sm text-danger-text">{error}</p>
               </div>
             )}
           </div>
@@ -380,7 +330,7 @@ export function MemoryPanel({ memory, copy, onRefresh, hasMore = false, onLoadMo
               <DialogDescription>{copy.memoryText}</DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 dialog-scroll-body">
-              <div className="space-y-2">
+              <div className="grid gap-2">
                 <Label htmlFor="supersede-text">{copy.memoryText}</Label>
                 <Textarea
                   id="supersede-text"
@@ -390,7 +340,7 @@ export function MemoryPanel({ memory, copy, onRefresh, hasMore = false, onLoadMo
                 />
               </div>
 
-              <div className="space-y-2">
+              <div className="grid gap-2">
                 <Label htmlFor="supersede-source">{copy.source}</Label>
                 <Input
                   id="supersede-source"
@@ -399,7 +349,7 @@ export function MemoryPanel({ memory, copy, onRefresh, hasMore = false, onLoadMo
                 />
               </div>
 
-              <div className="p-3 rounded-lg bg-muted">
+              <div className="p-3 rounded-sm bg-muted">
                 <p className="text-sm">
                   <span className="font-medium">ID:</span>{' '}
                   {textOf(supersedeTarget.localEventId || supersedeTarget.id, '-')}
@@ -407,9 +357,9 @@ export function MemoryPanel({ memory, copy, onRefresh, hasMore = false, onLoadMo
               </div>
 
               {error && (
-                <div className="flex items-center gap-2 p-3 rounded-lg border border-destructive/20 bg-destructive/10" role="alert">
-                  <AlertCircle className="w-4 h-4 text-destructive shrink-0" />
-                  <p className="text-sm text-destructive">{error}</p>
+                <div className="flex items-center gap-2 p-3 rounded-sm border border-danger-line bg-danger-tint" role="alert">
+                  <AlertCircle className="w-4 h-4 text-danger shrink-0" />
+                  <p className="text-sm text-danger-text">{error}</p>
                 </div>
               )}
             </div>

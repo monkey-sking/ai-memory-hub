@@ -1,15 +1,17 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { AlertCircle, Plus, Search, X } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
-import { Input } from './ui/input'
+import { Input, fieldBaseStyles } from './ui/input'
 import { Label } from './ui/label'
 import { Textarea } from './ui/textarea'
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription, DialogClose } from './ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogClose } from './ui/dialog'
+import { EmptyState, Panel } from '@/components/shell'
 import { VirtualizedList } from './VirtualizedList'
+import { ListRow, LIST_ROW_HEIGHT } from './ListRow'
 import { RelatedEntities } from './RelatedEntities'
 import type { AnyRecord } from '@/lib/api'
-import { formatDate, formatRelativeTime } from '@/lib/api'
+import { formatDate } from '@/lib/api'
+import { cn } from '@/lib/utils'
 import type { DashboardCopy } from '@/lib/dashboardCopy'
 
 type TasksCopy = Pick<DashboardCopy,
@@ -28,6 +30,9 @@ type TasksCopy = Pick<DashboardCopy,
   | 'clear'
   | 'close'
   | 'completeDirectly'
+  | 'confirmCancelTask'
+  | 'confirmCancelTaskAction'
+  | 'confirmCancelTaskHint'
   | 'created'
   | 'createdLabel'
   | 'deliveryState'
@@ -35,11 +40,16 @@ type TasksCopy = Pick<DashboardCopy,
   | 'executionInfo'
   | 'handoff'
   | 'id'
+  | 'keepTask'
+  | 'loadMore'
   | 'loadingMore'
   | 'itemsSelected'
   | 'moreActions'
   | 'noData'
+  | 'noMatchesInLoaded'
   | 'noMatchesProject'
+  | 'partialScopePrefix'
+  | 'partialScopeSuffix'
   | 'priority'
   | 'priorityLabels'
   | 'progressLabel'
@@ -163,6 +173,11 @@ export function TasksPanel({ tasks, visibleProjects, copy, onMutate, hasMore = f
   }, [cleanQuery, projectFilterKey, priorityFilterKey, statusFilterKey])
 
   const visibleTasks = filteredTasks.slice(0, visibleCount)
+  // The filter above only sees the rows this client has fetched, so any count we
+  // print is a count of the loaded slice — never a server total. `hasMore` is the
+  // only server-side signal we get here (`total` is not passed in), so the copy
+  // states the searched scope instead of inventing a denominator.
+  const partialScopeNote = `${copy.partialScopePrefix} ${tasks.length} ${copy.partialScopeSuffix}`
   const loadMore = async () => {
     if (visibleTasks.length < filteredTasks.length) {
       setVisibleCount(value => Math.min(value + 60, filteredTasks.length))
@@ -201,27 +216,38 @@ export function TasksPanel({ tasks, visibleProjects, copy, onMutate, hasMore = f
   }
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
       <div className="task-status-summary">{['open', 'claimed', 'in_progress', 'needs_verification', 'done'].map(status => <button type="button" className={activeStatusFilter.includes(status) ? 'task-summary-item is-active' : 'task-summary-item'} key={status} onClick={() => setStatusFilter(activeStatusFilter.includes(status) ? activeStatusFilter.filter(value => value !== status) : [...activeStatusFilter, status])}><span>{statusLabel(copy, status)}</span><strong>{statusCounts[status] || 0}</strong></button>)}</div>
-      <Card>
-        <CardHeader className="border-b">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <CardTitle>{copy.recentTasks}</CardTitle>
-              <p className="mt-1 text-sm text-muted-foreground">{filteredTasks.length}</p>
-            </div>
-            <Button onClick={() => { setError(''); setCreateOpen(true) }}>
-              <Plus className="mr-2 h-4 w-4" />
-              {copy.addTask}
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="pt-6">
+      {/* Panel (h2) rather than Card (CardTitle renders h3): this section sits under
+          the page h1, so a card title skipped a heading level (WCAG 1.3.1). The body
+          keeps its default p-4 because the toolbar lives in it — `flushBody` would
+          leave ListRow's `-mx-4` bleeding 16px past the panel edge. */}
+      <Panel
+        title={copy.recentTasks}
+        count={filteredTasks.length}
+        actions={
+          /* Panel.tsx:9 — buttons in a panel header MUST be size="sm" (32px). */
+          <Button size="sm" onClick={() => { setError(''); setCreateOpen(true) }}>
+            <Plus className="h-4 w-4" />
+            {copy.addTask}
+          </Button>
+        }
+        footer={hasMore && filteredTasks.length > 0 ? (
+          // The end marker only auto-loads once per sentinel crossing now, so a
+          // filtered result shorter than the viewport can never scroll far enough to
+          // ask for the next page. This footer is that ask, made explicit.
+          <>
+            <span>{partialScopeNote}</span>
+            <Button variant="outline" size="sm" disabled={loadingMore} onClick={() => void loadMore()}>{loadingMore ? copy.loadingMore : copy.loadMore}</Button>
+          </>
+        ) : undefined}
+        bodyClassName="flex flex-col gap-4"
+      >
           <div className="task-filter-toolbar">
-            <div className="space-y-2">
+            <div className="grid gap-2">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input id="task-search" value={query} onChange={event => setQuery(event.target.value)} placeholder={copy.searchText} aria-label={copy.searchText} className="pl-9" />
+                <Input id="task-search" value={query} onChange={event => setQuery(event.target.value)} placeholder={copy.searchText} aria-label={copy.searchText} className="pl-8" />
               </div>
             </div>
             <MultiTaskFilter label={copy.status} values={activeStatusFilter} onChange={setStatusFilter} options={statusOptions} copy={copy} displayValue={value => statusLabel(copy, value)} />
@@ -229,19 +255,19 @@ export function TasksPanel({ tasks, visibleProjects, copy, onMutate, hasMore = f
             <MultiTaskFilter label={copy.priority} values={activePriorityFilter} onChange={setPriorityFilter} options={priorityOptions} copy={copy} displayValue={value => priorityLabel(copy, value)} />
             <div className="flex items-end">
               <Button variant="outline" onClick={() => { setQuery(''); setProjectFilter([]); setPriorityFilter([]); setStatusFilter([]) }} className="w-full">
-                <X className="mr-2 h-4 w-4" />
+                <X className="h-4 w-4" />
                 {copy.clear}
               </Button>
             </div>
           </div>
 
-          {error ? <div className="flex items-center gap-2 mb-4 rounded-lg border border-destructive/20 bg-destructive/10 p-3"><AlertCircle className="h-4 w-4 shrink-0 text-destructive" /><p className="text-sm text-destructive">{error}</p></div> : null}
+          {error ? <div className="flex items-center gap-2 rounded-sm border border-danger-line bg-danger-tint p-3"><AlertCircle className="h-4 w-4 shrink-0 text-danger" /><p className="text-sm text-danger-text">{error}</p></div> : null}
 
           {filteredTasks.length ? (
-            <div aria-live="polite" aria-busy={loadingMore}>
+            <div aria-live="polite" aria-busy={loadingMore} className="-mx-4 border-t border-border">
             <VirtualizedList
               items={visibleTasks}
-              itemHeight={300}
+              itemHeight={LIST_ROW_HEIGHT}
               getKey={(task, index) => textOf(task.id, `${textOf(task.title, 'task')}-${index}`)}
               hasMore={visibleTasks.length < filteredTasks.length || hasMore}
               loading={loadingMore}
@@ -251,23 +277,33 @@ export function TasksPanel({ tasks, visibleProjects, copy, onMutate, hasMore = f
               renderItem={task => <TaskCard task={task} copy={copy} busy={busy} onMutate={mutateTask} onOpen={() => setSelectedTask(task)} />}
             />
             </div>
-          ) : <div className="py-8 text-center text-muted-foreground">{copy.noData}</div>}
-        </CardContent>
-      </Card>
+          ) : hasMore ? (
+            // Filtering to zero rows used to unmount the list, which also unmounted the
+            // only thing that ever called `loadMore` (VirtualizedList's end marker), so
+            // "no data" became permanent even though unfetched pages still matched.
+            <div aria-live="polite" aria-busy={loadingMore}>
+              <EmptyState
+                title={copy.noMatchesInLoaded}
+                description={partialScopeNote}
+                action={<Button variant="outline" disabled={loadingMore} onClick={() => void loadMore()}>{loadingMore ? copy.loadingMore : copy.loadMore}</Button>}
+              />
+            </div>
+          ) : <EmptyState title={copy.noData} />}
+      </Panel>
 
       {selectedTask ? <TaskDetailsDialog task={selectedTask} copy={copy} busy={busy} onMutate={mutateTask} onClose={() => setSelectedTask(null)} /> : null}
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-w-2xl dialog-scroll-shell">
-          <DialogHeader><DialogTitle>{copy.addTask}</DialogTitle><DialogDescription>{copy.addTask}</DialogDescription></DialogHeader>
-          {error ? <div role="alert" className="rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">{error}</div> : null}
+        <DialogContent className="max-w-2xl dialog-scroll-shell" aria-describedby={undefined}>
+          <DialogHeader><DialogTitle>{copy.addTask}</DialogTitle></DialogHeader>
           <div className="grid gap-4 dialog-scroll-body">
+            {error ? <div role="alert" className="rounded-sm border border-danger-line bg-danger-tint p-3 text-sm text-danger-text">{error}</div> : null}
             <div className="grid grid-cols-2 gap-4">
-              <div className="col-span-2 space-y-2"><Label htmlFor="task-title">{copy.title}</Label><Input id="task-title" value={newTask.title} onChange={event => setNewTask(value => ({ ...value, title: event.target.value }))} /></div>
-              <div className="space-y-2"><Label htmlFor="task-project">{copy.project}</Label><Input id="task-project" value={newTask.project} onChange={event => setNewTask(value => ({ ...value, project: event.target.value }))} list="task-project-options" /><datalist id="task-project-options">{formProjectOptions.map(project => <option value={project} key={project} />)}</datalist></div>
-              <div className="space-y-2"><Label htmlFor="task-priority">{copy.priority}</Label><select id="task-priority" value={newTask.priority} onChange={event => setNewTask(value => ({ ...value, priority: event.target.value }))} className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm">{['low', 'normal', 'high', 'urgent'].map(priority => <option value={priority} key={priority}>{priorityLabel(copy, priority)}</option>)}</select></div>
-              <div className="col-span-2 space-y-2"><Label htmlFor="task-description">{copy.description}</Label><Textarea id="task-description" value={newTask.description} onChange={event => setNewTask(value => ({ ...value, description: event.target.value }))} rows={3} /></div>
-              <div className="col-span-2 space-y-2"><Label htmlFor="task-handoff">{copy.handoff}</Label><Textarea id="task-handoff" value={newTask.handoff} onChange={event => setNewTask(value => ({ ...value, handoff: event.target.value }))} rows={3} /></div>
+              <div className="col-span-2 grid gap-2"><Label htmlFor="task-title">{copy.title}</Label><Input id="task-title" value={newTask.title} onChange={event => setNewTask(value => ({ ...value, title: event.target.value }))} /></div>
+              <div className="grid gap-2"><Label htmlFor="task-project">{copy.project}</Label><Input id="task-project" value={newTask.project} onChange={event => setNewTask(value => ({ ...value, project: event.target.value }))} list="task-project-options" /><datalist id="task-project-options">{formProjectOptions.map(project => <option value={project} key={project} />)}</datalist></div>
+              <div className="grid gap-2"><Label htmlFor="task-priority">{copy.priority}</Label><select id="task-priority" value={newTask.priority} onChange={event => setNewTask(value => ({ ...value, priority: event.target.value }))} className={cn(fieldBaseStyles, 'flex h-9 px-3 py-0')}>{['low', 'normal', 'high', 'urgent'].map(priority => <option value={priority} key={priority}>{priorityLabel(copy, priority)}</option>)}</select></div>
+              <div className="col-span-2 grid gap-2"><Label htmlFor="task-description">{copy.description}</Label><Textarea id="task-description" value={newTask.description} onChange={event => setNewTask(value => ({ ...value, description: event.target.value }))} rows={3} /></div>
+              <div className="col-span-2 grid gap-2"><Label htmlFor="task-handoff">{copy.handoff}</Label><Textarea id="task-handoff" value={newTask.handoff} onChange={event => setNewTask(value => ({ ...value, handoff: event.target.value }))} rows={3} /></div>
             </div>
           </div>
           <DialogFooter><DialogClose asChild><Button variant="outline">{copy.cancel}</Button></DialogClose><Button onClick={() => void submitTask()} disabled={busy === 'add-task' || !newTask.title.trim()}>{busy === 'add-task' ? copy.running : copy.addTask}</Button></DialogFooter>
@@ -281,11 +317,25 @@ function MultiTaskFilter({ label, values, onChange, options, copy, displayValue 
   const [query, setQuery] = useState('')
   const detailsRef = useRef<HTMLDetailsElement | null>(null)
   useEffect(() => {
+    // Closing the popover removes whatever chip had focus from the layout, so focus
+    // has to be handed back to the <summary> (same contract as TaskActionMenu's
+    // closeAndFocusTrigger) — otherwise a keyboard user is dumped on <body>.
+    // Only reclaim focus when it was actually inside this popover; pulling focus on
+    // an unrelated outside click would be its own bug.
+    const closeAndRestoreFocus = (details: HTMLDetailsElement) => {
+      const hadFocusInside = details.contains(document.activeElement)
+      details.open = false
+      if (hadFocusInside) details.querySelector('summary')?.focus()
+    }
     const close = (event: PointerEvent) => {
-      if (detailsRef.current && !detailsRef.current.contains(event.target as Node)) detailsRef.current.open = false
+      const details = detailsRef.current
+      if (!details || !details.open || details.contains(event.target as Node)) return
+      closeAndRestoreFocus(details)
     }
     const escape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && detailsRef.current) detailsRef.current.open = false
+      const details = detailsRef.current
+      if (event.key !== 'Escape' || !details || !details.open) return
+      closeAndRestoreFocus(details)
     }
     document.addEventListener('pointerdown', close)
     document.addEventListener('keydown', escape)
@@ -297,6 +347,7 @@ function MultiTaskFilter({ label, values, onChange, options, copy, displayValue 
   return <details ref={detailsRef} className="task-multi-filter"><summary><span>{label}</span><strong>{selectedLabel}</strong></summary><div className="task-filter-popover">{searchable ? <Input value={query} onChange={event => setQuery(event.target.value)} placeholder={copy.searchProjectPlaceholder} aria-label={copy.searchProjectPlaceholder} /> : null}<div className="task-filter-option-list"><button type="button" className={values.length === 0 ? 'task-filter-chip is-active' : 'task-filter-chip'} onClick={() => onChange([])}>{copy.allOption}</button>{visibleOptions.map(option => <button type="button" className={values.includes(option) ? 'task-filter-chip is-active' : 'task-filter-chip'} key={option} onClick={() => onChange(values.includes(option) ? values.filter(value => value !== option) : [...values, option])}>{displayValue(option)}</button>)}</div>{searchable && !visibleOptions.length ? <span className="task-filter-empty">{copy.noMatchesProject}</span> : null}</div></details>
 }
 function TaskCard({ task, copy, busy, onMutate, onOpen }: { task: AnyRecord; copy: TasksCopy; busy: string; onMutate: TasksPanelProps['onMutate']; onOpen: () => void }) {
+  const [cancelOpen, setCancelOpen] = useState(false)
   const id = textOf(task.id)
   const status = textOf(task.status, 'open')
   const priority = textOf(task.priority, 'normal')
@@ -310,37 +361,77 @@ function TaskCard({ task, copy, busy, onMutate, onOpen }: { task: AnyRecord; cop
   const secondaryActions: TaskMenuAction[] = [
     { key: 'radio-request', label: copy.sendRadioRequest, disabled: isBusy, onSelect: () => void sendRadioRequest() }
   ]
+  if (status === 'in_progress') {
+    secondaryActions.unshift({ key: 'needs_verification', label: copy.requestVerification, disabled: isBusy, onSelect: () => void runStatus('needs_verification') })
+  }
   if (canReview) {
     secondaryActions.push(
       { key: 'approved', label: copy.approve, disabled: isBusy, onSelect: () => void review('approved') },
       { key: 'rejected', label: copy.reject, disabled: isBusy, onSelect: () => void review('rejected') },
-      { key: 'cancel', label: copy.cancel, disabled: isBusy, onSelect: () => void runStatus('cancelled') }
+      // Cancel is confirmed rather than fired straight from the menu: the server hides
+      // cancelled tasks from every response unless `includeCancelled` is set, and no
+      // client code sends that flag, so the row is unrecoverable from this console.
+      { key: 'cancel', label: copy.cancel, disabled: isBusy, onSelect: () => setCancelOpen(true) }
     )
   }
 
+  const subtitle = [textOf(task.project), textOf(task.assignee || task.createdBy)].filter(Boolean).join(' · ')
+
   return (
-    <article className="task-card" role="button" tabIndex={0} onClick={event => { if (!(event.target as HTMLElement).closest('button, a, input, textarea, select')) onOpen() }} onKeyDown={event => { if ((event.key === 'Enter' || event.key === ' ') && event.target === event.currentTarget) onOpen() }}>
-      <header className="task-card-top">
-        <div className="task-title-group"><h3 className="task-card-title">{textOf(task.title, '-')}</h3><StatusBadge status={status} copy={copy} /></div>
-        <PriorityBadge priority={priority} copy={copy} />
-      </header>
-      {task.description ? <p className="task-description">{textOf(task.description)}</p> : null}
-      <dl className="task-meta-grid">
-        <TaskMetadata label={copy.project} value={textOf(task.project, '-')} />
-        <TaskMetadata label={copy.assignee} value={textOf(task.assignee || task.createdBy, '-')} />
-        <TaskMetadata label={copy.priority} value={priorityLabel(copy, priority)} />
-        <TaskMetadata label={copy.updated} value={formatRelativeTime(textOf(task.updatedAt || task.createdAt))} />
-      </dl>
-      <div className="task-actions">
-        {status === 'open' ? <Button size="sm" disabled={isBusy} onClick={() => void onMutate(`${id}:claim`, '/api/task/claim', { id, by: 'dashboard-next' })}>{copy.claim}</Button> : null}
-        {['claimed', 'blocked'].includes(status) ? <Button size="sm" disabled={isBusy} onClick={() => void runStatus('in_progress')}>{status === 'blocked' ? copy.unblock : copy.start}</Button> : null}
-        {status === 'in_progress' ? <><Button size="sm" disabled={isBusy} onClick={() => void runStatus('done')}>{copy.completeDirectly}</Button><Button size="sm" variant="outline" disabled={isBusy} onClick={() => void runStatus('needs_verification')}>{copy.requestVerification}</Button></> : null}
-        {status === 'needs_verification' ? <Button size="sm" disabled={isBusy} onClick={() => void review('approved')}>{copy.approveAndComplete}</Button> : null}
-        {status === 'done' ? <Button size="sm" variant="outline" disabled={isBusy} onClick={() => void runStatus('open')}>{copy.reopen}</Button> : null}
-        {status === 'cancelled' ? <p className="task-terminal-note">{copy.cancelledTerminal}</p> : <TaskActionMenu label={copy.moreActions} actions={secondaryActions} />}
-      </div>
-    </article>
+    <ListRow
+      onOpen={onOpen}
+      ariaLabel={textOf(task.title, id)}
+      leading={<span className={`size-2 shrink-0 rounded-full ${statusDotClass(status)}`} aria-hidden="true" />}
+      title={textOf(task.title, '-')}
+      subtitle={subtitle || undefined}
+      meta={
+        <>
+          <StatusBadge status={status} copy={copy} />
+          <PriorityBadge priority={priority} copy={copy} />
+        </>
+      }
+      timestamp={textOf(task.updatedAt || task.createdAt)}
+      actionsVisible
+      actions={
+        <>
+          {status === 'open' ? <Button size="sm" disabled={isBusy} onClick={() => void onMutate(`${id}:claim`, '/api/task/claim', { id, by: 'dashboard-next' })}>{copy.claim}</Button> : null}
+          {['claimed', 'blocked'].includes(status) ? <Button size="sm" disabled={isBusy} onClick={() => void runStatus('in_progress')}>{status === 'blocked' ? copy.unblock : copy.start}</Button> : null}
+          {status === 'in_progress' ? <Button size="sm" disabled={isBusy} onClick={() => void runStatus('done')}>{copy.completeDirectly}</Button> : null}
+          {status === 'needs_verification' ? <Button size="sm" disabled={isBusy} onClick={() => void review('approved')}>{copy.approveAndComplete}</Button> : null}
+          {status === 'done' ? <Button size="sm" variant="outline" disabled={isBusy} onClick={() => void runStatus('open')}>{copy.reopen}</Button> : null}
+          {status === 'cancelled' ? null : <TaskActionMenu label={copy.moreActions} actions={secondaryActions} />}
+          {cancelOpen ? (
+            <CancelTaskDialog
+              copy={copy}
+              taskTitle={textOf(task.title, id)}
+              busy={isBusy}
+              onClose={() => setCancelOpen(false)}
+              onConfirm={async () => {
+                await runStatus('cancelled')
+                setCancelOpen(false)
+              }}
+            />
+          ) : null}
+        </>
+      }
+    />
   )
+}
+
+function CancelTaskDialog({ copy, taskTitle, busy, onClose, onConfirm }: { copy: TasksCopy; taskTitle: string; busy: boolean; onClose: () => void; onConfirm: () => Promise<void> }) {
+  return <Dialog open onOpenChange={open => { if (!open && !busy) onClose() }}>
+    <DialogContent className="max-w-md">
+      <DialogHeader>
+        <DialogTitle>{copy.confirmCancelTask}</DialogTitle>
+        <DialogDescription>{taskTitle}</DialogDescription>
+      </DialogHeader>
+      <p className="text-sm text-ink-3">{copy.confirmCancelTaskHint}</p>
+      <DialogFooter>
+        <DialogClose asChild><Button variant="outline" disabled={busy}>{copy.keepTask}</Button></DialogClose>
+        <Button variant="destructive" disabled={busy} onClick={() => void onConfirm()}>{busy ? copy.running : copy.confirmCancelTaskAction}</Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
 }
 
 function TaskDetailsDialog({ task, copy, busy, onMutate, onClose }: { task: AnyRecord; copy: TasksCopy; busy: string; onMutate: TasksPanelProps['onMutate']; onClose: () => void }) {
@@ -351,8 +442,23 @@ function TaskDetailsDialog({ task, copy, busy, onMutate, onClose }: { task: AnyR
   const runStatus = (nextStatus: string) => void onMutate(`${id}:${nextStatus}`, '/api/task/status', { id, status: nextStatus, by: 'dashboard-next' })
   const review = (decision: 'approved' | 'rejected') => void onMutate(`${id}:${decision}`, '/api/task/review', { id, decision, by: 'dashboard-next' })
   const notes = Array.isArray(task.notes) ? task.notes : []
-  return <Dialog open onOpenChange={open => { if (!open) onClose() }}><DialogContent className="max-w-3xl task-detail-dialog-content"><DialogHeader><DialogTitle>{textOf(task.title, copy.recentTasks)}</DialogTitle><DialogDescription>{copy.recentTasks}</DialogDescription><DialogClose aria-label={copy.close} className="ml-auto rounded-md p-1 opacity-70 hover:opacity-100"><X className="h-4 w-4" /></DialogClose></DialogHeader><div className="task-detail-dialog"><div className="task-detail-lead"><StatusBadge status={status} copy={copy} /><PriorityBadge priority={priority} copy={copy} /><span>{textOf(task.project, copy.allProjects)}</span><RelatedEntities entityType="task" entityId={id} /></div>{task.description ? <section className="task-detail-section"><h4>{copy.description}</h4><p className="task-detail-description">{textOf(task.description)}</p></section> : null}<dl className="task-detail-grid"><TaskMetadata label={copy.project} value={textOf(task.project, '-')} /><TaskMetadata label={copy.assignee} value={textOf(task.assignee || task.createdBy, '-')} /><TaskMetadata label={copy.priority} value={priorityLabel(copy, priority)} /><TaskMetadata label={copy.updatedLabel} value={formatDate(textOf(task.updatedAt || task.createdAt))} /><TaskMetadata label={copy.createdLabel} value={formatDate(textOf(task.createdAt))} /><TaskMetadata label={copy.id} value={id || '-'} /></dl>{task.handoff ? <section className="task-detail-section task-detail-note"><h4>{copy.handoff}</h4><p>{textOf(task.handoff)}</p></section> : null}<section className="task-detail-section"><h4>{copy.executionInfo}</h4><dl className="task-detail-grid"><TaskMetadata label={copy.deliveryState} value={textOf(task.deliveryState, '-')} /><TaskMetadata label={copy.attempts} value={`${textOf(task.attempt, '0')} / ${textOf(task.maxRetries, '—')}`} /><TaskMetadata label={copy.progressLabel} value={textOf(task.progressStatus || task.progressPercent, '-')} /><TaskMetadata label={copy.reviewStatusLabel} value={textOf(task.reviewStatus, '-')} /></dl></section>{task.lastError ? <section className="task-detail-section task-detail-error"><h4>{copy.recentIssue}</h4><p>{textOf(task.lastError)}</p></section> : null}{notes.length ? <section className="task-detail-section"><h4>{copy.activityLog}（{Math.min(notes.length, 8)}）</h4><div className="task-detail-timeline">{notes.slice(-8).reverse().map((note, index) => <div key={textOf(note.ts, String(index))}><time>{formatDate(textOf(note.ts))}</time><strong>{textOf(note.by, '-')}</strong><p>{textOf(note.text, '-')}</p></div>)}</div></section> : null}<div className="task-detail-actions">{status === 'open' ? <Button disabled={isBusy} onClick={() => void onMutate(`${id}:claim`, '/api/task/claim', { id, by: 'dashboard-next' })}>{copy.claim}</Button> : null}{['claimed', 'blocked'].includes(status) ? <Button disabled={isBusy} onClick={() => runStatus('in_progress')}>{status === 'blocked' ? copy.unblock : copy.start}</Button> : null}{status === 'in_progress' ? <><Button disabled={isBusy} onClick={() => runStatus('done')}>{copy.completeDirectly}</Button><Button variant="outline" disabled={isBusy} onClick={() => runStatus('needs_verification')}>{copy.requestVerification}</Button></> : null}{status === 'needs_verification' ? <><Button disabled={isBusy} onClick={() => review('approved')}>{copy.approveAndComplete}</Button><Button variant="outline" disabled={isBusy} onClick={() => review('rejected')}>{copy.reject}</Button></> : null}{status === 'done' ? <Button variant="outline" disabled={isBusy} onClick={() => runStatus('open')}>{copy.reopen}</Button> : null}</div></div><DialogFooter><Button variant="outline" onClick={onClose}>{copy.cancel}</Button></DialogFooter></DialogContent></Dialog>
+  return <Dialog open onOpenChange={open => { if (!open) onClose() }}><DialogContent className="max-w-3xl task-detail-dialog-content" aria-describedby={undefined}><DialogHeader><DialogTitle>{textOf(task.title, copy.recentTasks)}</DialogTitle></DialogHeader><div className="task-detail-dialog"><div className="task-detail-lead"><StatusBadge status={status} copy={copy} /><PriorityBadge priority={priority} copy={copy} /><span>{textOf(task.project, copy.allProjects)}</span><RelatedEntities entityType="task" entityId={id} /></div>{task.description ? <section className="task-detail-section"><h3>{copy.description}</h3><p className="task-detail-description">{textOf(task.description)}</p></section> : null}<dl className="task-detail-grid"><TaskMetadata label={copy.project} value={textOf(task.project, '-')} /><TaskMetadata label={copy.assignee} value={textOf(task.assignee || task.createdBy, '-')} /><TaskMetadata label={copy.priority} value={priorityLabel(copy, priority)} /><TaskMetadata label={copy.updatedLabel} value={formatDate(textOf(task.updatedAt || task.createdAt))} /><TaskMetadata label={copy.createdLabel} value={formatDate(textOf(task.createdAt))} /><TaskMetadata label={copy.id} value={id || '-'} /></dl>{task.handoff ? <section className="task-detail-section task-detail-note"><h3>{copy.handoff}</h3><p>{textOf(task.handoff)}</p></section> : null}<section className="task-detail-section"><h3>{copy.executionInfo}</h3><dl className="task-detail-grid"><TaskMetadata label={copy.deliveryState} value={textOf(task.deliveryState, '-')} /><TaskMetadata label={copy.attempts} value={`${textOf(task.attempt, '0')} / ${textOf(task.maxRetries, '—')}`} /><TaskMetadata label={copy.progressLabel} value={textOf(task.progressStatus || task.progressPercent, '-')} /><TaskMetadata label={copy.reviewStatusLabel} value={textOf(task.reviewStatus, '-')} /></dl></section>{task.lastError ? <section className="task-detail-section task-detail-error"><h3>{copy.recentIssue}</h3><p>{textOf(task.lastError)}</p></section> : null}{notes.length ? <section className="task-detail-section"><h3>{copy.activityLog}（{Math.min(notes.length, 8)}）</h3><div className="task-detail-timeline">{notes.slice(-8).reverse().map((note, index) => <div key={textOf(note.ts, String(index))}><time>{formatDate(textOf(note.ts))}</time><strong>{textOf(note.by, '-')}</strong><p>{textOf(note.text, '-')}</p></div>)}</div></section> : null}<div className="task-detail-actions">{status === 'open' ? <Button disabled={isBusy} onClick={() => void onMutate(`${id}:claim`, '/api/task/claim', { id, by: 'dashboard-next' })}>{copy.claim}</Button> : null}{['claimed', 'blocked'].includes(status) ? <Button disabled={isBusy} onClick={() => runStatus('in_progress')}>{status === 'blocked' ? copy.unblock : copy.start}</Button> : null}{status === 'in_progress' ? <><Button disabled={isBusy} onClick={() => runStatus('done')}>{copy.completeDirectly}</Button><Button variant="outline" disabled={isBusy} onClick={() => runStatus('needs_verification')}>{copy.requestVerification}</Button></> : null}{status === 'needs_verification' ? <><Button disabled={isBusy} onClick={() => review('approved')}>{copy.approveAndComplete}</Button><Button variant="outline" disabled={isBusy} onClick={() => review('rejected')}>{copy.reject}</Button></> : null}{status === 'done' ? <Button variant="outline" disabled={isBusy} onClick={() => runStatus('open')}>{copy.reopen}</Button> : null}</div></div><DialogFooter><Button variant="outline" onClick={onClose}>{copy.cancel}</Button></DialogFooter></DialogContent></Dialog>
 }
+const STATUS_DOT_CLASSES: Record<string, string> = {
+  open: 'bg-muted-foreground',
+  claimed: 'bg-info',
+  in_progress: 'bg-accent-bright',
+  needs_verification: 'bg-warning',
+  blocked: 'bg-destructive',
+  failed: 'bg-destructive',
+  done: 'bg-success',
+  cancelled: 'bg-line-strong'
+}
+
+function statusDotClass(status: string) {
+  return STATUS_DOT_CLASSES[status] || 'bg-muted-foreground'
+}
+
 function TaskMetadata({ label, value }: { label: string; value: string }) {
   return <div><dt>{label}</dt><dd title={value}>{value}</dd></div>
 }
@@ -367,9 +473,32 @@ function PriorityBadge({ priority, copy }: { priority: string; copy: TasksCopy }
 
 function TaskActionMenu({ label, actions }: { label: string; actions: TaskMenuAction[] }) {
   const [open, setOpen] = useState(false)
+  const [dropDown, setDropDown] = useState(false)
   const menuId = useId()
   const triggerRef = useRef<HTMLButtonElement | null>(null)
   const menuRef = useRef<HTMLDivElement | null>(null)
+
+  // Dashboard.css:514 opens this menu upward (`bottom: calc(100% + 8px)`), and the
+  // virtualized list clips its overflow, so for the top rows the whole menu was
+  // painted above the scroller and became invisible AND unclickable — the newest
+  // task, the one people act on most, had no working "more actions". Flipping it
+  // down is only half the fix: every row is a `will-change: transform` stacking
+  // context, so a downward menu is painted under the NEXT row unless the open row
+  // is lifted above its siblings for as long as the menu is open.
+  useLayoutEffect(() => {
+    if (!open) return
+    const trigger = triggerRef.current
+    const items = menuRef.current?.querySelector<HTMLDivElement>('.task-action-menu-items')
+    const clip = trigger?.closest('.virtual-list-viewport')
+    const row = trigger?.closest<HTMLElement>('.virtual-list-item')
+    if (row) row.style.zIndex = '5'
+    if (trigger && items && clip) {
+      const roomAbove = trigger.getBoundingClientRect().top - clip.getBoundingClientRect().top
+      // Flip direction from measured geometry, before paint.
+      setDropDown(roomAbove < items.getBoundingClientRect().height + 8)
+    }
+    return () => { if (row) row.style.zIndex = '' }
+  }, [open])
 
   const closeAndFocusTrigger = useCallback(() => {
     setOpen(false)
@@ -415,6 +544,6 @@ function TaskActionMenu({ label, actions }: { label: string; actions: TaskMenuAc
 
   return <div className="task-action-menu" ref={menuRef}>
     <button ref={triggerRef} className="task-action-menu-trigger" type="button" aria-haspopup="menu" aria-expanded={open} aria-controls={menuId} onClick={() => setOpen(value => !value)}>{label}</button>
-    {open ? <div className="task-action-menu-items" id={menuId} role="menu" aria-label={label}>{actions.map(action => <button key={action.key} type="button" role="menuitem" disabled={action.disabled} onClick={() => { closeAndFocusTrigger(); action.onSelect() }}>{action.label}</button>)}</div> : null}
+    {open ? <div className="task-action-menu-items" style={dropDown ? { top: 'calc(100% + 8px)', bottom: 'auto' } : undefined} id={menuId} role="menu" aria-label={label}>{actions.map(action => <button key={action.key} type="button" role="menuitem" disabled={action.disabled} onClick={() => { closeAndFocusTrigger(); action.onSelect() }}>{action.label}</button>)}</div> : null}
   </div>
 }

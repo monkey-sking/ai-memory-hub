@@ -1,0 +1,139 @@
+/*
+ * Structural CSS for the shared console shell.
+ *
+ * Only rules that have no sane Tailwind-utility equivalent live here (mostly
+ * structural child selectors). Everything is wrapped in `@layer base` so that
+ * a utility class passed through `className` always wins — the layer order is
+ * declared once by `@import "tailwindcss"` in src/index.css.
+ */
+
+@layer base {
+  /* ---------------------------------------------------------------------
+   * Dialog / sheet viewport contract (console standard §4.2)
+   * The content shell is `p-0` so its header and footer rules can span edge
+   * to edge; padding is owned by the slots instead. The header and footer
+   * never shrink, and everything between them becomes the single scroll
+   * region and inherits the slot padding — so an existing dialog that just
+   * drops a plain `<div>` between header and footer still looks right.
+   * This makes the legacy `.dialog-scroll-shell` / `.dialog-scroll-body`
+   * patches in Dashboard.css redundant without breaking them.
+   * ------------------------------------------------------------------- */
+  [data-slot="dialog-content"] > [data-slot="dialog-header"],
+  [data-slot="dialog-content"] > [data-slot="dialog-footer"],
+  [data-slot="sheet-content"] > [data-slot="sheet-header"],
+  [data-slot="sheet-content"] > [data-slot="sheet-footer"] {
+    flex: none;
+  }
+
+  [data-slot="dialog-content"]
+    > :not([data-slot="dialog-header"]):not([data-slot="dialog-footer"]):not(
+      [data-slot="dialog-close"]
+    ),
+  [data-slot="sheet-content"]
+    > :not([data-slot="sheet-header"]):not([data-slot="sheet-footer"]):not(
+      [data-slot="sheet-close"]
+    ) {
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-inline: 1rem; /* 16px — matches the header/footer px-4 slot */
+    padding-block: 1rem; /* 16px */
+  }
+
+}
+
+/*
+ * Sheet motion. Keyed off Radix's `[data-state]` rather than a Tailwind
+ * `data-[state=open]:animate-*` utility, matching the convention index.css
+ * already sets for the overlay and the dialog. `prefers-reduced-motion` is
+ * neutralised globally in index.css, so nothing extra is needed here.
+ */
+@keyframes amh-sheet-in-right {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes amh-sheet-out-right {
+  from { transform: translateX(0); }
+  to { transform: translateX(100%); }
+}
+
+@keyframes amh-sheet-in-bottom {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@keyframes amh-sheet-out-bottom {
+  from { transform: translateY(0); }
+  to { transform: translateY(100%); }
+}
+
+[data-slot="sheet-overlay"][data-state="open"] {
+  animation: amh-overlay-in var(--dur-base) var(--ease-out) both;
+}
+
+[data-slot="sheet-overlay"][data-state="closed"] {
+  animation: amh-overlay-in var(--dur-fast) var(--ease-out) reverse both;
+}
+
+[data-slot="sheet-content"][data-side="right"][data-state="open"] {
+  animation: amh-sheet-in-right var(--dur-base) var(--ease-out) both;
+}
+
+[data-slot="sheet-content"][data-side="right"][data-state="closed"] {
+  animation: amh-sheet-out-right var(--dur-fast) var(--ease-out) both;
+}
+
+[data-slot="sheet-content"][data-side="bottom"][data-state="open"] {
+  animation: amh-sheet-in-bottom var(--dur-base) var(--ease-out) both;
+}
+
+[data-slot="sheet-content"][data-side="bottom"][data-state="closed"] {
+  animation: amh-sheet-out-bottom var(--dur-fast) var(--ease-out) both;
+}
+
+/*
+ * Skeleton shimmer.
+ *
+ * Deliberately NOT Tailwind's built-in opacity pulse. That utility (spelled
+ * `animate-` + `pulse`; not written literally here because the scanner would
+ * then emit a dead rule for it) swings `opacity` to 0.5, and
+ * our skeleton fill is `--color-surface-sunk` (#e6e9e8) which sits at only
+ * 1.222:1 against white to begin with. At the trough it composites to #f3f4f4
+ * = 1.102:1, i.e. the placeholder visually disappears once per cycle and the
+ * loading state reads as an empty panel.
+ *
+ * Animating background-colour between two real neutrals instead keeps the
+ * floor at the static value (1.222:1) and peaks at 1.408:1, so the block is
+ * never less visible than when it is not animating at all.
+ *
+ * `prefers-reduced-motion` is neutralised globally in index.css; with the
+ * iteration count forced to 1 this settles back to the plain `bg-surface-sunk`
+ * utility, which is still visible.
+ */
+@keyframes amh-skeleton {
+  from { background-color: var(--color-surface-sunk); }
+  to { background-color: var(--color-line); }
+}
+
+[data-slot="skeleton"][data-animate="true"] {
+  animation: amh-skeleton 1200ms ease-in-out infinite alternate;
+}
+
+/*
+ * Horizontal rails (filter bar, status tabs) scroll without showing a
+ * scrollbar gutter that would eat into the 36px control height.
+ *
+ * Deliberately unlayered: index.css declares `* { scrollbar-width: thin }`
+ * outside every layer, and unlayered rules beat layered ones no matter what.
+ * These selectors win on specificity instead.
+ */
+[data-shell-rail] {
+  scrollbar-width: none;
+}
+
+[data-shell-rail]::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}

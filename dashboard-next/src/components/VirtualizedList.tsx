@@ -35,7 +35,15 @@ export function VirtualizedList<T>({
   const [viewportHeight, setViewportHeight] = useState(height)
   const frameRef = useRef<number | null>(null)
   const endReachedGateRef = useRef(createEndReachedGate())
-  const previousItemCountRef = useRef(items.length)
+  // The observer must not be rebuilt on every render (callers pass an inline
+  // `onEndReached`) and must not read a stale `loading`, so both go through refs.
+  const onEndReachedRef = useRef(onEndReached)
+  const loadingRef = useRef(loading)
+
+  useEffect(() => {
+    onEndReachedRef.current = onEndReached
+    loadingRef.current = loading
+  }, [onEndReached, loading])
 
   useEffect(() => {
     const viewport = viewportRef.current
@@ -51,20 +59,26 @@ export function VirtualizedList<T>({
   useEffect(() => {
     const end = endRef.current
     const viewport = viewportRef.current
-    if (!end || !viewport || !hasMore || !onEndReached || typeof IntersectionObserver === 'undefined') return
+    if (!end || !viewport || !hasMore || typeof IntersectionObserver === 'undefined') return
     const observer = new IntersectionObserver(entries => {
-      if (entries.some(entry => entry.isIntersecting) && !loading && endReachedGateRef.current.tryEnter()) onEndReached()
+      // The gate re-arms when the marker LEAVES the viewport, never on "more items
+      // arrived". A filtered result set is shorter than the viewport, so the marker
+      // stays visible after a page lands; re-arming on item count meant every load
+      // immediately triggered the next one and one filter click walked the whole
+      // table (50 -> 650 rows). Leaving the viewport is the only honest signal that
+      // the user scrolled far enough to ask for more.
+      if (!entries.some(entry => entry.isIntersecting)) {
+        endReachedGateRef.current.reset()
+        return
+      }
+      // A load already in flight owns the current entry; firing again would queue a
+      // duplicate page request for the same sentinel crossing.
+      if (loadingRef.current) return
+      if (endReachedGateRef.current.tryEnter()) onEndReachedRef.current?.()
     }, { root: viewport, rootMargin: `${itemHeight * overscan}px` })
     observer.observe(end)
     return () => observer.disconnect()
-  }, [hasMore, itemHeight, loading, onEndReached, overscan])
-
-  useEffect(() => {
-    if (previousItemCountRef.current !== items.length) {
-      previousItemCountRef.current = items.length
-      endReachedGateRef.current.reset()
-    }
-  }, [items.length])
+  }, [hasMore, itemHeight, overscan])
 
   useEffect(() => () => {
     if (frameRef.current !== null) window.cancelAnimationFrame(frameRef.current)

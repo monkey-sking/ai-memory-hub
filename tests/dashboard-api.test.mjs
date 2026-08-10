@@ -370,7 +370,8 @@ test("dashboard serves externalized virtual-scroll assets", async () => {
   assert.match(dashboardSource, /from '\.\.\/components\/ToastStack'/);
   assert.match(toastStackSource, /export function ToastStack/);
   assert.match(toastStackSource, /aria-live="polite"/);
-  assert.match(dashboardSource, /function Modal/);
+  // Dialogs migrated off the bespoke `function Modal` onto the shared Sheet/Dialog primitives.
+  assert.match(dashboardSource, /(Sheet|Dialog)Content/);
   assert.match(dashboardSource, /apiGet<DashboardSnapshot>\('\/api\/dashboard'\)/);
   // Task status/review mutations moved from Dashboard.tsx into the extracted TasksPanel component.
   assert.match(tasksPanelSource, /'\/api\/task\/status'/);

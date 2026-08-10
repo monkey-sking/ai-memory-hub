@@ -1,324 +1,77 @@
-.sidebar {
-  position: fixed;
-  inset: 0 auto 0 0;
-  z-index: 20;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  width: var(--sidebar-width);
-  padding: 18px 14px;
-  overflow-y: auto;
-  overflow-x: hidden;
-  background: var(--bg-panel);
-  border-right: 1px solid var(--border);
+/*
+ * ============================================================================
+ * Navigation rail — non-utility chrome
+ * ============================================================================
+ * Widths, heights and colours are utilities in Sidebar.tsx (w-64 / w-14,
+ * h-14 brand row, h-8 items). This file carries only what utilities cannot do:
+ * the active-route indicator bar, the quiet nav scrollbar, and the mobile
+ * off-canvas sheet — the single surface in the chrome allowed a shadow.
+ * ============================================================================
+ */
+
+/* The rail already reads as a boundary; a visible scrollbar inside it is noise. */
+.app-sidebar-nav {
   scrollbar-width: none;
+  overscroll-behavior: contain;
 }
 
-.sidebar::-webkit-scrollbar {
+.app-sidebar-nav::-webkit-scrollbar {
   display: none;
 }
 
-/* Logo */
-.sidebar-logo {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  min-height: 44px;
-  margin: 0 4px 28px;
-  flex-shrink: 0;
-}
-
-.sidebar-logo-mark {
-  display: grid;
-  width: 38px;
-  height: 38px;
-  flex: 0 0 auto;
-  place-items: center;
-  border-radius: var(--radius-md);
-  background: linear-gradient(135deg, var(--accent-bright), var(--primary));
-  color: var(--primary-foreground);
-  font-size: 12px;
-  font-weight: 800;
-  box-shadow: 0 7px 15px rgba(46, 183, 165, 0.22);
-}
-
-.sidebar-logo-copy {
-  display: grid;
-  min-width: 0;
-  gap: 2px;
-}
-
-.sidebar-logo-copy strong {
-  color: var(--text);
-  font-size: 15px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  white-space: nowrap;
-}
-
-.sidebar-logo-copy span {
-  color: var(--text-subtle);
-  font-size: 11px;
-  white-space: nowrap;
-}
-
-/* Nav */
-.sidebar-nav {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  width: 100%;
-  gap: 0;
-  padding: 0 2px;
-}
-
-.sidebar-nav-group {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  padding: 0 0 18px;
-}
-
-.sidebar-nav-group-label {
-  margin: 0;
-  padding: 0 11px;
-  color: var(--text-subtle);
-  font-size: 11px;
-  font-weight: 750;
-  letter-spacing: 0.04em;
-}
-
-.sidebar-nav-items {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 4px;
-  width: 100%;
-}
-
-.sidebar-nav-item {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  min-height: 42px;
-  gap: 12px;
-  padding: 0 13px;
-  border-radius: var(--radius-sm);
-  color: var(--text-muted);
-  text-decoration: none;
-  transition: color 0.15s ease, background 0.15s ease;
+/* ---------------------------------------------------------------------------
+   Active route: expressed ONLY through a tinted background + font-weight +
+   accent-coloured label/icon (set in Sidebar.tsx). No left indicator bar — a
+   rail of 16 nav items each carrying a 3px bar reads as 2018-era admin chrome.
+   --------------------------------------------------------------------------- */
+.app-nav-item {
   position: relative;
 }
 
-.sidebar-nav-item:hover {
-  color: var(--text);
-  background: var(--bg-soft);
+.app-nav-item.is-active svg {
+  color: var(--color-accent-hover);
 }
 
-.sidebar-nav-item.active {
-  color: var(--accent-strong);
-  background: var(--accent-soft);
+/* ---------------------------------------------------------------------------
+   Mobile off-canvas sheet (< md). All 16 routes are reachable here — there is
+   no "More" bucket. Radix owns focus trap, Escape and scroll lock.
+   --------------------------------------------------------------------------- */
+.app-sidebar-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: color-mix(in srgb, var(--color-ink) 42%, transparent);
+  animation: hub-overlay-in var(--dur-base) var(--ease-out);
 }
 
-.sidebar-nav-item.active::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 7px;
-  width: 3px;
-  height: 26px;
-  border-radius: 0 3px 3px 0;
-  background: var(--accent);
+.app-sidebar-sheet {
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 51;
+  display: flex;
+  width: 256px;
+  max-width: calc(100vw - 48px);
+  flex-direction: column;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-lg);
+  animation: hub-sheet-in var(--dur-base) var(--ease-out);
 }
 
-.sidebar-nav-icon {
-  width: 17px;
-  height: 17px;
-  flex: 0 0 auto;
-  stroke-width: 1.9;
-}
-
-.sidebar-nav-label {
-  overflow: hidden;
-  color: inherit;
-  font-size: 13px;
-  font-weight: 650;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.sidebar-mobile-nav,
-.sidebar-mobile-more-menu {
-  display: none;
-}
-
-/* Mobile: bottom bar */
-@media (max-width: 768px) {
-  .sidebar {
-    position: fixed;
-    inset: auto 0 0 0;
-    z-index: 20;
-    flex-direction: row;
-    width: 100%;
-    height: calc(64px + env(safe-area-inset-bottom));
-    padding: 0 8px env(safe-area-inset-bottom);
-    overflow: visible;
-    border-right: none;
-    border-top: 1px solid var(--border);
-  }
-
-  .sidebar-logo {
-    display: none;
-  }
-
-  .sidebar-desktop-nav {
-    display: none;
-  }
-
-  .sidebar-mobile-nav {
-    display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    width: 100%;
-    gap: 2px;
-    padding: 6px 0;
-  }
-
-  .sidebar-mobile-nav-item {
-    display: grid;
-    min-width: 0;
-    min-height: 50px;
-    place-items: center;
-    align-content: center;
-    gap: 3px;
-    padding: 3px 2px;
-    border: 0;
-    border-radius: var(--radius-sm);
-    background: transparent;
-    color: var(--text-muted);
-    font: inherit;
-    font-size: 10px;
-    font-weight: 700;
-    line-height: 1.1;
-    text-decoration: none;
-    cursor: pointer;
-  }
-
-  .sidebar-mobile-nav-item:hover,
-  .sidebar-mobile-nav-item.active {
-    background: var(--accent-soft);
-    color: var(--accent-strong);
-  }
-
-  .sidebar-mobile-nav-item .sidebar-nav-icon {
-    width: 18px;
-    height: 18px;
-  }
-
-  .sidebar-mobile-more-menu {
-    position: absolute;
-    right: 8px;
-    bottom: 72px;
-    z-index: 1;
-    display: grid;
-    width: min(340px, calc(100vw - 16px));
-    max-height: min(480px, calc(100vh - 150px));
-    gap: 14px;
-    padding: 14px;
-    overflow: auto;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    background: var(--bg-panel);
-    box-shadow: var(--shadow-raised);
-  }
-
-  .sidebar-mobile-more-group {
-    display: grid;
-    gap: 7px;
-  }
-
-  .sidebar-mobile-more-group > p {
-    margin: 0;
-    color: var(--text-subtle);
-    font-size: 11px;
-    font-weight: 750;
-  }
-
-  .sidebar-mobile-more-group > div {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 4px;
-  }
-
-  .sidebar-mobile-more-item {
-    display: flex;
-    min-width: 0;
-    align-items: center;
-    gap: 8px;
-    min-height: 38px;
-    padding: 0 9px;
-    border-radius: var(--radius-sm);
-    color: var(--text-muted);
-    font-size: 12px;
-    font-weight: 700;
-    text-decoration: none;
-  }
-
-  .sidebar-mobile-more-item.active {
-    background: var(--accent-soft);
-    color: var(--accent-strong);
-  }
-
-  .sidebar ~ .main-content {
-    margin-left: 0;
-    padding-bottom: calc(64px + env(safe-area-inset-bottom));
-  }
-}
-
-/* --- Navigation is a workspace rail, not a second content panel --- */
-.sidebar {
-  padding: 22px 16px;
-  box-shadow: 10px 0 30px rgba(15, 23, 42, 0.04);
-}
-
-.sidebar-logo {
-  margin: 0 6px 38px;
-}
-
-.sidebar-logo-mark {
-  background: linear-gradient(135deg, var(--accent-bright), var(--primary));
-  box-shadow: 0 8px 18px rgba(15, 118, 110, 0.22);
-}
-
-.sidebar-nav-group {
-  padding-bottom: 24px;
-}
-
-.sidebar-nav-item {
-  min-height: 44px;
-  border-radius: var(--radius-md);
-}
-
-.sidebar-nav-icon {
-  stroke-width: 1.8;
-}
-
-.sidebar-version {
-  margin: -22px 6px 18px;
-  color: var(--text-subtle);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-}
-
-@media (max-width: 768px) {
-  .sidebar {
-    height: calc(68px + env(safe-area-inset-bottom));
-    padding: 0 8px env(safe-area-inset-bottom);
-    box-shadow: 0 -6px 20px rgba(15, 23, 42, 0.05);
-  }
-
-  .sidebar-version {
+@media (min-width: 768px) {
+  .app-sidebar-overlay,
+  .app-sidebar-sheet {
     display: none;
   }
 }
 
+@keyframes hub-overlay-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes hub-sheet-in {
+  from {
+    transform: translateX(-100%);
+  }
+}

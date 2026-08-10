@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import type { AnyRecord } from '../lib/api'
@@ -21,6 +21,31 @@ import {
   Panel as NewPanel,
   StatusBadge as NewStatusBadge
 } from '../components/OverviewComponents'
+import {
+  Callout,
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  PageShell,
+  Sheet,
+  SheetBody,
+  SheetContent,
+  SheetDescription,
+  SheetDetailList,
+  SheetHeader,
+  SheetRawBlock,
+  SheetTitle
+} from '@/components/shell'
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
 import './Dashboard.css'
 
 type Language = AppLanguage
@@ -167,11 +192,15 @@ export default function Dashboard({ section }: DashboardProps) {
     })
   }, [])
 
+  // `CommandCenter` opens the overview with its own hero `<h1>`, so the overview
+  // is the one section that must not ask `PageShell` for a heading — every other
+  // section gets its `<h1>` and description from the shell.
+  const isOverview = section === 'overview'
+
   return (
     <div className={`dashboard-page dashboard-section-${section}`}>
       <DashboardHeader
         title={dashboardTitles[language][section]}
-        subtitle={dashboardSubtitles[language][section]}
         loading={loading}
         busyAction={busyAction}
         copy={copy}
@@ -181,21 +210,19 @@ export default function Dashboard({ section }: DashboardProps) {
         onToggleLanguage={toggleLanguage}
       />
 
-      <div className="flex-1 overflow-y-auto">
+      <PageShell
+        title={isOverview ? undefined : dashboardTitles[language][section]}
+        description={isOverview ? undefined : dashboardSubtitles[language][section]}
+      >
         {error ? (
-          <div className="m-6 p-4 rounded-lg border border-destructive/20 bg-destructive/10">
-            <p className="font-semibold text-destructive">{copy.connectionError}</p>
-            <p className="text-sm text-muted-foreground mt-1">{error}</p>
-          </div>
+          <ErrorState variant="inline" title={copy.connectionError} description={error} />
         ) : null}
 
         {loading && !data ? (
-          <div className="m-6 p-4 rounded-lg border bg-card text-center">
-            <span className="loading-state"><span className="loading-spinner" aria-hidden="true" /> <span>{copy.refreshing}</span></span>
-          </div>
+          <LoadingState label={copy.refreshing} />
         ) : (
-          <div className="p-6">
-            {section === 'overview' && <CommandCenter copy={copy} model={viewModel} language={language} onRefresh={refresh} />}
+          <div>
+            {section === 'overview' && <CommandCenter model={viewModel} language={language} />}
             {section === 'memory' && <NewMemoryPanel memory={viewModel.memory} copy={copy} onRefresh={refresh} hasMore={viewModel.memoryHasMore} onLoadMore={() => loadMoreCollection('memory')} />}
             {section === 'tasks' && <NewTasksPanel tasks={viewModel.tasks} visibleProjects={viewModel.visibleProjects} copy={copy} onMutate={async (_action, path, body) => {
               await apiPost<AnyRecord>(path, body)
@@ -214,7 +241,7 @@ export default function Dashboard({ section }: DashboardProps) {
             {section === 'settings' && <SettingsPanel copy={copy} model={viewModel} onRefresh={refresh} />}
           </div>
         )}
-      </div>
+      </PageShell>
 
       <ToastStack toasts={toasts} onDismiss={dismissToast} />
     </div>
@@ -275,7 +302,9 @@ function pageItemKey(item: AnyRecord): string {
  * Snapshots (websocket pushes and section refetches) always carry only the first
  * server page. Replacing state with them would discard every extra page the user
  * has already scrolled in, so instead we refresh the records we already hold in
- * place and splice in only the genuinely new ones.
+ * place and splice in only the genuinely new ones. We must also drop records the
+ * server stopped returning: a deletion (e.g. a cancelled task) is invisible unless
+ * we remove it from state, otherwise it lingers as a stale row until a full reload.
  */
 function mergeSnapshotCollection(
   collection: PagedCollection,
@@ -285,24 +314,48 @@ function mergeSnapshotCollection(
   const itemKey = pagedCollections[collection]
   const previousItems = asArray<AnyRecord>(previousSection[itemKey])
   const incomingItems = asArray<AnyRecord>(incomingSection[itemKey])
-  // Nothing paged in beyond the first page: the snapshot is already authoritative.
-  if (previousItems.length <= incomingItems.length) return incomingSection
+  // No extra pages loaded beyond the first: the snapshot is the full section
+  // state, so trust it wholesale. This is also what makes server deletions
+  // (e.g. a cancelled task) disappear from the UI instead of lingering as a
+  // stale row — a deleted record simply isn't in the snapshot.
+  const pageCapacity = (previousSection.limit as number) ?? previousItems.length
+  if (previousItems.length <= pageCapacity) return incomingSection
 
   const incomingByKey = new Map<string, AnyRecord>()
   for (const item of incomingItems) {
     const key = pageItemKey(item)
     if (key) incomingByKey.set(key, item)
   }
-  // Take the fresh copy of everything we already hold, keeping its position.
-  const refreshedItems = previousItems.map(item => {
-    const key = pageItemKey(item)
-    return key ? incomingByKey.get(key) ?? item : item
-  })
-
+  // We have paged-in records the server never re-sent, so we must merge rather
+  // than replace. The snapshot covers a contiguous range at one end of what we
+  // hold: tasks/memory are newest-first (page 0 = head → prefix); radio is
+  // ascending (page 0 = tail → suffix). Inside that range a record the server
+  // no longer returns was deleted and must be dropped; outside it (records the
+  // user scrolled in) keep the local copy as before.
   const knownKeys = new Set(previousItems.map(pageItemKey).filter(Boolean))
   const newItems = incomingItems.filter(item => {
     const key = pageItemKey(item)
     return key ? !knownKeys.has(key) : false
+  })
+  // Page 0 is capped at `limit`, so each new arrival pushes one previously-held
+  // record out of the snapshot window. Those records are not deleted, so shrink
+  // the covered range by the number of arrivals before judging absences.
+  const coveredCount = Math.max(
+    0,
+    Math.min(incomingItems.length, previousItems.length) - newItems.length
+  )
+  const isRadio = collection === 'radio'
+  const inCovered = (i: number) =>
+    isRadio ? i >= previousItems.length - coveredCount : i < coveredCount
+  const retained = previousItems.filter((item, i) => {
+    const key = pageItemKey(item)
+    if (!key) return true
+    if (!inCovered(i)) return true
+    return incomingByKey.has(key)
+  })
+  const refreshedItems = retained.map(item => {
+    const key = pageItemKey(item)
+    return key ? incomingByKey.get(key) ?? item : item
   })
   // memory/tasks are newest-first (page 0 is the head), radio is ascending
   // (page 0 is the tail), so new arrivals attach to opposite ends.
@@ -372,6 +425,10 @@ function buildViewModel(data: DashboardSnapshot | null) {
     visibleProjects: asArray<AnyRecord>(projects.visibleProjects),
     unregisteredProjects: asArray<string>(projects.unregisteredProjects),
     dispatchLogs: asArray<AnyRecord>(dispatch.logs),
+    // `dispatch.logs` and `dispatch.relay` are server-side display windows capped at
+    // 100 entries, so these server-computed counts are the only honest totals.
+    dispatchLogsTotal: numberOf(dispatch.logsTotal),
+    dispatchRelayActive: numberOf(dispatch.relayActive),
     relay: asArray<AnyRecord>(dispatch.relay),
     agentSessions: asArray<AnyRecord>(agentSessions.agentSessions),
     agentTimeline: asArray<AnyRecord>(agentSessions.timeline),
@@ -410,7 +467,7 @@ function humanStatus(value: unknown, language: AppLanguage): string {
   return (language === 'zh' ? zh : en)[status] || (status ? status.replace(/_/g, ' ') : '—')
 }
 
-function CommandCenter({ copy, model, language, onRefresh }: { copy: Copy; model: ViewModel; language: AppLanguage; onRefresh: () => Promise<void> }) {
+function CommandCenter({ model, language }: { model: ViewModel; language: AppLanguage }) {
   const [selected, setSelected] = useState<{ kind: 'agent' | 'task' | 'radio'; item: AnyRecord } | null>(null)
   const activeAgents = model.agentSessions.slice(0, 6)
   const attentionTasks = model.tasks.filter(task => ['failed', 'blocked', 'waiting_review', 'in_progress', 'claimed'].includes(textOf(task.status))).slice(0, 6)
@@ -430,7 +487,6 @@ function CommandCenter({ copy, model, language, onRefresh }: { copy: Copy; model
         </div>
         <div className="command-center-hero-actions">
           <div className="command-center-live"><span />{language === 'zh' ? '实时同步' : 'Live updates'}</div>
-          <button className="btn" type="button" onClick={() => void onRefresh()}>{copy.refresh}</button>
         </div>
       </section>
 
@@ -438,7 +494,7 @@ function CommandCenter({ copy, model, language, onRefresh }: { copy: Copy; model
         <main className="command-center-main">
           <section className="command-section">
             <div className="command-section-heading">
-              <div><span className="command-section-index">01</span><div><h2>{language === 'zh' ? 'Agent 活动' : 'Agent activity'}</h2><p>{language === 'zh' ? '当前正在执行或保持上下文的智能体' : 'Agents currently executing or holding context'}</p></div></div>
+              <div><div><h2>{language === 'zh' ? 'Agent 活动' : 'Agent activity'}</h2><p>{language === 'zh' ? '当前正在执行或保持上下文的智能体' : 'Agents currently executing or holding context'}</p></div></div>
               <strong className="command-section-count">{activeAgents.length}</strong>
             </div>
             {activeAgents.length ? (
@@ -457,7 +513,7 @@ function CommandCenter({ copy, model, language, onRefresh }: { copy: Copy; model
 
           <section className="command-section command-attention-section">
             <div className="command-section-heading">
-              <div><span className="command-section-index">02</span><div><h2>{language === 'zh' ? '需要关注' : 'Needs attention'}</h2><p>{language === 'zh' ? '失败、阻塞或正在推进中的任务' : 'Failed, blocked, or currently moving tasks'}</p></div></div>
+              <div><div><h2>{language === 'zh' ? '需要关注' : 'Needs attention'}</h2><p>{language === 'zh' ? '失败、阻塞或正在推进中的任务' : 'Failed, blocked, or currently moving tasks'}</p></div></div>
               <strong className="command-section-count danger">{attentionTasks.length}</strong>
             </div>
             <div className="attention-task-grid">
@@ -474,34 +530,51 @@ function CommandCenter({ copy, model, language, onRefresh }: { copy: Copy; model
 
         <aside className="command-center-side">
           <section className="command-side-block command-next-block">
-            <div className="command-side-heading"><span className="command-section-index">04</span><h2>{language === 'zh' ? '最近任务' : 'Recent work'}</h2></div>
+            <div className="command-side-heading"><h2>{language === 'zh' ? '最近任务' : 'Recent work'}</h2></div>
             <div className="command-recent-list">
               {recentTasks.length ? recentTasks.map((task, index) => <div className={'command-recent-item '+(selectedId === textOf(task.id) ? 'is-selected' : '')} key={textOf(task.id)+'-'+index} role="button" tabIndex={0} aria-label={`${textOf(task.title, '—')}: ${humanStatus(task.status, language)}`} onClick={() => choose('task', task)} onKeyDown={activateOnKey(() => choose('task', task))}><NewStatusBadge status={textOf(task.status, 'open')} /><div><strong>{textOf(task.title, '—')}</strong><span>{textOf(task.assignee || task.createdBy, 'unassigned')}</span></div></div>) : <div className="command-empty">{language === 'zh' ? '创建或认领任务后，近期进展会显示在这里' : 'Recent work appears here once tasks are created or claimed'}</div>}
             </div>
           </section>
           <section className="command-side-block command-radio-block">
-            <div className="command-side-heading"><span className="command-section-index">05</span><h2>{language === 'zh' ? '协作广播' : 'Handoffs'}</h2></div>
+            <div className="command-side-heading"><h2>{language === 'zh' ? '协作广播' : 'Handoffs'}</h2></div>
             <div className="command-radio-list">
               {recentMessages.length ? recentMessages.map((message, index) => <div className="command-radio-item" key={textOf(message.id)+'-'+index} role="button" tabIndex={0} aria-label={`${textOf(message.from, 'agent')} → ${textOf(message.to, 'all')}: ${textOf(message.text, '—')}`} onClick={() => choose('radio', message)} onKeyDown={activateOnKey(() => choose('radio', message))}><span className="command-radio-dot" /><div><strong>{textOf(message.from, 'agent')} → {textOf(message.to, 'all')}</strong><p>{textOf(message.text, '—')}</p></div></div>) : <div className="command-empty">{language === 'zh' ? '智能体发送协作消息后，会显示在这里' : 'Handoffs appear here once agents broadcast messages'}</div>}
             </div>
           </section>
         </aside>
       </div>
-      {selected ? (
-        <Modal title={textOf(selected.item.title || selected.item.taskTitle || selected.item.tool || selected.item.agent || selected.item.text, language === 'zh' ? '条目详情' : 'Item details')} onClose={() => setSelected(null)}>
-          <div className="command-modal-detail">
-            <div className="command-modal-type">{selected.kind === 'agent' ? 'AGENT CONTEXT' : selected.kind === 'radio' ? 'RADIO MESSAGE' : 'TASK CONTEXT'}</div>
-            <h3>{textOf(selected.item.title || selected.item.taskTitle || selected.item.tool || selected.item.agent || selected.item.text, '—')}</h3>
-            <div className="command-modal-grid">
-              <Property label={language === 'zh' ? '状态' : 'Status'} value={humanStatus(selected.item.status, language)} />
-              <Property label={language === 'zh' ? '项目' : 'Project'} value={textOf(selected.item.project, '—')} />
-              <Property label={language === 'zh' ? '负责人' : 'Owner'} value={textOf(selected.item.assignee || selected.item.actor || selected.item.tool, '—')} />
-              <Property label={language === 'zh' ? '上下文 ID' : 'Context ID'} value={textOf(selected.item.sessionId || selected.item.threadKey || selected.item.id, '—')} />
-            </div>
-            <div className="command-modal-copy"><strong>{language === 'zh' ? '技术详情' : 'Technical details'}</strong><pre>{JSON.stringify(selected.item, null, 2)}</pre></div>
-          </div>
-        </Modal>
-      ) : null}    </div>
+      <Sheet open={selected !== null} onOpenChange={open => { if (!open) setSelected(null) }}>
+        <SheetContent side="right" closeLabel={language === 'zh' ? '关闭' : 'Close'}>
+          <SheetHeader>
+            <SheetTitle>
+              {textOf(selected?.item.title || selected?.item.taskTitle || selected?.item.tool || selected?.item.agent || selected?.item.text, language === 'zh' ? '条目详情' : 'Item details')}
+            </SheetTitle>
+            <SheetDescription>
+              {selected?.kind === 'agent' ? 'AGENT CONTEXT' : selected?.kind === 'radio' ? 'RADIO MESSAGE' : 'TASK CONTEXT'}
+            </SheetDescription>
+          </SheetHeader>
+          <SheetBody className="flex flex-col gap-4">
+            {selected ? (
+              <>
+                <SheetDetailList>
+                  <dt>{language === 'zh' ? '状态' : 'Status'}</dt>
+                  <dd>{humanStatus(selected.item.status, language)}</dd>
+                  <dt>{language === 'zh' ? '项目' : 'Project'}</dt>
+                  <dd>{textOf(selected.item.project, '—')}</dd>
+                  <dt>{language === 'zh' ? '负责人' : 'Owner'}</dt>
+                  <dd>{textOf(selected.item.assignee || selected.item.actor || selected.item.tool, '—')}</dd>
+                  <dt>{language === 'zh' ? '上下文 ID' : 'Context ID'}</dt>
+                  <dd>{textOf(selected.item.sessionId || selected.item.threadKey || selected.item.id, '—')}</dd>
+                </SheetDetailList>
+                <SheetRawBlock label={language === 'zh' ? '技术详情' : 'Technical details'}>
+                  {JSON.stringify(selected.item, null, 2)}
+                </SheetRawBlock>
+              </>
+            ) : null}
+          </SheetBody>
+        </SheetContent>
+      </Sheet>
+    </div>
   )
 }
 
@@ -527,48 +600,69 @@ function DispatchPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewMode
   }
 
   return <div className="stack dispatch-workspace">
-    <div className="dispatch-summary-line"><span><strong>{formatNumber(model.relay.length)}</strong> 活跃调度</span><span><strong>{formatNumber(model.dispatchLogs.length)}</strong> 运行记录</span><span className="dispatch-summary-note">调度只处理当前待处理事项</span></div>
+    <div className="dispatch-summary-line"><span><strong>{formatNumber(model.dispatchRelayActive)}</strong> {copy.dispatchActive}</span><span><strong>{formatNumber(model.dispatchLogs.length)}</strong> {copy.dispatchRecentRuns}</span><span><strong>{formatNumber(model.dispatchLogsTotal)}</strong> {copy.dispatchTotalRuns}</span><span className="dispatch-summary-note">{copy.dispatchSummaryNote}</span></div>
     <Panel title={copy.triggerDispatch} className="dispatch-control-panel">
       <div className="dispatch-control-intro"><div><strong>自动派发</strong><p>选择本次最多处理的数量和目标模型，执行结果会出现在运行记录中。</p></div><span className={force ? 'dispatch-risk-badge active' : 'dispatch-risk-badge'}>{force ? '强制执行已开启' : '普通模式'}</span></div>
       <div className="dispatch-control-grid">
         <label className="field"><span>{copy.limit}</span><input type="number" min={1} max={50} value={limit} onChange={event => setLimit(Number(event.target.value) || 10)} /></label>
         <label className="field"><span>{copy.model}</span><input type="text" list="amh-model-options" value={modelName} onChange={event => setModelName(event.target.value)} placeholder={copy.modelPlaceholder} /><datalist id="amh-model-options">{modelOptions.map(option => <option key={option} value={option} />)}</datalist></label>
         <label className="dispatch-force-toggle"><input type="checkbox" checked={force} onChange={event => setForce(event.target.checked)} /><span><strong>强制执行</strong><small>跳过常规条件，仅在确认风险后使用</small></span></label>
-        <button className="btn dispatch-trigger-button" type="button" onClick={() => void trigger()} disabled={busy}>{busy ? copy.running : copy.triggerDispatch}</button>
+        <Button className="dispatch-trigger-button" onClick={() => void trigger()} disabled={busy}>{busy ? copy.running : copy.triggerDispatch}</Button>
       </div>
-      {error ? <div className="inline-error">{error}</div> : null}
+      {error ? <ErrorState variant="inline" title={error} /> : null}
     </Panel>
     <div className="dispatch-section-heading"><div><h3>运行队列</h3><p>当前工具和项目的派发状态</p></div></div>
-    <Panel title={copy.dispatchThreads} className="dispatch-queue-panel"><div className="stack">{model.relay.length ? model.relay.map(entry => <div className="dispatch-card" key={textOf(entry.id || entry.threadKey || entry.sourceId)}><div className="dispatch-card-header"><div><strong>{textOf(entry.tool, '-')}</strong><span>{textOf(entry.project, '-')}</span></div><StatusBadge status={textOf(entry.state, 'pending')} /></div><p>{textOf(entry.threadKey || entry.thread || entry.sourceId, '-')}</p>{entry.progressPercent !== undefined && entry.progressPercent !== null ? <div className="progress-line"><span style={{ width: `${Math.min(100, Math.max(0, numberOf(entry.progressPercent)))}%` }} /></div> : null}{entry.progressStatus ? <p>{textOf(entry.progressStatus)}</p> : null}{entry.lastError ? <p className="error-text">{textOf(entry.lastError)}</p> : null}<span className="muted-text">{formatDate(textOf(entry.ts || entry.progressAt || entry.deliveryUpdatedAt))}</span></div>) : <EmptyState text={copy.noData} />}</div></Panel>
+    <Panel title={copy.dispatchThreads} className="dispatch-queue-panel"><div className="stack">{model.relay.length ? model.relay.map(entry => <div className="dispatch-card" key={textOf(entry.id || entry.threadKey || entry.sourceId)}><div className="dispatch-card-header"><div><strong>{textOf(entry.tool, '-')}</strong><span>{textOf(entry.project, '-')}</span></div><StatusBadge status={textOf(entry.state, 'pending')} /></div><p>{textOf(entry.threadKey || entry.thread || entry.sourceId, '-')}</p>{entry.progressPercent !== undefined && entry.progressPercent !== null ? <div className="progress-line"><span style={{ width: `${Math.min(100, Math.max(0, numberOf(entry.progressPercent)))}%` }} /></div> : null}{entry.progressStatus ? <p>{textOf(entry.progressStatus)}</p> : null}{entry.lastError ? <p className="error-text">{textOf(entry.lastError)}</p> : null}<span className="muted-text">{formatDate(textOf(entry.ts || entry.progressAt || entry.deliveryUpdatedAt))}</span></div>) : <EmptyState title={copy.noData} />}</div></Panel>
     <Panel title={copy.dispatchLogs} className="dispatch-history-panel"><DataTable emptyText={copy.noData} columns={[copy.status, copy.to, copy.project, copy.message]} rows={model.dispatchLogs.slice(0, 30).map(log => [<StatusBadge status={textOf(log.runStatus || log.status || log.exitCode, 'log')} />, textOf(log.tool, '-'), textOf(log.project, '-'), textOf(log.message || log.text || log.error || log.lastError, '-')])} /></Panel>
   </div>
 }
 
+/**
+ * Task statuses that count as "active" work.
+ *
+ * `done` and `cancelled` are terminal, so active is everything the team is still
+ * carrying: not yet picked up (`open`), picked up (`claimed`), or being worked
+ * (`in_progress`). Statuses outside this list are deliberately excluded rather than
+ * guessed at, so the figure can never exceed the real total.
+ */
+const ACTIVE_TASK_STATUSES = ['open', 'claimed', 'in_progress']
+
+/**
+ * Every figure on this page is read from `model.metrics` (`/api/metrics`), which the
+ * server computes over the FULL dataset.
+ *
+ * It must not be derived from `model.tasks` / `model.radio` / `model.workflows`: those
+ * arrays hold one paginated server page (200 tasks, 50 radio messages), and on a direct
+ * load of /analytics they are not fetched at all. Charting them would either render a
+ * truncated sample as if it were the whole picture, or render zeros next to a populated
+ * API response.
+ */
 function AnalyticsPanel({ copy, model }: { copy: Copy; model: ViewModel }) {
-  const statusTasks = asRecord(model.status.tasks)
-  const relayStatus = asRecord(model.status.relay)
-  const toolSummary = asRecord(model.status.toolSummary)
-  const backupRetention = asRecord(model.backups.retention)
-  const taskStatus = countValues(model.tasks.map(task => textOf(task.status, 'open')))
-  const radioTypes = countValues(model.radio.map(message => textOf(message.type, 'note')))
-  const projectCounts = countValues([
-    ...model.tasks.map(task => textOf(task.project)),
-    ...model.radio.map(message => textOf(message.project)),
-    ...model.workflows.map(workflow => textOf(workflow.project))
-  ], 10)
-  const relayCounts = ['pending', 'dispatched', 'acked', 'progress', 'retrying', 'failed', 'completed', 'abandoned']
-    .map(key => ({ key, count: numberOf(relayStatus[key]) }))
-    .filter(item => item.count > 0)
+  const metricsTasks = asRecord(model.metrics.tasks)
+  const metricsWorkflows = asRecord(model.metrics.workflows)
+  const metricsRadio = asRecord(model.metrics.radio)
+  const metricsRelay = asRecord(model.metrics.relay)
+  const metricsProjects = asRecord(model.metrics.projects)
+
+  const tasksByStatus = asRecord(metricsTasks.byStatus)
+  const activeTasks = ACTIVE_TASK_STATUSES.reduce((total, status) => total + numberOf(tasksByStatus[status]), 0)
+
+  const taskStatusCounts = countEntries(tasksByStatus)
+  const taskToolCounts = countEntries(metricsTasks.byTool)
+  const workflowStatusCounts = countEntries(metricsWorkflows.byStatus)
+  const radioTypeCounts = countEntries(metricsRadio.byType)
+  const relayCounts = countEntries(metricsRelay.byStatus)
+  const projectCounts = countEntries(metricsProjects.byActivity, 10)
 
   return (
     <div className="stack">
-      <div className="dashboard-summary-line"><span><strong>{formatNumber(statusTasks.total)}</strong>{copy.totalTasks}</span><span><strong>{formatNumber(statusTasks.active)}</strong>{copy.activeTasks}</span><span><strong>{textOf(asRecord(model.metrics.relay).successRate, '0%')}</strong>{copy.relayRate}</span><span><strong>{formatNumber(toolSummary.runnable)}</strong>{copy.toolsReady}</span><span><strong>{formatNumber(model.backups.count ?? model.status.backups)}</strong>{copy.backupSets}</span></div>
+      <div className="dashboard-summary-line"><span><strong>{formatNumber(metricsTasks.total)}</strong>{copy.totalTasks}</span><span><strong>{formatNumber(activeTasks)}</strong>{copy.activeTasks}</span><span><strong>{formatNumber(metricsWorkflows.total)}</strong>{copy.workflows}</span><span><strong>{textOf(metricsRelay.successRate, '-')}</strong>{copy.relayRate}</span><span><strong>{formatNumber(metricsRelay.total)}</strong>{copy.relayThreads}</span></div>
       <div className="panel-grid two">
         <Panel title={copy.tasksByStatus}>
-          <BarList items={taskStatus} emptyText={copy.noData} />
+          <BarList items={taskStatusCounts} emptyText={copy.noData} />
         </Panel>
         <Panel title={copy.radioByType}>
-          <BarList items={radioTypes} emptyText={copy.noData} />
+          <BarList items={radioTypeCounts} emptyText={copy.noData} />
         </Panel>
         <Panel title={copy.relayByState}>
           <BarList items={relayCounts} emptyText={copy.noData} />
@@ -576,21 +670,11 @@ function AnalyticsPanel({ copy, model }: { copy: Copy; model: ViewModel }) {
         <Panel title={copy.topProjects}>
           <BarList items={projectCounts} emptyText={copy.noData} />
         </Panel>
-        <Panel title={copy.toolAutomation}>
-          <div className="property-grid">
-            <Property label={copy.installed} value={formatNumber(toolSummary.detected)} />
-            <Property label={copy.configured} value={formatNumber(toolSummary.configured)} />
-            <Property label={copy.runnable} value={formatNumber(toolSummary.runnable)} />
-            <Property label={copy.missing} value={formatNumber(toolSummary.missing)} />
-          </div>
+        <Panel title={copy.workflowsByStatus}>
+          <BarList items={workflowStatusCounts} emptyText={copy.noData} />
         </Panel>
-        <Panel title={copy.backupStorage}>
-          <div className="property-grid">
-            <Property label={copy.retained} value={formatNumber(backupRetention.keep)} />
-            <Property label={copy.pruneCandidates} value={formatNumber(backupRetention.prune)} />
-            <Property label={copy.storageUsed} value={textOf(model.backups.totalDisplay, '-')} />
-            <Property label={copy.backupSets} value={formatNumber(model.backups.count ?? model.status.backups)} />
-          </div>
+        <Panel title={copy.tasksByTool}>
+          <BarList items={taskToolCounts} emptyText={copy.noData} />
         </Panel>
       </div>
     </div>
@@ -771,12 +855,12 @@ function BackupsPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel
       </div>
       <Panel title={copy.backupPolicy}>
         <div className="section-actions">
-          <button className="btn ghost" type="button" onClick={() => void loadBackups()} disabled={Boolean(busy)}>
+          <Button variant="ghost" onClick={() => void loadBackups()} disabled={Boolean(busy)}>
             {busy === 'load' ? copy.running : copy.refresh}
-          </button>
-          <button className="btn" type="button" onClick={() => { setError(''); setCreateOpen(true) }}>
+          </Button>
+          <Button onClick={() => { setError(''); setCreateOpen(true) }}>
             {copy.createBackup}
-          </button>
+          </Button>
         </div>
         <div className="property-grid settings-grid">
           <Property label={copy.daily} value={formatNumber(policy.daily)} />
@@ -784,13 +868,15 @@ function BackupsPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel
           <Property label={copy.preSync} value={formatNumber(policy.preSync)} />
           <Property label={copy.pruneCandidates} value={textOf(retention.pruneDisplay, '-')} />
         </div>
-        {error ? <div className="inline-error">{error}</div> : null}
+        {error ? <ErrorState variant="inline" title={error} /> : null}
       </Panel>
       <Panel title={copy.githubBackup}>
-        <div className="notice">
-          <strong>{copy.githubWarning}</strong>
-          <span>{githubForm.remoteUrl ? textOf(githubForm.remoteUrl) : copy.githubNoRemote}</span>
-        </div>
+        <Callout
+          tone="warning"
+          className="mb-4"
+          title={copy.githubWarning}
+          description={githubForm.remoteUrl ? textOf(githubForm.remoteUrl) : copy.githubNoRemote}
+        />
         <div className="form-grid github-backup-grid">
           <label className="field">
             <span>{copy.githubEnabled}</span>
@@ -819,18 +905,18 @@ function BackupsPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel
             </select>
           </label>
           <div className="form-actions span-all">
-            <button className="btn ghost" type="button" disabled={Boolean(busy)} onClick={() => void loadGitHubStatus()}>
+            <Button variant="ghost" disabled={Boolean(busy)} onClick={() => void loadGitHubStatus()}>
               {busy === 'github:load' ? copy.refreshing : copy.refresh}
-            </button>
-            <button className="btn ghost" type="button" disabled={Boolean(busy)} onClick={() => void saveGitHubConfig()}>
+            </Button>
+            <Button variant="ghost" disabled={Boolean(busy)} onClick={() => void saveGitHubConfig()}>
               {busy === 'github:save' ? copy.running : copy.githubSave}
-            </button>
-            <button className="btn ghost" type="button" disabled={Boolean(busy)} onClick={() => void runGitHubBackup('dry-run')}>
+            </Button>
+            <Button variant="ghost" disabled={Boolean(busy)} onClick={() => void runGitHubBackup('dry-run')}>
               {busy === 'github:dry-run' ? copy.running : copy.githubDryRun}
-            </button>
-            <button className="btn" type="button" disabled={Boolean(busy)} onClick={() => void runGitHubBackup('local')}>
+            </Button>
+            <Button disabled={Boolean(busy)} onClick={() => void runGitHubBackup('local')}>
               {busy === 'github:local' ? copy.running : copy.githubLocalRun}
-            </button>
+            </Button>
           </div>
         </div>
         <div className="property-grid settings-grid">
@@ -847,12 +933,19 @@ function BackupsPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel
         </div>
         {githubResult ? (
           <div className="stack">
-            {boolOf(githubResult.wouldBlockPush) ? <div className="notice error"><strong>{copy.githubWouldBlock}</strong></div> : null}
+            {boolOf(githubResult.wouldBlockPush) ? <ErrorState variant="inline" title={copy.githubWouldBlock} /> : null}
             {githubWarnings.length ? (
-              <div className="notice">
-                <strong>{copy.warnings}</strong>
-                {githubWarnings.map((warning, indexValue) => <span key={`${warning}-${indexValue}`}>{warning}</span>)}
-              </div>
+              <Callout
+                tone="warning"
+                title={copy.warnings}
+                description={
+                  <span className="flex flex-col gap-1">
+                    {githubWarnings.map((warning, indexValue) => (
+                      <span key={`${warning}-${indexValue}`}>{warning}</span>
+                    ))}
+                  </span>
+                }
+              />
             ) : null}
             <div className="property-grid settings-grid">
               <Property label={copy.dryRun} value={formatBool(boolOf(githubResult.dryRun), copy)} />
@@ -878,16 +971,16 @@ function BackupsPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel
                   </div>
                   <div className="backup-row-actions">
                     <StatusBadge status={textOf(backup.retention, 'keep')} />
-                    <button className="btn small ghost" type="button" disabled={busy === `detail:${name}`} onClick={() => void inspectBackup(name)}>
+                    <Button variant="ghost" size="sm" disabled={busy === `detail:${name}`} onClick={() => void inspectBackup(name)}>
                       {copy.inspectBackup}
-                    </button>
-                    <button className="btn small ghost" type="button" disabled={busy === `restore:${name}`} onClick={() => void previewRestore(name)}>
+                    </Button>
+                    <Button variant="ghost" size="sm" disabled={busy === `restore:${name}`} onClick={() => void previewRestore(name)}>
                       {copy.previewRestore}
-                    </button>
+                    </Button>
                   </div>
                 </article>
               )
-            }) : <EmptyState text={copy.noData} />}
+            }) : <EmptyState title={copy.noData} />}
           </div>
         </Panel>
       <Panel title={copy.restoreSummary}>
@@ -901,7 +994,7 @@ function BackupsPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel
               <Property label={copy.title} value={textOf(restorePlan.name, '-')} />
             </div>
           ) : (
-            <EmptyState text={activeBackupName ? copy.previewRestore : copy.noData} />
+            <EmptyState title={activeBackupName ? copy.previewRestore : copy.noData} />
           )}
         </Panel>
       </div>
@@ -917,25 +1010,29 @@ function BackupsPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel
           ])}
         />
       </Panel>
-      {createOpen ? (
-        <Modal title={copy.createBackup} onClose={() => setCreateOpen(false)}>
-          <div className="form-grid">
-            <label className="field span-all">
+      <Dialog open={createOpen} onOpenChange={open => { if (!open) setCreateOpen(false) }}>
+        <DialogContent className="sm:max-w-lg" closeLabel={copy.close}>
+          <DialogHeader>
+            <DialogTitle>{copy.createBackup}</DialogTitle>
+            <DialogDescription>{copy.createBackupHint}</DialogDescription>
+          </DialogHeader>
+          <DialogBody className="flex flex-col gap-4">
+            <label className="field">
               <span>{copy.backupReason}</span>
               <input value={reason} onChange={event => setReason(event.target.value)} />
             </label>
-            {error ? <div className="inline-error span-all">{error}</div> : null}
-            <div className="form-actions span-all">
-              <button className="btn ghost" type="button" onClick={() => setCreateOpen(false)}>
-                {copy.cancel}
-              </button>
-              <button className="btn" type="button" disabled={busy === 'create'} onClick={() => void createBackup()}>
-                {busy === 'create' ? copy.running : copy.createBackup}
-              </button>
-            </div>
-          </div>
-        </Modal>
-      ) : null}
+            {error ? <ErrorState variant="inline" title={error} /> : null}
+          </DialogBody>
+          <DialogFooter>
+            <Button variant="secondary" size="sm" onClick={() => setCreateOpen(false)}>
+              {copy.cancel}
+            </Button>
+            <Button variant="primary" size="sm" disabled={busy === 'create'} onClick={() => void createBackup()}>
+              {busy === 'create' ? copy.running : copy.createBackup}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -984,13 +1081,37 @@ function SearchPanel({ copy }: { copy: Copy }) {
 
   return <div className="search-workspace stack">
     <Panel title={copy.globalSearch} className="search-command-panel">
-      <div className="search-command-row"><div className="search-main-input"><input value={query} onChange={event => setQuery(event.target.value)} placeholder={copy.searchPlaceholder} aria-label={copy.searchText} /></div><select value={type} onChange={event => setType(event.target.value)} aria-label={copy.type}><option value="all">{copy.allTypes}</option><option value="memory">memory</option><option value="task">task</option><option value="radio">radio</option><option value="workflow">workflow</option></select><select value={range} onChange={event => setRange(event.target.value)} aria-label={copy.range}><option value="all">{copy.allRanges}</option><option value="24h">{copy.last24h}</option><option value="7d">{copy.last7d}</option><option value="30d">{copy.last30d}</option><option value="90d">{copy.last90d}</option></select><select value={sort} onChange={event => setSort(event.target.value)} aria-label={copy.sort}><option value="relevance">{copy.relevance}</option><option value="newest">{copy.newest}</option><option value="oldest">{copy.oldest}</option></select><button className="btn" type="button" onClick={() => void runSearch()} disabled={loading}>{loading ? copy.running : copy.globalSearch}</button></div>
-      <div className="search-command-footer"><span>{query ? `“${query}”` : '搜索全部记忆、任务、消息和工作流'}</span><button className="btn ghost small" type="button" onClick={clearSearch}>{copy.clear}</button></div>
-      {error ? <div className="inline-error">{error}</div> : null}
+      <div className="search-command-row"><div className="search-main-input"><input value={query} onChange={event => setQuery(event.target.value)} placeholder={copy.searchPlaceholder} aria-label={copy.searchText} /></div><select value={type} onChange={event => setType(event.target.value)} aria-label={copy.type}><option value="all">{copy.allTypes}</option><option value="memory">memory</option><option value="task">task</option><option value="radio">radio</option><option value="workflow">workflow</option></select><select value={range} onChange={event => setRange(event.target.value)} aria-label={copy.range}><option value="all">{copy.allRanges}</option><option value="24h">{copy.last24h}</option><option value="7d">{copy.last7d}</option><option value="30d">{copy.last30d}</option><option value="90d">{copy.last90d}</option></select><select value={sort} onChange={event => setSort(event.target.value)} aria-label={copy.sort}><option value="relevance">{copy.relevance}</option><option value="newest">{copy.newest}</option><option value="oldest">{copy.oldest}</option></select><Button onClick={() => void runSearch()} disabled={loading}>{loading ? copy.running : copy.globalSearch}</Button></div>
+      <div className="search-command-footer"><span>{query ? `“${query}”` : '搜索全部记忆、任务、消息和工作流'}</span><Button variant="ghost" size="sm" onClick={clearSearch}>{copy.clear}</Button></div>
+      {error ? <ErrorState variant="inline" title={error} /> : null}
     </Panel>
     <div className="search-result-summary"><span><strong>{formatNumber(payload?.count)}</strong>{copy.resultCount}</span><span><strong>{formatNumber(payload?.elapsedMs)} ms</strong>{copy.elapsed}</span><span><strong>{type === 'all' ? copy.allTypes : type}</strong>{copy.type}</span><span><strong>{tag || '—'}</strong>{copy.tags}</span></div>
-    <div className="search-content-grid"><Panel title={copy.facets} className="search-facets-panel"><div className="search-facet-group"><h4>{copy.type}</h4><div className="chip-list">{types.map(item => <button className={`chip button-chip ${type === textOf(item.key) ? 'active' : ''}`} type="button" key={textOf(item.key)} onClick={() => { setType(textOf(item.key, 'all')); void runSearch({ type: textOf(item.key, 'all') }) }}>{textOf(item.label || item.key)} {formatNumber(item.count)}</button>)}</div></div><div className="search-facet-group"><h4>{copy.tags}</h4><div className="chip-list">{tags.length ? tags.slice(0, 24).map(item => <button className={`chip button-chip ${tag === textOf(item.key) ? 'active' : ''}`} type="button" key={textOf(item.key)} onClick={() => { setTag(textOf(item.key)); void runSearch({ tag: textOf(item.key) }) }}>{textOf(item.key)} {formatNumber(item.count)}</button>) : <EmptyState text={copy.noData} />}</div></div><div className="search-facet-group"><h4>{copy.project}</h4><div className="chip-list">{projects.length ? projects.slice(0, 16).map(item => <span className="chip" key={textOf(item.key)}>{textOf(item.key)} {formatNumber(item.count)}</span>) : <EmptyState text={copy.noData} />}</div></div></Panel><Panel title={copy.results} className="search-results-panel"><div className="search-results">{results.length ? results.map((result, indexValue) => { const meta = asRecord(result.meta); const title = textOf(result.title, '-'); return <article className="search-result-card" role="button" tabIndex={0} aria-label={`${textOf(result.kind, 'result')}: ${title}`} key={`${textOf(result.kind)}-${textOf(meta.id)}-${indexValue}`} onClick={() => setSelectedResult(result)} onKeyDown={activateOnKey(() => setSelectedResult(result))}><div className="search-result-header"><StatusBadge status={textOf(result.kind, 'result')} /><strong>{title}</strong><span>{formatDate(textOf(result.ts))}</span></div><p>{textOf(result.preview || result.text, '-')}</p><div className="chip-list">{textOf(meta.project) ? <span className="chip">{textOf(meta.project)}</span> : null}{asArray<string>(result.tags).slice(0, 6).map(item => <span className="chip" key={item}>{item}</span>)}<span className="chip">{copy.score}: {formatNumber(result.score)}</span></div></article> }) : <EmptyState text={copy.noData} />}</div></Panel></div>
-    {selectedResult ? <Modal title={textOf(selectedResult.title, copy.results)} onClose={() => setSelectedResult(null)}><div className="search-result-detail"><div className="chip-list"><StatusBadge status={textOf(selectedResult.kind, 'result')} /><span>{formatDate(textOf(selectedResult.ts))}</span></div><p className="search-result-detail-text">{textOf(selectedResult.text || selectedResult.preview, '-')}</p><Property label={copy.project} value={textOf(asRecord(selectedResult.meta).project, '-')} /><Property label={copy.score} value={formatNumber(selectedResult.score)} /></div></Modal> : null}
+    <div className="search-content-grid"><Panel title={copy.facets} className="search-facets-panel"><div className="search-facet-group"><h3>{copy.type}</h3><div className="chip-list">{types.map(item => <button className={`chip button-chip ${type === textOf(item.key) ? 'active' : ''}`} type="button" key={textOf(item.key)} onClick={() => { setType(textOf(item.key, 'all')); void runSearch({ type: textOf(item.key, 'all') }) }}>{textOf(item.label || item.key)} {formatNumber(item.count)}</button>)}</div></div><div className="search-facet-group"><h3>{copy.tags}</h3><div className="chip-list">{tags.length ? tags.slice(0, 24).map(item => <button className={`chip button-chip ${tag === textOf(item.key) ? 'active' : ''}`} type="button" key={textOf(item.key)} onClick={() => { setTag(textOf(item.key)); void runSearch({ tag: textOf(item.key) }) }}>{textOf(item.key)} {formatNumber(item.count)}</button>) : <EmptyState title={copy.noData} size="sm" icon={null} />}</div></div><div className="search-facet-group"><h3>{copy.project}</h3><div className="chip-list">{projects.length ? projects.slice(0, 16).map(item => <span className="chip" key={textOf(item.key)}>{textOf(item.key)} {formatNumber(item.count)}</span>) : <EmptyState title={copy.noData} size="sm" icon={null} />}</div></div></Panel><Panel title={copy.results} className="search-results-panel"><div className="search-results">{results.length ? results.map((result, indexValue) => { const meta = asRecord(result.meta); const title = textOf(result.title, '-'); return <article className="search-result-card" role="button" tabIndex={0} aria-label={`${textOf(result.kind, 'result')}: ${title}`} key={`${textOf(result.kind)}-${textOf(meta.id)}-${indexValue}`} onClick={() => setSelectedResult(result)} onKeyDown={activateOnKey(() => setSelectedResult(result))}><div className="search-result-header"><StatusBadge status={textOf(result.kind, 'result')} /><strong>{title}</strong><span>{formatDate(textOf(result.ts))}</span></div><p>{textOf(result.preview || result.text, '-')}</p><div className="chip-list">{textOf(meta.project) ? <span className="chip">{textOf(meta.project)}</span> : null}{asArray<string>(result.tags).slice(0, 6).map(item => <span className="chip" key={item}>{item}</span>)}<span className="chip">{copy.score}: {formatNumber(result.score)}</span></div></article> }) : <EmptyState title={copy.noData} />}</div></Panel></div>
+    <Sheet open={selectedResult !== null} onOpenChange={open => { if (!open) setSelectedResult(null) }}>
+      <SheetContent side="right" closeLabel={copy.close}>
+        <SheetHeader>
+          <SheetTitle>{textOf(selectedResult?.title, copy.results)}</SheetTitle>
+          <SheetDescription>{formatDate(textOf(selectedResult?.ts))}</SheetDescription>
+        </SheetHeader>
+        <SheetBody className="flex flex-col gap-4">
+          {selectedResult ? (
+            <>
+              <div className="chip-list">
+                <StatusBadge status={textOf(selectedResult.kind, 'result')} />
+                <span>{formatDate(textOf(selectedResult.ts))}</span>
+              </div>
+              <p className="m-0 break-words text-sm leading-relaxed text-ink-2">{textOf(selectedResult.text || selectedResult.preview, '-')}</p>
+              <SheetDetailList>
+                <dt>{copy.project}</dt>
+                <dd>{textOf(asRecord(selectedResult.meta).project, '-')}</dd>
+                <dt>{copy.score}</dt>
+                <dd className="tabular-nums">{formatNumber(selectedResult.score)}</dd>
+              </SheetDetailList>
+            </>
+          ) : null}
+        </SheetBody>
+      </SheetContent>
+    </Sheet>
   </div>
 }
 function ToolsPanel({
@@ -1079,7 +1200,7 @@ function ToolsPanel({
     }
   }
 
-  const openToolModal = async (tool: AnyRecord) => {
+  const openToolSheet = async (tool: AnyRecord) => {
     setSelectedTool(tool)
     setLocalPreview(null)
     setGlobalPreview(null)
@@ -1107,7 +1228,7 @@ function ToolsPanel({
     setLastInstallFile('')
     try {
       const result = await apiPost<AnyRecord>('/api/install/apply', { tool: toolName, scope })
-      await openToolModal(selectedTool)
+      await openToolSheet(selectedTool)
       setLastInstallFile(textOf(result.file, '-'))
       await onRefresh()
     } catch (nextError) {
@@ -1142,15 +1263,15 @@ function ToolsPanel({
 
       <Panel title={copy.toolReadiness}>
         <div className="section-actions">
-          <button className="btn ghost" type="button" disabled={Boolean(busy)} onClick={() => void refreshTools(true)}>
+          <Button variant="ghost" disabled={Boolean(busy)} onClick={() => void refreshTools(true)}>
             {busy === 'tools-refresh' ? copy.running : copy.refreshTools}
-          </button>
-          <button className="btn ghost" type="button" disabled={Boolean(busy)} onClick={() => void detectTools()}>
+          </Button>
+          <Button variant="ghost" disabled={Boolean(busy)} onClick={() => void detectTools()}>
             {busy === 'detect' ? copy.running : copy.detectTools}
-          </button>
-          <button className="btn ghost" type="button" disabled={Boolean(busy)} onClick={() => void refreshCapabilities()}>
+          </Button>
+          <Button variant="ghost" disabled={Boolean(busy)} onClick={() => void refreshCapabilities()}>
             {busy === 'capabilities' ? copy.running : copy.refreshCapabilities}
-          </button>
+          </Button>
         </div>
         <div className="form-grid tool-filter-grid">
           <label className="field span-2">
@@ -1169,9 +1290,9 @@ function ToolsPanel({
             </select>
           </label>
           <div className="form-actions">
-            <button className="btn ghost" type="button" onClick={() => { setQuery(''); setStatusFilter('all') }}>
+            <Button variant="ghost" onClick={() => { setQuery(''); setStatusFilter('all') }}>
               {copy.clear}
-            </button>
+            </Button>
           </div>
         </div>
         <div className="property-grid settings-grid tool-capability-summary">
@@ -1180,7 +1301,7 @@ function ToolsPanel({
           <Property label={copy.sharedState} value={formatNumber(capabilities.sharedState)} />
           <Property label={copy.capabilitySummary} value={formatNumber(capabilities.total)} />
         </div>
-        {error ? <div className="inline-error">{error}</div> : null}
+        {error ? <ErrorState variant="inline" title={error} /> : null}
       </Panel>
 
       <Panel title={copy.toolInventory}>
@@ -1258,64 +1379,81 @@ function ToolsPanel({
                         </div>
                       </td>
                       <td>
-                        <button className="btn small ghost" type="button" onClick={() => void openToolModal(tool)}>
+                        <Button variant="ghost" size="sm" className="whitespace-nowrap" onClick={() => void openToolSheet(tool)}>
                           {copy.manageConfig}
-                        </button>
+                        </Button>
                       </td>
                     </tr>
                   )
                 })}
               </tbody>
             </table>
-          ) : <EmptyState text={tools.length ? copy.noMatches : copy.noData} />}
+          ) : <EmptyState title={tools.length ? copy.noMatches : copy.noData} />}
         </div>
       </Panel>
 
-      {selectedTool ? (
-        <Modal title={`${copy.manageConfig}: ${textOf(selectedTool.name, '-')}`} onClose={() => setSelectedTool(null)}>
-          <div className="stack">
-            <div className="workflow-action-summary">
-              <ToolIcon name={textOf(selectedTool.name)} kind={textOf(selectedTool.kind)} size={32} />
-              <StatusBadge status={getToolStatus(selectedTool)} />
-              <strong>{textOf(selectedTool.name, '-')}</strong>
-              <span>{textOf(selectedTool.kind, '-')}</span>
-            </div>
-            <div className="property-grid">
-              <Property label={copy.mode} value={textOf(selectedCapability.integrationMode, '-')} />
-              <Property label={copy.runner} value={textOf(selectedTool.runnerProfile || selectedConfig.runnerCommandKind, '-')} />
-              <Property label={copy.command} value={textOf(selectedTool.runnerCommand || selectedConfig.runnerCommand, '-')} />
-              <Property label={copy.path} value={textOf(selectedTool.dir || selectedConfig.instructionFile, '-')} />
-              <Property label={copy.capability} value={asArray<string>(selectedCapability.capabilities).join(', ') || '-'} />
-              <Property label={copy.healthReasons} value={asArray<string>(selectedHealth.reasons).join(' · ') || '-'} />
-              <Property label={copy.declaredModels} value={asArray<string>(asRecord(selectedTool.declared).models).join(', ') || '-'} />
-              <Property label={copy.availableModels} value={asArray<string>(asRecord(selectedTool.models).all).slice(0, 12).join(', ') || '-'} />
-              <Property label={copy.strengths} value={asArray<string>(asRecord(selectedTool.strengths).all).join(', ') || '-'} />
-            </div>
-            {lastInstallFile ? <div className="notice"><span>{copy.changed}: {lastInstallFile}</span></div> : null}
-            {error ? <div className="inline-error">{error}</div> : null}
-            <div className="tool-preview-grid">
-              <ToolPreviewCard
-                busy={busy}
-                copy={copy}
-                disabled={!localPreview}
-                label={copy.localTarget}
-                onApply={() => void applyToolRules('local')}
-                preview={localPreview}
-                primaryLabel={copy.installLocal}
-              />
-              <ToolPreviewCard
-                busy={busy}
-                copy={copy}
-                disabled={!globalPreview}
-                label={copy.globalTarget}
-                onApply={() => void applyToolRules('global')}
-                preview={globalPreview}
-                primaryLabel={copy.installGlobal}
-              />
-            </div>
-          </div>
-        </Modal>
-      ) : null}
+      <Sheet open={selectedTool !== null} onOpenChange={open => { if (!open) setSelectedTool(null) }}>
+        <SheetContent side="right" closeLabel={copy.close}>
+          <SheetHeader>
+            <SheetTitle>{`${copy.manageConfig}: ${textOf(selectedTool?.name, '-')}`}</SheetTitle>
+            <SheetDescription>{textOf(selectedTool?.kind, '-')}</SheetDescription>
+          </SheetHeader>
+          <SheetBody className="flex flex-col gap-4">
+            {selectedTool ? (
+              <>
+                <div className="workflow-action-summary">
+                  <ToolIcon name={textOf(selectedTool.name)} kind={textOf(selectedTool.kind)} size={32} />
+                  <StatusBadge status={getToolStatus(selectedTool)} />
+                  <strong>{textOf(selectedTool.name, '-')}</strong>
+                  <span>{textOf(selectedTool.kind, '-')}</span>
+                </div>
+                <SheetDetailList>
+                  <dt>{copy.mode}</dt>
+                  <dd>{textOf(selectedCapability.integrationMode, '-')}</dd>
+                  <dt>{copy.runner}</dt>
+                  <dd>{textOf(selectedTool.runnerProfile || selectedConfig.runnerCommandKind, '-')}</dd>
+                  <dt>{copy.command}</dt>
+                  <dd>{textOf(selectedTool.runnerCommand || selectedConfig.runnerCommand, '-')}</dd>
+                  <dt>{copy.path}</dt>
+                  <dd>{textOf(selectedTool.dir || selectedConfig.instructionFile, '-')}</dd>
+                  <dt>{copy.capability}</dt>
+                  <dd>{asArray<string>(selectedCapability.capabilities).join(', ') || '-'}</dd>
+                  <dt>{copy.healthReasons}</dt>
+                  <dd>{asArray<string>(selectedHealth.reasons).join(' · ') || '-'}</dd>
+                  <dt>{copy.declaredModels}</dt>
+                  <dd>{asArray<string>(asRecord(selectedTool.declared).models).join(', ') || '-'}</dd>
+                  <dt>{copy.availableModels}</dt>
+                  <dd>{asArray<string>(asRecord(selectedTool.models).all).slice(0, 12).join(', ') || '-'}</dd>
+                  <dt>{copy.strengths}</dt>
+                  <dd>{asArray<string>(asRecord(selectedTool.strengths).all).join(', ') || '-'}</dd>
+                </SheetDetailList>
+                {lastInstallFile ? <Callout tone="info" title={`${copy.changed}: ${lastInstallFile}`} /> : null}
+                {error ? <ErrorState variant="inline" title={error} /> : null}
+                <div className="tool-preview-grid">
+                  <ToolPreviewCard
+                    busy={busy}
+                    copy={copy}
+                    disabled={!localPreview}
+                    label={copy.localTarget}
+                    onApply={() => void applyToolRules('local')}
+                    preview={localPreview}
+                    primaryLabel={copy.installLocal}
+                  />
+                  <ToolPreviewCard
+                    busy={busy}
+                    copy={copy}
+                    disabled={!globalPreview}
+                    label={copy.globalTarget}
+                    onApply={() => void applyToolRules('global')}
+                    preview={globalPreview}
+                    primaryLabel={copy.installGlobal}
+                  />
+                </div>
+              </>
+            ) : null}
+          </SheetBody>
+        </SheetContent>
+      </Sheet>
     </div>
   )
 }
@@ -1341,9 +1479,9 @@ function ToolPreviewCard({
     <section className="tool-preview-card">
       <div className="tool-preview-header">
         <strong>{label}</strong>
-        <button className="btn small" type="button" disabled={disabled || Boolean(busy)} onClick={onApply}>
+        <Button size="sm" disabled={disabled || Boolean(busy)} onClick={onApply}>
           {busy.startsWith('install') ? copy.running : primaryLabel}
-        </button>
+        </Button>
       </div>
       <p>{preview ? textOf(preview.file, '-') : copy.previewUnavailable}</p>
       <pre className="text-snapshot small">{preview ? textOf(preview.snippet, '-') : copy.previewUnavailable}</pre>
@@ -1573,17 +1711,17 @@ function HealthPanel({
             <span>{copy.repairLimit}</span>
             <input type="number" min="1" max="100" value={repairLimit} onChange={event => setRepairLimit(event.target.value)} />
           </label>
-          <button className="btn ghost" type="button" disabled={Boolean(busy)} onClick={() => void refreshHealth()}>
+          <Button variant="ghost" disabled={Boolean(busy)} onClick={() => void refreshHealth()}>
             {busy === 'refresh' ? copy.refreshing : copy.refreshHealth}
-          </button>
-          <button className="btn ghost" type="button" disabled={Boolean(busy)} onClick={() => void previewRepair()}>
+          </Button>
+          <Button variant="ghost" disabled={Boolean(busy)} onClick={() => void previewRepair()}>
             {busy === 'preview' ? copy.running : copy.previewRepair}
-          </button>
-          <button className="btn" type="button" disabled={Boolean(busy) || !hasRepairActions} onClick={() => setConfirmOpen(true)}>
+          </Button>
+          <Button disabled={Boolean(busy) || !hasRepairActions} onClick={() => setConfirmOpen(true)}>
             {copy.applyRepair}
-          </button>
+          </Button>
         </div>
-        {error ? <div className="inline-error">{error}</div> : null}
+        {error ? <ErrorState variant="inline" title={error} /> : null}
         <div className="property-grid settings-grid">
           <Property label="Daemon" value={textOf(daemon.state, '-')} />
           <Property label="Memory" value={formatNumber(index.records)} />
@@ -1597,7 +1735,7 @@ function HealthPanel({
       </Panel>
 
       <Panel title={copy.repairPlan}>
-        {repairPreview ? <RepairPlanSummary copy={copy} result={repairPreview} /> : <EmptyState text={copy.repairPreviewEmpty} />}
+        {repairPreview ? <RepairPlanSummary copy={copy} result={repairPreview} /> : <EmptyState title={copy.repairPreviewEmpty} />}
       </Panel>
 
       <div className="panel-grid two">
@@ -1630,23 +1768,26 @@ function HealthPanel({
         </Panel>
       </div>
 
-      {confirmOpen ? (
-        <Modal title={copy.applyRepair} onClose={() => setConfirmOpen(false)}>
-          <div className="stack">
-            <p className="modal-copy">{copy.confirmRepair}</p>
+      <Dialog open={confirmOpen} onOpenChange={open => { if (!open) setConfirmOpen(false) }}>
+        <DialogContent className="sm:max-w-md" closeLabel={copy.close}>
+          <DialogHeader>
+            <DialogTitle>{copy.applyRepair}</DialogTitle>
+            <DialogDescription>{copy.confirmRepair}</DialogDescription>
+          </DialogHeader>
+          <DialogBody className="flex flex-col gap-3">
             <RepairPlanSummary copy={copy} result={repairPreview} />
-            {error ? <div className="inline-error">{error}</div> : null}
-            <div className="form-actions">
-              <button className="btn ghost" type="button" disabled={Boolean(busy)} onClick={() => setConfirmOpen(false)}>
-                {copy.cancel}
-              </button>
-              <button className="btn" type="button" disabled={busy === 'apply'} onClick={() => void applyRepair()}>
-                {busy === 'apply' ? copy.running : copy.confirmApply}
-              </button>
-            </div>
-          </div>
-        </Modal>
-      ) : null}
+            {error ? <ErrorState variant="inline" title={error} /> : null}
+          </DialogBody>
+          <DialogFooter>
+            <Button variant="secondary" size="sm" disabled={Boolean(busy)} onClick={() => setConfirmOpen(false)}>
+              {copy.cancel}
+            </Button>
+            <Button variant="primary" size="sm" disabled={busy === 'apply'} onClick={() => void applyRepair()}>
+              {busy === 'apply' ? copy.running : copy.confirmApply}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -1715,7 +1856,7 @@ function SettingsPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewMode
       <Panel title={copy.saveSettings}>
         <div className="settings-form">
           <section className="settings-section">
-            <h4>{copy.settingsSyncSection}</h4>
+            <h3>{copy.settingsSyncSection}</h3>
             <div className="form-grid">
               <label className="field">
                 <span>{copy.snapshotLimit}</span>
@@ -1737,7 +1878,7 @@ function SettingsPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewMode
           </section>
 
           <section className="settings-section">
-            <h4>{copy.settingsDashboardSection}</h4>
+            <h3>{copy.settingsDashboardSection}</h3>
             <div className="form-grid">
               <label className="field">
                 <span>{copy.refreshInterval}</span>
@@ -1766,7 +1907,7 @@ function SettingsPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewMode
           </section>
 
           <section className="settings-section">
-            <h4>{copy.settingsBackupSection}</h4>
+            <h3>{copy.settingsBackupSection}</h3>
             <div className="form-grid">
               <label className="field">
                 <span>{copy.daily}</span>
@@ -1787,15 +1928,15 @@ function SettingsPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewMode
             </div>
           </section>
         </div>
-        {error ? <div className="inline-error">{error}</div> : null}
-        {success ? <div className="notice success"><span>{success}</span></div> : null}
+        {error ? <ErrorState variant="inline" title={error} /> : null}
+        {success ? <Callout tone="success" title={success} /> : null}
         <div className="form-actions settings-actions">
-          <button className="btn ghost" type="button" disabled={Boolean(busy)} onClick={() => void reloadSettings()}>
+          <Button variant="ghost" disabled={Boolean(busy)} onClick={() => void reloadSettings()}>
             {busy === 'reload' ? copy.refreshing : copy.refreshSettings}
-          </button>
-          <button className="btn" type="button" disabled={Boolean(busy)} onClick={() => void saveSettings()}>
+          </Button>
+          <Button disabled={Boolean(busy)} onClick={() => void saveSettings()}>
             {busy === 'save' ? copy.running : copy.saveSettings}
-          </button>
+          </Button>
         </div>
       </Panel>
     </div>
@@ -1907,7 +2048,7 @@ function getRepairTotalActions(result: AnyRecord | null): number {
 }
 
 function HealthIssueRows({ copy, issues }: { copy: Copy; issues: AnyRecord[] }) {
-  if (!issues.length) return <EmptyState text={copy.noHealthIssues} />
+  if (!issues.length) return <EmptyState title={copy.noHealthIssues} />
   return (
     <div className="stack">
       {issues.map((issue, indexValue) => {
@@ -1930,7 +2071,7 @@ function HealthIssueRows({ copy, issues }: { copy: Copy; issues: AnyRecord[] }) 
 }
 
 function HealthSuggestionRows({ copy, suggestions }: { copy: Copy; suggestions: AnyRecord[] }) {
-  if (!suggestions.length) return <EmptyState text={copy.noHealthIssues} />
+  if (!suggestions.length) return <EmptyState title={copy.noHealthIssues} />
   return (
     <div className="stack health-suggestion-list">
       {suggestions.map((suggestion, indexValue) => {
@@ -1946,7 +2087,7 @@ function HealthSuggestionRows({ copy, suggestions }: { copy: Copy; suggestions: 
   )
 }
 function DuplicateGroupRows({ copy, groups }: { copy: Copy; groups: AnyRecord[] }) {
-  if (!groups.length) return <EmptyState text={copy.noHealthExamples} />
+  if (!groups.length) return <EmptyState title={copy.noHealthExamples} />
   return (
     <div className="stack">
       {groups.map((group, indexValue) => (
@@ -1963,7 +2104,7 @@ function DuplicateGroupRows({ copy, groups }: { copy: Copy; groups: AnyRecord[] 
 }
 
 function CorruptedRecordRows({ copy, records }: { copy: Copy; records: AnyRecord[] }) {
-  if (!records.length) return <EmptyState text={copy.noHealthExamples} />
+  if (!records.length) return <EmptyState title={copy.noHealthExamples} />
   return (
     <div className="stack">
       {records.map((record, indexValue) => (
@@ -1977,7 +2118,7 @@ function CorruptedRecordRows({ copy, records }: { copy: Copy; records: AnyRecord
 }
 
 function StorageRows({ copy, items }: { copy: Copy; items: AnyRecord[] }) {
-  if (!items.length) return <EmptyState text={copy.noData} />
+  if (!items.length) return <EmptyState title={copy.noData} />
   return (
     <div className="health-storage-list">
       {items.map(item => (
@@ -1995,97 +2136,13 @@ function MetricCard({ label, value, tone = 'default' }: { label: string; value: 
   return <NewMetricCard label={label} value={value} tone={tone} />
 }
 
-const focusableSelectors = [
-  'a[href]',
-  'button:not([disabled])',
-  'input:not([disabled])',
-  'select:not([disabled])',
-  'textarea:not([disabled])',
-  '[tabindex]:not([tabindex="-1"])'
-].join(', ')
-
-function getModalFocusableElements(panel: HTMLElement): HTMLElement[] {
-  return Array.from(panel.querySelectorAll<HTMLElement>(focusableSelectors))
-    .filter(element => element.offsetParent !== null || element === document.activeElement)
-}
-
-function trapModalFocus(event: KeyboardEvent, panel: HTMLElement) {
-  if (event.key !== 'Tab') return
-
-  const focusable = getModalFocusableElements(panel)
-  if (!focusable.length) {
-    event.preventDefault()
-    panel.focus()
-    return
-  }
-
-  const first = focusable[0]
-  const last = focusable[focusable.length - 1]
-
-  if (event.shiftKey && document.activeElement === first) {
-    event.preventDefault()
-    last.focus()
-  } else if (!event.shiftKey && document.activeElement === last) {
-    event.preventDefault()
-    first.focus()
-  }
-}
-
-function Modal({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {
-  const panelRef = useRef<HTMLElement | null>(null)
-  const titleId = useId()
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        onClose()
-        return
-      }
-      if (event.key === 'Tab' && panelRef.current) {
-        trapModalFocus(event, panelRef.current)
-      }
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [onClose])
-
-  useEffect(() => {
-    const panel = panelRef.current
-    if (!panel) return
-    const first = getModalFocusableElements(panel)[0]
-    ;(first || panel).focus()
-  }, [])
-
-  return (
-    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
-      <section
-        ref={panelRef}
-        className="modal-panel"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        tabIndex={-1}
-        onMouseDown={event => event.stopPropagation()}
-      >
-        <header className="modal-header">
-          <h3 id={titleId}>{title}</h3>
-          <button className="btn small ghost" type="button" onClick={onClose} aria-label={`Close ${title}`}>
-            x
-          </button>
-        </header>
-        {children}
-      </section>
-    </div>
-  )
-}
-
 function Panel({ title, children, className = '' }: { title: string; children: ReactNode; className?: string }) {
   // Use NewPanel (shadcn/ui Card) for consistency
   return <NewPanel title={title} className={className}>{children}</NewPanel>
 }
 
 function DataTable({ columns, rows, emptyText }: { columns: string[]; rows: ReactNode[][]; emptyText: string }) {
-  if (!rows.length) return <EmptyState text={emptyText} />
+  if (!rows.length) return <EmptyState title={emptyText} />
   return (
     <div className="table-wrap">
       <table>
@@ -2107,7 +2164,7 @@ function DataTable({ columns, rows, emptyText }: { columns: string[]; rows: Reac
 function BarList({ items, emptyText }: { items: Array<{ key: string; count: number }>; emptyText: string }) {
   const visibleItems = items.filter(item => item.key && item.count > 0)
   const maxValue = Math.max(1, ...visibleItems.map(item => item.count))
-  if (!visibleItems.length) return <EmptyState text={emptyText} />
+  if (!visibleItems.length) return <EmptyState title={emptyText} />
   return (
     <div className="bar-list">
       {visibleItems.map(item => (
@@ -2137,10 +2194,6 @@ function Property({ label, value }: { label: string; value: string }) {
 function StatusBadge({ status }: { status: string }) {
   // Use NewStatusBadge for consistency
   return <NewStatusBadge status={status} />
-}
-
-function EmptyState({ text }: { text: string }) {
-  return <div className="empty-state">{text}</div>
 }
 
 function formatNumber(value: unknown): string {
@@ -2184,14 +2237,11 @@ function toolMatchesStatusFilter(tool: AnyRecord, filter: string): boolean {
   return true
 }
 
-function countValues(values: string[], limit = 8): Array<{ key: string; count: number }> {
-  const counts = new Map<string, number>()
-  values
-    .map(value => value.trim())
-    .filter(Boolean)
-    .forEach(value => counts.set(value, (counts.get(value) || 0) + 1))
-  return Array.from(counts.entries())
-    .map(([key, count]) => ({ key, count }))
+/** Turn a server-computed `{ key: count }` aggregate into a sorted BarList dataset. */
+function countEntries(value: unknown, limit = 8): Array<{ key: string; count: number }> {
+  return Object.entries(asRecord(value))
+    .map(([key, count]) => ({ key: key.trim(), count: numberOf(count) }))
+    .filter(item => item.key && item.count > 0)
     .sort((left, right) => right.count - left.count || left.key.localeCompare(right.key))
     .slice(0, limit)
 }

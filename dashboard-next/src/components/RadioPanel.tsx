@@ -1,15 +1,17 @@
-import { useEffect, useState, useMemo, type KeyboardEvent, type MouseEvent } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
+import { useEffect, useState, useMemo } from 'react'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
-import { Input } from './ui/input'
+import { Input, fieldBaseStyles } from './ui/input'
 import { Label } from './ui/label'
 import { Textarea } from './ui/textarea'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription, DialogClose } from './ui/dialog'
-import { Send, Search, X, AlertCircle, Clock, Reply, Star } from 'lucide-react'
+import { Send, Search, X, AlertCircle, Reply, Star } from 'lucide-react'
 import type { AnyRecord } from '@/lib/api'
-import { formatDate, formatRelativeTime } from '@/lib/api'
+import { formatDate } from '@/lib/api'
 import { VirtualizedList } from './VirtualizedList'
+import { EmptyState, Panel } from '@/components/shell'
+import { ListRow, LIST_ROW_HEIGHT } from './ListRow'
+import { cn } from '@/lib/utils'
 
 interface RadioPanelProps {
   radio: AnyRecord[]
@@ -36,10 +38,14 @@ interface RadioPanelProps {
     cancel: string
     running: string
     noData: string
+    noMatchesInLoaded: string
+    partialScopePrefix: string
+    partialScopeSuffix: string
     messageCount: string
     messagePlaceholder: string
     refreshing: string
     loadingMore: string
+    loadMore: string
   }
   onRefresh: () => Promise<void>
   hasMore?: boolean
@@ -54,6 +60,8 @@ function textOf(value: unknown, fallback = ''): string {
 function uniqueSorted(items: string[]): string[] {
   return Array.from(new Set(items)).sort()
 }
+
+const selectFieldClass = cn(fieldBaseStyles, 'flex h-9 px-3 py-0')
 
 export function RadioPanel({ radio, visibleProjects, copy, onRefresh, hasMore = false, onLoadMore }: RadioPanelProps) {
   const [form, setForm] = useState({
@@ -128,6 +136,10 @@ export function RadioPanel({ radio, visibleProjects, copy, onRefresh, hasMore = 
   }, [cleanQuery, activeFromFilter, activeToFilter, activeTypeFilter, activeProjectFilter])
 
   const visibleMessages = filteredMessages.slice(0, visibleCount)
+  // A radio page is only the 50 newest messages, so filtering searches a small slice of
+  // the log. `total` is not passed into this component, so the note states the scope
+  // actually searched rather than implying a denominator we do not have.
+  const partialScopeNote = `${copy.partialScopePrefix} ${radio.length} ${copy.partialScopeSuffix}`
   const loadMore = async () => {
     if (visibleMessages.length < filteredMessages.length) {
       setVisibleCount(value => Math.min(value + 60, filteredMessages.length))
@@ -198,38 +210,48 @@ export function RadioPanel({ radio, visibleProjects, copy, onRefresh, hasMore = 
   }
 
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader className="border-b">
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>{copy.recentRadio}</CardTitle>
-              <p className="text-sm text-muted-foreground mt-1">{filteredMessages.length} {copy.messageCount}</p>
-            </div>
-            <Button onClick={() => { setError(''); setComposeOpen(true) }}>
-              <Send className="w-4 h-4 mr-2" />
-              {copy.broadcastMessage}
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="pt-6">
+    <div className="flex flex-col gap-6">
+      {/* Panel (h2) rather than Card (CardTitle renders h3): /radio has a page h1, so
+          a card title here skipped a heading level (WCAG 1.3.1). The "N 条消息" line
+          becomes the header count pill and the partial-scope note becomes the footer.
+          The body keeps its p-4 so the list's `-mx-4` bleed still lands on the edge. */}
+      <Panel
+        title={copy.recentRadio}
+        count={`${filteredMessages.length} ${copy.messageCount}`}
+        actions={
+          /* Panel.tsx:9 — buttons in a panel header MUST be size="sm" (32px). */
+          <Button size="sm" onClick={() => { setError(''); setComposeOpen(true) }}>
+            <Send className="h-4 w-4" />
+            {copy.broadcastMessage}
+          </Button>
+        }
+        footer={hasMore && filteredMessages.length > 0 ? (
+          // With the sentinel gate fixed, a short filtered result cannot scroll far
+          // enough to auto-load the next page — so the ask has to be a real control.
+          <>
+            <span>{partialScopeNote}</span>
+            <Button variant="outline" size="sm" disabled={loadingMore} onClick={() => void loadMore()}>{loadingMore ? copy.loadingMore : copy.loadMore}</Button>
+          </>
+        ) : undefined}
+        bodyClassName="flex flex-col gap-6"
+      >
           {/* Filters */}
-          <div className="grid grid-cols-1 md:grid-cols-6 gap-4 mb-6">
-            <div className="space-y-2">
+          <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+            <div className="grid gap-2">
               
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input id="search" value={query} onChange={e => setQuery(e.target.value)} className="pl-9" placeholder={copy.searchPlaceholder} aria-label={copy.searchText} />
+                <Input id="search" value={query} onChange={e => setQuery(e.target.value)} className="pl-8" placeholder={copy.searchPlaceholder} aria-label={copy.searchText} />
               </div>
             </div>
 
-            {senderOptions.length > 0 && <div className="space-y-2">
+            {senderOptions.length > 0 && <div className="grid gap-2">
               <Label htmlFor="from-filter">{copy.from}</Label>
               <select
                 id="from-filter"
                 value={activeFromFilter}
                 onChange={e => setFromFilter(e.target.value)}
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                className={selectFieldClass}
               >
                 <option value="">{copy.allSenders}</option>
                 {senderOptions.map(option => (
@@ -240,13 +262,13 @@ export function RadioPanel({ radio, visibleProjects, copy, onRefresh, hasMore = 
               </select>
             </div>}
 
-            {recipientOptions.length > 0 && <div className="space-y-2">
+            {recipientOptions.length > 0 && <div className="grid gap-2">
               <Label htmlFor="to-filter">{copy.to}</Label>
               <select
                 id="to-filter"
                 value={activeToFilter}
                 onChange={e => setToFilter(e.target.value)}
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                className={selectFieldClass}
               >
                 <option value="">{copy.allRecipients}</option>
                 {recipientOptions.map(option => (
@@ -257,13 +279,13 @@ export function RadioPanel({ radio, visibleProjects, copy, onRefresh, hasMore = 
               </select>
             </div>}
 
-            {typeOptions.length > 0 && <div className="space-y-2">
+            {typeOptions.length > 0 && <div className="grid gap-2">
               <Label htmlFor="type-filter">{copy.type}</Label>
               <select
                 id="type-filter"
                 value={activeTypeFilter}
                 onChange={e => setTypeFilter(e.target.value)}
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                className={selectFieldClass}
               >
                 <option value="">{copy.allTypes}</option>
                 {typeOptions.map(option => (
@@ -274,13 +296,13 @@ export function RadioPanel({ radio, visibleProjects, copy, onRefresh, hasMore = 
               </select>
             </div>}
 
-            {projectOptions.length > 0 && <div className="space-y-2">
+            {projectOptions.length > 0 && <div className="grid gap-2">
               <Label htmlFor="project-filter">{copy.project}</Label>
               <select
                 id="project-filter"
                 value={activeProjectFilter}
                 onChange={e => setProjectFilter(e.target.value)}
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                className={selectFieldClass}
               >
                 <option value="">{copy.allProjects}</option>
                 {projectOptions.map(option => (
@@ -303,26 +325,26 @@ export function RadioPanel({ radio, visibleProjects, copy, onRefresh, hasMore = 
                 }}
                 className="w-full"
               >
-                <X className="w-4 h-4 mr-2" />
+                <X className="h-4 w-4" />
                 {copy.clear}
               </Button>
             </div>
           </div>
 
           {error && (
-            <div className="flex items-center gap-2 p-3 mb-4 rounded-lg border border-destructive/20 bg-destructive/10" role="alert">
-              <AlertCircle className="w-4 h-4 text-destructive shrink-0" />
-              <p className="text-sm text-destructive">{error}</p>
+            <div className="flex items-center gap-2 p-3 rounded-sm border border-danger-line bg-danger-tint" role="alert">
+              <AlertCircle className="w-4 h-4 text-danger shrink-0" />
+              <p className="text-sm text-danger-text">{error}</p>
             </div>
           )}
 
           {/* Messages Stream */}
-          <div className="space-y-4 max-h-[600px] overflow-y-auto">
+          <div className="-mx-4 border-t border-border">
             {filteredMessages.length ? (
             <div aria-live="polite" aria-busy={loadingMore}>
               <VirtualizedList
                 items={visibleMessages}
-                itemHeight={190}
+                itemHeight={LIST_ROW_HEIGHT}
                 getKey={(message, index) => textOf(message.id, `message-${index}`)}
                 hasMore={visibleMessages.length < filteredMessages.length || hasMore}
                 loading={loadingMore}
@@ -340,62 +362,56 @@ export function RadioPanel({ radio, visibleProjects, copy, onRefresh, hasMore = 
                 const messageId = textOf(message.id)
 
                 return (
-                  <div className="radio-message-row" role="button" tabIndex={0} onClick={(event: MouseEvent<HTMLDivElement>) => { if (!(event.target as HTMLElement).closest('button, a, input, textarea, select')) setSelectedMessage(message) }} onKeyDown={(event: KeyboardEvent<HTMLDivElement>) => { if ((event.key === 'Enter' || event.key === ' ') && event.target === event.currentTarget) setSelectedMessage(message) }}><Card className="hover:shadow-md transition-shadow">
-                    <CardContent className="p-4">
-                      <div className="space-y-3">
-                        {/* Header */}
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <TypeBadge type={type} />
-                            <span className="text-sm text-muted-foreground">
-                              {from} → {to}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                            <Clock className="w-3 h-3" />
-                            <time dateTime={timestamp} title={formatDate(timestamp, 'full')}>{formatRelativeTime(timestamp)}</time>
-                          </div>
-                        </div>
-
-                        {/* Message Text */}
-                        <p className="text-sm">{text}</p>
-
-                        {/* Footer */}
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            <Badge variant="secondary">{project}</Badge>
-                            {thread && <Badge variant="outline">#{thread}</Badge>}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Button variant="ghost" size="sm" onClick={() => startReply(message)}>
-                              <Reply className="w-3 h-3 mr-1" />
-                              {copy.reply}
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              disabled={busy === `promote:${messageId}`}
-                              onClick={() => void promote(messageId)}
-                            >
-                              <Star className="w-3 h-3 mr-1" />
-                              {copy.promoteToMemory}
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                  </div>
+                  <ListRow
+                    onOpen={() => setSelectedMessage(message)}
+                    ariaLabel={text}
+                    leading={<TypeBadge type={type} />}
+                    title={text}
+                    subtitle={<span className="inline-flex items-center gap-2">{from} <span aria-hidden="true">→</span> {to}</span>}
+                    meta={
+                      <>
+                        <Badge variant="secondary">{project}</Badge>
+                        {thread ? <Badge variant="outline">#{thread}</Badge> : null}
+                      </>
+                    }
+                    timestamp={timestamp}
+                    actions={
+                      <>
+                        <Button variant="ghost" size="sm" onClick={() => startReply(message)} aria-label={copy.reply}>
+                          <Reply className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={busy === `promote:${messageId}`}
+                          onClick={() => void promote(messageId)}
+                          aria-label={copy.promoteToMemory}
+                        >
+                          <Star className="h-3 w-3" />
+                        </Button>
+                      </>
+                    }
+                  />
                 )
                 }}
               />
             </div>
+            ) : hasMore ? (
+              // Without this branch the list unmounts on an empty filter result, and with
+              // it the end marker that is the only caller of `loadMore` — leaving "no
+              // data" permanent while unsearched pages still sit on the server.
+              <div aria-live="polite" aria-busy={loadingMore}>
+                <EmptyState
+                  title={copy.noMatchesInLoaded}
+                  description={partialScopeNote}
+                  action={<Button variant="outline" disabled={loadingMore} onClick={() => void loadMore()}>{loadingMore ? copy.loadingMore : copy.loadMore}</Button>}
+                />
+              </div>
             ) : (
-              <div className="text-center text-muted-foreground py-8">{copy.noData}</div>
+              <EmptyState title={copy.noData} />
             )}
           </div>
-        </CardContent>
-      </Card>
+      </Panel>
 
       {/* Compose Dialog */}
       {selectedMessage ? (
@@ -434,7 +450,7 @@ export function RadioPanel({ radio, visibleProjects, copy, onRefresh, hasMore = 
             <DialogDescription>{copy.broadcastMessage}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 dialog-scroll-body">
-            <div className="space-y-2">
+            <div className="grid gap-2">
               <Label htmlFor="message-text">{copy.message}</Label>
               <Textarea
                 id="message-text"
@@ -446,12 +462,12 @@ export function RadioPanel({ radio, visibleProjects, copy, onRefresh, hasMore = 
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
+              <div className="grid gap-2">
                 <Label htmlFor="message-from">{copy.from}</Label>
                 <Input id="message-from" value={form.from} onChange={e => setForm(v => ({ ...v, from: e.target.value }))} />
               </div>
 
-              <div className="space-y-2">
+              <div className="grid gap-2">
                 <Label htmlFor="message-to">{copy.to}</Label>
                 <Input
                   id="message-to"
@@ -466,13 +482,13 @@ export function RadioPanel({ radio, visibleProjects, copy, onRefresh, hasMore = 
                 </datalist>
               </div>
 
-              <div className="space-y-2">
+              <div className="grid gap-2">
                 <Label htmlFor="message-type">{copy.type}</Label>
                 <select
                   id="message-type"
                   value={form.type}
                   onChange={e => setForm(v => ({ ...v, type: e.target.value }))}
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                  className={selectFieldClass}
                 >
                   <option value="note">note</option>
                   <option value="reply">reply</option>
@@ -484,7 +500,7 @@ export function RadioPanel({ radio, visibleProjects, copy, onRefresh, hasMore = 
                 </select>
               </div>
 
-              <div className="space-y-2">
+              <div className="grid gap-2">
                 <Label htmlFor="message-project">{copy.project}</Label>
                 <Input
                   id="message-project"
@@ -501,7 +517,7 @@ export function RadioPanel({ radio, visibleProjects, copy, onRefresh, hasMore = 
             </div>
 
             {(form.thread || form.replyTo) && (
-              <div className="grid grid-cols-2 gap-4 p-3 rounded-lg bg-muted">
+              <div className="grid grid-cols-2 gap-4 p-3 rounded-sm bg-muted">
                 <div>
                   <p className="text-sm font-medium">{copy.thread}</p>
                   <p className="text-sm text-muted-foreground">{form.thread || '-'}</p>
@@ -514,9 +530,9 @@ export function RadioPanel({ radio, visibleProjects, copy, onRefresh, hasMore = 
             )}
 
             {error && (
-              <div className="flex items-center gap-2 p-3 rounded-lg border border-destructive/20 bg-destructive/10" role="alert">
-                <AlertCircle className="w-4 h-4 text-destructive shrink-0" />
-                <p className="text-sm text-destructive">{error}</p>
+              <div className="flex items-center gap-2 p-3 rounded-sm border border-danger-line bg-danger-tint" role="alert">
+                <AlertCircle className="w-4 h-4 text-danger shrink-0" />
+                <p className="text-sm text-danger-text">{error}</p>
               </div>
             )}
           </div>

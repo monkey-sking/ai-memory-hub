@@ -204,6 +204,7 @@ const dashboardProjects = createDashboardProjectsApi({
 const dashboardMetrics = createDashboardMetricsApi({
   readDispatchQueue,
   readLatestRelayStatusByThread,
+  readRadioMessages,
   readRelayStatus,
   readTasks,
   readWorkflows

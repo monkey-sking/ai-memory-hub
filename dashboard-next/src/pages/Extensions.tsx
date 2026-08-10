@@ -1,15 +1,24 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { AlertTriangle, CheckCircle2, Download, GitCompare, RefreshCw, Search, ShieldAlert, Upload, XCircle } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Download, GitCompare, RefreshCw, ShieldAlert, Upload } from 'lucide-react'
 import { apiGet, apiPost, asArray } from '../lib/api'
 import { toolIconFiles, toolDisplayNames } from '../lib/toolMetadata'
 import { dashboardLabels, type DashboardCopy } from '../lib/dashboardCopy'
 import type { AppOutletContext, AppLanguage } from '../lib/i18n'
+import { cn } from '@/lib/utils'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
-import { Input } from '../components/ui/input'
-import './Extensions.css'
+import {
+  EmptyState,
+  ErrorState,
+  FilterBar,
+  LoadingState,
+  PageShell,
+  Panel,
+  StatTile,
+  StatTileGrid,
+  StatusTabs
+} from '../components/shell'
 
 type ExtensionRecord = {
   id: string
@@ -50,6 +59,9 @@ export default function Extensions() {
   const [diffChanges, setDiffChanges] = useState<DiffChange[]>([])
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
+  // `message` carries both failures and sync confirmations. Without this the
+  // "preview complete" line would render inside a danger-tinted ErrorState.
+  const [messageKind, setMessageKind] = useState<'error' | 'info'>('error')
   const [query, setQuery] = useState('')
   const [selectedApps, setSelectedApps] = useState<Record<AppName, boolean>>({
     claude: true, codex: true, gemini: true, opencode: true,
@@ -59,6 +71,11 @@ export default function Extensions() {
   const [previewApply, setPreviewApply] = useState(false)
   const [lastSyncResult, setLastSyncResult] = useState<{ applied?: boolean; changes?: DiffChange[] } | null>(null)
   const [removeTarget, setRemoveTarget] = useState<string | null>(null)
+
+  const fail = (error: unknown) => {
+    setMessageKind('error')
+    setMessage(error instanceof Error ? error.message : String(error))
+  }
 
   const load = async () => {
     setBusy(true)
@@ -76,7 +93,7 @@ export default function Extensions() {
       }
       setMessage('')
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : String(error))
+      fail(error)
     } finally {
       setBusy(false)
     }
@@ -124,7 +141,7 @@ export default function Extensions() {
       await apiPost('/api/extensions/import', { app: activeApps.length === 1 ? activeApps[0] : '' })
       await load()
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : String(error))
+      fail(error)
     } finally {
       setBusy(false)
     }
@@ -141,7 +158,7 @@ export default function Extensions() {
       setShowPreview(true)
       setMessage('')
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : String(error))
+      fail(error)
     } finally {
       setBusy(false)
     }
@@ -160,9 +177,10 @@ export default function Extensions() {
         setDiffChanges(asArray<DiffChange>(res.changes))
         setShowPreview(true)
       }
+      setMessageKind('info')
       setMessage(res.applied ? copy.extensions.syncApplied : copy.extensions.previewComplete)
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : String(error))
+      fail(error)
     } finally {
       setBusy(false)
     }
@@ -175,7 +193,7 @@ export default function Extensions() {
       setRemoveTarget(null)
       await load()
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : String(error))
+      fail(error)
     } finally {
       setBusy(false)
     }
@@ -188,225 +206,247 @@ export default function Extensions() {
   const appStatus = status?.clients || {}
 
   return (
-    <div className="extensions-page">
-      <header className="extensions-header">
-        <div>
-          <p className="extensions-eyebrow">AI MEMORY HUB / EXTENSIONS</p>
-          <h1>{copy.extensions.title}</h1>
-          <p>{copy.extensions.subtitle}</p>
-        </div>
-        <div className="extensions-header-actions">
-          <Button variant="outline" onClick={() => void load()} disabled={busy}>
-            <RefreshCw size={16} />{copy.extensions.refresh}
+    <PageShell
+      title={copy.extensions.title}
+      description={copy.extensions.subtitle}
+      contentClassName="flex flex-col gap-6"
+      actions={
+        <>
+          <Button variant="secondary" onClick={() => void load()} disabled={busy}>
+            <RefreshCw className={cn('h-4 w-4', busy && 'animate-spin')} />
+            {copy.extensions.refresh}
           </Button>
-          <Button variant="outline" onClick={() => void importExtensions()} disabled={busy}>
-            <Download size={16} />{copy.extensions.importAll}
+          <Button variant="secondary" onClick={() => void importExtensions()} disabled={busy}>
+            <Download className="h-4 w-4" />
+            {copy.extensions.importAll}
           </Button>
           <Button onClick={() => void runDiff()} disabled={busy}>
-            <GitCompare size={16} />{copy.extensions.diff}
+            <GitCompare className="h-4 w-4" />
+            {copy.extensions.diff}
           </Button>
-        </div>
-      </header>
-
-      <section className="extensions-summary-grid">
-        <Card>
-          <CardContent>
-            <span>{copy.extensions.registryMcp}</span>
-            <strong>{mcpRecords.length}</strong>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent>
-            <span>{copy.extensions.skillManagement}</span>
-            <a href="/skills" className="extensions-skill-link">{copy.extensions.openSkillsPage}</a>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent>
-            <span>{copy.extensions.managed}</span>
-            <strong>{managedCount}</strong>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent>
-            <span>{copy.extensions.conflicts}</span>
-            <strong className={conflictCount > 0 ? 'extensions-conflict-count' : ''}>{conflictCount}</strong>
-          </CardContent>
-        </Card>
-      </section>
-
-      <section className="extensions-status-grid">
-        {APPS.map(app => {
-          const client = appStatus[app]
-          return (
-            <Status key={app} app={app} client={client} copy={copy} language={language} />
-          )
-        })}
-      </section>
-
-      <div className="extensions-toolbar">
-        <div className="extensions-toolbar-filters">
-          <label className="extensions-search">
-            <Search size={16} />
-            <Input value={query} onChange={e => setQuery(e.target.value)} placeholder={copy.extensions.searchPlaceholder} />
-          </label>
-          <div className="extensions-filter-btn">
-            {(['all', 'mcp'] as const).map(kind => (
-              <Button key={kind} size="sm" variant={kindFilterValue === kind ? 'default' : 'outline'} onClick={() => kindFilter(kind)}>
-                {kind === 'all' ? copy.extensions.all : kind.toUpperCase()}
+        </>
+      }
+      tabs={
+        <StatusTabs
+          label={copy.type}
+          value={kindFilterValue}
+          onChange={value => kindFilter(value === 'mcp' ? 'mcp' : 'all')}
+          allItem={{ value: 'all', label: copy.extensions.all, count: records.length }}
+          items={[{ value: 'mcp', label: copy.extensions.mcp, count: mcpRecords.length }]}
+        />
+      }
+      toolbar={
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-4">
+          <div role="group" aria-label={copy.toolReadiness} className="flex flex-wrap items-center gap-2">
+            {APPS.map(app => (
+              <Button
+                key={app}
+                size="sm"
+                variant={selectedApps[app] ? 'primary' : 'secondary'}
+                aria-pressed={selectedApps[app]}
+                onClick={() => toggleApp(app)}
+              >
+                {toolIconFiles[app] ? <img className="h-3.5 w-3.5 rounded-xs object-contain" src={toolIconFiles[app]} alt="" /> : null}
+                {toolDisplayNames[language][app] || app}
               </Button>
             ))}
           </div>
+          <div className="flex flex-wrap items-center gap-3 md:ml-auto">
+            <label className="inline-flex h-8 cursor-pointer items-center gap-2 text-sm text-ink-2">
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-[var(--color-accent-base)]"
+                checked={previewApply}
+                onChange={e => setPreviewApply(e.target.checked)}
+              />
+              {copy.extensions.applyElsePreview}
+            </label>
+            <Button size="sm" onClick={() => void runSync()} disabled={busy}>
+              <Upload className="h-4 w-4" />
+              {previewApply ? copy.extensions.applySync : copy.extensions.previewSync}
+            </Button>
+          </div>
         </div>
-        <div className="extensions-app-selector">
+      }
+      footer={
+        <>
+          <span>{copy.extensions.skillManagement}</span>
+          <a href="/skills" className="text-accent-base hover:underline">{copy.extensions.openSkillsPage}</a>
+        </>
+      }
+    >
+      {message ? (
+        messageKind === 'error'
+          ? <ErrorState variant="inline" title={copy.error} description={message} />
+          : <p role="status" className="rounded-md border border-info-line bg-info-tint px-3 py-2 text-sm text-info-text">{message}</p>
+      ) : null}
+
+      <StatTileGrid columns={3}>
+        <StatTile label={copy.extensions.registryMcp} value={mcpRecords.length} />
+        <StatTile label={copy.extensions.managed} value={managedCount} />
+        <StatTile
+          label={copy.extensions.conflicts}
+          value={<span className={cn(conflictCount > 0 && 'text-danger')}>{conflictCount}</span>}
+        />
+      </StatTileGrid>
+
+      <Panel title={copy.toolReadiness} count={APPS.filter(app => appStatus[app]).length}>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {APPS.map(app => (
-            <button key={app} className={`extensions-app-btn ${selectedApps[app] ? 'active' : ''}`} onClick={() => toggleApp(app)} type="button">
-              {toolIconFiles[app] && <img className="extensions-app-icon" src={toolIconFiles[app]} alt={toolDisplayNames[language][app] || app} />}
-              <span>{toolDisplayNames[language][app] || app}</span>
-            </button>
+            <ClientStatus key={app} app={app} client={appStatus[app]} copy={copy} language={language} />
           ))}
         </div>
-      </div>
+      </Panel>
 
-      <div className="extensions-toolbar">
-        <label className="extensions-preview-toggle">
-          <input type="checkbox" checked={previewApply} onChange={e => setPreviewApply(e.target.checked)} />
-          <span>{copy.extensions.applyElsePreview}</span>
-        </label>
-        <Button size="sm" onClick={() => void runSync()} disabled={busy}>
-          <Upload size={14} />{previewApply ? copy.extensions.applySync : copy.extensions.previewSync}
-        </Button>
-      </div>
-
-      {showPreview && (
-        <Card className="extensions-preview-card">
-          <CardHeader>
-            <CardTitle className="extensions-diff-header">
-              <GitCompare size={18} />
-              {copy.extensions.diffPreview}
-              <span className="extensions-diff-count">
-                {addCount} {copy.extensions.toAdd} · {conflictCount} {copy.extensions.conflicts} · {currentCount} {copy.extensions.current}
-              </span>
-              <Button size="sm" variant="ghost" onClick={() => setShowPreview(false)}>{copy.close}</Button>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="extensions-diff-list">
-              {groupedDiffChanges.map(change => (
-                <div key={change.id} className={`extensions-diff-row extensions-diff-${change.action} extensions-diff-conflict`}>
-                  <span className="extensions-diff-action">
-                    {change.action === 'add' ? <Download size={14} /> : change.action === 'conflict' ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />}
-                    {change.action === 'add' ? copy.extensions.add : change.action === 'conflict' ? copy.extensions.conflict : copy.extensions.currentBadge}
-                  </span>
-                  <span className="extensions-diff-id">{change.id}</span>
-                  <span className="extensions-diff-app">{change.apps.map(app => toolDisplayNames[language][app] || app).join(' · ')}</span>
-                </div>
-              ))}
-              {!diffChanges.length && <div className="extensions-empty">{copy.extensions.noDifferences}</div>}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {lastSyncResult && (
-        <Card className="extensions-sync-result">
-          <CardContent>
-            <span className={lastSyncResult.applied ? 'ext-status-good' : 'ext-status-preview'}>
-              {lastSyncResult.applied ? <CheckCircle2 size={14} /> : <GitCompare size={14} />}
-              {lastSyncResult.applied ? copy.extensions.applied : copy.extensions.previewOnly}
+      {showPreview ? (
+        <Panel
+          title={copy.extensions.diffPreview}
+          count={groupedDiffChanges.length}
+          flushBody
+          actions={<Button size="sm" variant="ghost" onClick={() => setShowPreview(false)}>{copy.close}</Button>}
+          footer={
+            <span className="truncate tabular-nums">
+              {addCount} {copy.extensions.toAdd} · {conflictCount} {copy.extensions.conflicts} · {currentCount} {copy.extensions.current}
             </span>
-            {lastSyncResult.changes && (
-              <span>{lastSyncResult.changes.length} {copy.extensions.changes}</span>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      <Card>
-        <CardHeader>
-          <CardTitle>{copy.extensions.syncedExtensions}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="extensions-list">
-            {filteredRecords.map(item => (
-              <div className={`extensions-row ${item.managed === false ? 'extensions-unmanaged' : ''}`} key={item.id}>
-                <div className="extensions-row-main">
-                  <div className="extensions-row-info">
-                    <strong>{item.id}</strong>
-                    <small>
-                      {item.kind === 'mcp' ? copy.extensions.mcp : copy.extensions.skillKind}
-                      {item.server?.type ? ` · ${item.server.type}` : ''}
-                      {item.server?.command ? ` · ${item.server.command}` : ''}
-                      {item.server?.url ? ` · ${item.server.url}` : ''}
-                      {item.updatedAt ? ` · ${new Date(item.updatedAt).toLocaleDateString()}` : ''}
-                    </small>
-                  </div>
-                  <div className="extensions-row-apps">
-                    {APPS.map(app => {
-                      const enabled = item.apps?.[app] !== false
-                      return (
-                        <Badge key={app} variant={enabled ? 'default' : 'outline'} className="extensions-app-badge">
-                          {toolDisplayNames[language][app] || app}
-                        </Badge>
-                      )
-                    })}
-                  </div>
-                </div>
-                <div className="extensions-row-state">
-                  {item.managed === false && <span className="ext-unmanaged-tag"><ShieldAlert size={13} />{copy.extensions.unmanaged}</span>}
-                  {item.kind === 'mcp' && (removeTarget === item.id ? (
-                    <span className="extensions-remove-confirm">
-                      <span>{copy.extensions.removeQuestion}</span>
-                      <Button size="sm" variant="destructive" onClick={() => void removeExtension(item.id)} disabled={busy}>{copy.extensions.confirmYes}</Button>
-                      <Button size="sm" variant="ghost" onClick={() => setRemoveTarget(null)}>{copy.extensions.confirmNo}</Button>
-                    </span>
-                  ) : (
-                    <Button size="sm" variant="outline" title={copy.extensions.removeFromList} aria-label={copy.extensions.removeFromList} onClick={() => setRemoveTarget(item.id)} disabled={busy}>{copy.extensions.remove}
-                    </Button>
-                  )
+          }
+        >
+          {groupedDiffChanges.length ? (
+            groupedDiffChanges.map(change => (
+              <div
+                key={change.id}
+                className={cn(
+                  'flex flex-wrap items-center gap-3 border-b border-line px-4 py-2.5 last:border-b-0',
+                  change.action === 'conflict' && 'bg-danger-tint/50',
+                  change.action === 'add' && 'bg-success-tint/50'
+                )}
+              >
+                <span
+                  className={cn(
+                    'flex w-28 shrink-0 items-center gap-1.5 text-xs font-semibold uppercase',
+                    change.action === 'conflict' ? 'text-danger-text' : change.action === 'add' ? 'text-success-text' : 'text-ink-3'
                   )}
-                </div>
+                >
+                  {change.action === 'add' ? <Download className="h-3.5 w-3.5" /> : change.action === 'conflict' ? <AlertTriangle className="h-3.5 w-3.5" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                  {change.action === 'add' ? copy.extensions.add : change.action === 'conflict' ? copy.extensions.conflict : copy.extensions.currentBadge}
+                </span>
+                <span className="min-w-0 flex-1 truncate font-mono text-sm text-ink">{change.id}</span>
+                <span className="shrink-0 text-xs text-ink-3">{change.apps.map(app => toolDisplayNames[language][app] || app).join(' · ')}</span>
               </div>
-            ))}
-            {!filteredRecords.length && (
-              <div className="extensions-empty">{copy.extensions.emptySynced}</div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+            ))
+          ) : (
+            <EmptyState size="sm" icon={null} title={copy.extensions.noDifferences} />
+          )}
+        </Panel>
+      ) : null}
 
-      {message && <p className="extensions-error" role="alert">{message}</p>}
-    </div>
+      {lastSyncResult ? (
+        <div role="status" className="flex flex-wrap items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3">
+          <Badge variant={lastSyncResult.applied ? 'success' : 'neutral'}>
+            {lastSyncResult.applied ? <CheckCircle2 className="h-3 w-3" /> : <GitCompare className="h-3 w-3" />}
+            {lastSyncResult.applied ? copy.extensions.applied : copy.extensions.previewOnly}
+          </Badge>
+          {lastSyncResult.changes ? (
+            <span className="text-sm tabular-nums text-ink-3">{lastSyncResult.changes.length} {copy.extensions.changes}</span>
+          ) : null}
+        </div>
+      ) : null}
+
+      <Panel
+        title={copy.extensions.syncedExtensions}
+        count={filteredRecords.length}
+        flushBody
+        toolbar={
+          <FilterBar
+            search={{
+              id: 'extensions-search',
+              value: query,
+              onChange: setQuery,
+              placeholder: copy.extensions.searchPlaceholder,
+              label: copy.extensions.searchPlaceholder
+            }}
+          />
+        }
+      >
+        {busy && !records.length ? (
+          <LoadingState variant="rows" label={copy.refreshing} className="p-4" />
+        ) : filteredRecords.length ? (
+          filteredRecords.map(item => (
+            <div
+              key={item.id}
+              className={cn(
+                'flex flex-wrap items-center gap-3 border-b border-line px-4 py-3 last:border-b-0',
+                item.managed === false && 'bg-surface-sunk/60'
+              )}
+            >
+              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className="truncate text-sm font-medium text-ink">{item.id}</span>
+                <span className="truncate text-xs text-ink-3">
+                  {item.kind === 'mcp' ? copy.extensions.mcp : copy.extensions.skillKind}
+                  {item.server?.type ? ` · ${item.server.type}` : ''}
+                  {item.server?.command ? ` · ${item.server.command}` : ''}
+                  {item.server?.url ? ` · ${item.server.url}` : ''}
+                  {item.updatedAt ? ` · ${new Date(item.updatedAt).toLocaleDateString()}` : ''}
+                </span>
+              </div>
+              <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                {APPS.map(app => (
+                  <Badge key={app} variant={item.apps?.[app] !== false ? 'accent' : 'neutral'}>
+                    {toolDisplayNames[language][app] || app}
+                  </Badge>
+                ))}
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                {item.managed === false ? (
+                  <Badge variant="warning"><ShieldAlert className="h-3 w-3" />{copy.extensions.unmanaged}</Badge>
+                ) : null}
+                {item.kind === 'mcp' && (removeTarget === item.id ? (
+                  <>
+                    <span className="text-xs text-ink-3">{copy.extensions.removeQuestion}</span>
+                    <Button size="sm" variant="danger" onClick={() => void removeExtension(item.id)} disabled={busy}>{copy.extensions.confirmYes}</Button>
+                    <Button size="sm" variant="ghost" onClick={() => setRemoveTarget(null)}>{copy.extensions.confirmNo}</Button>
+                  </>
+                ) : (
+                  <Button size="sm" variant="secondary" title={copy.extensions.removeFromList} aria-label={copy.extensions.removeFromList} onClick={() => setRemoveTarget(item.id)} disabled={busy}>
+                    {copy.extensions.remove}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          ))
+        ) : (
+          <EmptyState
+            title={records.length ? copy.noMatches : copy.noData}
+            description={records.length ? undefined : copy.extensions.emptySynced}
+          />
+        )}
+      </Panel>
+    </PageShell>
   )
 }
 
-function Status({ app, client, copy, language }: { app: string; client?: StatusClient; copy: DashboardCopy; language: AppLanguage }) {
+function ClientStatus({ app, client, copy, language }: { app: string; client?: StatusClient; copy: DashboardCopy; language: AppLanguage }) {
   return (
-    <Card className="extensions-status-card">
-      <CardContent className="extensions-client-card">
-        <div className="extensions-client-header">
-          <span className={`extensions-client-dot ${client ? 'dot-good' : 'dot-missing'}`} />
-          <strong>{toolDisplayNames[language][app] || app}</strong>
-          {client ? (
-            <span className="ext-status-good"><CheckCircle2 size={14} />{copy.extensions.detected}</span>
-          ) : (
-            <span className="ext-status-missing"><XCircle size={14} />{copy.extensions.notDetected}</span>
-          )}
+    <div className="flex min-w-0 flex-col gap-2 rounded-md border border-line p-3">
+      <div className="flex min-w-0 items-center gap-2">
+        {toolIconFiles[app] ? <img className="h-4 w-4 shrink-0 rounded-xs object-contain" src={toolIconFiles[app]} alt="" /> : null}
+        <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">{toolDisplayNames[language][app] || app}</span>
+        <Badge variant={client ? 'success' : 'danger'} dot>
+          {client ? copy.extensions.detected : copy.extensions.notDetected}
+        </Badge>
+      </div>
+      {client ? (
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs tabular-nums text-ink-3">
+          <span>{copy.extensions.mcp}: {client.managed.mcp} / {client.mcp}</span>
+          <span>{copy.extensions.skillKind}: {client.managed.skills} / {client.skills}</span>
         </div>
-        {client && (
-          <div className="extensions-client-stats">
-            <span>{copy.extensions.mcp}: {client.managed.mcp} / {client.mcp}</span>
-            <span>{copy.extensions.skillKind}: {client.managed.skills} / {client.skills}</span>
-          </div>
-        )}
-        {(client?.diagnostics?.length ?? 0) > 0 && (
-          <div className="extensions-status-diagnostics">
-            {client!.diagnostics.slice(0, 2).map((diag, i) => (
-              <span key={i} className={`ext-diag ext-diag-${diag.level}`}>{diag.message}</span>
-            ))}
-          </div>
-        )}
-      </CardContent>
-    </Card>
+      ) : null}
+      {(client?.diagnostics?.length ?? 0) > 0 ? (
+        <div className="flex flex-col gap-1">
+          {client!.diagnostics.slice(0, 2).map((diag, i) => (
+            <span key={i} className={cn('text-xs', diag.level === 'error' ? 'text-danger' : 'text-warning')}>{diag.message}</span>
+          ))}
+        </div>
+      ) : null}
+    </div>
   )
 }

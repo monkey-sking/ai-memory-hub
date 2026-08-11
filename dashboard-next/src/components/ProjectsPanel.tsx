@@ -331,13 +331,12 @@ export function ProjectsPanel({ copy, model, onRefresh }: ProjectsPanelProps) {
                 <TableHead className="w-56">{copy.project}</TableHead>
                 <TableHead className="w-28">{copy.type}</TableHead>
                 <TableHead>{copy.title}</TableHead>
-                <TableHead className="w-24" numeric>{copy.updated}</TableHead>
                 <TableHead className="w-56 text-right">{copy.actions}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {model.visibleProjects.length === 0 ? (
-                <TableEmpty colSpan={6}>{copy.noData}</TableEmpty>
+                <TableEmpty colSpan={5}>{copy.noData}</TableEmpty>
               ) : (
                 model.visibleProjects.map((project, idx) => (
                   <TableRow key={idx} className="project-row-clickable" tabIndex={0} onClick={event => { if (!(event.target as HTMLElement).closest('button, a, input, select')) openEdit(project) }} onKeyDown={event => { if ((event.key === 'Enter' || event.key === ' ') && event.target === event.currentTarget) openEdit(project) }}>
@@ -345,8 +344,9 @@ export function ProjectsPanel({ copy, model, onRefresh }: ProjectsPanelProps) {
                       <StatusBadge status={textOf(project.status, 'active')} copy={copy} />
                     </TableCell>
                     <TableCell>
-                      <div className="flex min-w-0 flex-col">
+                      <div className="flex min-w-0 flex-col gap-0.5">
                         <span className="truncate font-medium">{textOf(project.id || project.name, '-')}</span>
+                        <span className="truncate text-xs text-ink-3">{formatRelativeTime(textOf(project.updatedAt))}</span>
                         {asArray<string>(project.aliases).length > 0 && (
                           <span className="truncate text-xs text-ink-3">
                             {asArray<string>(project.aliases).join(', ')}
@@ -381,9 +381,6 @@ export function ProjectsPanel({ copy, model, onRefresh }: ProjectsPanelProps) {
                           )
                         })()}
                       </div>
-                    </TableCell>
-                    <TableCell numeric className="text-xs text-ink-3">
-                      {formatRelativeTime(textOf(project.updatedAt))}
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center justify-end gap-2">

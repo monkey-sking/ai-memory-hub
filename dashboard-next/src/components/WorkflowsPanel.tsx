@@ -454,7 +454,7 @@ function WorkflowCard({ workflow, copy, busy, onOpenGraph, onEdit, onStatus, onA
     className="workflow-card workflow-card-clickable"
     role="button"
     tabIndex={0}
-    aria-label={`${title} — ${copy.viewExecutionGraph}`}
+    aria-label={`${title} — ${copy.viewExecutionGraph} · ${copy.updated}: ${formatRelativeTime(textOf(workflow.updatedAt || workflow.createdAt))}`}
     onClick={event => { if (!(event.target as HTMLElement).closest('button, a, input, select, summary, details')) void onOpenGraph(workflow) }}
     onKeyDown={event => {
       if ((event.key !== 'Enter' && event.key !== ' ') || event.target !== event.currentTarget) return
@@ -467,7 +467,7 @@ function WorkflowCard({ workflow, copy, busy, onOpenGraph, onEdit, onStatus, onA
       void onOpenGraph(workflow)
     }}
   >
-    <header className="workflow-card-header"><div className="workflow-title-block"><h3>{title}</h3><span className="workflow-project-chip">{project}</span></div><div className="workflow-badges"><StatusBadge status={status} copy={copy} /><Badge variant={priorityBadgeVariant(priority)} className="max-w-[180px] truncate">{priorityLabel(copy, priority)}</Badge></div></header>
+    <header className="workflow-card-header"><div className="workflow-title-block"><h3>{title}</h3><span className="workflow-project-chip">{project}</span><span className="workflow-updated">{copy.updated}: {formatRelativeTime(textOf(workflow.updatedAt || workflow.createdAt))}</span></div><div className="workflow-badges"><StatusBadge status={status} copy={copy} /><Badge variant={priorityBadgeVariant(priority)} className="max-w-[180px] truncate">{priorityLabel(copy, priority)}</Badge></div></header>
     {description ? <p className="workflow-description">{description}</p> : null}
     {roles.length ? <dl className="workflow-role-list">{roles.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl> : null}
     {linkedTasks.length ? <div className="workflow-linked"><span>{copy.linkedItems}</span><div>{linkedTasks.map(taskId => <span className="workflow-link-chip" key={taskId}>{taskId}</span>)}</div></div> : null}
@@ -476,7 +476,6 @@ function WorkflowCard({ workflow, copy, busy, onOpenGraph, onEdit, onStatus, onA
       {nextTransition ? <Button size="sm" disabled={busy} onClick={() => void onStatus(workflow, nextTransition.status)}>{nextTransition.label}</Button> : null}
       {canBlock ? <Button variant="secondary" size="sm" disabled={busy} onClick={() => void onStatus(workflow, 'blocked')}>{copy.block}</Button> : null}
       <WorkflowActionMenu label={copy.moreActions} actions={menuActions} />
-      <span className="workflow-updated">{copy.updated}: {formatRelativeTime(textOf(workflow.updatedAt || workflow.createdAt))}</span>
     </div>
   </article>
 }

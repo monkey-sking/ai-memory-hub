@@ -9471,6 +9471,11 @@ function detectTools(memoryDir = resolveMemoryDir()) {
       dir: path.join(home, ".codex")
     },
     {
+      name: "codebuddy",
+      kind: "cli-config",
+      dir: path.join(home, ".codebuddy")
+    },
+    {
       name: "claude",
       kind: "cli-config",
       dir: path.join(home, ".claude")

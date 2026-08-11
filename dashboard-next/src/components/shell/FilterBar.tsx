@@ -476,14 +476,39 @@ const FilterBar = React.forwardRef<HTMLDivElement, FilterBarProps>(
       (search && search.value.trim() ? 1 : 0) + controls.filter(isControlActive).length
     const active = activeCount ?? computedActive
 
+    // When the rail overflows at mid widths (e.g. /tasks with 3 controls at
+    // ~768px) the clear button is pushed past the right edge and only reachable
+    // by scrolling. A static fade would lie when nothing overflows, so we detect
+    // the actual overflow and show a right (and, once scrolled, left) fade as a
+    // scroll affordance.
+    const railRef = React.useRef<HTMLDivElement | null>(null)
+    const [scrollHint, setScrollHint] = React.useState<{ left: boolean; right: boolean }>({ left: false, right: false })
+    React.useEffect(() => {
+      const rail = railRef.current
+      if (!rail) return
+      const update = () => {
+        const max = rail.scrollWidth - rail.clientWidth
+        setScrollHint({ left: rail.scrollLeft > 1, right: max - rail.scrollLeft > 1 })
+      }
+      update()
+      rail.addEventListener('scroll', update, { passive: true })
+      const ro = new ResizeObserver(update)
+      ro.observe(rail)
+      return () => { rail.removeEventListener('scroll', update); ro.disconnect() }
+    }, [])
+
     return (
       <div
-        ref={ref}
+        ref={(node) => {
+          railRef.current = node
+          if (typeof ref === 'function') ref(node)
+          else if (ref) (ref as React.MutableRefObject<HTMLDivElement | null>).current = node
+        }}
         data-slot="filter-bar"
         data-shell-rail=""
         role="search"
         className={cn(
-          'flex w-full min-w-0 flex-col gap-2 py-1',
+          'relative flex w-full min-w-0 flex-col gap-2 py-1',
           'md:flex-row md:flex-nowrap md:items-center md:overflow-x-auto',
           className
         )}
@@ -551,6 +576,13 @@ const FilterBar = React.forwardRef<HTMLDivElement, FilterBarProps>(
               ) : null}
             </button>
           </div>
+        ) : null}
+
+        {scrollHint.right ? (
+          <div aria-hidden="true" data-scroll-hint="right" className="pointer-events-none absolute inset-y-0 right-0 z-[1] w-10 bg-gradient-to-l from-surface to-transparent" />
+        ) : null}
+        {scrollHint.left ? (
+          <div aria-hidden="true" data-scroll-hint="left" className="pointer-events-none absolute inset-y-0 left-0 z-[1] w-10 bg-gradient-to-r from-surface to-transparent" />
         ) : null}
       </div>
     )

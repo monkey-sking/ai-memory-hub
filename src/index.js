@@ -1999,12 +1999,80 @@ function reviewCommand(argv) {
 
 function worktreeCommand(argv) {
   const action = argv[0] || "list";
-  if (!["list", "inspect", "snapshot"].includes(action)) throw new Error("Usage: ai-memory-hub worktree list|inspect|snapshot [--id <path-or-id>]");
+  if (action === "add") return worktreeAddCommand(argv.slice(1));
+  if (action === "rm" || action === "remove") return worktreeRemoveCommand(argv.slice(1));
+  if (!["list", "inspect", "snapshot"].includes(action)) throw new Error("Usage: ai-memory-hub worktree list|inspect|snapshot [--id <path-or-id>] | add <repo> [--name <n>] [--branch <b>] | rm <worktree-path> [--force]");
   const config = loadConfig();
   ensureHub(config.memoryDir);
   const worktrees = dashboardWorktrees.getDashboardWorktrees(config.memoryDir).worktrees;
   const id = getOption(argv.slice(1), "--id") || argv[1] || "";
   console.log(JSON.stringify(id ? worktrees.filter((item) => item.id === id || item.path === id || item.branch === id) : worktrees, null, 2));
+}
+
+function runGit(repoDir, args) {
+  const r = spawnSync("git", args, { cwd: repoDir, encoding: "utf8" });
+  if (r.status !== 0) throw new Error(`git ${args.join(" ")} failed: ${(r.stderr || r.stdout || "").trim().slice(0, 300)}`);
+  return r.stdout.trim();
+}
+
+/** 创建隔离 worktree：git worktree add <repo>/.ai-worktrees/<name> [-b <branch>]，并归档一条 memory 事件。 */
+function worktreeAddCommand(argv) {
+  const repo = (argv[0] || "").trim();
+  if (!repo) throw new Error("Usage: ai-memory-hub worktree add <repo-path> [--name <worktree-name>] [--branch <branch>]");
+  const name = (getOption(argv, "--name") || "").trim() || `agent-${Date.now().toString(36)}`;
+  const branch = (getOption(argv, "--branch") || "").trim();
+  const repoAbs = path.resolve(repo);
+  if (!fs.existsSync(repoAbs)) throw new Error(`Repo path not found: ${repoAbs}`);
+  runGit(repoAbs, ["rev-parse", "--git-dir"]); // 校验是 git 仓库
+  const wtDir = path.join(repoAbs, ".ai-worktrees", name);
+  if (fs.existsSync(wtDir)) throw new Error(`Worktree already exists: ${wtDir}`);
+  fs.mkdirSync(path.dirname(wtDir), { recursive: true });
+  const args = ["worktree", "add", wtDir];
+  if (branch) args.push("-b", branch);
+  runGit(repoAbs, args);
+  const result = { ok: true, name, path: wtDir, branch: branch || "(detached)", repo: repoAbs, createdAt: new Date().toISOString() };
+  try {
+    const config = loadConfig();
+    ensureHub(config.memoryDir);
+    appendJsonl(path.join(config.memoryDir, "inbox", "events.jsonl"), {
+      source: "amh-cli",
+      text: `Created isolated worktree ${name} at ${wtDir} (branch ${branch || "detached"}) for repo ${repoAbs}`,
+      metadata: { kind: "workflow", project: path.basename(repoAbs), scope: "worktree", confidence: "high" }
+    });
+  } catch (_) { /* 归档失败不影响 worktree 创建 */ }
+  console.log(JSON.stringify(result, null, 2));
+}
+
+/** 移除隔离 worktree：从 worktree 的 .git 文件反查主仓库后执行 git worktree remove。 */
+function worktreeRemoveCommand(argv) {
+  const target = (argv[0] || "").trim();
+  const force = hasFlag(argv, "--force");
+  if (!target) throw new Error("Usage: ai-memory-hub worktree rm <worktree-path> [--force]");
+  const abs = path.resolve(target);
+  if (!fs.existsSync(abs)) throw new Error(`Worktree path not found: ${abs}`);
+  const dotGitFile = path.join(abs, ".git");
+  let repo = "";
+  if (fs.existsSync(dotGitFile) && fs.statSync(dotGitFile).isFile()) {
+    const content = fs.readFileSync(dotGitFile, "utf8");
+    const m = content.match(/gitdir:\s*(.+)/);
+    if (m) repo = path.resolve(path.dirname(m[1].trim()), "..", ".."); // <repo>/.git/worktrees/<name> → <repo>
+  }
+  if (!repo) {
+    // 直接在主仓库里找：尝试把 target 当作 <repo>/.ai-worktrees/<name> 解析
+    const candidates = [path.join(abs, ".."), abs];
+    for (const c of candidates) {
+      try {
+        runGit(c, ["rev-parse", "--git-dir"]);
+        repo = c;
+        break;
+      } catch (_) { /* 继续 */ }
+    }
+  }
+  if (!repo) throw new Error(`Cannot locate parent repo for worktree: ${abs}`);
+  const args = ["worktree", "remove", abs];
+  if (force) args.push("--force");
+  runGit(repo, args);
+  console.log(JSON.stringify({ ok: true, removed: abs }, null, 2));
 }
 
 function sessionInspectCommand(argv) {

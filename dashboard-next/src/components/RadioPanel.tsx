@@ -373,8 +373,8 @@ export function RadioPanel({ radio, visibleProjects, copy, onRefresh, hasMore = 
                     subtitle={<span className="inline-flex items-center gap-2">{from} <span aria-hidden="true">→</span> {to}{timestamp ? <><span aria-hidden="true"> · </span><time dateTime={timestamp}>{formatRelativeTime(timestamp, locale)}</time></> : null}</span>}
                     meta={
                       <>
-                        <Badge variant="secondary">{project}</Badge>
-                        {thread ? <Badge variant="outline">#{thread}</Badge> : null}
+                        {project && project !== '-' ? <Badge variant="neutral">{project}</Badge> : null}
+                        {thread ? <Badge variant="neutral">#{thread}</Badge> : null}
                       </>
                     }
                     actions={
@@ -555,14 +555,14 @@ export function RadioPanel({ radio, visibleProjects, copy, onRefresh, hasMore = 
 }
 
 function TypeBadge({ type }: { type: string }) {
-  const variants: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
-    note: { variant: 'secondary' },
-    reply: { variant: 'outline' },
-    review: { variant: 'default' },
-    handoff: { variant: 'default' },
-    risk: { variant: 'destructive' },
-    request: { variant: 'default' },
-    done: { variant: 'outline' }
+  const variants: Record<string, { variant: 'neutral' | 'accent' | 'danger' }> = {
+    note: { variant: 'neutral' },
+    reply: { variant: 'neutral' },
+    review: { variant: 'accent' },
+    handoff: { variant: 'accent' },
+    risk: { variant: 'danger' },
+    request: { variant: 'accent' },
+    done: { variant: 'neutral' }
   }
 
   const config = variants[type] || variants.note

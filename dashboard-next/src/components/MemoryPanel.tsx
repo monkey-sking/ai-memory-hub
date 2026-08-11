@@ -391,12 +391,12 @@ export function MemoryPanel({ memory, copy, onRefresh, hasMore = false, onLoadMo
 }
 
 function KindBadge({ kind }: { kind: string }) {
-  const variants: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
-    preference: { variant: 'default' },
-    workflow: { variant: 'default' },
-    project: { variant: 'secondary' },
-    correction: { variant: 'destructive' },
-    note: { variant: 'outline' }
+  const variants: Record<string, { variant: 'neutral' | 'accent' | 'danger' }> = {
+    preference: { variant: 'accent' },
+    workflow: { variant: 'accent' },
+    project: { variant: 'neutral' },
+    correction: { variant: 'danger' },
+    note: { variant: 'neutral' }
   }
 
   const config = variants[kind] || variants.note

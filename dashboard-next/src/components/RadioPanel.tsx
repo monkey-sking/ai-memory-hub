@@ -7,7 +7,8 @@ import { Textarea } from './ui/textarea'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription, DialogClose } from './ui/dialog'
 import { Send, Search, X, AlertCircle, Reply, Star } from 'lucide-react'
 import type { AnyRecord } from '@/lib/api'
-import { formatDate } from '@/lib/api'
+import type { AppLanguage } from '@/lib/i18n'
+import { formatDate, formatRelativeTime } from '@/lib/api'
 import { VirtualizedList } from './VirtualizedList'
 import { EmptyState, Panel } from '@/components/shell'
 import { ListRow, LIST_ROW_HEIGHT } from './ListRow'
@@ -50,6 +51,7 @@ interface RadioPanelProps {
   onRefresh: () => Promise<void>
   hasMore?: boolean
   onLoadMore?: () => Promise<void>
+  language: AppLanguage
 }
 
 function textOf(value: unknown, fallback = ''): string {
@@ -63,7 +65,8 @@ function uniqueSorted(items: string[]): string[] {
 
 const selectFieldClass = cn(fieldBaseStyles, 'flex h-9 px-3 py-0')
 
-export function RadioPanel({ radio, visibleProjects, copy, onRefresh, hasMore = false, onLoadMore }: RadioPanelProps) {
+export function RadioPanel({ radio, visibleProjects, copy, onRefresh, hasMore = false, onLoadMore, language }: RadioPanelProps) {
+  const locale = language === 'zh' ? 'zh-CN' : 'en'
   const [form, setForm] = useState({
     text: '',
     from: 'dashboard-next',
@@ -341,7 +344,7 @@ export function RadioPanel({ radio, visibleProjects, copy, onRefresh, hasMore = 
           {/* Messages Stream */}
           <div className="-mx-4 border-t border-border">
             {filteredMessages.length ? (
-            <div aria-live="polite" aria-busy={loadingMore}>
+            <div aria-busy={loadingMore}>
               <VirtualizedList
                 items={visibleMessages}
                 itemHeight={LIST_ROW_HEIGHT}
@@ -367,14 +370,13 @@ export function RadioPanel({ radio, visibleProjects, copy, onRefresh, hasMore = 
                     ariaLabel={text}
                     leading={<TypeBadge type={type} />}
                     title={text}
-                    subtitle={<span className="inline-flex items-center gap-2">{from} <span aria-hidden="true">→</span> {to}</span>}
+                    subtitle={<span className="inline-flex items-center gap-2">{from} <span aria-hidden="true">→</span> {to}{timestamp ? <><span aria-hidden="true"> · </span><time dateTime={timestamp}>{formatRelativeTime(timestamp, locale)}</time></> : null}</span>}
                     meta={
                       <>
                         <Badge variant="secondary">{project}</Badge>
                         {thread ? <Badge variant="outline">#{thread}</Badge> : null}
                       </>
                     }
-                    timestamp={timestamp}
                     actions={
                       <>
                         <Button variant="ghost" size="sm" onClick={() => startReply(message)} aria-label={copy.reply}>
@@ -400,7 +402,7 @@ export function RadioPanel({ radio, visibleProjects, copy, onRefresh, hasMore = 
               // Without this branch the list unmounts on an empty filter result, and with
               // it the end marker that is the only caller of `loadMore` — leaving "no
               // data" permanent while unsearched pages still sit on the server.
-              <div aria-live="polite" aria-busy={loadingMore}>
+              <div aria-busy={loadingMore}>
                 <EmptyState
                   title={copy.noMatchesInLoaded}
                   description={partialScopeNote}
@@ -427,7 +429,7 @@ export function RadioPanel({ radio, visibleProjects, copy, onRefresh, hasMore = 
                 <strong>{textOf(selectedMessage.from, '-')}</strong>
                 <span aria-hidden="true">→</span>
                 <strong>{textOf(selectedMessage.to, '-')}</strong>
-                <time>{formatDate(textOf(selectedMessage.ts || selectedMessage.createdAt), 'compact')}</time>
+                <time dateTime={textOf(selectedMessage.ts || selectedMessage.createdAt)}>{formatDate(textOf(selectedMessage.ts || selectedMessage.createdAt), 'compact')}</time>
               </div>
               <p className="radio-detail-text">{textOf(selectedMessage.text, '-')}</p>
               <div className="radio-detail-meta">

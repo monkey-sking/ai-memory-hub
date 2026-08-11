@@ -214,7 +214,7 @@ export default function Chat() {
                 <p className="text-sm leading-relaxed whitespace-pre-wrap text-ink wrap-anywhere">
                   {message.content}
                 </p>
-                <time className="text-xs text-ink-3">{message.timestamp.toLocaleTimeString()}</time>
+                <time dateTime={message.timestamp.toISOString()} className="text-xs text-ink-3">{message.timestamp.toLocaleTimeString()}</time>
               </div>
             ))}
           </div>

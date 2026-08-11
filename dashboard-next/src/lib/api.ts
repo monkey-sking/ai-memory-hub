@@ -90,13 +90,16 @@ const RELATIVE_TIME_DIVISIONS: Array<{ amount: number; unit: Intl.RelativeTimeFo
 /**
  * Human-friendly relative time ("刚刚", "5 分钟前"). Falls back to the raw
  * value for unparsable input, matching the guard behaviour of `formatDate`.
+ *
+ * `locale` lets callers follow the dashboard's app language instead of the
+ * browser locale (the dashboard ships zh + en; the browser may be neither).
  */
-export function formatRelativeTime(value: string): string {
+export function formatRelativeTime(value: string, locale?: string): string {
   if (!value) return '-'
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
   const diffSeconds = (date.getTime() - Date.now()) / 1000
-  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' })
+  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' })
   let duration = diffSeconds
   for (const division of RELATIVE_TIME_DIVISIONS) {
     if (Math.abs(duration) < division.amount) {

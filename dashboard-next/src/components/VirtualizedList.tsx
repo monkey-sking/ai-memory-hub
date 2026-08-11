@@ -105,10 +105,10 @@ export function VirtualizedList<T>({
 
   return (
     <div ref={viewportRef} className={`virtual-list-viewport ${className}`} style={{ height }} onScroll={onScroll}>
-      <div className="virtual-list-content" style={containerStyle}>
+      <div className="virtual-list-content" style={containerStyle} role="list">
         {visibleItems.map((item, offset) => {
           const index = firstVisible + offset
-          return <div className="virtual-list-item" key={getKey(item, index)} style={{ height: itemHeight, transform: `translateY(${index * itemHeight}px)` }}>{renderItem(item, index)}</div>
+          return <div className="virtual-list-item" key={getKey(item, index)} style={{ height: itemHeight, transform: `translateY(${index * itemHeight}px)` }} role="listitem" aria-setsize={hasMore ? -1 : items.length} aria-posinset={index + 1}>{renderItem(item, index)}</div>
         })}
         {hasMore ? <div ref={endRef} className="virtual-list-end-marker" style={{ top: `${Math.max(totalHeight - 1, 0)}px` }} aria-hidden="true" /> : null}
       </div>

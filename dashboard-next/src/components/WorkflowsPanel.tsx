@@ -7,6 +7,8 @@ import { Input, fieldBaseStyles } from './ui/input'
 import { Label } from './ui/label'
 import { Textarea } from './ui/textarea'
 import { cn } from '@/lib/utils'
+import { Badge } from './ui/badge'
+import { priorityBadgeVariant, statusBadgeVariant } from '@/lib/statusBadge'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription, DialogClose } from './ui/dialog'
 import { apiDelete, apiGet, apiPatch, apiPost, formatDate, formatRelativeTime } from '@/lib/api'
 import type { AnyRecord } from '@/lib/api'
@@ -465,7 +467,7 @@ function WorkflowCard({ workflow, copy, busy, onOpenGraph, onEdit, onStatus, onA
       void onOpenGraph(workflow)
     }}
   >
-    <header className="workflow-card-header"><div className="workflow-title-block"><h3>{title}</h3><span className="workflow-project-chip">{project}</span></div><div className="workflow-badges"><StatusBadge status={status} copy={copy} /><span className={`status-badge ${priority}`}>{priorityLabel(copy, priority)}</span></div></header>
+    <header className="workflow-card-header"><div className="workflow-title-block"><h3>{title}</h3><span className="workflow-project-chip">{project}</span></div><div className="workflow-badges"><StatusBadge status={status} copy={copy} /><Badge variant={priorityBadgeVariant(priority)} className="max-w-[180px] truncate">{priorityLabel(copy, priority)}</Badge></div></header>
     {description ? <p className="workflow-description">{description}</p> : null}
     {roles.length ? <dl className="workflow-role-list">{roles.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl> : null}
     {linkedTasks.length ? <div className="workflow-linked"><span>{copy.linkedItems}</span><div>{linkedTasks.map(taskId => <span className="workflow-link-chip" key={taskId}>{taskId}</span>)}</div></div> : null}
@@ -694,5 +696,5 @@ function WorkflowGraphDialog({ workflow, copy, nodes, loading, error, onClose }:
 }
 
 function StatusBadge({ status, copy }: { status: string; copy: WorkflowsCopy }) {
-  return <span className={`status-badge ${status}`}>{statusLabel(copy, status)}</span>
+  return <Badge variant={statusBadgeVariant(status)} className="max-w-[180px] truncate">{statusLabel(copy, status)}</Badge>
 }

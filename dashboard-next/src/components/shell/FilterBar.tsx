@@ -151,6 +151,9 @@ function FilterDropdown({ control }: FilterDropdownProps) {
       if (!target) return
       if (popoverRef.current?.contains(target)) return
       if (triggerRef.current?.contains(target)) return
+      // Non-modal listbox: just dismiss. Do NOT re-focus the trigger — that
+      // would steal focus from whatever the user actually clicked (e.g. the
+      // search box). Focus lands on the click target, or <body> for empty space.
       setOpen(false)
       setQuery('')
     }
@@ -234,6 +237,15 @@ function FilterDropdown({ control }: FilterDropdownProps) {
   }
 
   const onListKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    // A portalled listbox leaves the document's tab order, so without trapping
+    // Tab here focus would jump to <body> (and then the page's skip link) the
+    // moment the user tabs past the last option. Close and return focus to the
+    // trigger instead — same contract as outside-click / Escape.
+    if (event.key === 'Tab') {
+      event.preventDefault()
+      closeAndRestore()
+      return
+    }
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp' && event.key !== 'Home' && event.key !== 'End') return
     const items = Array.from(
       popoverRef.current?.querySelectorAll<HTMLElement>('[role="option"]') ?? []
@@ -321,7 +333,7 @@ function FilterDropdown({ control }: FilterDropdownProps) {
                   onClick={clearControl}
                   className={cn(
                     'flex h-8 w-full items-center gap-2 rounded-sm px-2 text-left text-sm transition-colors',
-                    'focus-visible:outline-none focus-visible:bg-surface-sunk',
+                    'focus-visible:outline-none focus-visible:bg-surface-sunk focus-visible:shadow-[var(--shadow-focus)]',
                     !active ? 'font-medium text-accent-hover' : 'text-ink hover:bg-surface-sunk'
                   )}
                 >
@@ -344,7 +356,7 @@ function FilterDropdown({ control }: FilterDropdownProps) {
                       onClick={() => select(option.value)}
                       className={cn(
                         'flex h-8 w-full items-center gap-2 rounded-sm px-2 text-left text-sm transition-colors',
-                        'focus-visible:outline-none focus-visible:bg-surface-sunk',
+                        'focus-visible:outline-none focus-visible:bg-surface-sunk focus-visible:shadow-[var(--shadow-focus)]',
                         'disabled:pointer-events-none disabled:opacity-50',
                         selected
                           ? 'font-medium text-accent-hover'
@@ -456,6 +468,7 @@ const FilterBar = React.forwardRef<HTMLDivElement, FilterBarProps>(
     ref
   ) => {
     const controls = (filters ?? []).filter(control => !control.hidden && control.options.length > 0)
+    const searchInputRef = React.useRef<HTMLInputElement | null>(null)
     const collapse = Boolean(moreLabel) && controls.length > maxInline
     const inlineControls = collapse ? controls.slice(0, maxInline) : controls
     const overflowControls = collapse ? controls.slice(maxInline) : []
@@ -470,7 +483,7 @@ const FilterBar = React.forwardRef<HTMLDivElement, FilterBarProps>(
         data-shell-rail=""
         role="search"
         className={cn(
-          'flex w-full min-w-0 flex-col gap-2',
+          'flex w-full min-w-0 flex-col gap-2 py-1',
           'md:flex-row md:flex-nowrap md:items-center md:overflow-x-auto',
           className
         )}
@@ -484,6 +497,7 @@ const FilterBar = React.forwardRef<HTMLDivElement, FilterBarProps>(
             />
             <input
               id={search.id}
+              ref={searchInputRef}
               type="search"
               value={search.value}
               onChange={event => search.onChange(event.target.value)}
@@ -513,7 +527,13 @@ const FilterBar = React.forwardRef<HTMLDivElement, FilterBarProps>(
             ) : null}
             <button
               type="button"
-              onClick={onClear}
+              onClick={() => {
+                onClear?.()
+                // The button disables on the same frame its count hits zero, which
+                // would strand focus on <body>. Hand it back to the search box so
+                // the tab order stays inside the bar.
+                searchInputRef.current?.focus()
+              }}
               disabled={active === 0}
               className={cn(
                 'inline-flex h-8 shrink-0 items-center gap-2 whitespace-nowrap rounded-md px-3 text-sm font-medium transition-colors',

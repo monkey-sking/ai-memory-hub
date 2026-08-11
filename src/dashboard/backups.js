@@ -7,6 +7,7 @@ export function createDashboardBackupsApi({
   getGitHubBackupStatus,
   loadConfig,
   pruneBackups,
+  deleteBackups,
   restoreBackup,
   runGitHubBackup,
   withHubLock
@@ -84,6 +85,17 @@ export function createDashboardBackupsApi({
     return { ok: true, ...result, backups: getDashboardBackups(config) };
   }
 
+  // Bulk delete of an explicit set of backups chosen in the dashboard. `apply`
+  // mirrors prune: false returns the plan without touching disk.
+  function deleteDashboardBackups(config, body = {}) {
+    const names = Array.isArray(body.names) ? body.names.map(String).filter(Boolean) : [];
+    const apply = Boolean(body.apply);
+    const result = apply
+      ? withHubLock(config.memoryDir, "backup-delete", () => deleteBackups(config.memoryDir, { names, apply }), config.sync.lockStaleMs)
+      : deleteBackups(config.memoryDir, { names, apply: false });
+    return { ok: true, ...result, backups: getDashboardBackups(config) };
+  }
+
   function buildDashboardGitHubBackupRunArgv(body = {}) {
     const argv = [];
     if (body.dryRun === true) {
@@ -146,6 +158,7 @@ export function createDashboardBackupsApi({
     getDashboardBackups,
     getDashboardGitHubBackupStatus,
     pruneDashboardBackups,
+    deleteDashboardBackups,
     restoreDashboardBackup,
     runDashboardGitHubBackup
   };

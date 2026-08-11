@@ -1,6 +1,5 @@
 import type { ReactNode, KeyboardEvent, MouseEvent } from 'react'
 import { cn } from '@/lib/utils'
-import { formatDate, formatRelativeTime } from '@/lib/api'
 
 export const LIST_ROW_HEIGHT = 56
 
@@ -9,7 +8,6 @@ interface ListRowProps {
   title: ReactNode
   subtitle?: ReactNode
   meta?: ReactNode
-  timestamp?: string
   actions?: ReactNode
   /** Keep trailing actions visible instead of revealing them on hover/focus. */
   actionsVisible?: boolean
@@ -21,7 +19,7 @@ interface ListRowProps {
 const isInteractive = (target: EventTarget | null) =>
   target instanceof HTMLElement && Boolean(target.closest('button, a, input, textarea, select, [role="menuitem"]'))
 
-export function ListRow({ leading, title, subtitle, meta, timestamp, actions, actionsVisible = false, onOpen, ariaLabel, className }: ListRowProps) {
+export function ListRow({ leading, title, subtitle, meta, actions, actionsVisible = false, onOpen, ariaLabel, className }: ListRowProps) {
   return (
     <div
       /*
@@ -32,10 +30,12 @@ export function ListRow({ leading, title, subtitle, meta, timestamp, actions, ac
        * `group` permits interactive descendants, still accepts `aria-label`,
        * and keeps the row a single tab stop with the Enter/Space handler below.
        *
-       * `role="listitem"` would be the better label, but `VirtualizedList`
-       * renders no `role="list"` ancestor, and an orphan `listitem` is just a
-       * different invalid tree. If that container ever gains `role="list"`,
-       * swap this to `listitem`.
+       * List semantics live on `VirtualizedList` (its content is `role="list"`,
+       * each item wrapper `role="listitem"`). This row stays a labelled `group`
+       * inside that item — a listitem may legitimately contain a group. Keeping
+       * the role here as `group` also covers the one place ListRow is used
+       * OUTSIDE VirtualizedList (Dashboard's CommandCenter), where there is no
+       * `role="list"` ancestor and a bare `listitem` would be an invalid tree.
        */
       role="group"
       tabIndex={0}
@@ -52,31 +52,38 @@ export function ListRow({ leading, title, subtitle, meta, timestamp, actions, ac
         'hover:bg-surface-sunk focus-visible:bg-surface-sunk focus-visible:outline-none focus-visible:shadow-[inset_0_0_0_1px_var(--color-focus),inset_2px_0_0_0_var(--color-accent-solid)]',
         className,
       )}
+      aria-haspopup="dialog"
     >
       {leading ? <div className="flex shrink-0 items-center">{leading}</div> : null}
       <div className="flex min-w-0 flex-1 flex-col justify-center">
         <span className="truncate text-sm font-medium text-foreground">{title}</span>
         {subtitle ? <span className="truncate text-xs text-muted-foreground">{subtitle}</span> : null}
       </div>
-      {meta ? <div className="hidden shrink-0 items-center gap-2 lg:flex">{meta}</div> : null}
+      {meta ? (
+        // Width-capped and breakpoint-gated: a 56px single-line row on a phone
+        // cannot hold title + status/priority badges + action buttons at once.
+        // Below `sm` the badges hide and status is still conveyed by the leading
+        // status dot + the subtitle (project/assignee/time); from `sm` up there
+        // is room. `max-w` + `overflow-hidden` + `whitespace-nowrap` keep the
+        // meta on a single line and prevent a long meta (e.g. six comma-joined
+        // filenames) from wrapping (which would grow the row past 56px and break
+        // the virtualization math) or pushing the trailing actions past the
+        // list viewport's `overflow-x: hidden` and making them unreachable.
+        <div className="hidden min-w-0 max-w-[40%] items-center gap-2 overflow-hidden whitespace-nowrap sm:flex">{meta}</div>
+      ) : null}
       {actions ? (
         <div
           className={cn(
             'flex shrink-0 items-center gap-1',
-            !actionsVisible && 'opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100',
+            // Hidden until hover/focus: opacity AND pointer-events must both
+            // return on hover/focus, otherwise the buttons are revealed but
+            // permanently unclickable (a regression from a too-aggressive
+            // touch-mistap guard that left pointer-events:none with no reversal).
+            !actionsVisible && 'opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto',
           )}
         >
           {actions}
         </div>
-      ) : null}
-      {timestamp ? (
-        <time
-          className="w-16 shrink-0 text-right text-xs tabular-nums text-muted-foreground"
-          dateTime={timestamp}
-          title={formatDate(timestamp, 'full')}
-        >
-          {formatRelativeTime(timestamp)}
-        </time>
       ) : null}
     </div>
   )

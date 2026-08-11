@@ -1,16 +1,19 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { AlertCircle, Plus, Search, X } from 'lucide-react'
+import { AlertCircle, Plus } from 'lucide-react'
 import { Button } from './ui/button'
+import { Badge } from './ui/badge'
 import { Input, fieldBaseStyles } from './ui/input'
 import { Label } from './ui/label'
 import { Textarea } from './ui/textarea'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogClose } from './ui/dialog'
-import { EmptyState, Panel } from '@/components/shell'
+import { EmptyState, FilterBar, Panel, StatusTabs } from '@/components/shell'
+import { priorityBadgeVariant, statusBadgeVariant } from '@/lib/statusBadge'
 import { VirtualizedList } from './VirtualizedList'
 import { ListRow, LIST_ROW_HEIGHT } from './ListRow'
 import { RelatedEntities } from './RelatedEntities'
 import type { AnyRecord } from '@/lib/api'
-import { formatDate } from '@/lib/api'
+import type { AppLanguage } from '@/lib/i18n'
+import { formatDate, formatRelativeTime } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import type { DashboardCopy } from '@/lib/dashboardCopy'
 
@@ -82,10 +85,15 @@ type TasksCopy = Pick<DashboardCopy,
 interface TasksPanelProps {
   tasks: AnyRecord[]
   visibleProjects: AnyRecord[]
+  /** Full server-side per-status counts (the `kanban` field). When present the
+   *  status strip prefers these over the loaded-slice counts so /tasks agrees
+   *  with /analytics. */
+  kanban?: AnyRecord
   copy: TasksCopy
   onMutate: (action: string, path: string, body: AnyRecord) => Promise<boolean>
   hasMore?: boolean
   onLoadMore?: () => Promise<void>
+  language: AppLanguage
 }
 
 type TaskMenuAction = {
@@ -108,11 +116,26 @@ function statusLabel(copy: TasksCopy, status: string): string {
   return copy.statusLabels[status as keyof TasksCopy['statusLabels']] || status
 }
 
+/** Canonical task-status order for the status strip. The old strip hardcoded
+ *  only five of these (dropping `blocked`, `failed`, `cancelled`); deriving
+ *  the strip from this full list keeps every real status reachable. */
+const TASK_STATUS_ORDER = [
+  'open',
+  'claimed',
+  'in_progress',
+  'needs_verification',
+  'blocked',
+  'failed',
+  'done',
+  'cancelled'
+]
+
 function priorityLabel(copy: TasksCopy, priority: string): string {
   return copy.priorityLabels[priority as keyof TasksCopy['priorityLabels']] || priority
 }
 
-export function TasksPanel({ tasks, visibleProjects, copy, onMutate, hasMore = false, onLoadMore }: TasksPanelProps) {
+export function TasksPanel({ tasks, visibleProjects, kanban, copy, onMutate, hasMore = false, onLoadMore, language }: TasksPanelProps) {
+  const locale = language === 'zh' ? 'zh-CN' : 'en'
   const [projectFilter, setProjectFilter] = useState<string[]>([])
   const [priorityFilter, setPriorityFilter] = useState<string[]>([])
   const [statusFilter, setStatusFilter] = useState<string[]>([])
@@ -155,6 +178,27 @@ export function TasksPanel({ tasks, visibleProjects, copy, onMutate, hasMore = f
   const activePriorityFilter = priorityFilter.filter(value => priorityOptions.includes(value))
   const activeStatusFilter = statusFilter.filter(value => statusOptions.includes(value))
   const statusCounts = useMemo(() => tasks.reduce<Record<string, number>>((counts, task) => { const status = textOf(task.status, 'open'); counts[status] = (counts[status] || 0) + 1; return counts }, {}), [tasks])
+  // The server `kanban` is built from the whole filtered dataset, so its per-
+  // status lengths are the authoritative totals (the loaded `tasks` slice may
+  // be capped at the page size). Prefer it so the strip matches /analytics.
+  const kanbanCounts = useMemo(() => {
+    if (!kanban) return null
+    const result: Record<string, number> = {}
+    for (const [status, value] of Object.entries(kanban)) {
+      result[status] = Array.isArray(value) ? value.length : Number(value) || 0
+    }
+    return result
+  }, [kanban])
+  const displayCounts = kanbanCounts ?? statusCounts
+  const totalTaskCount = TASK_STATUS_ORDER.reduce((sum, status) => sum + (displayCounts[status] || 0), 0)
+  const statusTabItems = useMemo(() => {
+    const source = kanbanCounts ? TASK_STATUS_ORDER : statusOptions
+    return source
+      .map(status => ({ value: status, label: statusLabel(copy, status), count: displayCounts[status] || 0 }))
+      // With server counts we only surface statuses that actually have tasks;
+      // in the fallback (no kanban) we keep whatever the loaded slice shows.
+      .filter(item => item.count > 0)
+  }, [kanbanCounts, statusOptions, displayCounts, copy])
   const filteredTasks = tasks.filter(task => {
     if (activeProjectFilter.length && !activeProjectFilter.includes(textOf(task.project))) return false
     if (activePriorityFilter.length && !activePriorityFilter.includes(textOf(task.priority))) return false
@@ -217,7 +261,14 @@ export function TasksPanel({ tasks, visibleProjects, copy, onMutate, hasMore = f
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="task-status-summary">{['open', 'claimed', 'in_progress', 'needs_verification', 'done'].map(status => <button type="button" className={activeStatusFilter.includes(status) ? 'task-summary-item is-active' : 'task-summary-item'} key={status} onClick={() => setStatusFilter(activeStatusFilter.includes(status) ? activeStatusFilter.filter(value => value !== status) : [...activeStatusFilter, status])}><span>{statusLabel(copy, status)}</span><strong>{statusCounts[status] || 0}</strong></button>)}</div>
+      <StatusTabs
+        mode="multi"
+        label={copy.status}
+        items={statusTabItems}
+        values={activeStatusFilter}
+        onChange={setStatusFilter}
+        allItem={{ value: '', label: copy.allStatuses, count: totalTaskCount }}
+      />
       {/* Panel (h2) rather than Card (CardTitle renders h3): this section sits under
           the page h1, so a card title skipped a heading level (WCAG 1.3.1). The body
           keeps its default p-4 because the toolbar lives in it — `flushBody` would
@@ -243,28 +294,48 @@ export function TasksPanel({ tasks, visibleProjects, copy, onMutate, hasMore = f
         ) : undefined}
         bodyClassName="flex flex-col gap-4"
       >
-          <div className="task-filter-toolbar">
-            <div className="grid gap-2">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input id="task-search" value={query} onChange={event => setQuery(event.target.value)} placeholder={copy.searchText} aria-label={copy.searchText} className="pl-8" />
-              </div>
-            </div>
-            <MultiTaskFilter label={copy.status} values={activeStatusFilter} onChange={setStatusFilter} options={statusOptions} copy={copy} displayValue={value => statusLabel(copy, value)} />
-            <MultiTaskFilter label={copy.project} values={activeProjectFilter} onChange={setProjectFilter} options={projectOptions} copy={copy} searchable />
-            <MultiTaskFilter label={copy.priority} values={activePriorityFilter} onChange={setPriorityFilter} options={priorityOptions} copy={copy} displayValue={value => priorityLabel(copy, value)} />
-            <div className="flex items-end">
-              <Button variant="outline" onClick={() => { setQuery(''); setProjectFilter([]); setPriorityFilter([]); setStatusFilter([]) }} className="w-full">
-                <X className="h-4 w-4" />
-                {copy.clear}
-              </Button>
-            </div>
-          </div>
+          <FilterBar
+            search={{
+              id: 'task-search',
+              value: query,
+              onChange: setQuery,
+              placeholder: copy.searchText,
+              label: copy.searchText
+            }}
+            filters={[
+              {
+                type: 'multi',
+                id: 'task-project',
+                label: copy.project,
+                options: projectOptions.map(value => ({ value, label: value })),
+                allLabel: copy.allProjects,
+                values: activeProjectFilter,
+                onChange: setProjectFilter,
+                searchable: true,
+                searchPlaceholder: copy.searchProjectPlaceholder,
+                noMatchesLabel: copy.noMatchesProject
+              },
+              {
+                type: 'multi',
+                id: 'task-priority',
+                label: copy.priority,
+                options: priorityOptions.map(value => ({ value, label: priorityLabel(copy, value) })),
+                allLabel: copy.allPriorities,
+                values: activePriorityFilter,
+                onChange: setPriorityFilter,
+                selectedLabel: count => `${count} ${copy.itemsSelected}`
+              }
+            ]}
+            onClear={() => { setQuery(''); setProjectFilter([]); setPriorityFilter([]); setStatusFilter([]) }}
+            clearLabel={copy.clear}
+            activeCount={(cleanQuery ? 1 : 0) + activeProjectFilter.length + activePriorityFilter.length + activeStatusFilter.length}
+            activeLabel={count => `${count} ${copy.itemsSelected}`}
+          />
 
           {error ? <div className="flex items-center gap-2 rounded-sm border border-danger-line bg-danger-tint p-3"><AlertCircle className="h-4 w-4 shrink-0 text-danger" /><p className="text-sm text-danger-text">{error}</p></div> : null}
 
           {filteredTasks.length ? (
-            <div aria-live="polite" aria-busy={loadingMore} className="-mx-4 border-t border-border">
+            <div aria-busy={loadingMore} className="-mx-4 border-t border-border">
             <VirtualizedList
               items={visibleTasks}
               itemHeight={LIST_ROW_HEIGHT}
@@ -273,15 +344,14 @@ export function TasksPanel({ tasks, visibleProjects, copy, onMutate, hasMore = f
               loading={loadingMore}
               loadingLabel={copy.loadingMore}
               onEndReached={() => void loadMore()}
-              className="task-virtual-list"
-              renderItem={task => <TaskCard task={task} copy={copy} busy={busy} onMutate={mutateTask} onOpen={() => setSelectedTask(task)} />}
+              renderItem={task => <TaskCard task={task} copy={copy} busy={busy} onMutate={mutateTask} onOpen={() => setSelectedTask(task)} locale={locale} />}
             />
             </div>
           ) : hasMore ? (
             // Filtering to zero rows used to unmount the list, which also unmounted the
             // only thing that ever called `loadMore` (VirtualizedList's end marker), so
             // "no data" became permanent even though unfetched pages still matched.
-            <div aria-live="polite" aria-busy={loadingMore}>
+            <div aria-busy={loadingMore}>
               <EmptyState
                 title={copy.noMatchesInLoaded}
                 description={partialScopeNote}
@@ -313,40 +383,7 @@ export function TasksPanel({ tasks, visibleProjects, copy, onMutate, hasMore = f
   )
 }
 
-function MultiTaskFilter({ label, values, onChange, options, copy, displayValue = value => value, searchable = false }: { label: string; values: string[]; onChange: (values: string[]) => void; options: string[]; copy: TasksCopy; displayValue?: (value: string) => string; searchable?: boolean }) {
-  const [query, setQuery] = useState('')
-  const detailsRef = useRef<HTMLDetailsElement | null>(null)
-  useEffect(() => {
-    // Closing the popover removes whatever chip had focus from the layout, so focus
-    // has to be handed back to the <summary> (same contract as TaskActionMenu's
-    // closeAndFocusTrigger) — otherwise a keyboard user is dumped on <body>.
-    // Only reclaim focus when it was actually inside this popover; pulling focus on
-    // an unrelated outside click would be its own bug.
-    const closeAndRestoreFocus = (details: HTMLDetailsElement) => {
-      const hadFocusInside = details.contains(document.activeElement)
-      details.open = false
-      if (hadFocusInside) details.querySelector('summary')?.focus()
-    }
-    const close = (event: PointerEvent) => {
-      const details = detailsRef.current
-      if (!details || !details.open || details.contains(event.target as Node)) return
-      closeAndRestoreFocus(details)
-    }
-    const escape = (event: KeyboardEvent) => {
-      const details = detailsRef.current
-      if (event.key !== 'Escape' || !details || !details.open) return
-      closeAndRestoreFocus(details)
-    }
-    document.addEventListener('pointerdown', close)
-    document.addEventListener('keydown', escape)
-    return () => { document.removeEventListener('pointerdown', close); document.removeEventListener('keydown', escape) }
-  }, [])
-  if (!options.length) return null
-  const visibleOptions = options.filter(option => !query.trim() || displayValue(option).toLowerCase().includes(query.trim().toLowerCase()))
-  const selectedLabel = values.length ? `${values.length} ${copy.itemsSelected}` : copy.allOption
-  return <details ref={detailsRef} className="task-multi-filter"><summary><span>{label}</span><strong>{selectedLabel}</strong></summary><div className="task-filter-popover">{searchable ? <Input value={query} onChange={event => setQuery(event.target.value)} placeholder={copy.searchProjectPlaceholder} aria-label={copy.searchProjectPlaceholder} /> : null}<div className="task-filter-option-list"><button type="button" className={values.length === 0 ? 'task-filter-chip is-active' : 'task-filter-chip'} onClick={() => onChange([])}>{copy.allOption}</button>{visibleOptions.map(option => <button type="button" className={values.includes(option) ? 'task-filter-chip is-active' : 'task-filter-chip'} key={option} onClick={() => onChange(values.includes(option) ? values.filter(value => value !== option) : [...values, option])}>{displayValue(option)}</button>)}</div>{searchable && !visibleOptions.length ? <span className="task-filter-empty">{copy.noMatchesProject}</span> : null}</div></details>
-}
-function TaskCard({ task, copy, busy, onMutate, onOpen }: { task: AnyRecord; copy: TasksCopy; busy: string; onMutate: TasksPanelProps['onMutate']; onOpen: () => void }) {
+function TaskCard({ task, copy, busy, onMutate, onOpen, locale }: { task: AnyRecord; copy: TasksCopy; busy: string; onMutate: TasksPanelProps['onMutate']; onOpen: () => void; locale: string }) {
   const [cancelOpen, setCancelOpen] = useState(false)
   const id = textOf(task.id)
   const status = textOf(task.status, 'open')
@@ -375,7 +412,14 @@ function TaskCard({ task, copy, busy, onMutate, onOpen }: { task: AnyRecord; cop
     )
   }
 
-  const subtitle = [textOf(task.project), textOf(task.assignee || task.createdBy)].filter(Boolean).join(' · ')
+  const rawTimestamp = textOf(task.updatedAt || task.createdAt)
+  const timeNode = rawTimestamp ? <time dateTime={rawTimestamp}>{formatRelativeTime(rawTimestamp, locale)}</time> : null
+  const subtitleParts = [textOf(task.project), textOf(task.assignee || task.createdBy), timeNode].filter(Boolean)
+  const subtitle = subtitleParts.length ? (
+    <span className="inline-flex items-center gap-2">
+      {subtitleParts.map((part, index) => (index === 0 ? part : <span key={index} className="inline-flex items-center gap-2"><span aria-hidden="true">·</span>{part}</span>))}
+    </span>
+  ) : undefined
 
   return (
     <ListRow
@@ -390,7 +434,6 @@ function TaskCard({ task, copy, busy, onMutate, onOpen }: { task: AnyRecord; cop
           <PriorityBadge priority={priority} copy={copy} />
         </>
       }
-      timestamp={textOf(task.updatedAt || task.createdAt)}
       actionsVisible
       actions={
         <>
@@ -442,7 +485,7 @@ function TaskDetailsDialog({ task, copy, busy, onMutate, onClose }: { task: AnyR
   const runStatus = (nextStatus: string) => void onMutate(`${id}:${nextStatus}`, '/api/task/status', { id, status: nextStatus, by: 'dashboard-next' })
   const review = (decision: 'approved' | 'rejected') => void onMutate(`${id}:${decision}`, '/api/task/review', { id, decision, by: 'dashboard-next' })
   const notes = Array.isArray(task.notes) ? task.notes : []
-  return <Dialog open onOpenChange={open => { if (!open) onClose() }}><DialogContent className="max-w-3xl task-detail-dialog-content" aria-describedby={undefined}><DialogHeader><DialogTitle>{textOf(task.title, copy.recentTasks)}</DialogTitle></DialogHeader><div className="task-detail-dialog"><div className="task-detail-lead"><StatusBadge status={status} copy={copy} /><PriorityBadge priority={priority} copy={copy} /><span>{textOf(task.project, copy.allProjects)}</span><RelatedEntities entityType="task" entityId={id} /></div>{task.description ? <section className="task-detail-section"><h3>{copy.description}</h3><p className="task-detail-description">{textOf(task.description)}</p></section> : null}<dl className="task-detail-grid"><TaskMetadata label={copy.project} value={textOf(task.project, '-')} /><TaskMetadata label={copy.assignee} value={textOf(task.assignee || task.createdBy, '-')} /><TaskMetadata label={copy.priority} value={priorityLabel(copy, priority)} /><TaskMetadata label={copy.updatedLabel} value={formatDate(textOf(task.updatedAt || task.createdAt))} /><TaskMetadata label={copy.createdLabel} value={formatDate(textOf(task.createdAt))} /><TaskMetadata label={copy.id} value={id || '-'} /></dl>{task.handoff ? <section className="task-detail-section task-detail-note"><h3>{copy.handoff}</h3><p>{textOf(task.handoff)}</p></section> : null}<section className="task-detail-section"><h3>{copy.executionInfo}</h3><dl className="task-detail-grid"><TaskMetadata label={copy.deliveryState} value={textOf(task.deliveryState, '-')} /><TaskMetadata label={copy.attempts} value={`${textOf(task.attempt, '0')} / ${textOf(task.maxRetries, '—')}`} /><TaskMetadata label={copy.progressLabel} value={textOf(task.progressStatus || task.progressPercent, '-')} /><TaskMetadata label={copy.reviewStatusLabel} value={textOf(task.reviewStatus, '-')} /></dl></section>{task.lastError ? <section className="task-detail-section task-detail-error"><h3>{copy.recentIssue}</h3><p>{textOf(task.lastError)}</p></section> : null}{notes.length ? <section className="task-detail-section"><h3>{copy.activityLog}（{Math.min(notes.length, 8)}）</h3><div className="task-detail-timeline">{notes.slice(-8).reverse().map((note, index) => <div key={textOf(note.ts, String(index))}><time>{formatDate(textOf(note.ts))}</time><strong>{textOf(note.by, '-')}</strong><p>{textOf(note.text, '-')}</p></div>)}</div></section> : null}<div className="task-detail-actions">{status === 'open' ? <Button disabled={isBusy} onClick={() => void onMutate(`${id}:claim`, '/api/task/claim', { id, by: 'dashboard-next' })}>{copy.claim}</Button> : null}{['claimed', 'blocked'].includes(status) ? <Button disabled={isBusy} onClick={() => runStatus('in_progress')}>{status === 'blocked' ? copy.unblock : copy.start}</Button> : null}{status === 'in_progress' ? <><Button disabled={isBusy} onClick={() => runStatus('done')}>{copy.completeDirectly}</Button><Button variant="outline" disabled={isBusy} onClick={() => runStatus('needs_verification')}>{copy.requestVerification}</Button></> : null}{status === 'needs_verification' ? <><Button disabled={isBusy} onClick={() => review('approved')}>{copy.approveAndComplete}</Button><Button variant="outline" disabled={isBusy} onClick={() => review('rejected')}>{copy.reject}</Button></> : null}{status === 'done' ? <Button variant="outline" disabled={isBusy} onClick={() => runStatus('open')}>{copy.reopen}</Button> : null}</div></div><DialogFooter><Button variant="outline" onClick={onClose}>{copy.cancel}</Button></DialogFooter></DialogContent></Dialog>
+  return <Dialog open onOpenChange={open => { if (!open) onClose() }}><DialogContent className="max-w-3xl task-detail-dialog-content" aria-describedby={undefined}><DialogHeader><DialogTitle>{textOf(task.title, copy.recentTasks)}</DialogTitle></DialogHeader><div className="task-detail-dialog"><div className="task-detail-lead"><StatusBadge status={status} copy={copy} /><PriorityBadge priority={priority} copy={copy} /><span>{textOf(task.project, copy.allProjects)}</span><RelatedEntities entityType="task" entityId={id} /></div>{task.description ? <section className="task-detail-section"><h3>{copy.description}</h3><p className="task-detail-description">{textOf(task.description)}</p></section> : null}<dl className="task-detail-grid"><TaskMetadata label={copy.project} value={textOf(task.project, '-')} /><TaskMetadata label={copy.assignee} value={textOf(task.assignee || task.createdBy, '-')} /><TaskMetadata label={copy.priority} value={priorityLabel(copy, priority)} /><TaskMetadata label={copy.updatedLabel} value={formatDate(textOf(task.updatedAt || task.createdAt))} /><TaskMetadata label={copy.createdLabel} value={formatDate(textOf(task.createdAt))} /><TaskMetadata label={copy.id} value={id || '-'} /></dl>{task.handoff ? <section className="task-detail-section task-detail-note"><h3>{copy.handoff}</h3><p>{textOf(task.handoff)}</p></section> : null}<section className="task-detail-section"><h3>{copy.executionInfo}</h3><dl className="task-detail-grid"><TaskMetadata label={copy.deliveryState} value={textOf(task.deliveryState, '-')} /><TaskMetadata label={copy.attempts} value={`${textOf(task.attempt, '0')} / ${textOf(task.maxRetries, '—')}`} /><TaskMetadata label={copy.progressLabel} value={textOf(task.progressStatus || task.progressPercent, '-')} /><TaskMetadata label={copy.reviewStatusLabel} value={textOf(task.reviewStatus, '-')} /></dl></section>{task.lastError ? <section className="task-detail-section task-detail-error"><h3>{copy.recentIssue}</h3><p>{textOf(task.lastError)}</p></section> : null}{notes.length ? <section className="task-detail-section"><h3>{copy.activityLog}（{Math.min(notes.length, 8)}）</h3><div className="task-detail-timeline">{notes.slice(-8).reverse().map((note, index) => <div key={textOf(note.ts, String(index))}><time dateTime={textOf(note.ts)}>{formatDate(textOf(note.ts))}</time><strong>{textOf(note.by, '-')}</strong><p>{textOf(note.text, '-')}</p></div>)}</div></section> : null}<div className="task-detail-actions">{status === 'open' ? <Button disabled={isBusy} onClick={() => void onMutate(`${id}:claim`, '/api/task/claim', { id, by: 'dashboard-next' })}>{copy.claim}</Button> : null}{['claimed', 'blocked'].includes(status) ? <Button disabled={isBusy} onClick={() => runStatus('in_progress')}>{status === 'blocked' ? copy.unblock : copy.start}</Button> : null}{status === 'in_progress' ? <><Button disabled={isBusy} onClick={() => runStatus('done')}>{copy.completeDirectly}</Button><Button variant="outline" disabled={isBusy} onClick={() => runStatus('needs_verification')}>{copy.requestVerification}</Button></> : null}{status === 'needs_verification' ? <><Button disabled={isBusy} onClick={() => review('approved')}>{copy.approveAndComplete}</Button><Button variant="outline" disabled={isBusy} onClick={() => review('rejected')}>{copy.reject}</Button></> : null}{status === 'done' ? <Button variant="outline" disabled={isBusy} onClick={() => runStatus('open')}>{copy.reopen}</Button> : null}</div></div><DialogFooter><Button variant="outline" onClick={onClose}>{copy.cancel}</Button></DialogFooter></DialogContent></Dialog>
 }
 const STATUS_DOT_CLASSES: Record<string, string> = {
   open: 'bg-muted-foreground',
@@ -464,11 +507,19 @@ function TaskMetadata({ label, value }: { label: string; value: string }) {
 }
 
 function StatusBadge({ status, copy }: { status: string; copy: TasksCopy }) {
-  return <span className={`status-badge ${status}`}>{statusLabel(copy, status)}</span>
+  return (
+    <Badge variant={statusBadgeVariant(status)} className="max-w-[180px] truncate">
+      {statusLabel(copy, status)}
+    </Badge>
+  )
 }
 
 function PriorityBadge({ priority, copy }: { priority: string; copy: TasksCopy }) {
-  return <span className={`status-badge priority-${priority}`}>{priorityLabel(copy, priority)}</span>
+  return (
+    <Badge variant={priorityBadgeVariant(priority)} className="max-w-[180px] truncate">
+      {priorityLabel(copy, priority)}
+    </Badge>
+  )
 }
 
 function TaskActionMenu({ label, actions }: { label: string; actions: TaskMenuAction[] }) {

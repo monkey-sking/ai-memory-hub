@@ -5,6 +5,7 @@ import { useOutletContext } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import { dashboardLabels } from '@/lib/dashboardCopy'
 import type { AppOutletContext } from '@/lib/i18n'
+import { statusBadgeVariant } from '@/lib/statusBadge'
 
   interface MetricCardProps {
     label: string
@@ -59,33 +60,12 @@ export function StatusBadge({ status }: StatusBadgeProps) {
   const { language } = useOutletContext<AppOutletContext>()
   const statusLabels = dashboardLabels[language].statusLabels
 
-  const statusVariants: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
-    // Task statuses
-    open: { variant: 'secondary' },
-    claimed: { variant: 'default' },
-    active: { variant: 'default' },
-    completed: { variant: 'outline' },
-    failed: { variant: 'destructive' },
-
-    // Connection statuses
-    connected: { variant: 'default' },
-    ready: { variant: 'default' },
-    missing: { variant: 'outline' },
-    error: { variant: 'destructive' },
-
-    // Message types
-    note: { variant: 'secondary' },
-    request: { variant: 'default' },
-    response: { variant: 'outline' },
-    handoff: { variant: 'default' },
-  }
-
   const key = String(status || '').toLowerCase()
-  const config = statusVariants[key] || { variant: 'outline' as const }
+  const variant = statusBadgeVariant(status)
   const label = statusLabels[key as keyof typeof statusLabels] || status
 
   return (
-    <Badge variant={config.variant} className="shrink-0">
+    <Badge variant={variant} className="shrink-0">
       {label}
     </Badge>
   )

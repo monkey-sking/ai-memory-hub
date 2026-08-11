@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import type { AnyRecord } from '../lib/api'
-import { apiGet, apiPost, asArray, asRecord, boolOf, formatDate, numberOf, textOf } from '../lib/api'
+import { apiGet, apiPost, asArray, asRecord, boolOf, formatDate, formatRelativeTime, numberOf, textOf } from '../lib/api'
 import { createDashboardRealtimeClient } from '../lib/realtime'
 import { mergeDashboardPage } from '../lib/dashboardPagination'
 import type { AppLanguage, AppOutletContext } from '../lib/i18n'
@@ -21,7 +21,8 @@ import {
   Panel as NewPanel,
   StatusBadge as NewStatusBadge
 } from '../components/OverviewComponents'
-import { ListRow } from '../components/ListRow'
+import { ListRow, LIST_ROW_HEIGHT } from '../components/ListRow'
+import { VirtualizedList } from '../components/VirtualizedList'
 import {
   Callout,
   EmptyState,
@@ -45,7 +46,8 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
-  DialogTitle
+  DialogTitle,
+  DialogClose
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import './Dashboard.css'
@@ -175,7 +177,11 @@ export default function Dashboard({ section }: DashboardProps) {
   const loadMoreCollection = useCallback(async (collection: PagedCollection) => {
     const itemKey = pagedCollections[collection]
     const currentItems = asArray<AnyRecord>(asRecord(dataRef.current?.[collection])[itemKey])
-    const payload = await apiGet<AnyRecord>(`${pagedCollectionPaths[collection]}?offset=${currentItems.length}&limit=200`)
+    // `tasks` is the one collection whose backend silently drops `cancelled`
+    // unless the caller opts in — pass the flag through so cancelled tasks are
+    // visible and counted on /tasks (matches /analytics, which counts them).
+    const extra = collection === 'tasks' ? '&includeCancelled=1' : ''
+    const payload = await apiGet<AnyRecord>(`${pagedCollectionPaths[collection]}?offset=${currentItems.length}&limit=200${extra}`)
     const nextItems = asArray<AnyRecord>(payload[itemKey])
     setData(previous => {
       const previousSection = asRecord(previous?.[collection])
@@ -220,13 +226,13 @@ export default function Dashboard({ section }: DashboardProps) {
         ) : (
           <div>
             {section === 'overview' && <CommandCenter model={viewModel} language={language} />}
-            {section === 'memory' && <NewMemoryPanel memory={viewModel.memory} copy={copy} onRefresh={refresh} hasMore={viewModel.memoryHasMore} onLoadMore={() => loadMoreCollection('memory')} />}
-            {section === 'tasks' && <NewTasksPanel tasks={viewModel.tasks} visibleProjects={viewModel.visibleProjects} copy={copy} onMutate={async (_action, path, body) => {
+            {section === 'memory' && <NewMemoryPanel memory={viewModel.memory} copy={copy} language={language} onRefresh={refresh} hasMore={viewModel.memoryHasMore} onLoadMore={() => loadMoreCollection('memory')} />}
+            {section === 'tasks' && <NewTasksPanel tasks={viewModel.tasks} visibleProjects={viewModel.visibleProjects} kanban={viewModel.tasksKanban} copy={copy} language={language} onMutate={async (_action, path, body) => {
               await apiPost<AnyRecord>(path, body)
               await refresh()
               return true
             }} hasMore={viewModel.tasksHasMore} onLoadMore={() => loadMoreCollection('tasks')} />}
-            {section === 'radio' && <NewRadioPanel radio={viewModel.radio} visibleProjects={viewModel.visibleProjects} copy={copy} onRefresh={refresh} hasMore={viewModel.radioHasMore} onLoadMore={() => loadMoreCollection('radio')} />}
+            {section === 'radio' && <NewRadioPanel radio={viewModel.radio} visibleProjects={viewModel.visibleProjects} copy={copy} language={language} onRefresh={refresh} hasMore={viewModel.radioHasMore} onLoadMore={() => loadMoreCollection('radio')} />}
             {section === 'dispatch' && <DispatchPanel copy={copy} model={viewModel} onRefresh={refresh} />}
             {section === 'workflows' && <WorkflowsPanel workflows={viewModel.workflows} visibleProjects={viewModel.visibleProjects} copy={copy} onRefresh={refresh} />}
             {section === 'analytics' && <AnalyticsPanel copy={copy} model={viewModel} />}
@@ -253,7 +259,7 @@ async function fetchDashboardData(section: DashboardSection): Promise<{ snapshot
 
   const sectionRequest: Partial<Record<DashboardSection, { path: string; key: keyof DashboardSnapshot }>> = {
     memory: { path: '/api/memory', key: 'memory' },
-    tasks: { path: '/api/tasks', key: 'tasks' },
+    tasks: { path: '/api/tasks?includeCancelled=1', key: 'tasks' },
     radio: { path: '/api/radio', key: 'radio' },
     workflows: { path: '/api/workflows', key: 'workflows' },
     dispatch: { path: '/api/dispatch', key: 'dispatch' },
@@ -417,6 +423,10 @@ function buildViewModel(data: DashboardSnapshot | null) {
     radioHasMore: boolOf(radio.hasMore),
     tasks: asArray<AnyRecord>(tasks.tasks),
     tasksHasMore: boolOf(tasks.hasMore),
+    // Full server-side per-status counts (the `kanban` field is built from the
+    // entire filtered set, not just the loaded page). The /tasks status strip
+    // uses these as the authoritative counts so it agrees with /analytics.
+    tasksKanban: asRecord(tasks.kanban),
     workflows: asArray<AnyRecord>(workflows.workflows),
     projects: asArray<AnyRecord>(projects.projects),
     visibleProjects: asArray<AnyRecord>(projects.visibleProjects),
@@ -465,6 +475,7 @@ function humanStatus(value: unknown, language: AppLanguage): string {
 }
 
 function CommandCenter({ model, language }: { model: ViewModel; language: AppLanguage }) {
+  const locale = language === 'zh' ? 'zh-CN' : 'en'
   const [selected, setSelected] = useState<{ kind: 'agent' | 'task' | 'radio'; item: AnyRecord } | null>(null)
   const activeAgents = model.agentSessions.slice(0, 6)
   const attentionTasks = model.tasks.filter(task => ['failed', 'blocked', 'waiting_review', 'in_progress', 'claimed'].includes(textOf(task.status))).slice(0, 6)
@@ -477,24 +488,41 @@ function CommandCenter({ model, language }: { model: ViewModel; language: AppLan
   // Every row on this page is a `ListRow` inside a `Panel` — the same pair every
   // other section uses. The overview used to ship its own `command-*` card
   // vocabulary, which made the landing page read as a different product.
+  // Time used to render in a far-right `timestamp` column (its own `<time>` slot
+  // in ListRow). That isolated the least-important datum at the row's extreme
+  // edge, far from the title, and on narrow screens it survived while the more
+  // useful `meta` badges were hidden. Fold it into `subtitle` so it reads inline
+  // with the rest of the context and stays visible at every breakpoint.
   const row = (
     kind: 'agent' | 'task' | 'radio',
     item: AnyRecord,
-    props: { leading?: ReactNode; title: string; subtitle?: string; meta?: ReactNode; timestamp?: string }
-  ) => (
+    props: { leading?: ReactNode; title: string; subtitle?: ReactNode; meta?: ReactNode; timestamp?: string }
+  ) => {
+    const rowSubtitle = (
+      <>
+        {props.subtitle}
+        {props.timestamp ? (
+          <span className="inline-flex items-center gap-2">
+            <span aria-hidden="true">·</span>
+            <time dateTime={props.timestamp}>{formatRelativeTime(props.timestamp, locale)}</time>
+          </span>
+        ) : null}
+      </>
+    )
+    return (
     <div className="h-14 last:[&>div]:border-b-0" key={`${kind}-${textOf(item.id)}`}>
       <ListRow
         onOpen={() => choose(kind, item)}
         ariaLabel={`${props.title}: ${humanStatus(item.status, language)}`}
         leading={props.leading}
         title={props.title}
-        subtitle={props.subtitle}
+        subtitle={rowSubtitle || undefined}
         meta={props.meta}
-        timestamp={props.timestamp}
         className={selectedId && selectedId === textOf(item.id) ? 'bg-accent-tint' : undefined}
       />
     </div>
-  )
+    )
+  }
 
   return (
     <div className="flex min-w-0 flex-col gap-6">
@@ -709,6 +737,10 @@ function BackupsPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel
   const [githubResult, setGithubResult] = useState<AnyRecord | null>(null)
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
+  // Multi-select for bulk delete. Names, not indices, so the selection survives
+  // the list re-render after a delete/refresh.
+  const [selectedNames, setSelectedNames] = useState<string[]>([])
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   const backupList = asArray<AnyRecord>(backups.backups)
 
@@ -841,6 +873,26 @@ function BackupsPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel
     }
   }
 
+  const toggleSelect = (name: string) =>
+    setSelectedNames(prev => (prev.includes(name) ? prev.filter(item => item !== name) : [...prev, name]))
+  const clearSelection = () => setSelectedNames([])
+  const confirmDeleteSelected = async () => {
+    if (!selectedNames.length || busy === 'delete') return
+    setBusy('delete')
+    setError('')
+    try {
+      await apiPost<AnyRecord>('/api/backups/delete', { names: selectedNames, apply: true })
+      setSelectedNames([])
+      setConfirmDelete(false)
+      await loadBackups()
+      await onRefresh()
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : String(nextError))
+    } finally {
+      setBusy('')
+    }
+  }
+
   const policy = asRecord(backups.policy)
   const retention = asRecord(backups.retention)
   const selectedFiles = asArray<AnyRecord>(detail?.files)
@@ -964,31 +1016,90 @@ function BackupsPanel({ copy, model, onRefresh }: { copy: Copy; model: ViewModel
       </Panel>
       <div className="panel-grid two">
         <Panel title={copy.backupSets}>
-          <div className="backup-list">
-            {backupList.length ? backupList.map(backup => {
-              const name = textOf(backup.name)
-              const active = name === selectedName
-              return (
-                <article className={`backup-row ${active ? 'active' : ''}`} key={name}>
-                  <div>
-                    <strong>{name || '-'}</strong>
-                    <p>{[formatDate(textOf(backup.createdAt)), textOf(backup.reason), textOf(backup.display)].filter(Boolean).join(' · ')}</p>
-                    <p>{asArray<string>(backup.files).slice(0, 6).join(', ')}</p>
-                  </div>
-                  <div className="backup-row-actions">
-                    <StatusBadge status={textOf(backup.retention, 'keep')} />
-                    <Button variant="ghost" size="sm" disabled={busy === `detail:${name}`} onClick={() => void inspectBackup(name)}>
-                      {copy.inspectBackup}
-                    </Button>
-                    <Button variant="ghost" size="sm" disabled={busy === `restore:${name}`} onClick={() => void previewRestore(name)}>
-                      {copy.previewRestore}
-                    </Button>
-                  </div>
-                </article>
-              )
-            }) : <EmptyState title={copy.noData} />}
-          </div>
+          {/* Virtualize: the backup set can run to dozens/hundreds of rows, and
+              each row carries two action buttons — a flat map mounts every one.
+              ListRow (56px) + VirtualizedList keeps the DOM bounded. Row click
+              opens the detail (was the inspect button); the two actions stay
+              visible via `actionsVisible`. */}
+          {backupList.length ? (
+            <VirtualizedList
+              items={backupList}
+              itemHeight={LIST_ROW_HEIGHT}
+              getKey={(backup, index) => textOf(backup.name, `backup-${index}`)}
+              loadingLabel={copy.loadingMore}
+              className="backup-virtual-list"
+              renderItem={backup => {
+                const name = textOf(backup.name)
+                const active = name === selectedName
+                const selected = selectedNames.includes(name)
+                return (
+                  <ListRow
+                    className={active || selected ? 'backup-row-active' : undefined}
+                    ariaLabel={name}
+                    leading={
+                      <input
+                        type="checkbox"
+                        className="backup-select-checkbox"
+                        checked={selected}
+                        onChange={() => toggleSelect(name)}
+                        aria-label={`${copy.selectBackup} ${name}`}
+                      />
+                    }
+                    title={name || '-'}
+                    subtitle={[formatDate(textOf(backup.createdAt)), textOf(backup.reason), textOf(backup.display)].filter(Boolean).join(' · ')}
+                    meta={
+                      <span className="inline-flex items-center gap-2">
+                        <StatusBadge status={textOf(backup.retention, 'keep')} />
+                        <span className="max-w-[14rem] truncate text-xs text-muted-foreground">{asArray<string>(backup.files).slice(0, 6).join(', ')}</span>
+                      </span>
+                    }
+                    actionsVisible
+                    onOpen={() => void inspectBackup(name)}
+                    actions={
+                      <>
+                        <Button variant="ghost" size="sm" disabled={busy === `detail:${name}`} onClick={() => void inspectBackup(name)}>
+                          {copy.inspectBackup}
+                        </Button>
+                        <Button variant="ghost" size="sm" disabled={busy === `restore:${name}`} onClick={() => void previewRestore(name)}>
+                          {copy.previewRestore}
+                        </Button>
+                      </>
+                    }
+                  />
+                )
+              }}
+            />
+          ) : (
+            <EmptyState title={copy.noData} />
+          )}
+          {selectedNames.length ? (
+            <div className="backup-selection-bar">
+              <span className="backup-selection-count">{copy.selectedCount.replace('{n}', String(selectedNames.length))}</span>
+              <Button variant="ghost" size="sm" onClick={clearSelection}>{copy.clear}</Button>
+              <Button variant="destructive" size="sm" disabled={busy === 'delete'} onClick={() => setConfirmDelete(true)}>
+                {copy.deleteSelected}
+              </Button>
+            </div>
+          ) : null}
         </Panel>
+        {confirmDelete ? (
+          <Dialog open onOpenChange={open => { if (!open) setConfirmDelete(false) }}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>{copy.deleteConfirmTitle}</DialogTitle>
+                <DialogDescription>{copy.deleteConfirmBody.replace('{n}', String(selectedNames.length))}</DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <DialogClose asChild>
+                  <Button variant="outline">{copy.cancel}</Button>
+                </DialogClose>
+                <Button variant="destructive" disabled={busy === 'delete'} onClick={() => void confirmDeleteSelected()}>
+                  {busy === 'delete' ? copy.running : copy.deleteSelected}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        ) : null}
       <Panel title={copy.restoreSummary}>
           {restorePlan ? (
             <div className="property-grid">
@@ -1053,6 +1164,10 @@ function SearchPanel({ copy }: { copy: Copy }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [selectedResult, setSelectedResult] = useState<AnyRecord | null>(null)
+  // Tracks whether the user has actually run a search. On mount we still fetch
+  // facets (`limit=0`), but that must NOT render as "no results" — before any
+  // query the results area should show a neutral prompt instead.
+  const [searched, setSearched] = useState(false)
 
   const runSearch = useCallback(async (overrides: Partial<{ query: string; type: string; range: string; sort: string; tag: string }> = {}) => {
     const nextQuery = overrides.query ?? query
@@ -1061,6 +1176,7 @@ function SearchPanel({ copy }: { copy: Copy }) {
     const nextSort = overrides.sort ?? sort
     const nextTag = overrides.tag ?? tag
     setLoading(true)
+    setSearched(true)
     setError('')
     try {
       const params = new URLSearchParams({ q: nextQuery, type: nextType, range: nextRange, sort: nextSort, tag: nextTag, limit: '80' })
@@ -1091,8 +1207,8 @@ function SearchPanel({ copy }: { copy: Copy }) {
       <div className="search-command-footer"><span>{query ? `“${query}”` : '搜索全部记忆、任务、消息和工作流'}</span><Button variant="ghost" size="sm" onClick={clearSearch}>{copy.clear}</Button></div>
       {error ? <ErrorState variant="inline" title={error} /> : null}
     </Panel>
-    <div className="search-result-summary"><span><strong>{formatNumber(payload?.count)}</strong>{copy.resultCount}</span><span><strong>{formatNumber(payload?.elapsedMs)} ms</strong>{copy.elapsed}</span><span><strong>{type === 'all' ? copy.allTypes : type}</strong>{copy.type}</span><span><strong>{tag || '—'}</strong>{copy.tags}</span></div>
-    <div className="search-content-grid"><Panel title={copy.facets} className="search-facets-panel"><div className="search-facet-group"><h3>{copy.type}</h3><div className="chip-list">{types.map(item => <button className={`chip button-chip ${type === textOf(item.key) ? 'active' : ''}`} type="button" key={textOf(item.key)} onClick={() => { setType(textOf(item.key, 'all')); void runSearch({ type: textOf(item.key, 'all') }) }}>{textOf(item.label || item.key)} {formatNumber(item.count)}</button>)}</div></div><div className="search-facet-group"><h3>{copy.tags}</h3><div className="chip-list">{tags.length ? tags.slice(0, 24).map(item => <button className={`chip button-chip ${tag === textOf(item.key) ? 'active' : ''}`} type="button" key={textOf(item.key)} onClick={() => { setTag(textOf(item.key)); void runSearch({ tag: textOf(item.key) }) }}>{textOf(item.key)} {formatNumber(item.count)}</button>) : <EmptyState title={copy.noData} size="sm" icon={null} />}</div></div><div className="search-facet-group"><h3>{copy.project}</h3><div className="chip-list">{projects.length ? projects.slice(0, 16).map(item => <span className="chip" key={textOf(item.key)}>{textOf(item.key)} {formatNumber(item.count)}</span>) : <EmptyState title={copy.noData} size="sm" icon={null} />}</div></div></Panel><Panel title={copy.results} className="search-results-panel"><div className="search-results">{results.length ? results.map((result, indexValue) => { const meta = asRecord(result.meta); const title = textOf(result.title, '-'); return <article className="search-result-card" role="button" tabIndex={0} aria-label={`${textOf(result.kind, 'result')}: ${title}`} key={`${textOf(result.kind)}-${textOf(meta.id)}-${indexValue}`} onClick={() => setSelectedResult(result)} onKeyDown={activateOnKey(() => setSelectedResult(result))}><div className="search-result-header"><StatusBadge status={textOf(result.kind, 'result')} /><strong>{title}</strong><span>{formatDate(textOf(result.ts))}</span></div><p>{textOf(result.preview || result.text, '-')}</p><div className="chip-list">{textOf(meta.project) ? <span className="chip">{textOf(meta.project)}</span> : null}{asArray<string>(result.tags).slice(0, 6).map(item => <span className="chip" key={item}>{item}</span>)}<span className="chip">{copy.score}: {formatNumber(result.score)}</span></div></article> }) : <EmptyState title={copy.noData} />}</div></Panel></div>
+    <div className="search-result-summary"><span><strong>{searched ? formatNumber(payload?.count) : '—'}</strong>{copy.resultCount}</span><span><strong>{searched ? formatNumber(payload?.elapsedMs) : '—'} ms</strong>{copy.elapsed}</span><span><strong>{type === 'all' ? copy.allTypes : type}</strong>{copy.type}</span><span><strong>{tag || '—'}</strong>{copy.tags}</span></div>
+    <div className="search-content-grid"><Panel title={copy.facets} className="search-facets-panel"><div className="search-facet-group"><h3>{copy.type}</h3><div className="chip-list">{types.map(item => <button className={`chip button-chip ${type === textOf(item.key) ? 'active' : ''}`} type="button" key={textOf(item.key)} onClick={() => { setType(textOf(item.key, 'all')); void runSearch({ type: textOf(item.key, 'all') }) }}>{textOf(item.label || item.key)} {formatNumber(item.count)}</button>)}</div></div><div className="search-facet-group"><h3>{copy.tags}</h3><div className="chip-list">{tags.length ? tags.slice(0, 24).map(item => <button className={`chip button-chip ${tag === textOf(item.key) ? 'active' : ''}`} type="button" key={textOf(item.key)} onClick={() => { setTag(textOf(item.key)); void runSearch({ tag: textOf(item.key) }) }}>{textOf(item.key)} {formatNumber(item.count)}</button>) : <EmptyState title={copy.noData} size="sm" icon={null} />}</div></div><div className="search-facet-group"><h3>{copy.project}</h3><div className="chip-list">{projects.length ? projects.slice(0, 16).map(item => <span className="chip" key={textOf(item.key)}>{textOf(item.key)} {formatNumber(item.count)}</span>) : <EmptyState title={copy.noData} size="sm" icon={null} />}</div></div></Panel><Panel title={copy.results} className="search-results-panel"><div className="search-results">{results.length ? results.map((result, indexValue) => { const meta = asRecord(result.meta); const title = textOf(result.title, '-'); return <article className="search-result-card" role="button" tabIndex={0} aria-label={`${textOf(result.kind, 'result')}: ${title}`} key={`${textOf(result.kind)}-${textOf(meta.id)}-${indexValue}`} onClick={() => setSelectedResult(result)} onKeyDown={activateOnKey(() => setSelectedResult(result))}><div className="search-result-header"><StatusBadge status={textOf(result.kind, 'result')} /><strong>{title}</strong><span>{formatDate(textOf(result.ts))}</span></div><p>{textOf(result.preview || result.text, '-')}</p><div className="chip-list">{textOf(meta.project) ? <span className="chip">{textOf(meta.project)}</span> : null}{asArray<string>(result.tags).slice(0, 6).map(item => <span className="chip" key={item}>{item}</span>)}<span className="chip">{copy.score}: {formatNumber(result.score)}</span></div></article> }) : (searched ? <EmptyState title={copy.noData} icon={null} /> : <EmptyState title={copy.searchPrompt} description={copy.searchPromptHint} icon={null} />)}</div></Panel></div>
     <Sheet open={selectedResult !== null} onOpenChange={open => { if (!open) setSelectedResult(null) }}>
       <SheetContent side="right" closeLabel={copy.close}>
         <SheetHeader>

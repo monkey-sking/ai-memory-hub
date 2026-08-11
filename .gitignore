@@ -45,3 +45,6 @@ CHERRY_STUDIO.md
 .amh/
 .claude/
 .gemini/
+.codebuddy/
+.runtime/
+.tmp-wfproj/

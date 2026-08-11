@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Panel } from '@/components/shell'
+import { EmptyState, Panel, SheetRawBlock } from '@/components/shell'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 import { Input, fieldBaseStyles } from './ui/input'
@@ -9,7 +9,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { RelatedEntities } from './RelatedEntities'
 import { Plus, AlertCircle, Tag, User, RefreshCw } from 'lucide-react'
 import type { AnyRecord } from '@/lib/api'
-import { formatDate } from '@/lib/api'
+import type { AppLanguage } from '@/lib/i18n'
+import { formatDate, formatRelativeTime } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { VirtualizedList } from './VirtualizedList'
 import { ListRow, LIST_ROW_HEIGHT } from './ListRow'
@@ -41,6 +42,7 @@ interface MemoryPanelProps {
   onRefresh: () => Promise<void>
   hasMore?: boolean
   onLoadMore?: () => Promise<void>
+  language: AppLanguage
 }
 
 function textOf(value: unknown, fallback = ''): string {
@@ -63,7 +65,8 @@ function formatNumber(value: unknown): string {
   return Number.isNaN(num) ? String(value) : num.toLocaleString()
 }
 
-export function MemoryPanel({ memory, copy, onRefresh, hasMore = false, onLoadMore }: MemoryPanelProps) {
+export function MemoryPanel({ memory, copy, onRefresh, hasMore = false, onLoadMore, language }: MemoryPanelProps) {
+  const locale = language === 'zh' ? 'zh-CN' : 'en'
   const pending = asArray<AnyRecord>(memory.pending)
   const memoryRecords = asArray<AnyRecord>(memory.records)
   const [text, setText] = useState('')
@@ -158,9 +161,11 @@ export function MemoryPanel({ memory, copy, onRefresh, hasMore = false, onLoadMo
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Memory Snapshot */}
         <Panel title={copy.memoryOverview} className="lg:col-span-2">
-          <pre className="text-sm bg-muted p-4 rounded-sm overflow-auto max-h-96 whitespace-pre-wrap">
+          {/* Raw markdown snapshot — collapse it (per shell SheetRawBlock intent:
+              stops a giant <pre> from being the panel's primary content). */}
+          <SheetRawBlock label={`${copy.memoryOverview} (Markdown)`}>
             {textOf(memory.memory, copy.noData)}
-          </pre>
+          </SheetRawBlock>
         </Panel>
 
         {/* Right Sidebar */}
@@ -182,9 +187,9 @@ export function MemoryPanel({ memory, copy, onRefresh, hasMore = false, onLoadMo
 
           {/* Profile */}
           <Panel title={copy.profile}>
-            <pre className="text-xs bg-muted p-3 rounded-sm overflow-auto max-h-48 whitespace-pre-wrap">
+            <SheetRawBlock label={`${copy.profile} (Markdown)`}>
               {textOf(memory.profile, copy.noData)}
-            </pre>
+            </SheetRawBlock>
           </Panel>
         </div>
       </div>
@@ -192,7 +197,7 @@ export function MemoryPanel({ memory, copy, onRefresh, hasMore = false, onLoadMo
       {/* Memory Records */}
       <Panel title={copy.memoryRecords} flushBody>
         {memoryRecords.length ? (
-          <div aria-live="polite" aria-busy={loadingMore}>
+          <div aria-busy={loadingMore}>
           <VirtualizedList
             items={visibleRecords}
             itemHeight={LIST_ROW_HEIGHT}
@@ -226,9 +231,14 @@ export function MemoryPanel({ memory, copy, onRefresh, hasMore = false, onLoadMo
                           {project}
                         </>
                       ) : null}
+                      {timestamp ? (
+                        <>
+                          <span aria-hidden="true">·</span>
+                          <time dateTime={timestamp}>{formatRelativeTime(timestamp, locale)}</time>
+                        </>
+                      ) : null}
                     </span>
                   }
-                  timestamp={timestamp}
                   actions={
                     <Button variant="ghost" size="sm" onClick={() => openSupersede(record)} aria-label={copy.supersedeMemory}>
                       <RefreshCw className="h-3 w-3" />
@@ -240,7 +250,7 @@ export function MemoryPanel({ memory, copy, onRefresh, hasMore = false, onLoadMo
           />
           </div>
         ) : (
-          <div className="text-center text-muted-foreground py-8">{copy.noData}</div>
+          <EmptyState title={copy.noData} />
         )}
       </Panel>
 

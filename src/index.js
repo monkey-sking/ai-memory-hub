@@ -282,6 +282,7 @@ const dashboardBackups = createDashboardBackupsApi({
   getGitHubBackupStatus,
   loadConfig,
   pruneBackups,
+  deleteBackups,
   restoreBackup,
   runGitHubBackup,
   withHubLock
@@ -8730,6 +8731,14 @@ function appCommand(argv) {
         }
         return sendJson(res, result);
       }
+      if (req.method === "POST" && url.pathname === "/api/backups/delete") {
+        const body = await readRequestJson(req);
+        const result = dashboardBackups.deleteDashboardBackups(config, body);
+        if (Boolean(body.apply)) {
+          broadcastDashboardUpdate("backup:delete");
+        }
+        return sendJson(res, result);
+      }
       if (req.method === "POST" && url.pathname === "/api/backups/restore") {
         const body = await readRequestJson(req);
         const result = dashboardBackups.restoreDashboardBackup(config, body);
@@ -16749,6 +16758,33 @@ function pruneBackups(memoryDir, { apply = false, daily = 7, weekly = 4, preSync
       retentionReason: backup.retentionReason
     }))
   };
+}
+
+// Delete an explicit set of backups by name (the dashboard "bulk delete"
+// feature). Distinct from pruneDashboardBackups, which is retention-policy
+// driven. Same safety model: every target must resolve inside <memoryDir>/backups.
+function deleteBackups(memoryDir, { names = [], apply = false } = {}) {
+  const backupsRoot = path.resolve(memoryDir, "backups");
+  const existing = listBackupDirectories(memoryDir);
+  const byName = new Map(existing.map((backup) => [backup.name, backup]));
+  const deleted = [];
+  const missing = [];
+  for (const name of names) {
+    const backup = byName.get(name);
+    if (!backup) {
+      missing.push(name);
+      continue;
+    }
+    const target = path.resolve(backup.dir);
+    if (!isPathInsideDirectory(target, backupsRoot)) {
+      throw new Error(`Refusing to delete backup outside backups dir: ${name}`);
+    }
+    if (apply) {
+      fs.rmSync(target, { recursive: true, force: true });
+      deleted.push(name);
+    }
+  }
+  return { apply, requested: names.length, deleted, missing };
 }
 
 function listBackupDirectories(memoryDir) {

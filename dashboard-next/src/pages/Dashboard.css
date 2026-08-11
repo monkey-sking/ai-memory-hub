@@ -161,12 +161,12 @@
   border-color: rgba(46, 183, 165, 0.24);
   background: var(--accent-soft);
   color: var(--accent-strong);
-}.status-badge.failed, .status-badge.blocked, .status-badge.missing, .status-badge.cancelled, .status-badge.urgent, .status-badge.high, .status-badge.priority-high{
+}.status-badge.failed, .status-badge.blocked, .status-badge.missing, .status-badge.cancelled, .status-badge.urgent, .status-badge.high, .status-badge.priority-high, .status-badge.priority-urgent{
   border-color: rgba(239, 68, 68, 0.18);
   background: rgba(239, 68, 68, 0.06);
   color: var(--danger);
 }.status-badge.claimed, .status-badge.pending, .status-badge.needs_verification, .status-badge.planned, .status-badge.review{
-  border-color: var(--warning-line);
+  border-color: var(--color-warning-line);
   background: var(--color-warning-tint);
   color: var(--color-warning-text);
 }.table-wrap{
@@ -536,26 +536,29 @@
   color: var(--text-muted);
   font-size: 13px;
   line-height: 1.5;
-}.backup-row{
-  justify-content: space-between;
-}.backup-row.active{
-  border-color: rgba(37, 99, 235, 0.25);
-  background: rgba(37, 99, 235, 0.05);
-}.backup-row > div:first-child{
-  display: grid;
-  min-width: 0;
-  gap: 4px;
-}.backup-row strong{
-  min-width: 0;
-  overflow: hidden;
-  color: var(--text);
-  font-size: 14px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}.backup-row-actions{
-  flex: 0 0 auto;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+}.backup-virtual-list{
+  /* Bound the virtualized viewport so long backup sets scroll instead of
+     stretching the panel. */
+  height: 560px;
+}.backup-row-active{
+  border-color: var(--color-accent-line);
+  background: var(--color-accent-tint);
+}.backup-select-checkbox{
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent-solid);
+  cursor: pointer;
+}.backup-selection-bar{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}.backup-selection-count{
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-right: auto;
 }.tool-filter-grid{
   align-items: end;
 }.tool-capability-summary{
@@ -910,7 +913,7 @@
   font: inherit;
   cursor: pointer;
 }.button-chip.active, .button-chip:hover{
-  border-color: rgba(37, 99, 235, 0.3);
+  border-color: var(--color-accent-line);
   color: var(--text);
 }.text-snapshot{
   max-height: calc(100vh - 210px);
@@ -939,8 +942,7 @@
   gap: 32px;
 }
 
-@media (max-width: 1280px) {
-}
+
 
 @media (max-width: 1180px) {.dashboard-grid{
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -977,38 +979,32 @@
   }
 }/* --- Command center redesign: hierarchy before decoration --- */
 .dashboard-panel-card, .workflow-card{ border: 1px solid var(--color-line); border-radius: var(--radius-xl); background: var(--color-surface); }.dashboard-panel-card:hover, .workflow-card:hover, .radio-card:hover{ border-color: var(--color-line-strong); }.dashboard-panel-content{ padding: 16px; }.workflow-card-grid{ grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 16px; }.workflow-card{ min-height: 260px; padding: 16px; }.workflow-title-block h3{ font-size: var(--text-base); line-height: 1.35; }.workflow-card .workflow-description{ max-width: 52ch; line-height: 1.65; }.workflow-role-list{ padding: 12px; border-radius: var(--radius-md); background: var(--bg-soft); }
-@media (max-width: 900px) { }
+
 @media (max-width: 640px) {.dashboard-panel-content{ padding-left: 16px; padding-right: 16px; }.workflow-card-grid{ grid-template-columns: 1fr; } }/* Content-specific zones */
 .filter-strip{ grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: end; padding: 16px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg-panel-strong); }/* --- Route-specific layouts: each workspace has its own visual grammar --- */
 .dashboard-section-tasks .filter-strip{ position: sticky; top: 0; z-index: 5; grid-template-columns: minmax(220px, 1.6fr) repeat(3, minmax(140px, .8fr)); margin-bottom: 24px; padding: 16px; background: rgba(255,255,255,.92); backdrop-filter: blur(14px); }.dashboard-section-workflows .workflow-card-grid{ grid-template-columns: repeat(2, minmax(0, 1fr)); }.dashboard-section-workflows .workflow-card{ min-height: 320px; }.dashboard-section-dispatch .dispatch-control-grid{ padding: 16px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--color-surface-sunk); }.dashboard-section-dispatch .dispatch-control-grid .field span{ color: var(--color-ink-3); }.dashboard-section-dispatch .dispatch-control-grid input{ border-color: var(--color-line); background: var(--color-surface); color: var(--color-ink); }.dashboard-section-dispatch .dispatch-card{ min-height: 190px; padding: 16px; border-top: 3px solid var(--accent); }.dashboard-section-health .health-issue-row, .dashboard-section-health .health-action-row{ min-height: 120px; padding: 16px; border-radius: var(--radius-lg); background: var(--bg-panel); }.dashboard-section-health .health-issue-row.level-high{ border-left: 4px solid var(--danger); }.dashboard-section-health .health-storage-list{ grid-template-columns: repeat(2, minmax(0, 1fr)); }.dashboard-section-search .search-results{ grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }.dashboard-section-backups .backup-list{ grid-template-columns: repeat(2, minmax(0, 1fr)); }.dashboard-section-backups .backup-row{ min-height: 110px; padding: 16px; border-radius: var(--radius-lg); }.dashboard-section-analytics .bar-list{ grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }.dashboard-section-analytics .bar-row{ padding: 16px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg-panel); }
 
-@media (max-width: 1120px) { }
+
 @media (max-width: 760px) {.dashboard-section-search .search-results, .dashboard-section-backups .backup-list, .dashboard-section-analytics .bar-list{ grid-template-columns: 1fr; } }/* Large collections keep a stable viewport while only visible rows stay mounted. */
 .virtual-list-viewport{ position: relative; width: 100%; min-height: 0; overflow-x: hidden; overflow-y: auto; contain: strict; overscroll-behavior: contain; }.virtual-list-content{ position: relative; width: 100%; min-height: 1px; }.virtual-list-item{ position: absolute; inset-inline: 0; top: 0; width: 100%; will-change: transform; }.virtual-list-item > *{ height: 100%; min-width: 0; }.virtual-list-end-marker{ position: absolute; left: 0; width: 1px; height: 1px; pointer-events: none; }.virtual-list-loading{ position: sticky; bottom: 8px; z-index: 1; width: max-content; margin: 4px auto 8px; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius-full); background: var(--bg-panel); color: var(--text-muted); font-size: 12px; box-shadow: var(--shadow); }/* --- Workbench home: the primary product surface --- */
 .command-center{ display: grid; gap: 24px; }
-@media (max-width: 980px) { }
-@media (max-width: 700px) { }/* Overview lists read top-to-bottom in DOM order; no grid reordering. */
+
+/* Overview lists read top-to-bottom in DOM order; no grid reordering. */
 .command-center-side .command-side-block{ min-width: 0; }
-@media (max-width: 1100px) { }
-@media (max-width: 700px) { }/* Interactive selection and context inspector */
+
+/* Interactive selection and context inspector */
 .agent-work-card{ cursor: pointer; }.agent-work-card:focus-visible, .attention-task-card:focus-visible, .command-recent-item:focus-visible{ outline: 2px solid var(--accent-strong); outline-offset: 2px; }/* Task work queue */
-.dashboard-section-tasks .task-status-summary{ display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }.dashboard-section-tasks .task-summary-item{ display: grid; gap: 4px; padding: 16px 16px; text-align: left; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-panel); color: var(--text-muted); cursor: pointer; }.dashboard-section-tasks .task-summary-item strong{ color: var(--text); font-size: 24px; line-height: 1; }.task-detail-dialog{ display: grid; gap: 16px; }.task-detail-lead{ display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }.task-detail-lead > span:last-child{ color: var(--text-muted); font-size: 13px; }.task-detail-description, .task-detail-note p{ margin: 0; color: var(--text-muted); line-height: 1.7; white-space: pre-wrap; }.task-detail-grid{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0; }.task-detail-grid > div{ padding: 12px; border-radius: var(--radius-md); background: var(--bg-soft); }.task-detail-note{ display: grid; gap: 8px; padding: 16px; border-left: 3px solid var(--accent); border-radius: 0 var(--radius-md) var(--radius-md) 0; background: var(--bg-soft); }
-@media (max-width: 760px) {.dashboard-section-tasks .task-status-summary, .task-detail-grid{ grid-template-columns: repeat(2, minmax(0, 1fr)); } }/* Task queue rows and multi-select filters */
-.task-multi-filter{ display: grid; gap: 8px; min-width: 0; }.task-filter-chip{ padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius-full); background: var(--bg-panel); color: var(--text-muted); font-size: 12px; cursor: pointer; }.task-filter-chip:hover, .task-filter-chip.is-active{ border-color: var(--accent-strong); background: var(--accent-soft); color: var(--accent-strong); }/* Compact filter popovers for large project/status sets */
-.task-multi-filter{ position: relative; display: block; }.task-multi-filter summary{ display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 36px; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-panel); color: var(--text); font-size: 13px; cursor: pointer; list-style: none; }.task-multi-filter summary::-webkit-details-marker{ display: none; }.task-multi-filter summary::after{ content: '▾'; color: var(--text-muted); }.task-multi-filter summary strong{ color: var(--accent-strong); font-size: 11px; font-weight: 600; }.task-filter-popover{ position: absolute; top: calc(100% + 6px); left: 0; z-index: 20; display: flex; flex-wrap: wrap; gap: 8px; min-width: 240px; max-width: min(420px, 80vw); max-height: 240px; padding: 12px; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-panel-strong); box-shadow: var(--shadow-sm); }.task-detail-actions{ display: flex; flex-wrap: wrap; gap: 8px; padding-top: 4px; }.task-detail-section{ display: grid; gap: 8px; }.task-detail-section h3{ margin: 0; color: var(--text); font-size: 13px; }.task-detail-error{ padding: 16px; border-left: 3px solid var(--danger); border-radius: 0 var(--radius-md) var(--radius-md) 0; background: rgba(239,68,68,.08); }.task-detail-error p{ margin: 0; max-height: 180px; overflow: auto; color: var(--text-muted); font: 12px/1.55 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; }.task-detail-timeline{ display: grid; gap: 8px; max-height: 260px; overflow: auto; }.task-detail-timeline > div{ display: grid; grid-template-columns: 130px 110px minmax(0,1fr); gap: 12px; align-items: start; padding: 12px 12px; border-radius: var(--radius-md); background: var(--bg-soft); }.task-detail-timeline time, .task-detail-timeline strong{ color: var(--text-muted); font-size: 11px; }.task-detail-timeline p{ margin: 0; color: var(--text); font-size: 12px; line-height: 1.5; white-space: pre-wrap; }
+.task-detail-dialog{ display: grid; gap: 16px; }.task-detail-lead{ display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }.task-detail-lead > span:last-child{ color: var(--text-muted); font-size: 13px; }.task-detail-description, .task-detail-note p{ margin: 0; color: var(--text-muted); line-height: 1.7; white-space: pre-wrap; }.task-detail-grid{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0; }.task-detail-grid > div{ padding: 12px; border-radius: var(--radius-md); background: var(--bg-soft); }.task-detail-note{ display: grid; gap: 8px; padding: 16px; border-left: 3px solid var(--accent); border-radius: 0 var(--radius-md) var(--radius-md) 0; background: var(--bg-soft); }
+@media (max-width: 760px) {.task-detail-grid{ grid-template-columns: repeat(2, minmax(0, 1fr)); } }/* Task queue rows and multi-select filters */
+/* Compact filter popovers for large project/status sets */
+.task-detail-actions{ display: flex; flex-wrap: wrap; gap: 8px; padding-top: 4px; }.task-detail-section{ display: grid; gap: 8px; }.task-detail-section h3{ margin: 0; color: var(--text); font-size: 13px; }.task-detail-error{ padding: 16px; border-left: 3px solid var(--danger); border-radius: 0 var(--radius-md) var(--radius-md) 0; background: rgba(239,68,68,.08); }.task-detail-error p{ margin: 0; max-height: 180px; overflow: auto; color: var(--text-muted); font: 12px/1.55 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; }.task-detail-timeline{ display: grid; gap: 8px; max-height: 260px; overflow: auto; }.task-detail-timeline > div{ display: grid; grid-template-columns: 130px 110px minmax(0,1fr); gap: 12px; align-items: start; padding: 12px 12px; border-radius: var(--radius-md); background: var(--bg-soft); }.task-detail-timeline time, .task-detail-timeline strong{ color: var(--text-muted); font-size: 11px; }.task-detail-timeline p{ margin: 0; color: var(--text); font-size: 12px; line-height: 1.5; white-space: pre-wrap; }
 @media (max-width: 640px) {.task-detail-timeline > div{ grid-template-columns: 1fr; gap: 4px; } }/* Keep the full task dialog inside the viewport; only the details scroll. */
 .task-detail-dialog-content{ max-height: calc(100dvh - 32px); overflow: hidden; grid-template-rows: auto minmax(0, 1fr) auto; }.task-detail-dialog-content > .task-detail-dialog{ min-height: 0; overflow-y: auto; padding: 4px 8px 4px 4px; overscroll-behavior: contain; }
-@media (max-width: 640px) {.task-detail-dialog-content{ width: calc(100vw - 20px); max-height: calc(100dvh - 20px); padding: 16px; } }.task-filter-popover{ display: grid; gap: 8px; }.task-filter-option-list{ display: flex; flex-wrap: wrap; gap: 8px; max-height: 190px; overflow: auto; }.task-filter-empty{ color: var(--text-muted); font-size: 12px; }/* Task header and filter toolbar stay on deliberate rows. */
-.dashboard-section-tasks .task-filter-toolbar{ display: grid; grid-template-columns: minmax(240px, 2fr) repeat(3, minmax(145px, 1fr)) auto; gap: 12px; align-items: end; margin-bottom: 16px; padding: 16px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg-panel-strong); }
-@media (max-width: 1120px) {.dashboard-section-tasks .task-filter-toolbar{ grid-template-columns: minmax(220px, 1.5fr) repeat(2, minmax(145px, 1fr)); } }
-@media (max-width: 760px) {.dashboard-section-tasks .task-filter-toolbar{ grid-template-columns: 1fr; } }
-/* Keep desktop task filters on one horizontal rail; never promote search to its own row. */
-@media (min-width: 761px) {.dashboard-section-tasks .task-filter-toolbar{ display: flex; flex-wrap: nowrap; align-items: end; overflow-x: auto; overflow-y: visible; }.dashboard-section-tasks .task-multi-filter{ flex: 0 0 150px; }
-}
-/* Filter popovers must escape the toolbar; the toolbar itself fills the row. */
-@media (min-width: 761px) {.dashboard-section-tasks .task-filter-toolbar{ width: 100%; overflow: visible; }.dashboard-section-tasks .task-multi-filter{ flex: 1 1 150px; min-width: 120px; }.dashboard-section-tasks .task-filter-popover{ z-index: 50; }
-}/* Only the project option list scrolls; the popover itself does not. */
-.task-filter-popover{ max-height: none; overflow: visible; }.task-filter-option-list{ min-height: 0; }/* Message stream: compact rows with detail dialog on demand. */
+@media (max-width: 640px) {.task-detail-dialog-content{ width: calc(100vw - 20px); max-height: calc(100dvh - 20px); padding: 16px; } }/* Task header and filter toolbar stay on deliberate rows. */
+
+
+
+/* Message stream: compact rows with detail dialog on demand. */
 .radio-detail-content{ display: grid; gap: 16px; min-height: 0; overflow-y: auto; padding: 4px 4px 8px 4px; }.radio-detail-dialog{ width: min(720px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow: hidden; grid-template-rows: auto minmax(0, 1fr) auto; }
 @media (max-width: 640px) {.radio-detail-dialog{ max-height: calc(100dvh - 16px); } }.radio-detail-route{ display: flex; align-items: center; flex-wrap: wrap; gap: 8px; color: var(--text-muted); }.radio-detail-route time{ margin-left: auto; font-size: 12px; }.radio-detail-text{ margin: 0; padding: 16px; border-radius: var(--radius-md); background: var(--bg-soft); color: var(--text); line-height: 1.75; white-space: pre-wrap; }.radio-detail-meta{ display: flex; flex-wrap: wrap; gap: 8px; color: var(--text-muted); font-size: 12px; }.radio-detail-actions{ display: flex; flex-wrap: wrap; gap: 8px; }/* Workflows are stage-oriented rows; details remain on demand. */
 .dashboard-section-workflows .workflow-list{ grid-template-columns: 1fr; gap: 8px; }.dashboard-section-workflows .workflow-list .workflow-card{ min-height: 0; display: grid; grid-template-columns: minmax(260px, 1.5fr) minmax(220px, 1fr) minmax(180px, 1fr) auto; align-items: center; gap: 16px; padding: 16px 16px; }.dashboard-section-workflows .workflow-list .workflow-description{ margin: 0; max-height: 44px; overflow: hidden; }.dashboard-section-workflows .workflow-list .workflow-role-list{ margin: 0; padding: 0; background: transparent; }.dashboard-section-workflows .workflow-list .workflow-linked{ margin: 0; }.dashboard-section-workflows .workflow-list .workflow-actions{ margin: 0; }
@@ -1028,15 +1024,12 @@
 }.dashboard-section-workflows .workflow-card{ min-height: 0; }.workflow-graph-dialog{ width: min(760px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow: hidden; grid-template-rows: auto minmax(0, 1fr) auto; }.workflow-graph-dialog > .workflow-graph-body{ min-height: 0; overflow-y: auto; padding: 4px 8px 4px 4px; overscroll-behavior: contain; }.workflow-graph-subtitle{ margin: 4px 0 0; color: var(--text-subtle); font-size: 13px; }.workflow-graph-list{ display: grid; gap: 0; }.workflow-graph-node{ display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 12px; min-width: 0; }.workflow-graph-node-marker{ position: relative; display: flex; justify-content: center; }.workflow-graph-node-marker span{ z-index: 1; display: grid; width: 28px; height: 28px; place-items: center; border: 1px solid var(--border); border-radius: 50%; background: var(--bg-panel); color: var(--text-muted); font-size: 12px; font-weight: 800; }.workflow-graph-node-marker i{ position: absolute; top: 28px; bottom: -8px; width: 1px; background: var(--border); }.workflow-graph-node-content{ min-width: 0; margin-bottom: 16px; padding: 16px 16px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-subtle); }.workflow-graph-node-heading{ display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }.workflow-graph-node-heading strong{ min-width: 0; overflow-wrap: anywhere; }.workflow-graph-node-content p{ margin: 8px 0 0; color: var(--text-muted); overflow-wrap: anywhere; white-space: pre-wrap; }.workflow-graph-node-meta{ font-size: 12px; }
 @media (max-width: 760px) {.workflow-graph-dialog{ max-height: calc(100dvh - 16px); }
 }/* Final workflow console hierarchy. */
-.dashboard-section-workflows .workflow-summary-grid{ display: grid; grid-template-columns: 1.25fr repeat(3, 1fr); gap: 12px; }.dashboard-section-workflows .workflow-card-clickable{ cursor: pointer; }.dashboard-section-workflows .workflow-card-clickable:focus-visible{ outline: 3px solid rgba(37,99,235,.28); outline-offset: 2px; }
-@media (max-width: 1120px) {
-}
-@media (max-width: 640px) {
-}/* Workflow status tabs must remain readable on the light console surface. */
+.dashboard-section-workflows .workflow-summary-grid{ display: grid; grid-template-columns: 1.25fr repeat(3, 1fr); gap: 12px; }.dashboard-section-workflows .workflow-card-clickable{ cursor: pointer; }.dashboard-section-workflows .workflow-card-clickable:focus-visible{ outline: 3px solid var(--color-focus); outline-offset: 2px; }
+
+/* Workflow status tabs must remain readable on the light console surface. */
 .dashboard-section-workflows .workflow-stage-strip{ background: var(--color-surface-sunk); }.dashboard-section-workflows .workflow-stage-strip > .workflow-stage-item:hover{ color: var(--color-ink); background: #ffffff; }.dashboard-section-workflows .workflow-stage-strip > .workflow-stage-item:not(.selected) .workflow-stage-dot{ background: var(--color-ink-3); }.dashboard-section-workflows .workflow-stage-strip > .workflow-stage-item.in_progress:not(.selected) .workflow-stage-dot{ background: var(--color-info); }.dashboard-section-workflows .workflow-stage-strip > .workflow-stage-item.review:not(.selected) .workflow-stage-dot{ background: var(--color-warning); }.dashboard-section-workflows .workflow-stage-strip > .workflow-stage-item.blocked:not(.selected) .workflow-stage-dot{ background: var(--color-danger); }.dashboard-section-workflows .workflow-stage-strip > .workflow-stage-item.done:not(.selected) .workflow-stage-dot{ background: var(--color-success); }/* Simplified workflow page: summary line, light tabs, queue. */
 .dashboard-section-workflows .workflow-page-summary p:not(.eyebrow){ margin: 0; color: var(--text-subtle); font-size: 13px; }.dashboard-section-workflows .workflow-stage-strip > .workflow-stage-item:hover{ flex: 0 0 auto; display: inline-flex; grid-template-columns: none; min-height: 34px; gap: 8px; padding: 8px 12px; border: 0; border-radius: var(--radius-sm); color: var(--text-subtle); background: transparent; }
-@media (max-width: 760px) {
-}/* Whole-console pass: reduce card noise and establish one page hierarchy. */
+/* Whole-console pass: reduce card noise and establish one page hierarchy. */
 .dashboard-page .dashboard-grid{ display: flex; flex-wrap: wrap; gap: 12px; }.dashboard-page .dashboard-grid > [data-slot="stat-tile"]{ flex: 1 1 150px; }.dashboard-page .panel-grid{ gap: 16px; }.dashboard-page .dashboard-panel-card{ border-radius: var(--radius-xl); box-shadow: none; }.dashboard-section-backups .dashboard-grid, .dashboard-section-tools .dashboard-grid{ padding-bottom: 16px; }.dashboard-section-analytics .panel-grid, .dashboard-section-backups .panel-grid, .dashboard-section-health .panel-grid{ align-items: start; }.dashboard-section-dispatch .stack, .dashboard-section-analytics .stack, .dashboard-section-backups .stack, .dashboard-section-tools .stack, .dashboard-section-health .stack, .dashboard-section-settings .stack{ gap: 16px; }.dashboard-section-dispatch .dispatch-card, .dashboard-section-backups .backup-row, .dashboard-section-health .health-issue-row, .dashboard-section-health .health-action-row{ border-radius: var(--radius-md); box-shadow: none; }.dashboard-section-dispatch .dispatch-card:hover, .dashboard-section-backups .backup-row:hover, .dashboard-section-tools .tool-row:hover{ transform: none; }.dashboard-section-analytics .bar-list{ gap: 8px; }.dashboard-section-settings .settings-section{ border-radius: var(--radius-md); box-shadow: none; }
 @media (max-width: 760px) {.dashboard-page .dashboard-grid > [data-slot="stat-tile"]{ flex-basis: calc(50% - 10px); }
 }.memory-detail-dialog{ width: min(720px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow: hidden; grid-template-rows: auto minmax(0, 1fr) auto; }.memory-detail-content{ min-height: 0; overflow-y: auto; padding: 4px 4px 8px 4px; }.memory-detail-meta{ display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--text-subtle); font-size: 12px; }.memory-detail-text{ margin: 16px 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; }.memory-detail-grid{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0; }.memory-detail-grid div{ padding: 12px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-subtle); min-width: 0; }.memory-detail-grid dt{ color: var(--text-subtle); font-size: 11px; }.memory-detail-grid dd{ margin: 4px 0 0; overflow-wrap: anywhere; }
@@ -1045,7 +1038,7 @@
 @media (max-width: 820px) {.dashboard-section-dispatch .dispatch-control-grid{ grid-template-columns: 1fr 1fr; }.dashboard-section-dispatch .dispatch-trigger-button{ width: 100%; }
 }
 @media (max-width: 560px) {.dashboard-section-dispatch .dispatch-summary-line{ flex-wrap: wrap; }.dashboard-section-dispatch .dispatch-summary-note{ width: 100%; margin-left: 0; }.dashboard-section-dispatch .dispatch-control-grid{ grid-template-columns: 1fr; }.dashboard-section-dispatch .dispatch-control-intro{ display: grid; }
-}.project-row-clickable{ cursor: pointer; }.project-row-clickable:focus-visible{ outline: 3px solid rgba(37,99,235,.24); outline-offset: -2px; }/* Standard §4.2: form dialogs cap at the viewport, scroll their body, and keep
+}.project-row-clickable{ cursor: pointer; }.project-row-clickable:focus-visible{ outline: 3px solid var(--color-focus); outline-offset: -2px; }/* Standard §4.2: form dialogs cap at the viewport, scroll their body, and keep
    the footer actions reachable on short windows. */
 .dialog-scroll-shell{ display: flex; flex-direction: column; max-height: calc(100dvh - 24px); overflow: hidden; }.dialog-scroll-shell > .dialog-scroll-body{ flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; }
 @media (max-width: 640px) {.dialog-scroll-shell{ max-height: calc(100dvh - 16px); } }/* Standard §4.2: the body scrolls, the footer actions stay pinned and visible. */
@@ -1053,8 +1046,7 @@
 @media (max-width: 620px) {.workflow-create-grid{ grid-template-columns: 1fr; } }.dashboard-summary-line{ display: flex; flex-wrap: wrap; align-items: baseline; gap: 16px; padding: 4px 4px 12px; border-bottom: 1px solid var(--border); color: var(--text-subtle); font-size: 12px; }.dashboard-summary-line span{ display: inline-flex; align-items: baseline; gap: 4px; }.dashboard-summary-line strong{ color: var(--text); font-size: var(--text-xl); }.dashboard-summary-line .warning strong{ color: var(--color-warning); }
 @media (max-width: 640px) {.dashboard-summary-line{ gap: 12px 16px; } }
 
-@media (max-width: 560px) {
-}
+
 
 /* --- Visual polish pass: flatten the overview hero and remove nested-card noise --- */
 .command-center-hero{

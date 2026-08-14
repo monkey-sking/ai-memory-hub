@@ -41,6 +41,7 @@ import { addPack, discoverPacks, listPacks, setPackEnabled, validateRegisteredPa
 import { listSkills, searchSkills } from "./skill-registry.js";
 import { aggregateSkillSources, defaultSkillRoots, scanSkillRoots } from "./shared-skill-scan.js";
 import { importSharedPack, importSharedSkill, listSharedSkillPackages, findSharedSkillPackage } from "./shared-skills.js";
+import { applySkillGarbageCollection, planSkillGarbageCollection, rollbackSkillGarbageCollection } from "./skill-gc.js";
 import { readSkillPackManifest } from "./shared-skill-pack.js";
 import { disableProjectSkill, getSkillLifecycleState, loadProjectSkillManifest, setProjectSkill, removeProjectSkill, selectProjectSkillVersion, selectProjectSkills } from "./shared-skill-project.js";
 import { doctorSkillProjections, syncSkillProjections } from "./shared-skill-materializer.js";
@@ -7725,7 +7726,7 @@ async function mcpCommand(argv) {
 async function skillCommand(argv) {
   const action = argv[0] || "list";
   if (action === "--help" || action === "-h") {
-    console.log("Usage: ai-memory-hub skill list|scan|import|install|show|update|rollback|enable|disable|sync|doctor|diff|remove|search|attach|render [--app <client>] [--all] [--apply] [--force]");
+    console.log("Usage: ai-memory-hub skill list|scan|import|install|show|update|rollback|enable|disable|sync|doctor|diff|remove|gc|gc-rollback|search|attach|render [--app <client>] [--all] [--apply] [--force]");
     return;
   }
   const config = loadConfig();
@@ -7803,6 +7804,18 @@ async function skillCommand(argv) {
     const project = getOption(argv.slice(1), "--project") || process.cwd();
     console.log(JSON.stringify(await diffSkillExtensions(config.memoryDir, { projectRoot: project, apps }), null, 2)); return;
   }
+  if (action === "gc") {
+    const project = getOption(argv.slice(1), "--project") || process.cwd();
+    const result = argv.includes("--apply")
+      ? await applySkillGarbageCollection(config.memoryDir, project, { confirm: getOption(argv.slice(1), "--confirm") })
+      : await planSkillGarbageCollection(config.memoryDir, project);
+    console.log(JSON.stringify(result, null, 2)); return;
+  }
+  if (action === "gc-rollback") {
+    const operationId = getOption(argv.slice(1), "--id") || argv[1] || "";
+    if (!operationId) throw new Error("Usage: ai-memory-hub skill gc-rollback <operation-id>");
+    console.log(JSON.stringify(await rollbackSkillGarbageCollection(config.memoryDir, operationId), null, 2)); return;
+  }
   if (action === "remove") {
     const id = getOption(argv.slice(1), "--id") || argv[1] || "";
     const project = getOption(argv.slice(1), "--project") || process.cwd();
@@ -7825,7 +7838,7 @@ async function skillCommand(argv) {
     console.log(renderSkillMarkdown({ title, text, sourceTaskId: getOption(argv.slice(1), "--task") || "unknown", evidence: (getOption(argv.slice(1), "--evidence") || "").split(";").map((item) => item.trim()).filter(Boolean) }));
     return;
   }
-  throw new Error("Usage: ai-memory-hub skill list|scan|import|install|show|update|rollback|enable|disable|sync|doctor|diff|remove|search|attach|render");
+  throw new Error("Usage: ai-memory-hub skill list|scan|import|install|show|update|rollback|enable|disable|sync|doctor|diff|remove|gc|gc-rollback|search|attach|render");
 }
 
 function getSkillDeltasFile(memoryDir) {

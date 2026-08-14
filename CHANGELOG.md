@@ -183,3 +183,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **0.3.0** (2026-07-13) - Dashboard redesign, workflow nodes, policy layer, approval gates, event-driven daemon
 - **0.2.0** (2026-06-11) - Hermes Agent integration
 - **0.1.0** (2026-06-09) - Initial release with 13 core features
+
+### Documentation updates
+
+- Documented Skill Registry GC safety and rollback.
+- Documented the single-main branch baseline and daemon restart verification.
+

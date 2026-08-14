@@ -1583,3 +1583,9 @@ ai-memory-hub daemon --tools codex,gemini,claude
 ```
 
 AMH-owned dispatch lifecycle leases are persisted under `state/session-leases.jsonl`. This records lifecycle and recovery state; it is not a generic live terminal injection adapter.
+
+
+## Skill Registry GC
+
+skill gc lists packages not selected by the project manifest and is preview-only by default. Apply cleanup with ai-memory-hub skill gc --project <path> --apply --confirm GC. Selected packages are protected and removed packages are backed up under skill-store/gc-backups/<operation-id>. Restore with ai-memory-hub skill gc-rollback <operation-id>.
+

@@ -1673,3 +1673,30 @@ test("daemon status reports not_running without starting the daemon loop", async
     assert.match(payload.statusFile, /daemon-status\.json$/);
   });
 });
+
+test('dispatch skips follow-up for a completed session', async () => {
+  await withHub(async (memoryDir) => {
+    const now = new Date().toISOString();
+    await appendJsonl(path.join(memoryDir, 'context', 'sessions.jsonl'), {
+      id: 'session-done',
+      agent: 'claude',
+      state: 'done',
+      project: 'test-project',
+      updatedAt: now
+    });
+    await appendJsonl(path.join(memoryDir, 'radio', 'messages.jsonl'), {
+      id: 'follow-up-done-session',
+      ts: now,
+      from: 'codex',
+      to: 'session:claude:session-done',
+      type: 'follow_up',
+      text: 'Do not wake a completed session.',
+      project: 'test-project'
+    });
+
+    const result = runCli(memoryDir, ['dispatch', '--to', 'claude', '--project', 'test-project', '--limit', '1']);
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.jobs.length, 0);
+  });
+});

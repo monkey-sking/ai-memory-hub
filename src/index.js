@@ -5242,7 +5242,16 @@ function isDirectDispatchRadioMessage(message, to = "") {
   return requested ? target.tool === requested : true;
 }
 
+function isRadioTargetingClosedSession(memoryDir, message) {
+  const target = resolveAgentTarget(message?.to || "");
+  if (target.kind !== "session" || !target.sessionId) return false;
+  const latest = [...readSessions(memoryDir)].reverse().find((session) => (session.id || session.sessionId) === target.sessionId);
+  const state = String(latest?.state || latest?.status || "").trim().toLowerCase();
+  return ["completed", "delivered", "done", "cancelled", "blocked", "failed", "stale", "dead", "abandoned"].includes(state);
+}
+
 function isRadioLinkedToClosedSource(memoryDir, message) {
+  if (isRadioTargetingClosedSession(memoryDir, message)) return true;
   const refs = [message?.thread, message?.replyTo]
     .map((value) => String(value || "").trim())
     .filter(Boolean);

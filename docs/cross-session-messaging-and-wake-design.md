@@ -146,7 +146,7 @@ local Radio files or accept unauthenticated session ids.
 
 ## Implemented MVP
 
-The current MVP supports session-targeted Radio messages through `session:<tool>:<sessionId>`. Dispatch resolves the target tool, preserves the concrete session id, and passes it to resume-capable runners. `session follow-up` resolves a known session to a concrete target automatically. Agents without a verified live or resume adapter remain durable queue targets.
+The current MVP supports session-targeted Radio messages through `session:<tool>:<sessionId>`. Dispatch resolves the target tool, preserves the concrete session id, and passes it to resume-capable runners. `session follow-up` resolves a known session to a concrete target automatically. Agents without a verified live or resume adapter remain durable queue targets. Dispatch checks the latest session lifecycle state before consuming a session-targeted follow-up, so completed, delivered, done, cancelled, blocked, failed, stale, dead, and abandoned sessions are not woken.
 
 ## Recommendation
 

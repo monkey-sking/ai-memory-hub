@@ -11,4 +11,4 @@ Keep only main locally and on origin by default. Merge temporary branches, check
 3. Start ai-memory-hub daemon --interval-ms 10000.
 4. Run status again and confirm the new PID is live, stalePid=false, and lastError is empty.
 
-Use --force only after confirming the old daemon is no longer alive.
+Use --force only after confirming the old daemon is no longer alive. The daemon also owns an atomic state/daemon.lock; a live lock is never overridden.

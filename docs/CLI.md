@@ -1324,7 +1324,7 @@ ai-memory-hub daemon status
 - `--interval-ms <ms>` - Loop interval in milliseconds (default: 10000)
 - `--project <name[,name]>` - Optional project filter list
 - `--limit <n>` - Maximum jobs per tool/project per cycle (default: 10)
-- `--force` - Start even when local daemon metadata says a daemon is already running
+- `--force` - Recover stale daemon metadata only; a live daemon or lock still blocks startup
 - `--isolate-worktree` - Run daemon-dispatched jobs in per-job Git worktrees
 - `--worktree-root <dir>` - Directory for daemon worktrees (default:
   `.ai-worktrees` under the repository root)

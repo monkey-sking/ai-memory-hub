@@ -29,6 +29,7 @@ import { createDashboardCollaborationApi } from "./dashboard/collaboration.js";
 import { buildExecutionAdapters } from "./execution-adapters.js";
 import { buildWorktreeSnapshot } from "./worktree-snapshot.js";
 import { evaluateDaemonHeartbeat } from "./daemon-health.js";
+import { acquireDaemonLock, releaseDaemonLock } from "./daemon-lock.js";
 import { resolveAgentTarget } from "./agent-wake.js";
 import { createSessionSupervisor } from "./session-supervisor-service.js";
 import { buildWorkflowSharedState } from "./workflow-context.js";
@@ -7428,10 +7429,16 @@ function daemonCommand(argv) {
     ? toolsOption.split(/[,\s]+/).map((t) => t.trim()).filter(Boolean)
     : [...DAEMON_DEFAULT_TOOLS];
   const startedAt = new Date().toISOString();
-  const currentStatus = buildDaemonStatus(config.memoryDir);
-  if (currentStatus.running && !force) {
-    throw new Error(`Daemon already appears to be running as pid ${currentStatus.pid}. Use 'ai-memory-hub daemon status' to inspect or pass --force to replace stale local metadata.`);
+  const daemonLock = acquireDaemonLock(config.memoryDir, { pid: process.pid });
+  if (!daemonLock.acquired) {
+    throw new Error("Daemon already appears to be running as pid " + daemonLock.pid + ". Stop the active daemon before starting another instance.");
   }
+  const currentStatus = buildDaemonStatus(config.memoryDir);
+  if (currentStatus.running) {
+    releaseDaemonLock(daemonLock);
+    throw new Error("Daemon already appears to be running as pid " + currentStatus.pid + ". Stop the active daemon before starting another instance.");
+  }
+  process.on("exit", () => releaseDaemonLock(daemonLock));
   writeDaemonPid(config.memoryDir, process.pid);
   writeDaemonStatus(config.memoryDir, {
     state: "starting",
@@ -7622,6 +7629,7 @@ function daemonCommand(argv) {
       projects: projectList,
       cycle: iteration
     });
+    releaseDaemonLock(daemonLock);
     clearDaemonPid(config.memoryDir, process.pid);
     // Clean up file watchers
     for (const w of watchers) {

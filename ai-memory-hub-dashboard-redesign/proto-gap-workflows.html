@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<!--
+  proto-gap-workflows.html — AMH Dashboard · Workflows gap prototype
+  Design system: dashboard-next/src/index.css @theme (Plan A) via proto-gap.css
+  Component geometry: DESIGN-SPEC-3GAPS.md §3 (workflow-create-* / workflow-graph-* )
+  Enums (7): open | planned | in_progress | review | blocked | done | cancelled
+  Backend: POST/PATCH/DELETE /api/workflows · GET /api/workflows/:id/nodes (NO edges)
+  STATUS: static design prototype, example data, not a live backend.
+-->
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>工作流 · AMH Dashboard 原型</title>
+  <link rel="stylesheet" href="proto-gap.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <!-- ===================== Sidebar ===================== -->
+    <aside class="sidebar">
+      <div class="sidebar__brand">
+        <div class="sidebar__logo">M</div>
+        <div class="sidebar__name">AI Memory Hub<small>Dashboard · Plan A</small></div>
+      </div>
+      <div class="sidebar__section">工作区</div>
+      <nav>
+        <a href="proto-gap-workflows.html" class="active" aria-current="page">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+          工作流
+        </a>
+        <a href="proto-gap-tasks-kanban.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+          任务看板
+        </a>
+        <a href="proto-gap-charts.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="20" x2="6" y2="16"/><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/></svg>
+          富图表
+        </a>
+      </nav>
+      <div class="sidebar__spacer"></div>
+      <div class="sidebar__foot">静态设计原型 · 3-Gap</div>
+    </aside>
+
+    <!-- ===================== Main ===================== -->
+    <div class="main">
+      <div class="proto-banner">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        <span><strong>静态设计原型</strong> · 示例数据，非实时后端。创建/编辑/删除与节点时间线均有真实端点；关系图仅含节点、后端无 edges 端点（连线为结构示意，非真实依赖）。</span>
+      </div>
+
+      <header class="page-header">
+        <div class="page-header__titles">
+          <h1>工作流</h1>
+          <p class="subtitle">多角色协作流水线：规划 / 执行 / 审查 / 观察</p>
+        </div>
+        <div class="page-header__actions">
+          <button class="btn btn--primary" id="open-create">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            创建工作流
+          </button>
+        </div>
+      </header>
+
+      <div class="page-content">
+        <div class="workflow-card-grid">
+
+          <!-- ===== Workflow card 1 ===== -->
+          <article class="workflow-card">
+            <div class="workflow-card__head">
+              <div class="workflow-card__title-block">
+                <h3 class="workflow-card__title">记忆索引重构</h3>
+                <div class="workflow-card__project">project: ai-memory-hub</div>
+              </div>
+              <div class="workflow-card__badges">
+                <span class="badge badge--accent">in_progress</span>
+                <span class="badge badge--warning">high</span>
+              </div>
+            </div>
+            <div class="workflow-card__roles">
+              <div class="role-row"><span class="role-key">planner</span><span class="role-val">alice</span></div>
+              <div class="role-row"><span class="role-key">executor</span><span class="role-val">bob</span></div>
+              <div class="role-row"><span class="role-key">reviewer</span><span class="role-val">carol</span></div>
+              <div class="role-row"><span class="role-key">observer</span><span class="role-val">dave</span></div>
+            </div>
+            <div class="workflow-card__progress">
+              <div class="progress-meta"><span>进度</span><span class="tabular">60%</span></div>
+              <div class="track"><div class="bar" style="width:60%"></div></div>
+            </div>
+            <div class="workflow-card__footer">
+              <button class="btn btn--ghost btn--sm" data-graph="wf-1">详情 / 节点</button>
+              <button class="btn btn--secondary btn--sm" data-edit="wf-1">编辑</button>
+              <button class="btn btn--danger btn--sm" data-delete="记忆索引重构">删除</button>
+            </div>
+          </article>
+
+          <!-- ===== Workflow card 2 ===== -->
+          <article class="workflow-card">
+            <div class="workflow-card__head">
+              <div class="workflow-card__title-block">
+                <h3 class="workflow-card__title">文档自动生成</h3>
+                <div class="workflow-card__project">project: ai-memory-hub</div>
+              </div>
+              <div class="workflow-card__badges">
+                <span class="badge badge--info">planned</span>
+                <span class="badge badge--neutral">normal</span>
+              </div>
+            </div>
+            <div class="workflow-card__roles">
+              <div class="role-row"><span class="role-key">planner</span><span class="role-val">erin</span></div>
+              <div class="role-row"><span class="role-key">executor</span><span class="role-val">bob, frank</span></div>
+              <div class="role-row"><span class="role-key">reviewer</span><span class="role-val">carol</span></div>
+              <div class="role-row"><span class="role-key">observer</span><span class="role-val">—</span></div>
+            </div>
+            <div class="workflow-card__progress">
+              <div class="progress-meta"><span>进度</span><span class="tabular">0%</span></div>
+              <div class="track"><div class="bar" style="width:0%"></div></div>
+            </div>
+            <div class="workflow-card__footer">
+              <button class="btn btn--ghost btn--sm" data-graph="wf-2">详情 / 节点</button>
+              <button class="btn btn--secondary btn--sm" data-edit="wf-2">编辑</button>
+              <button class="btn btn--danger btn--sm" data-delete="文档自动生成">删除</button>
+            </div>
+          </article>
+
+          <!-- ===== Workflow card 3 ===== -->
+          <article class="workflow-card">
+            <div class="workflow-card__head">
+              <div class="workflow-card__title-block">
+                <h3 class="workflow-card__title">质量门禁审查</h3>
+                <div class="workflow-card__project">project: infra-monitor</div>
+              </div>
+              <div class="workflow-card__badges">
+                <span class="badge badge--success">done</span>
+                <span class="badge badge--danger">urgent</span>
+              </div>
+            </div>
+            <div class="workflow-card__roles">
+              <div class="role-row"><span class="role-key">planner</span><span class="role-val">erin</span></div>
+              <div class="role-row"><span class="role-key">executor</span><span class="role-val">frank</span></div>
+              <div class="role-row"><span class="role-key">reviewer</span><span class="role-val">carol</span></div>
+              <div class="role-row"><span class="role-key">observer</span><span class="role-val">dave</span></div>
+            </div>
+            <div class="workflow-card__progress">
+              <div class="progress-meta"><span>进度</span><span class="tabular">100%</span></div>
+              <div class="track"><div class="bar" style="width:100%"></div></div>
+            </div>
+            <div class="workflow-card__footer">
+              <button class="btn btn--ghost btn--sm" data-graph="wf-3">详情 / 节点</button>
+              <button class="btn btn--secondary btn--sm" data-edit="wf-3">编辑</button>
+              <button class="btn btn--danger btn--sm" data-delete="质量门禁审查">删除</button>
+            </div>
+          </article>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Dialog: Create ===================== -->
+  <div class="dialog-overlay" id="dlg-create">
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="create-title">
+      <button class="dialog__close" data-close aria-label="关闭">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+      <div class="dialog__header">
+        <h2 id="create-title">创建工作流</h2>
+        <p>POST /api/workflows · 仅 title 必填，其余可选</p>
+      </div>
+      <form class="dialog__body workflow-create-form" id="form-create" onsubmit="return false">
+        <div class="field">
+          <label for="wf-title">标题 (title) *</label>
+          <input class="input" id="wf-title" name="title" required placeholder="例如：记忆索引重构" />
+        </div>
+        <div class="workflow-create-grid">
+          <div class="field">
+            <label for="wf-project">项目 (project)</label>
+            <input class="input" id="wf-project" name="project" placeholder="ai-memory-hub" />
+          </div>
+          <div class="field">
+            <label for="wf-priority">优先级 (priority)</label>
+            <select class="input" id="wf-priority" name="priority">
+              <option value="low">low</option>
+              <option value="normal" selected>normal</option>
+              <option value="high">high</option>
+              <option value="urgent">urgent</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="wf-status">状态 (status)</label>
+            <select class="input" id="wf-status" name="status">
+              <option value="open">open</option>
+              <option value="planned">planned</option>
+              <option value="in_progress" selected>in_progress</option>
+              <option value="review">review</option>
+              <option value="blocked">blocked</option>
+              <option value="done">done</option>
+              <option value="cancelled">cancelled</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="wf-field-roles">
+          <div class="field">
+            <label for="wf-planner">规划者 (planner[]) — 逗号分隔</label>
+            <input class="input" id="wf-planner" name="planner" placeholder="alice" />
+          </div>
+          <div class="field">
+            <label for="wf-executor">执行者 (executor[]) — 逗号分隔</label>
+            <input class="input" id="wf-executor" name="executor" placeholder="bob" />
+          </div>
+          <div class="field">
+            <label for="wf-reviewer">审查者 (reviewer[]) — 逗号分隔</label>
+            <input class="input" id="wf-reviewer" name="reviewer" placeholder="carol" />
+          </div>
+          <div class="field">
+            <label for="wf-observer">观察者 (observer[]) — 逗号分隔</label>
+            <input class="input" id="wf-observer" name="observer" placeholder="dave" />
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="wf-plan">计划 (plan)</label>
+          <textarea class="textarea" id="wf-plan" name="plan" rows="3" placeholder="执行步骤与里程碑"></textarea>
+        </div>
+        <div class="field">
+          <label for="wf-acceptance">验收标准 (acceptance)</label>
+          <textarea class="textarea" id="wf-acceptance" name="acceptance" rows="2" placeholder="完成定义"></textarea>
+        </div>
+        <div class="field">
+          <label for="wf-risks">风险 (risks[]) — 逗号分隔</label>
+          <input class="input" id="wf-risks" name="risks" placeholder="数据漂移, 索引延迟" />
+        </div>
+      </form>
+      <div class="dialog__footer">
+        <button class="btn btn--secondary" data-close>取消</button>
+        <button class="btn btn--primary" id="submit-create">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Dialog: Edit (prefilled) ===================== -->
+  <div class="dialog-overlay" id="dlg-edit">
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="edit-title">
+      <button class="dialog__close" data-close aria-label="关闭">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+      <div class="dialog__header">
+        <h2 id="edit-title">编辑工作流</h2>
+        <p>PATCH /api/workflows/:id</p>
+      </div>
+      <form class="dialog__body workflow-create-form" id="form-edit" onsubmit="return false">
+        <div class="field">
+          <label for="ef-title">标题 (title) *</label>
+          <input class="input" id="ef-title" name="title" required value="记忆索引重构" />
+        </div>
+        <div class="workflow-create-grid">
+          <div class="field">
+            <label for="ef-project">项目 (project)</label>
+            <input class="input" id="ef-project" name="project" value="ai-memory-hub" />
+          </div>
+          <div class="field">
+            <label for="ef-priority">优先级 (priority)</label>
+            <select class="input" id="ef-priority" name="priority">
+              <option value="low">low</option>
+              <option value="normal">normal</option>
+              <option value="high" selected>high</option>
+              <option value="urgent">urgent</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="ef-status">状态 (status)</label>
+            <select class="input" id="ef-status" name="status">
+              <option value="open">open</option>
+              <option value="planned">planned</option>
+              <option value="in_progress" selected>in_progress</option>
+              <option value="review">review</option>
+              <option value="blocked">blocked</option>
+              <option value="done">done</option>
+              <option value="cancelled">cancelled</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="wf-field-roles">
+          <div class="field">
+            <label for="ef-planner">规划者 (planner[])</label>
+            <input class="input" id="ef-planner" name="planner" value="alice" />
+          </div>
+          <div class="field">
+            <label for="ef-executor">执行者 (executor[])</label>
+            <input class="input" id="ef-executor" name="executor" value="bob" />
+          </div>
+          <div class="field">
+            <label for="ef-reviewer">审查者 (reviewer[])</label>
+            <input class="input" id="ef-reviewer" name="reviewer" value="carol" />
+          </div>
+          <div class="field">
+            <label for="ef-observer">观察者 (observer[])</label>
+            <input class="input" id="ef-observer" name="observer" value="dave" />
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="ef-plan">计划 (plan)</label>
+          <textarea class="textarea" id="ef-plan" name="plan" rows="3">1. 设计向量 schema  2. 实现增量索引  3. 回灌历史记忆</textarea>
+        </div>
+        <div class="field">
+          <label for="ef-acceptance">验收标准 (acceptance)</label>
+          <textarea class="textarea" id="ef-acceptance" name="acceptance" rows="2">命中率 ≥ 95%，P95 延迟 &lt; 80ms</textarea>
+        </div>
+        <div class="field">
+          <label for="ef-risks">风险 (risks[])</label>
+          <input class="input" id="ef-risks" name="risks" value="数据漂移" />
+        </div>
+      </form>
+      <div class="dialog__footer">
+        <button class="btn btn--secondary" data-close>取消</button>
+        <button class="btn btn--primary" id="submit-edit">保存修改</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Dialog: Delete confirm ===================== -->
+  <div class="dialog-overlay" id="dlg-delete">
+    <div class="dialog" style="max-width:440px" role="dialog" aria-modal="true" aria-labelledby="del-title">
+      <button class="dialog__close" data-close aria-label="关闭">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+      <div class="dialog__header">
+        <h2 id="del-title">删除工作流</h2>
+      </div>
+      <div class="dialog__body">
+        <p style="color:var(--color-ink-3);font-size:var(--text-sm);line-height:1.6">
+          确定要删除工作流 <strong id="del-name" style="color:var(--color-ink)">—</strong> 吗？
+          该操作为<strong style="color:var(--color-warning-text)">软删除</strong>（写入事件存储，可恢复）。
+        </p>
+      </div>
+      <div class="dialog__footer">
+        <button class="btn btn--secondary" data-close>取消</button>
+        <button class="btn btn--danger" id="submit-delete">删除</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Dialog: Node graph (vertical timeline) ===================== -->
+  <div class="dialog-overlay" id="dlg-graph">
+    <div class="dialog dialog--wide" role="dialog" aria-modal="true" aria-labelledby="graph-title">
+      <button class="dialog__close" data-close aria-label="关闭">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+      <div class="dialog__header">
+        <h2 id="graph-title">执行节点</h2>
+        <p>GET /api/workflows/:id/nodes · 顺序按角色推导（planner→executor→reviewer→observer），后端无 edges 端点，竖向线仅为结构示意、非真实依赖。</p>
+      </div>
+      <div class="dialog__body">
+        <div class="workflow-graph-list" id="graph-list"><!-- filled by JS --></div>
+      </div>
+      <div class="dialog__footer">
+        <button class="btn btn--secondary" data-graph-action="retry">重试</button>
+        <button class="btn btn--secondary" data-graph-action="clone">克隆</button>
+        <button class="btn btn--danger" data-graph-action="delete">删除</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ---- Dialog open/close infra ----
+    function openDialog(id) { document.getElementById(id).classList.add('is-open'); }
+    function closeDialog(id) { document.getElementById(id).classList.remove('is-open'); }
+    document.querySelectorAll('.dialog-overlay').forEach(ov => {
+      ov.addEventListener('click', e => { if (e.target === ov) ov.classList.remove('is-open'); });
+      ov.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', () => ov.classList.remove('is-open')));
+    });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') document.querySelectorAll('.dialog-overlay.is-open').forEach(o => o.classList.remove('is-open'));
+    });
+
+    // ---- Example node data (shape aligns with backend node schema) ----
+    // { label, role, actor, status, ts }
+    const WF_NODES = {
+      'wf-1': [
+        { label: '制定记忆检索计划', role: 'planner',  actor: 'alice', status: 'done',    ts: '2025-08-12 09:14' },
+        { label: '实现向量索引模块', role: 'executor', actor: 'bob',   status: 'running', ts: '2025-08-12 10:02' },
+        { label: '审查索引正确性',   role: 'reviewer', actor: 'carol', status: 'pending', ts: '—' },
+        { label: '观测命中率指标',   role: 'observer', actor: 'dave',  status: 'pending', ts: '—' },
+      ],
+      'wf-2': [
+        { label: '梳理文档源',       role: 'planner',  actor: 'erin',  status: 'done',    ts: '2025-08-11 14:20' },
+        { label: '抽取结构化内容',   role: 'executor', actor: 'bob, frank', status: 'pending', ts: '—' },
+        { label: '校验术语一致性',   role: 'reviewer', actor: 'carol', status: 'pending', ts: '—' },
+        { label: '发布到知识库',     role: 'observer', actor: '—',     status: 'pending', ts: '—' },
+      ],
+      'wf-3': [
+        { label: '定义质量阈值',     role: 'planner',  actor: 'erin',  status: 'done',    ts: '2025-08-10 08:00' },
+        { label: '运行门禁检查',     role: 'executor', actor: 'frank', status: 'done',    ts: '2025-08-10 09:30' },
+        { label: '汇总审查结论',     role: 'reviewer', actor: 'carol', status: 'done',    ts: '2025-08-10 11:05' },
+        { label: '归档质量报告',     role: 'observer', actor: 'dave',  status: 'done',    ts: '2025-08-10 11:40' },
+      ],
+    };
+    const ROLE_ORDER = ['planner', 'executor', 'reviewer', 'observer'];
+    function nodeBadge(status) {
+      if (status === 'done')    return { v: 'success', t: '已完成' };
+      if (status === 'running') return { v: 'accent',  t: '进行中' };
+      return { v: 'neutral', t: '待执行' };
+    }
+    function renderGraph(wfId) {
+      const nodes = (WF_NODES[wfId] || []).slice().sort((a, b) => ROLE_ORDER.indexOf(a.role) - ROLE_ORDER.indexOf(b.role));
+      const list = document.getElementById('graph-list');
+      list.innerHTML = nodes.map((n, i) => {
+        const b = nodeBadge(n.status);
+        return `
+          <div class="workflow-graph-node">
+            <div class="workflow-graph-node-marker"><span>${i + 1}</span><i></i></div>
+            <div class="workflow-graph-node-content">
+              <div class="workflow-graph-node-heading">
+                <strong>${n.label}</strong>
+                <span class="badge badge--${b.v}">${b.t}</span>
+              </div>
+              <p class="role-line">${n.role} · ${n.actor}</p>
+              <div class="workflow-graph-node-meta">${n.ts} · ${n.status}</div>
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    // ---- Wire up card actions ----
+    document.getElementById('open-create').addEventListener('click', () => openDialog('dlg-create'));
+
+    document.querySelectorAll('[data-graph]').forEach(btn => {
+      btn.addEventListener('click', () => { renderGraph(btn.getAttribute('data-graph')); openDialog('dlg-graph'); });
+    });
+    document.querySelectorAll('[data-edit]').forEach(btn => {
+      btn.addEventListener('click', () => openDialog('dlg-edit'));
+    });
+    document.querySelectorAll('[data-delete]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.getElementById('del-name').textContent = btn.getAttribute('data-delete');
+        openDialog('dlg-delete');
+      });
+    });
+
+    // ---- Form submit stubs (static prototype) ----
+    document.getElementById('submit-create').addEventListener('click', () => {
+      const f = document.getElementById('form-create');
+      if (!f.checkValidity()) { f.reportValidity(); return; }
+      const body = Object.fromEntries(new FormData(f).entries());
+      ['planner','executor','reviewer','observer','risks'].forEach(k => {
+        body[k] = (body[k] || '').split(',').map(s => s.trim()).filter(Boolean);
+      });
+      console.log('POST /api/workflows', body);
+      closeDialog('dlg-create');
+    });
+    document.getElementById('submit-edit').addEventListener('click', () => {
+      const f = document.getElementById('form-edit');
+      if (!f.checkValidity()) { f.reportValidity(); return; }
+      const body = Object.fromEntries(new FormData(f).entries());
+      ['planner','executor','reviewer','observer','risks'].forEach(k => {
+        body[k] = (body[k] || '').split(',').map(s => s.trim()).filter(Boolean);
+      });
+      console.log('PATCH /api/workflows/:id', body);
+      closeDialog('dlg-edit');
+    });
+    document.getElementById('submit-delete').addEventListener('click', () => {
+      const name = document.getElementById('del-name').textContent;
+      console.log('DELETE /api/workflows/:id  (soft delete) →', name);
+      closeDialog('dlg-delete');
+    });
+
+    // ---- Graph footer actions (stub) ----
+    document.querySelectorAll('[data-graph-action]').forEach(b => {
+      b.addEventListener('click', () => {
+        console.log('workflow action:', b.getAttribute('data-graph-action'));
+        closeDialog('dlg-graph');
+      });
+    });
+  </script>
+</body>
+</html>

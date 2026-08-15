@@ -14,6 +14,8 @@ export interface StatTileProps {
   trend?: React.ReactNode
   /** Small glyph inside the trend chip. */
   trendIcon?: React.ReactNode
+  /** Optional glyph rendered in a tinted badge above the label. */
+  icon?: React.ReactNode
   /**
    * Turns the whole tile into a link target. A tile either IS the action or
    * has none — never put a button inside one, it makes the hit area ambiguous
@@ -40,7 +42,7 @@ export interface StatTileProps {
  * chip — the radius steps, so the chip reads as nested.
  */
 const StatTile = React.forwardRef<HTMLDivElement, StatTileProps>(
-  ({ label, value, valueClassName, context, trend, trendIcon, onClick, className }, ref) => {
+  ({ label, value, valueClassName, context, trend, trendIcon, icon, onClick, className }, ref) => {
     const interactive = typeof onClick === 'function'
     return (
       <div
@@ -66,6 +68,11 @@ const StatTile = React.forwardRef<HTMLDivElement, StatTileProps>(
           className
         )}
       >
+        {icon ? (
+          <div className="grid size-10 shrink-0 place-items-center rounded-md bg-accent-tint text-accent-base">
+            {icon}
+          </div>
+        ) : null}
         <div className="flex min-w-0 items-start justify-between gap-2">
           <span className="truncate text-xs font-medium uppercase tracking-wide text-ink-3">
             {label}

@@ -28,7 +28,7 @@
   padding: var(--space-2) var(--space-4);
   border-radius: var(--radius-md);
   background: var(--color-accent-base);
-  color: #ffffff;
+  color: var(--color-primary-foreground);
   font-size: var(--text-sm);
   line-height: var(--text-sm--line-height);
   font-weight: var(--font-weight-semibold);

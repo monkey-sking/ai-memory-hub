@@ -303,7 +303,7 @@ function FilterDropdown({ control }: FilterDropdownProps) {
                 width: anchor.width,
                 maxHeight: anchor.maxHeight,
               }}
-              className="z-[60] flex flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-sm"
+              className="z-[60] flex flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-lg"
               onKeyDown={onListKeyDown}
             >
               {control.searchable ? (
@@ -422,7 +422,7 @@ function FilterOverflow({ label, controls }: { label: string; controls: FilterCo
         ) : null}
         <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 transition-transform', open && 'rotate-180')} aria-hidden="true" />
       </summary>
-      <div className="absolute right-0 top-full z-30 mt-1 flex w-64 flex-col gap-2 rounded-xl border border-line bg-surface p-2 shadow-sm">
+      <div className="absolute right-0 top-full z-30 mt-1 flex w-64 flex-col gap-2 rounded-xl border border-line bg-surface p-2 shadow-lg">
         {controls.map(control => (
           <FilterDropdown key={control.id} control={control} />
         ))}

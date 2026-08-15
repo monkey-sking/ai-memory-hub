@@ -1,0 +1,62 @@
+/* =========================================================================
+   页面局部样式 · 健康（/health）
+   仅新增 token 消费型的局部类，不覆盖任何全局 token 或基件。
+   ========================================================================= */
+
+/* 4 列指标行 */
+.metrics--4{grid-template-columns:repeat(4,1fr);}
+
+/* 补齐 error 语义横幅变体（overview 只声明了 warning） */
+.banner--error{--c:var(--error); --c-bg:var(--error-bg); --c-fg:var(--error-fg);}
+
+/* 说明行 */
+.note{
+  display:flex; align-items:flex-start; gap:var(--space-3);
+  max-width:1440px; margin:0 auto; font-size:12px; color:var(--ink-4);
+}
+.note .icon{width:13px; height:13px; color:var(--ink-5); margin-top:var(--space-1);}
+.note b{color:var(--ink-3); font-weight:500;}
+.note .mono{color:var(--ink-3);}
+
+/* ------------------------- 服务检查列表 ------------------------- */
+.svc{list-style:none; margin:0; padding:var(--space-2) var(--card-pad) var(--card-pad);}
+.svc__row{
+  display:grid; grid-template-columns:8px 1fr auto auto auto; gap:var(--space-6);
+  align-items:center; min-height:var(--row-h); padding:var(--space-3) 0;
+  border-bottom:1px solid var(--border);
+}
+.svc__row:last-child{border-bottom:none;}
+.svc__id{min-width:0;}
+.svc__name{display:block; font:500 13px var(--font-sans); color:var(--ink-1);}
+.svc__ep{display:block; font-family:var(--font-mono); font-size:11.5px; color:var(--ink-4); margin-top:1px;}
+.svc__lat{font:600 12.5px var(--font-mono); color:var(--ink-1); text-align:right; min-width:60px; font-variant-numeric:tabular-nums;}
+.svc__lat.is-bad{color:var(--error-fg);}
+.svc__up{font-size:11.5px; color:var(--ink-3); text-align:right; min-width:96px;}
+.svc__up .mono{color:var(--ink-2);}
+.svc-foot{
+  display:flex; align-items:center; gap:var(--space-4); flex-wrap:wrap;
+  padding:var(--space-4) var(--card-pad); border-top:1px solid var(--border);
+  font-size:11.5px; color:var(--ink-4);
+}
+.svc-foot .spacer{margin-left:auto;}
+
+/* ------------------------- 资源条 ------------------------- */
+.res{display:flex; flex-direction:column; gap:var(--space-7); padding:var(--space-6) var(--card-pad) var(--card-pad);}
+.res__row{display:flex; flex-direction:column; gap:var(--space-3);}
+.res__top{display:flex; align-items:baseline; justify-content:space-between; gap:var(--space-4);}
+.res__k{font:600 11px var(--font-sans); letter-spacing:.04em; text-transform:uppercase; color:var(--ink-3);}
+.res__v{font:600 12.5px var(--font-mono); color:var(--ink-1); font-variant-numeric:tabular-nums;}
+.res__track{height:4px; border-radius:var(--radius-full); background:var(--bg-sunk); overflow:hidden;}
+.res__fill{height:100%; border-radius:var(--radius-full); background:var(--c);}
+.res__foot{display:flex; align-items:baseline; justify-content:space-between; gap:var(--space-4); font-size:11px; color:var(--ink-4);}
+
+@media (max-width:1200px){ .metrics--4{grid-template-columns:repeat(2,1fr);} }
+@media (max-width:900px){
+  .svc__row{grid-template-columns:8px 1fr auto; column-gap:var(--space-5); row-gap:var(--space-2);}
+  .svc__row > .dot{grid-column:1; grid-row:1;}
+  .svc__id{grid-column:2; grid-row:1;}
+  .svc__lat{grid-column:3; grid-row:1;}
+  .svc__up{grid-column:2; grid-row:2; text-align:left; min-width:0;}
+  .svc__row > .badge{grid-column:3; grid-row:2; justify-self:end;}
+}
+@media (max-width:640px){ .metrics--4{grid-template-columns:1fr;} }

@@ -1,0 +1,226 @@
+      <!-- 页面头 -->
+      <header class="page-head">
+        <div>
+          <h1 class="ttl">项目</h1>
+          <p class="sub">按代码仓库划分的记忆命名空间 · 6 个项目</p>
+        </div>
+        <div class="page-head__ctrls">
+          <button class="btn btn--secondary"><svg class="icon"><use href="#i-refresh"/></svg>重扫目录</button>
+          <button class="btn btn--primary"><svg class="icon"><use href="#i-plus"/></svg>新建项目</button>
+        </div>
+      </header>
+
+      <!-- 汇总条 -->
+      <section class="summary" aria-label="项目汇总">
+        <div class="summary__i"><span class="summary__k">项目总数</span><span class="summary__v">6</span></div>
+        <span class="summary__sep" aria-hidden="true"></span>
+        <div class="summary__i"><span class="summary__k">活跃</span><span class="summary__v">4</span></div>
+        <div class="summary__i"><span class="summary__k">已归档</span><span class="summary__v">2</span></div>
+        <span class="summary__sep" aria-hidden="true"></span>
+        <div class="summary__i"><span class="summary__k">记忆条目</span><span class="summary__v">1,284</span></div>
+        <div class="summary__i"><span class="summary__k">关联会话</span><span class="summary__v">84</span></div>
+        <span class="summary__sep" aria-hidden="true"></span>
+        <div class="summary__i"><span class="summary__k">最近活跃</span><span class="summary__v">12<small> 分钟前</small></span></div>
+      </section>
+
+      <!-- 过滤条 -->
+      <div class="bar">
+        <div class="seg" role="tablist">
+          <button class="is-active" type="button">全部 6</button>
+          <button type="button">活跃 4</button>
+          <button type="button">归档 2</button>
+        </div>
+        <div class="search--sm">
+          <svg class="icon"><use href="#i-search"/></svg>
+          <input type="text" placeholder="按项目名或路径过滤…" aria-label="过滤项目" />
+        </div>
+        <button class="select" type="button">排序：最近活跃 <svg class="icon"><use href="#i-chev-down"/></svg></button>
+        <span class="spacer"></span>
+        <span class="bar__count">显示 6 / 6</span>
+      </div>
+
+      <!-- 项目网格 -->
+      <section class="proj-grid" aria-label="项目列表">
+        <!-- 1 -->
+        <article class="proj proj--active">
+          <div class="proj__head">
+            <div>
+              <h2 class="proj__name">sample-mobile</h2>
+              <p class="proj__desc">暗色主题视觉调试与色彩系统实验</p>
+            </div>
+            <span class="badge badge--success">ACTIVE</span>
+          </div>
+          <div class="proj__path"><svg class="icon"><use href="#i-folder"/></svg><code>D:\Project\sample-mobile</code></div>
+          <div class="proj__stats">
+            <div class="proj__stat"><span class="k">记忆数</span><span class="v">384</span></div>
+            <div class="proj__stat"><span class="k">会话</span><span class="v">26</span></div>
+            <div class="proj__stat"><span class="k">最近活跃</span><span class="v is-soft">12 分钟前</span></div>
+          </div>
+          <div class="proj__share">
+            <div class="proj__share-top"><span>记忆占比</span><span class="mono">29.9%</span></div>
+            <div class="proj__track"><div class="proj__fill" style="width:100%;--f:var(--accent)"></div></div>
+          </div>
+          <div class="proj__foot">
+            <span class="proj__tags"><span class="tag">typescript</span><span class="tag">vite</span></span>
+            <span class="proj__acts">
+              <button class="btn btn--secondary btn--xs">打开</button>
+              <button class="iconbtn" aria-label="编辑"><svg class="icon"><use href="#i-edit"/></svg></button>
+              <button class="iconbtn" aria-label="归档"><svg class="icon"><use href="#i-arc"/></svg></button>
+            </span>
+          </div>
+        </article>
+
+        <!-- 2 -->
+        <article class="proj proj--active">
+          <div class="proj__head">
+            <div>
+              <h2 class="proj__name">sample-backend</h2>
+              <p class="proj__desc">调度中心接入与任务失败排障记录</p>
+            </div>
+            <span class="badge badge--success">ACTIVE</span>
+          </div>
+          <div class="proj__path"><svg class="icon"><use href="#i-folder"/></svg><code>D:\Project\sample-backend</code></div>
+          <div class="proj__stats">
+            <div class="proj__stat"><span class="k">记忆数</span><span class="v">262</span></div>
+            <div class="proj__stat"><span class="k">会话</span><span class="v">18</span></div>
+            <div class="proj__stat"><span class="k">最近活跃</span><span class="v is-soft">1 小时前</span></div>
+          </div>
+          <div class="proj__share">
+            <div class="proj__share-top"><span>记忆占比</span><span class="mono">20.4%</span></div>
+            <div class="proj__track"><div class="proj__fill" style="width:68%;--f:var(--accent)"></div></div>
+          </div>
+          <div class="proj__foot">
+            <span class="proj__tags"><span class="tag">java</span><span class="tag">spring</span></span>
+            <span class="proj__acts">
+              <button class="btn btn--secondary btn--xs">打开</button>
+              <button class="iconbtn" aria-label="编辑"><svg class="icon"><use href="#i-edit"/></svg></button>
+              <button class="iconbtn" aria-label="归档"><svg class="icon"><use href="#i-arc"/></svg></button>
+            </span>
+          </div>
+        </article>
+
+        <!-- 3 -->
+        <article class="proj proj--active">
+          <div class="proj__head">
+            <div>
+              <h2 class="proj__name">sample-media</h2>
+              <p class="proj__desc">薄板微课内容管线与转码流程</p>
+            </div>
+            <span class="badge badge--success">ACTIVE</span>
+          </div>
+          <div class="proj__path"><svg class="icon"><use href="#i-folder"/></svg><code>D:\Project\sample-media</code></div>
+          <div class="proj__stats">
+            <div class="proj__stat"><span class="k">记忆数</span><span class="v">197</span></div>
+            <div class="proj__stat"><span class="k">会话</span><span class="v">14</span></div>
+            <div class="proj__stat"><span class="k">最近活跃</span><span class="v is-soft">3 小时前</span></div>
+          </div>
+          <div class="proj__share">
+            <div class="proj__share-top"><span>记忆占比</span><span class="mono">15.3%</span></div>
+            <div class="proj__track"><div class="proj__fill" style="width:51%;--f:var(--accent)"></div></div>
+          </div>
+          <div class="proj__foot">
+            <span class="proj__tags"><span class="tag">python</span><span class="tag">ffmpeg</span></span>
+            <span class="proj__acts">
+              <button class="btn btn--secondary btn--xs">打开</button>
+              <button class="iconbtn" aria-label="编辑"><svg class="icon"><use href="#i-edit"/></svg></button>
+              <button class="iconbtn" aria-label="归档"><svg class="icon"><use href="#i-arc"/></svg></button>
+            </span>
+          </div>
+        </article>
+
+        <!-- 4 -->
+        <article class="proj proj--active">
+          <div class="proj__head">
+            <div>
+              <h2 class="proj__name">sample-game</h2>
+              <p class="proj__desc">多智能体编排与角色协作试验场</p>
+            </div>
+            <span class="badge badge--success">ACTIVE</span>
+          </div>
+          <div class="proj__path"><svg class="icon"><use href="#i-folder"/></svg><code>D:\Project\sample-game</code></div>
+          <div class="proj__stats">
+            <div class="proj__stat"><span class="k">记忆数</span><span class="v">168</span></div>
+            <div class="proj__stat"><span class="k">会话</span><span class="v">11</span></div>
+            <div class="proj__stat"><span class="k">最近活跃</span><span class="v is-soft">昨日 21:40</span></div>
+          </div>
+          <div class="proj__share">
+            <div class="proj__share-top"><span>记忆占比</span><span class="mono">13.1%</span></div>
+            <div class="proj__track"><div class="proj__fill" style="width:44%;--f:var(--accent)"></div></div>
+          </div>
+          <div class="proj__foot">
+            <span class="proj__tags"><span class="tag">agent</span><span class="tag">rust</span></span>
+            <span class="proj__acts">
+              <button class="btn btn--secondary btn--xs">打开</button>
+              <button class="iconbtn" aria-label="编辑"><svg class="icon"><use href="#i-edit"/></svg></button>
+              <button class="iconbtn" aria-label="归档"><svg class="icon"><use href="#i-arc"/></svg></button>
+            </span>
+          </div>
+        </article>
+
+        <!-- 5 -->
+        <article class="proj proj--archived">
+          <div class="proj__head">
+            <div>
+              <h2 class="proj__name">sample-notes</h2>
+              <p class="proj__desc">轻量笔记原型 · 已停止迭代</p>
+            </div>
+            <span class="badge badge--neutral">ARCHIVED</span>
+          </div>
+          <div class="proj__path"><svg class="icon"><use href="#i-folder"/></svg><code>D:\Project\sample-notes</code></div>
+          <div class="proj__stats">
+            <div class="proj__stat"><span class="k">记忆数</span><span class="v">143</span></div>
+            <div class="proj__stat"><span class="k">会话</span><span class="v">9</span></div>
+            <div class="proj__stat"><span class="k">最近活跃</span><span class="v is-soft">6 天前</span></div>
+          </div>
+          <div class="proj__share">
+            <div class="proj__share-top"><span>记忆占比</span><span class="mono">11.1%</span></div>
+            <div class="proj__track"><div class="proj__fill" style="width:37%;--f:var(--ink-5)"></div></div>
+          </div>
+          <div class="proj__foot">
+            <span class="proj__tags"><span class="tag">swift</span><span class="tag">只读</span></span>
+            <span class="proj__acts">
+              <button class="btn btn--secondary btn--xs">恢复</button>
+              <button class="iconbtn" aria-label="编辑"><svg class="icon"><use href="#i-edit"/></svg></button>
+              <button class="iconbtn" aria-label="删除"><svg class="icon"><use href="#i-trash"/></svg></button>
+            </span>
+          </div>
+        </article>
+
+        <!-- 6 -->
+        <article class="proj proj--archived">
+          <div class="proj__head">
+            <div>
+              <h2 class="proj__name">sweep</h2>
+              <p class="proj__desc">仓库级批量重构脚本集 · 已停止迭代</p>
+            </div>
+            <span class="badge badge--neutral">ARCHIVED</span>
+          </div>
+          <div class="proj__path"><svg class="icon"><use href="#i-folder"/></svg><code>D:\Project\sweep</code></div>
+          <div class="proj__stats">
+            <div class="proj__stat"><span class="k">记忆数</span><span class="v">130</span></div>
+            <div class="proj__stat"><span class="k">会话</span><span class="v">6</span></div>
+            <div class="proj__stat"><span class="k">最近活跃</span><span class="v is-soft">21 天前</span></div>
+          </div>
+          <div class="proj__share">
+            <div class="proj__share-top"><span>记忆占比</span><span class="mono">10.1%</span></div>
+            <div class="proj__track"><div class="proj__fill" style="width:34%;--f:var(--ink-5)"></div></div>
+          </div>
+          <div class="proj__foot">
+            <span class="proj__tags"><span class="tag">bash</span><span class="tag">只读</span></span>
+            <span class="proj__acts">
+              <button class="btn btn--secondary btn--xs">恢复</button>
+              <button class="iconbtn" aria-label="编辑"><svg class="icon"><use href="#i-edit"/></svg></button>
+              <button class="iconbtn" aria-label="删除"><svg class="icon"><use href="#i-trash"/></svg></button>
+            </span>
+          </div>
+        </article>
+      </section>
+
+      <!-- 说明 -->
+      <p class="note">
+        <svg class="icon"><use href="#i-info"/></svg>
+        <span>
+          项目由 <span class="mono">fs-agent</span> 按仓库根目录自动发现；归档项目保留全部记忆但不再接收新写入，
+          可随时恢复为活跃状态。记忆占比条以最大项目为满格，百分比为占全库 <b>1,284</b> 条的份额。
+        </span>
+      </p>

@@ -594,7 +594,7 @@ function WorkflowActionMenu({ label, actions }: { label: string; actions: Workfl
   const menu = open && coords ? createPortal(
     <div
       ref={menuContentRef}
-      className="fixed z-50 grid min-w-[168px] gap-0.5 rounded-lg border border-line bg-surface p-2 shadow-lg"
+      className="fixed z-50 grid min-w-[168px] gap-0.5 rounded-xl border border-line bg-surface p-2 shadow-lg"
       style={{ top: coords.top, right: coords.right, left: 'auto' }}
       id={menuId}
       role="menu"

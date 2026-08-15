@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark" data-density="compact">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AMH Dashboard · Plan A 原型套件</title>
+<style>
+:root,[data-theme="dark"]{
+  --bg-canvas:#0B0C0E; --bg-surface:#15161A; --bg-raised:#1E1F25; --border:#2A2B31; --border-strong:#3A3C44;
+  --ink-1:#F2F3F5; --ink-2:#C7C9D1; --ink-3:#9094A0;
+  --accent:#6E5EF2; --accent-hover:#8275F6; --accent-fg:#FFFFFF; --link:#9D93F8;
+  --success:#3FB950; --warning:#D29922; --error:#F85149; --info:#58A6FF;
+  --radius-md:6px; --radius-lg:8px; --space-5:12px; --space-6:16px; --space-8:24px; --space-9:32px;
+  --shadow-floating:0 8px 24px rgba(0,0,0,.55);
+}
+[data-theme="light"]{
+  --bg-canvas:#FFFFFF; --bg-surface:#F7F8F9; --bg-raised:#FFFFFF; --border:#E2E4E8; --border-strong:#C9CDD4;
+  --ink-1:#15161A; --ink-2:#43474E; --ink-3:#6B6F78;
+  --accent:#4F46E5; --accent-hover:#4338CA; --accent-fg:#FFFFFF; --link:#4338CA;
+}
+*{box-sizing:border-box;}
+body{margin:0; background:var(--bg-canvas); color:var(--ink-2); font:400 14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; -webkit-font-smoothing:antialiased;}
+a{color:var(--link); text-decoration:none;}
+.wrap{max-width:1240px; margin:0 auto; padding:var(--space-9) var(--space-8);}
+.head{display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:var(--space-9);}
+.head h1{margin:0; color:var(--ink-1); font-size:28px; letter-spacing:-.01em;}
+.head p{margin:6px 0 0; color:var(--ink-3); max-width:640px;}
+.topbtn{display:inline-flex; align-items:center; gap:6px; height:34px; padding:0 12px; border-radius:var(--radius-md); background:var(--bg-surface); border:1px solid var(--border); color:var(--ink-1); cursor:pointer; font:500 13px sans-serif;}
+.kpis{display:grid; grid-template-columns:repeat(4,1fr); gap:var(--space-6); margin-bottom:var(--space-9);}
+.kpi{background:var(--bg-surface); border:1px solid var(--border); border-radius:var(--radius-lg); padding:var(--space-6);}
+.kpi .v{font:700 24px/1 monospace; color:var(--ink-1);}
+.kpi .l{font-size:12px; color:var(--ink-3); margin-top:6px; text-transform:uppercase; letter-spacing:.04em;}
+.group{margin-bottom:var(--space-9);}
+.group__title{display:flex; align-items:baseline; gap:10px; margin-bottom:var(--space-6);}
+.group__title h2{margin:0; color:var(--ink-1); font-size:18px;}
+.group__title span{font-size:12px; color:var(--ink-3);}
+.grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:var(--space-6);}
+.card{display:flex; flex-direction:column; gap:8px; background:var(--bg-surface); border:1px solid var(--border); border-radius:var(--radius-lg); padding:var(--space-6); transition:border-color 140ms, transform 140ms;}
+.card:hover{border-color:var(--accent); transform:translateY(-2px);}
+.card .ic{width:34px; height:34px; border-radius:var(--radius-md); background:var(--bg-raised); display:grid; place-items:center; color:var(--accent); border:1px solid var(--border);}
+.card .ic svg{width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round;}
+.card .nm{color:var(--ink-1); font-weight:600; font-size:15px;}
+.card .meta{font-size:12px; color:var(--ink-3);}
+.card .go{margin-top:auto; font-size:12.5px; color:var(--link);}
+.tag{display:inline-block; font:600 11px monospace; padding:1px 7px; border-radius:999px; background:var(--bg-raised); border:1px solid var(--border); color:var(--ink-3);}
+.note{background:var(--bg-surface); border:1px solid var(--border); border-left:3px solid var(--success); border-radius:var(--radius-md); padding:14px 16px; color:var(--ink-2); font-size:13px; line-height:1.7; margin-bottom:var(--space-9);}
+.note b{color:var(--ink-1);}
+@media (max-width:1024px){ .kpis{grid-template-columns:repeat(2,1fr);} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <div>
+      <h1>AI Memory Hub · 控制台原型套件</h1>
+      <p>方案 A（Linear 风 / 靛蓝 #6E5EF2）。深色为默认主题，支持浅色覆盖与紧凑/舒适双密度。16 个路由全部由同一套 CSS 变量与组件 token 驱动，可离线预览、互相跳转。</p>
+    </div>
+    <button class="topbtn" id="themeToggle">切换浅色 / 深色</button>
+  </div>
+
+  <div class="kpis">
+    <div class="kpi"><div class="v">16</div><div class="l">路由原型</div></div>
+    <div class="kpi"><div class="v">0</div><div class="l">侧栏死链 (data-todo)</div></div>
+    <div class="kpi"><div class="v">0</div><div class="l">SVG 黑块 (fill=var)</div></div>
+    <div class="kpi"><div class="v">1</div><div class="l">每页单一激活项</div></div>
+  </div>
+
+  <div class="note">
+    <b>一致性核验（已通过）：</b> 所有页面共享同一份 <code>&lt;style&gt;</code> 与内联 SVG 雪碧图；侧栏为统一的 16 路由结构，跨页真实互链、单一 <code>is-active</code> + <code>aria-current</code>；SVG 全部用 <code>style="fill:var(--x)"</code> 规避黑块；新增 skills / extensions / chat / settings 四个缺失页面已补齐，并补充 i-settings / i-skills / i-extensions / i-chat / i-analytics / i-db 六个图标与 banner 的四类语义变体。
+  </div>
+
+  <div class="group">
+    <div class="group__title"><h2>协作</h2><span>Collaboration</span></div>
+    <div class="grid">
+      <a class="card" href="overview.html"><div class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="11" width="7" height="10" rx="1.5"/><rect x="3" y="15" width="7" height="6" rx="1.5"/></svg></div><div class="nm">Overview</div><div class="meta">概览监控 <span class="tag">/dashboard</span></div><div class="go">打开 →</div></a>
+      <a class="card" href="tasks.html"><div class="ic"><svg viewBox="0 0 24 24"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h9"/></svg></div><div class="nm">Tasks</div><div class="meta">任务 <span class="tag">/tasks</span></div><div class="go">打开 →</div></a>
+      <a class="card" href="workflows.html"><div class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="6" height="6" rx="1.5"/><rect x="15" y="15" width="6" height="6" rx="1.5"/><path d="M6 9v3a3 3 0 003 3h6"/></svg></div><div class="nm">Workflows</div><div class="meta">工作流 <span class="tag">/workflows</span></div><div class="go">打开 →</div></a>
+      <a class="card" href="memory.html"><div class="ic"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/></svg></div><div class="nm">Memory</div><div class="meta">记忆 <span class="tag">/memory</span></div><div class="go">打开 →</div></a>
+    </div>
+  </div>
+
+  <div class="group">
+    <div class="group__title"><h2>数据</h2><span>Data</span></div>
+    <div class="grid">
+      <a class="card" href="radio.html"><div class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="2.5"/><path d="M7.5 7.5a6.5 6.5 0 000 9M16.5 7.5a6.5 6.5 0 010 9M4.5 4.5a10.5 10.5 0 000 15M19.5 4.5a10.5 10.5 0 010 15"/></svg></div><div class="nm">Radio</div><div class="meta"><span class="tag">/radio</span></div><div class="go">打开 →</div></a>
+      <a class="card" href="dispatch.html"><div class="ic"><svg viewBox="0 0 24 24"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg></div><div class="nm">Dispatch</div><div class="meta">调度 <span class="tag">/dispatch</span></div><div class="go">打开 →</div></a>
+      <a class="card" href="tools.html"><div class="ic"><svg viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 00-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 005.4-5.4l-2.6 2.6-2-2 2.6-2.6z"/></svg></div><div class="nm">Tools</div><div class="meta">工具 <span class="tag">/tools</span></div><div class="go">打开 →</div></a>
+      <a class="card" href="skills.html"><div class="ic"><svg viewBox="0 0 24 24"><path d="M19.439 7.85c-.049.322.059.648.289.878l1.568 1.568c.47.47.706 1.087.706 1.704s-.235 1.233-.706 1.704l-1.611 1.611a.98.98 0 0 1-.837.276c-.47-.07-.802-.48-.968-.925a2.5 2.5 0 1 0-3.214 3.214c.446.166.855.497.925.968a.979.979 0 0 1-.276.837l-1.61 1.61a2.4 2.4 0 0 1-1.705.707 2.4 2.4 0 0 1-1.704-.706l-1.568-1.568a1.03 1.03 0 0 0-.877-.29c-.493.074-.84.504-1.02.968a2.5 2.5 0 1 1-3.237-3.237c.464-.18.894-.527.967-1.02a1.03 1.03 0 0 0-.289-.877l-1.568-1.568A2.4 2.4 0 0 1 1.998 12c0-.617.236-1.234.706-1.704L4.23 8.685a1.03 1.03 0 0 0 .289-.878c-.074-.493.504-.84.968-1.02a2.5 2.5 0 1 1 3.237-3.237c.18.464.527.894 1.02.967a1.03 1.03 0 0 0 .877-.289l1.568-1.568A2.4 2.4 0 0 1 12 1.998c.617 0 1.234.236 1.704.706l1.568 1.568c.23.23.556.338.877.29.493-.074.84.504.968.968a2.5 2.5 0 1 1 3.237 3.237c-.464.18-.894.527-.967 1.02Z"/></svg></div><div class="nm">Skills</div><div class="meta"><span class="tag">/skills</span></div><div class="go">打开 →</div></a>
+      <a class="card" href="extensions.html"><div class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></svg></div><div class="nm">Extensions</div><div class="meta">扩展 <span class="tag">/extensions</span></div><div class="go">打开 →</div></a>
+      <a class="card" href="chat.html"><div class="ic"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div><div class="nm">Chat</div><div class="meta">对话 <span class="tag">/chat</span></div><div class="go">打开 →</div></a>
+    </div>
+  </div>
+
+  <div class="group">
+    <div class="group__title"><h2>系统</h2><span>System</span></div>
+    <div class="grid">
+      <a class="card" href="analytics.html"><div class="ic"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg></div><div class="nm">Analytics</div><div class="meta">分析 <span class="tag">/analytics</span></div><div class="go">打开 →</div></a>
+      <a class="card" href="search.html"><div class="ic"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></div><div class="nm">Search</div><div class="meta">搜索 <span class="tag">/search</span></div><div class="go">打开 →</div></a>
+      <a class="card" href="backups.html"><div class="ic"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg></div><div class="nm">Backups</div><div class="meta">备份 <span class="tag">/backups</span></div><div class="go">打开 →</div></a>
+      <a class="card" href="projects.html"><div class="ic"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/></svg></div><div class="nm">Projects</div><div class="meta">项目 <span class="tag">/projects</span></div><div class="go">打开 →</div></a>
+      <a class="card" href="health.html"><div class="ic"><svg viewBox="0 0 24 24"><path d="M3 12h4l2-6 4 12 2-6h6"/></svg></div><div class="nm">Health</div><div class="meta">健康 <span class="tag">/health</span></div><div class="go">打开 →</div></a>
+      <a class="card" href="settings.html"><div class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></div><div class="nm">Settings</div><div class="meta">设置 <span class="tag">/settings</span></div><div class="go">打开 →</div></a>
+    </div>
+  </div>
+
+  <p style="color:var(--ink-3); font-size:12.5px; margin-top:24px;">原型仅为设计预览，数据均为示意；真实实现见 <code>dashboard-next/</code> 已落地的 token 基础（<code>src/index.css</code> + <code>src/components/Layout.tsx</code> 主题切换）。</p>
+</div>
+<script>
+document.getElementById('themeToggle').addEventListener('click',function(){
+  var h=document.documentElement; h.dataset.theme = h.dataset.theme==='light'?'dark':'light';
+});
+</script>
+</body>
+</html>

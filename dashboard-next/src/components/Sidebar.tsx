@@ -25,7 +25,6 @@ export type NavGroup = {
 interface SidebarProps {
   groups: NavGroup[]
   language: AppLanguage
-  /** Desktop icon rail. Ignored inside the mobile sheet, which is always full width. */
   collapsed: boolean
   onToggleCollapse: () => void
   mobileOpen: boolean
@@ -89,48 +88,44 @@ function SidebarBody({
 
   return (
     <>
-      {/* Brand row — h-14, the exact height of the topbar, so the two form one
-          continuous horizontal line across the top of the app. */}
+      {/* Brand — height = topbar (--bar-h) so the two align on one line. */}
       <div
         className={cn(
-          'flex h-14 shrink-0 items-center gap-2 border-b border-line',
+          'flex h-[var(--bar-h)] shrink-0 items-center gap-2 border-b border-line',
           collapsed ? 'justify-center px-2' : 'px-3'
         )}
       >
         <span
-          className="grid size-7 shrink-0 place-items-center rounded-md bg-accent-tint text-xs font-semibold text-accent-hover"
+          className="grid size-[22px] shrink-0 place-items-center rounded-sm bg-accent-base text-[11px] font-bold text-white"
           aria-hidden="true"
         >
           AI
         </span>
         {!collapsed && (
           <span className="grid min-w-0">
-            <strong className="truncate text-base font-semibold leading-5 text-ink">AI Memory Hub</strong>
-            <span className="truncate text-xs leading-4 text-ink-3">{text.kicker}</span>
+            <strong className="truncate text-[13px] font-semibold leading-[1.15] text-ink-1">AI Memory Hub</strong>
+            <span className="truncate text-[10px] uppercase tracking-[0.02em] text-ink-4">{text.kicker}</span>
           </span>
         )}
       </div>
 
-      <nav
-        className="app-sidebar-nav flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-2 py-3"
-        aria-label={text.nav}
-      >
+      <nav className="app-sidebar-nav flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-0 py-1" aria-label={text.nav}>
         {groups.map(group => {
           const groupCollapsed = !collapsed && collapsedGroups.includes(group.id)
           return (
-            <div key={group.id} className="flex flex-col gap-1">
+            <div key={group.id} className="flex flex-col">
               {collapsed ? (
-                <span className="mx-auto h-px w-5 shrink-0 bg-line-strong" aria-hidden="true" />
+                <span className="mx-auto mb-1 mt-1 h-px w-5 shrink-0 bg-line-strong" aria-hidden="true" />
               ) : (
                 <button
                   type="button"
                   onClick={() => onToggleGroup(group.id)}
                   aria-expanded={!groupCollapsed}
-                  className="flex h-8 shrink-0 items-center gap-2 rounded-md px-2 text-xs font-medium text-ink-3 transition-colors hover:bg-surface-sunk hover:text-ink"
+                  className="flex h-7 shrink-0 items-center gap-1.5 rounded-sm px-3 text-[11px] font-semibold uppercase tracking-[0.06em] text-ink-3 transition-colors hover:bg-surface-sunk hover:text-ink-2"
                 >
                   <span className="truncate">{group.label[language]}</span>
                   <ChevronDown
-                    className={cn('ml-auto size-4 shrink-0 transition-transform', groupCollapsed && '-rotate-90')}
+                    className={cn('ml-auto size-3 shrink-0 text-ink-4 transition-transform', groupCollapsed && '-rotate-90')}
                     aria-hidden="true"
                   />
                 </button>
@@ -149,14 +144,24 @@ function SidebarBody({
                       title={collapsed ? label : undefined}
                       className={({ isActive }) =>
                         cn(
-                          'app-nav-item flex h-8 shrink-0 items-center rounded-md text-base font-medium text-ink-2 transition-colors hover:bg-surface-sunk hover:text-ink',
-                          collapsed ? 'justify-center' : 'gap-2 px-2',
-                          isActive && 'is-active bg-accent-tint font-semibold text-accent-hover'
+                          'relative flex h-[var(--row-h)] shrink-0 items-center rounded-sm text-[13px] font-medium text-ink-2 transition-colors',
+                          collapsed ? 'justify-center px-0' : 'gap-2.5 px-3',
+                          !collapsed && 'mx-[var(--space-3)]',
+                          isActive
+                            ? 'bg-surface text-ink-1'
+                            : 'hover:bg-surface-sunk hover:text-ink-1'
                         )
                       }
                     >
-                      <Icon className="size-4 shrink-0" />
-                      {!collapsed && <span className="truncate">{label}</span>}
+                      {({ isActive }) => (
+                        <>
+                          {isActive ? (
+                            <span className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full bg-accent-base" aria-hidden="true" />
+                          ) : null}
+                          <Icon className={cn('size-4 shrink-0', isActive ? 'text-accent-base' : 'text-ink-3')} />
+                          {!collapsed && <span className="truncate">{label}</span>}
+                        </>
+                      )}
                     </NavLink>
                   )
                 })}
@@ -167,16 +172,12 @@ function SidebarBody({
 
       <div
         className={cn(
-          'flex h-12 shrink-0 items-center gap-2 border-t border-line px-2',
+          'flex h-10 shrink-0 items-center gap-2 border-t border-line px-2',
           collapsed && 'justify-center'
         )}
       >
         {!collapsed && (
-          <span
-            className="truncate text-xs font-medium text-ink-3"
-            aria-label={text.version}
-            title={`v${APP_VERSION}`}
-          >
+          <span className="truncate font-mono text-[11px] font-medium text-ink-3" aria-label={text.version} title={`v${APP_VERSION}`}>
             v{APP_VERSION}
           </span>
         )}
@@ -220,17 +221,11 @@ export default function Sidebar({
 
   return (
     <>
-      {/* Desktop rail. Border-defined, never shadowed.
-
-          §9.4's 768-1280 icon rail is resolved in Layout and arrives here as
-          `collapsed`. Do NOT reintroduce it as a CSS breakpoint (`lg:w-14`
-          etc.): the same value has to drive the labels and the collapsed-only
-          tooltips below, and CSS cannot tell React about it — you would get a
-          56px rail full of clipped text instead of icons. */}
+      {/* Desktop rail — flat, border-defined (proto `.sidebar`). */}
       <aside
         className={cn(
-          'hidden shrink-0 flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-sm transition-[width] duration-200 ease-out md:flex',
-          collapsed ? 'w-14' : 'w-72'
+          'hidden shrink-0 flex-col overflow-hidden border-r border-line bg-canvas transition-[width] duration-200 ease-out md:flex',
+          collapsed ? 'w-[var(--sidebar-collapsed-width)]' : 'w-[var(--sidebar-width)]'
         )}
       >
         <SidebarBody
@@ -243,17 +238,11 @@ export default function Sidebar({
         />
       </aside>
 
-      {/* Below md the rail becomes a modal off-canvas sheet. Radix Dialog gives
-          us Escape, outside-click, focus trap and scroll lock for free, and it
-          is the one surface in the chrome allowed to carry a shadow. */}
+      {/* Below md the rail becomes a modal off-canvas sheet. */}
       <Dialog.Root open={mobileOpen} onOpenChange={open => { if (!open) onCloseMobile() }}>
         <Dialog.Portal>
           <Dialog.Overlay className="app-sidebar-overlay" />
-          <Dialog.Content
-            id="app-sidebar-sheet"
-            className="app-sidebar-sheet"
-            aria-describedby={undefined}
-          >
+          <Dialog.Content id="app-sidebar-sheet" className="app-sidebar-sheet" aria-describedby={undefined}>
             <Dialog.Title className="sr-only">{text.nav}</Dialog.Title>
             <Dialog.Close asChild>
               <button type="button" className="hub-icon-btn absolute right-2 top-3 grid" aria-label={text.close}>

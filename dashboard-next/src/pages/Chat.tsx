@@ -1,15 +1,25 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { MessageSquare } from 'lucide-react'
+import { AlertTriangle, MessageSquare, Radio, Reply, Send } from 'lucide-react'
 import type { AnyRecord } from '../lib/api'
 import { apiGet, apiPost, asArray, asRecord, textOf } from '../lib/api'
 import type { AppOutletContext } from '../lib/i18n'
 import { dashboardLabels } from '../lib/dashboardCopy'
-import { EmptyState, ErrorState, LoadingState, PageShell, Panel } from '../components/shell'
+import { cn } from '../lib/utils'
+import {
+  AlertBanner,
+  Card,
+  ChartRow,
+  MetricCard,
+  MetricGrid,
+  PageHead,
+  SplitRow,
+  ToolConnectionList
+} from '@/components/ds'
+import { EmptyState, ErrorState, LoadingState, Panel } from '../components/shell'
 import { Button } from '../components/ui/button'
 import { Input, fieldBaseStyles } from '../components/ui/input'
 import { Label } from '../components/ui/label'
-import { cn } from '../lib/utils'
 
 interface Message {
   id: string
@@ -45,6 +55,8 @@ function formatRadioReceipt(message: AnyRecord, fallbackTo: string): string {
 export default function Chat() {
   const { language, toggleLanguage } = useOutletContext<AppOutletContext>()
   const copy = dashboardLabels[language].chat
+  const t = (zh: string, en: string) => (language === 'zh' ? zh : en)
+
   const [messages, setMessages] = useState<Message[]>([])
   const [tools, setTools] = useState<ToolOption[]>([])
   const [toolsLoading, setToolsLoading] = useState(true)
@@ -53,7 +65,9 @@ export default function Chat() {
   const [project, setProject] = useState('ai-memory-hub')
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [sendErrors, setSendErrors] = useState(0)
 
+  /* ---------------------------------------------------------- real fetch */
   useEffect(() => {
     let active = true
 
@@ -79,6 +93,7 @@ export default function Chat() {
     }
   }, [])
 
+  /* --------------------------------------------------------- real action */
   const handleSend = async () => {
     const content = input.trim()
     if (!content || loading) return
@@ -109,6 +124,7 @@ export default function Chat() {
         timestamp: new Date()
       }])
     } catch (error) {
+      setSendErrors(prev => prev + 1)
       setMessages(prev => [...prev, {
         id: crypto.randomUUID(),
         role: 'system',
@@ -120,112 +136,208 @@ export default function Chat() {
     }
   }
 
+  const clearMessages = () => setMessages([])
+
+  /* ----------------------------------------------- metrics DERIVED from data */
+  const userCount = messages.filter(m => m.role === 'user').length
+  const systemCount = messages.filter(m => m.role === 'system').length
+  const errorCount = sendErrors + (toolError ? 1 : 0)
+
+  // Cumulative message count over the session — a real series, never invented.
+  const trend = useMemo(() => {
+    const cum: number[] = []
+    for (let i = 0; i < messages.length; i++) {
+      cum.push(i + 1)
+    }
+    const pts = [0, ...cum]
+    return pts.length >= 2 ? pts : [0, 0]
+  }, [messages])
+
+  const connTitle = t('已接入 Runner', 'Connected runners')
+
   return (
-    <PageShell
-      title={copy.title}
-      description={copy.subtitle}
-      actions={
-        /* Language is a page-level preference, not an action on the Agent Radio
-           panel, so it lives in the PageShell action row at the default 36px —
-           a panel header would require `size="sm"` (32px). */
-        <Button variant="ghost" onClick={toggleLanguage}>
-          {copy.language}
-        </Button>
-      }
-    >
-      <Panel
-        title="Agent Radio"
-        toolbar={
-          <>
-            {tools.length ? (
+    <div className="flex flex-col gap-6">
+      <PageHead
+        title={copy.title}
+        subtitle={copy.subtitle}
+        actions={
+          <Button variant="ghost" onClick={toggleLanguage}>
+            {copy.language}
+          </Button>
+        }
+      />
+
+      {toolError ? (
+        <AlertBanner
+          tone="warning"
+          title={t('工具列表加载失败', 'Failed to load tools')}
+          description={toolError}
+        />
+      ) : null}
+
+      <MetricGrid>
+        <MetricCard
+          label={t('可用 Agent', 'Agents')}
+          value={tools.length}
+          icon={Radio}
+          note={t('可发往的 Runner', 'Reachable runners')}
+        />
+        <MetricCard
+          label={t('消息总数', 'Messages')}
+          value={messages.length}
+          icon={MessageSquare}
+          spark={trend}
+        />
+        <MetricCard
+          label={t('我方', 'Outgoing')}
+          value={userCount}
+          icon={Send}
+          spark={trend}
+        />
+        <MetricCard
+          label={t('系统回复', 'Replies')}
+          value={systemCount}
+          icon={Reply}
+          spark={trend}
+        />
+        <MetricCard
+          label={t('错误', 'Errors')}
+          value={errorCount}
+          icon={AlertTriangle}
+          note={errorCount ? t('需关注', 'Needs attention') : t('运行正常', 'All clear')}
+        />
+      </MetricGrid>
+
+      <ChartRow
+        title={t('消息趋势', 'Message trend')}
+        subtitle={t('会话累计消息数', 'Cumulative messages this session')}
+        series={[{ label: t('累计消息', 'Cumulative'), points: trend }]}
+        donutTitle={t('角色分布', 'Role split')}
+        donutCenter={messages.length}
+        donutCenterLabel={t('消息', 'messages')}
+        segments={[
+          { label: t('我方', 'Outgoing'), value: userCount, tone: 'info' },
+          { label: t('系统', 'System'), value: systemCount, tone: 'success' }
+        ]}
+      />
+
+      <SplitRow
+        stream={
+          <Panel
+            title={t('对话', 'Conversation')}
+            toolbar={
               <>
-                <Label htmlFor="chat-to" className="shrink-0">{copy.to}</Label>
-                <select
-                  id="chat-to"
-                  value={to}
-                  onChange={event => setTo(event.target.value)}
-                  className={cn(fieldBaseStyles, 'h-8 w-auto min-w-40 shrink-0 px-2 py-0')}
-                >
-                  {tools.map(tool => (
-                    <option key={tool.name} value={tool.name}>{tool.label}</option>
-                  ))}
-                </select>
-              </>
-            ) : toolsLoading ? (
-              <LoadingState
-                size="sm"
-                label={copy.loadingTools}
-                className="shrink-0 flex-row gap-2 py-0 text-sm"
-              />
-            ) : toolError ? (
-              <ErrorState variant="inline" title={toolError} className="min-w-0 py-1" />
-            ) : (
-              <span role="status" className="shrink-0 text-sm text-ink-3">{copy.toolsUnavailable}</span>
-            )}
-            <Label htmlFor="chat-project" className="ml-2 shrink-0">{copy.project}</Label>
-            <Input
-              id="chat-project"
-              value={project}
-              onChange={event => setProject(event.target.value)}
-              className="h-8 w-auto max-w-56 min-w-0 px-2"
-            />
-          </>
-        }
-        footer={
-          <>
-            <Input
-              type="text"
-              value={input}
-              onChange={event => setInput(event.target.value)}
-              onKeyDown={event => event.key === 'Enter' && handleSend()}
-              placeholder={copy.placeholder}
-              aria-label={copy.placeholder}
-              disabled={loading}
-              className="h-8 min-w-0 flex-1 px-2"
-            />
-            <Button size="sm" onClick={handleSend} disabled={loading || !input.trim()}>
-              {loading ? copy.sending : copy.send}
-            </Button>
-          </>
-        }
-        flushBody
-        /* The body is the panel's only scroll container, so the panel needs a
-           bounded height: the app shell's `<main>` scrolls on content, and
-           without this the message list would grow the page instead of the
-           stream. The subtrahend is the chrome above and below it (topbar +
-           shell and main padding, plus the PageShell heading block and its
-           24px gap), rounded up so the page itself never scrolls too. Below
-           `sm` the heading block stacks above the action row instead of
-           sitting beside it, which costs another 16px. */
-        className="h-[calc(100svh-16rem)] min-h-96 sm:h-[calc(100svh-15rem)]"
-      >
-        {messages.length ? (
-          <div className="flex flex-col gap-3 p-4">
-            {messages.map(message => (
-              <div
-                key={message.id}
-                className={cn(
-                  'flex max-w-[min(760px,86%)] flex-col gap-1.5 rounded-md border px-3.5 py-3',
-                  message.role === 'user'
-                    ? 'self-end border-accent-line bg-accent-tint'
-                    : 'self-start border-line bg-fill'
+                {tools.length ? (
+                  <>
+                    <Label htmlFor="chat-to" className="shrink-0">{copy.to}</Label>
+                    <select
+                      id="chat-to"
+                      value={to}
+                      onChange={event => setTo(event.target.value)}
+                      className={cn(fieldBaseStyles, 'h-8 w-auto min-w-40 shrink-0 px-2 py-0')}
+                    >
+                      {tools.map(tool => (
+                        <option key={tool.name} value={tool.name}>{tool.label}</option>
+                      ))}
+                    </select>
+                  </>
+                ) : toolsLoading ? (
+                  <LoadingState
+                    size="sm"
+                    label={copy.loadingTools}
+                    className="shrink-0 flex-row gap-2 py-0 text-sm"
+                  />
+                ) : toolError ? (
+                  <ErrorState variant="inline" title={toolError} className="min-w-0 py-1" />
+                ) : (
+                  <span role="status" className="shrink-0 text-sm text-ink-3">{copy.toolsUnavailable}</span>
                 )}
-              >
-                <p className="text-sm leading-relaxed whitespace-pre-wrap text-ink wrap-anywhere">
-                  {message.content}
-                </p>
-                <time dateTime={message.timestamp.toISOString()} className="text-xs text-ink-3">{message.timestamp.toLocaleTimeString()}</time>
+                <Label htmlFor="chat-project" className="ml-2 shrink-0">{copy.project}</Label>
+                <Input
+                  id="chat-project"
+                  value={project}
+                  onChange={event => setProject(event.target.value)}
+                  className="h-8 w-auto max-w-56 min-w-0 px-2"
+                />
+              </>
+            }
+            footer={
+              <>
+                <Input
+                  type="text"
+                  value={input}
+                  onChange={event => setInput(event.target.value)}
+                  onKeyDown={event => event.key === 'Enter' && handleSend()}
+                  placeholder={copy.placeholder}
+                  aria-label={copy.placeholder}
+                  disabled={loading}
+                  className="h-8 min-w-0 flex-1 px-2"
+                />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearMessages}
+                  disabled={loading || messages.length === 0}
+                >
+                  {t('清空', 'Clear')}
+                </Button>
+                <Button size="sm" onClick={handleSend} disabled={loading || !input.trim()}>
+                  {loading ? copy.sending : copy.send}
+                </Button>
+              </>
+            }
+            flushBody
+            className="h-[60vh] min-h-[420px]"
+          >
+            {messages.length ? (
+              <div className="flex flex-col gap-3 p-4">
+                {messages.map(message => (
+                  <div
+                    key={message.id}
+                    className={cn(
+                      'flex max-w-[min(760px,86%)] flex-col gap-1.5 rounded-md border px-3.5 py-3',
+                      message.role === 'user'
+                        ? 'self-end border-accent-line bg-accent-tint'
+                        : 'self-start border-line bg-surface-sunk'
+                    )}
+                  >
+                    <p className="text-sm leading-relaxed whitespace-pre-wrap text-ink wrap-anywhere">
+                      {message.content}
+                    </p>
+                    <time dateTime={message.timestamp.toISOString()} className="text-xs text-ink-3">{message.timestamp.toLocaleTimeString()}</time>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        ) : (
-          <EmptyState
-            className="h-full"
-            icon={<MessageSquare className="h-5 w-5" />}
-            title={copy.empty}
-          />
-        )}
-      </Panel>
-    </PageShell>
+            ) : (
+              <EmptyState
+                className="h-full"
+                icon={<MessageSquare className="h-5 w-5" />}
+                title={copy.empty}
+              />
+            )}
+          </Panel>
+        }
+        side={
+          toolsLoading ? (
+            <Card title={connTitle}>
+              <LoadingState variant="rows" label={copy.loadingTools} className="p-4" />
+            </Card>
+          ) : toolError ? (
+            <Card title={connTitle}>
+              <ErrorState variant="inline" title={toolError} className="p-4" />
+            </Card>
+          ) : tools.length ? (
+            <ToolConnectionList
+              title={connTitle}
+              items={tools.map(tool => ({ name: tool.label, meta: tool.name }))}
+            />
+          ) : (
+            <Card title={connTitle}>
+              <EmptyState title={copy.toolsUnavailable} />
+            </Card>
+          )
+        }
+      />
+    </div>
   )
 }

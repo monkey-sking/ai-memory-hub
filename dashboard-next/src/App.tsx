@@ -3,10 +3,28 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import Layout from './components/Layout'
 import './App.css'
 
-const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Chat = lazy(() => import('./pages/Chat'))
 const Skills = lazy(() => import('./pages/Skills'))
 const Extensions = lazy(() => import('./pages/Extensions'))
+
+// Plan A standalone route pages (landed from the monolithic Dashboard.tsx).
+// Each owns its own data fetching + renders through the shared shell/Plan A tokens.
+const Overview = lazy(() => import('./pages/Overview'))
+const Memory = lazy(() => import('./pages/Memory'))
+const Tasks = lazy(() => import('./pages/Tasks'))
+const Radio = lazy(() => import('./pages/Radio'))
+const Dispatch = lazy(() => import('./pages/Dispatch'))
+const Workflows = lazy(() => import('./pages/Workflows'))
+const Analytics = lazy(() => import('./pages/Analytics'))
+const Backups = lazy(() => import('./pages/Backups'))
+const Search = lazy(() => import('./pages/Search'))
+const Tools = lazy(() => import('./pages/Tools'))
+const Projects = lazy(() => import('./pages/Projects'))
+const Health = lazy(() => import('./pages/Health'))
+const Settings = lazy(() => import('./pages/Settings'))
+const Runners = lazy(() => import('./pages/Runners'))
+const Sessions = lazy(() => import('./pages/Sessions'))
+const Reviews = lazy(() => import('./pages/Reviews'))
 
 function RouteFallback() {
   return (
@@ -23,21 +41,24 @@ function App() {
         <Routes>
           <Route path="/" element={<Layout />}>
             <Route index element={<Navigate to="/dashboard" replace />} />
-            <Route path="dashboard" element={<Dashboard section="overview" />} />
-            <Route path="memory" element={<Dashboard section="memory" />} />
-            <Route path="tasks" element={<Dashboard section="tasks" />} />
-            <Route path="radio" element={<Dashboard section="radio" />} />
-            <Route path="dispatch" element={<Dashboard section="dispatch" />} />
-            <Route path="workflows" element={<Dashboard section="workflows" />} />
-            <Route path="analytics" element={<Dashboard section="analytics" />} />
-            <Route path="backups" element={<Dashboard section="backups" />} />
-            <Route path="search" element={<Dashboard section="search" />} />
-            <Route path="tools" element={<Dashboard section="tools" />} />
+            <Route path="dashboard" element={<Overview />} />
+            <Route path="memory" element={<Memory />} />
+            <Route path="tasks" element={<Tasks />} />
+            <Route path="radio" element={<Radio />} />
+            <Route path="dispatch" element={<Dispatch />} />
+            <Route path="workflows" element={<Workflows />} />
+            <Route path="analytics" element={<Analytics />} />
+            <Route path="backups" element={<Backups />} />
+            <Route path="search" element={<Search />} />
+            <Route path="tools" element={<Tools />} />
             <Route path="skills" element={<Skills />} />
             <Route path="extensions" element={<Extensions />} />
-            <Route path="projects" element={<Dashboard section="projects" />} />
-            <Route path="health" element={<Dashboard section="health" />} />
-            <Route path="settings" element={<Dashboard section="settings" />} />
+            <Route path="projects" element={<Projects />} />
+            <Route path="health" element={<Health />} />
+            <Route path="settings" element={<Settings />} />
+            <Route path="runners" element={<Runners />} />
+            <Route path="sessions" element={<Sessions />} />
+            <Route path="reviews" element={<Reviews />} />
             <Route path="chat" element={<Chat />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Route>

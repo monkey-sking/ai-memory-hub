@@ -1,0 +1,46 @@
+/* =========================================================================
+   页面局部样式 · 调度（/dispatch）
+   仅新增 token 消费型的局部类，不覆盖任何全局 token 或基件。
+   ========================================================================= */
+
+/* 4 列指标行（复用 .metric 卡，仅改列数） */
+.metrics--4{grid-template-columns:repeat(4,1fr);}
+
+/* 说明行（时区 / 频率精度） */
+.note{
+  display:flex; align-items:flex-start; gap:var(--space-3);
+  max-width:1440px; margin:0 auto; font-size:12px; color:var(--ink-4);
+}
+.note .icon{width:13px; height:13px; color:var(--ink-5); margin-top:var(--space-1);}
+.note b{color:var(--ink-3); font-weight:500;}
+.note .mono{color:var(--ink-3);}
+
+/* 目标工具单元格 */
+.tool-cell{display:inline-flex; align-items:center; gap:var(--space-4);}
+.tool-cell b{font:500 13px var(--font-mono); color:var(--ink-1);}
+
+/* 触发方式单元格：类型徽章 + 表达式 */
+.trig{display:inline-flex; align-items:center; gap:var(--space-3);}
+.trig__expr{font-family:var(--font-mono); font-size:11.5px; color:var(--ink-3);}
+
+/* 下次运行单元格 */
+.when__abs{font-family:var(--font-mono); font-size:12.5px; color:var(--ink-1);}
+.when__rel{font-size:11.5px; color:var(--ink-4); margin-left:var(--space-3);}
+
+/* 操作单元格（选择器需盖过 table.data thead th / tbody td 的 0,1,3 特异性） */
+.act{display:inline-flex; align-items:center; gap:var(--space-2);}
+.act .iconbtn{width:24px; height:24px;}
+.act .iconbtn .icon{width:14px; height:14px;}
+table.data thead th.col-act,
+table.data tbody td.col-act{text-align:right;}
+
+/* 运行中脉冲点（复用 hl__dot 的动画语义，尺寸更小） */
+.dot--live{position:relative;}
+.dot--live::after{
+  content:""; position:absolute; inset:-3px; border-radius:50%;
+  border:1px solid color-mix(in srgb,var(--c) 40%,transparent);
+  animation:pulse 2.4s var(--ease) infinite;
+}
+
+@media (max-width:1200px){ .metrics--4{grid-template-columns:repeat(2,1fr);} }
+@media (max-width:640px){ .metrics--4{grid-template-columns:1fr;} }

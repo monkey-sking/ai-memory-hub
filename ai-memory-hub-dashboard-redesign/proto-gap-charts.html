@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<!--
+  proto-gap-charts.html — AMH Dashboard · Rich charts gap prototype
+  Design system: dashboard-next/src/index.css @theme (Plan A) via proto-gap.css
+  Component geometry: DESIGN-SPEC-3GAPS.md §5 (.chart* / .chart-bar / .chart-donut)
+  All charts are hand-drawn inline SVG (zero deps). No chart library.
+  REAL data: Health growthTrend(14d) · Analytics byStatus/byTool/projects.byActivity ·
+             Donut storage.items / tool connectivity.
+  PLACEHOLDER (no endpoint — not faked): Overview sparklines · Analytics dual-series line.
+-->
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>富图表 · AMH Dashboard 原型</title>
+  <link rel="stylesheet" href="proto-gap.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <!-- ===================== Sidebar ===================== -->
+    <aside class="sidebar">
+      <div class="sidebar__brand">
+        <div class="sidebar__logo">M</div>
+        <div class="sidebar__name">AI Memory Hub<small>Dashboard · Plan A</small></div>
+      </div>
+      <div class="sidebar__section">工作区</div>
+      <nav>
+        <a href="proto-gap-workflows.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+          工作流
+        </a>
+        <a href="proto-gap-tasks-kanban.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+          任务看板
+        </a>
+        <a href="proto-gap-charts.html" class="active" aria-current="page">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="20" x2="6" y2="16"/><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/></svg>
+          富图表
+        </a>
+      </nav>
+      <div class="sidebar__spacer"></div>
+      <div class="sidebar__foot">静态设计原型 · 3-Gap</div>
+    </aside>
+
+    <!-- ===================== Main ===================== -->
+    <div class="main">
+      <div class="proto-banner">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        <span><strong>静态设计原型</strong> · 示例数据。折线/面积图来自真实 <code style="font-family:var(--font-mono)">growthTrend</code> 时序；条形图与 Donut 来自真实聚合；Overview 每卡 sparkline 与 Analytics 双序列折线<strong>无后端时序端点</strong>，仅占位标注，未伪造。</span>
+      </div>
+
+      <header class="page-header">
+        <div class="page-header__titles">
+          <h1>富图表</h1>
+          <p class="subtitle">Health · Analytics · Overview — 全部手绘内联 SVG，零图表库</p>
+        </div>
+        <div class="page-header__actions">
+          <span class="badge badge--neutral">零依赖</span>
+        </div>
+      </header>
+
+      <div class="page-content">
+
+        <!-- ===================== Health ===================== -->
+        <section>
+          <div class="panel__header" style="border:1px solid var(--color-line);border-radius:var(--radius-xl) var(--radius-xl) 0 0;background:var(--color-surface);margin-bottom:-1px">
+            <div><div class="panel__title">Health</div><div class="panel__subtitle">/api/health</div></div>
+          </div>
+          <div class="chart-grid">
+            <div class="panel">
+              <div class="panel__header"><div class="panel__title">记忆增长趋势</div><div class="panel__subtitle">growthTrend · 近 14 天每日增量</div></div>
+              <div class="panel__body" id="health-line"><!-- line chart injected --></div>
+            </div>
+            <div class="panel">
+              <div class="panel__header"><div class="panel__title">存储占比</div><div class="panel__subtitle">storage.items</div></div>
+              <div class="panel__body" id="health-donut"><!-- donut injected --></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===================== Analytics ===================== -->
+        <section>
+          <div class="panel__header" style="border:1px solid var(--color-line);border-radius:var(--radius-xl) var(--radius-xl) 0 0;background:var(--color-surface);margin-bottom:-1px">
+            <div><div class="panel__title">Analytics</div><div class="panel__subtitle">/api/metrics</div></div>
+          </div>
+          <div class="chart-grid">
+            <div class="panel">
+              <div class="panel__header"><div class="panel__title">任务状态分布</div><div class="panel__subtitle">tasks.byStatus</div></div>
+              <div class="panel__body" id="an-bystatus"></div>
+            </div>
+            <div class="panel">
+              <div class="panel__header"><div class="panel__title">工具使用分布</div><div class="panel__subtitle">tasks.byTool</div></div>
+              <div class="panel__body" id="an-bytool"></div>
+            </div>
+            <div class="panel panel--wide">
+              <div class="panel__header"><div class="panel__title">项目活跃度</div><div class="panel__subtitle">projects.byActivity</div></div>
+              <div class="panel__body" id="an-byactivity"></div>
+            </div>
+            <div class="panel panel--wide">
+              <div class="panel__header"><div class="panel__title">双序列趋势（line / area）</div><div class="panel__subtitle">需要多序列时序端点</div></div>
+              <div class="panel__body">
+                <div class="placeholder-block">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                  <div class="ph-title">无后端时序端点 · 占位 / 省略</div>
+                  <div class="ph-note">/api/metrics 仅返回聚合计数（byStatus / byTool / …），不含按天多序列时序。双序列折线 / 面积图无数据可画，故仅占位，未伪造假折线。</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===================== Overview ===================== -->
+        <section>
+          <div class="panel__header" style="border:1px solid var(--color-line);border-radius:var(--radius-xl) var(--radius-xl) 0 0;background:var(--color-surface);margin-bottom:-1px">
+            <div><div class="panel__title">Overview</div><div class="panel__subtitle">/api/dashboard/overview</div></div>
+          </div>
+          <div class="stat-tile-grid" style="margin-bottom:16px" id="overview-tiles"><!-- tiles injected --></div>
+          <div class="panel">
+            <div class="panel__header"><div class="panel__title">工具连通度</div><div class="panel__subtitle">tools connectivity</div></div>
+            <div class="panel__body" id="overview-donut"></div>
+          </div>
+        </section>
+
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ============ Chart builders (hand-drawn inline SVG) ============
+    // NOTE: SVG presentation attributes (stroke / stop-color) do NOT resolve CSS
+    // var(), so generated SVG uses concrete Plan A hex values (index.css @theme).
+    const TOK = {
+      accent:  '#6e5ef2', line:  '#2a2b31',
+      success: '#3fb950', warning: '#d29922', danger: '#f85149', info: '#58a6ff',
+    };
+
+    // Line / area chart from a real 14-day sample series (growthTrend shape)
+    function buildLineChart(data, dates) {
+      const W = 560, H = 200, pad = 14;
+      const max = Math.max(...data), min = Math.min(...data);
+      const span = (max - min) || 1;
+      const lo = Math.max(0, min - span * 0.3), hi = max + span * 0.3;
+      const x = i => (i / (data.length - 1)) * W;
+      const y = v => H - ((v - lo) / (hi - lo)) * (H - 2 * pad) - pad;
+      const pts = data.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`);
+      const areaD = `M ${pts.join(' L ')} L ${W},${H} L 0,${H} Z`;
+      const grid = [50, 100, 150].map(yy => `<line x1="0" y1="${yy}" x2="${W}" y2="${yy}" stroke="${TOK.line}" stroke-width="1"/>`).join('');
+      return `<div class="chart">
+        <svg class="chart__svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+          <defs><linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="${TOK.accent}" stop-opacity="0.28"/>
+            <stop offset="100%" stop-color="${TOK.accent}" stop-opacity="0"/>
+          </linearGradient></defs>
+          ${grid}
+          <path class="chart__area" d="${areaD}" fill="url(#areaGrad)"/>
+          <polyline class="chart__line1" points="${pts.join(' ')}"/>
+        </svg>
+        <div class="chart__axis"><span>${dates[0]}</span><span>峰值 ${max}</span><span>${dates[dates.length - 1]}</span></div>
+      </div>`;
+    }
+
+    // Donut from semantic segments
+    function buildDonut(segments, centerValue, centerLabel) {
+      const total = segments.reduce((s, x) => s + x.value, 0) || 1;
+      const CIRC = 2 * Math.PI * 54;
+      let acc = 0;
+      const rings = segments.map(s => {
+        const len = (s.value / total) * CIRC;
+        const off = -acc; acc += len;
+        return `<circle cx="70" cy="70" r="54" fill="none" stroke="${s.color}" stroke-width="14" stroke-dasharray="${len.toFixed(2)} ${(CIRC - len).toFixed(2)}" stroke-dashoffset="${off.toFixed(2)}" stroke-linecap="butt"/>`;
+      }).join('');
+      const legend = segments.map(s => `<span><i style="background:${s.color}"></i>${s.label} · ${s.value}</span>`).join('');
+      return `<div class="chart-donut">
+        <svg viewBox="0 0 140 140" aria-hidden="true">
+          <circle cx="70" cy="70" r="54" fill="none" stroke="${TOK.line}" stroke-width="14"/>
+          ${rings}
+        </svg>
+        <div class="donut-center"><span class="value">${centerValue}</span><span class="label">${centerLabel}</span></div>
+      </div>
+      <div class="donut-legend">${legend}</div>`;
+    }
+
+    // Horizontal bar chart from aggregated counts
+    function buildBars(items) {
+      const max = Math.max(...items.map(i => i.value)) || 1;
+      return `<div class="chart-bar">${items.map(it => `
+        <div class="chart-bar__row">
+          <div class="bar-meta"><span class="bar-key">${it.key}</span><span class="bar-val">${it.value}</span></div>
+          <div class="bar-track"><div class="bar-fill" style="width:${Math.max(3, Math.round(it.value / max * 100))}%"></div></div>
+        </div>`).join('')}</div>`;
+    }
+
+    // ============ Health ============
+    const GROWTH_DATES = ['08-01','08-02','08-03','08-04','08-05','08-06','08-07','08-08','08-09','08-10','08-11','08-12','08-13','08-14'];
+    const GROWTH = [8, 12, 10, 15, 19, 17, 23, 21, 28, 26, 33, 31, 38, 44];
+    document.getElementById('health-line').innerHTML = buildLineChart(GROWTH, GROWTH_DATES);
+
+    document.getElementById('health-donut').innerHTML = buildDonut([
+      { value: 42, label: '索引 chunks', color: TOK.info },
+      { value: 28, label: '原始记忆',   color: TOK.success },
+      { value: 14, label: '缓存',       color: TOK.warning },
+      { value: 6,  label: '碎片/冗余',  color: TOK.danger },
+    ], '90', 'GB');
+
+    // ============ Analytics ============
+    document.getElementById('an-bystatus').innerHTML = buildBars([
+      { key: 'open', value: 2 }, { key: 'claimed', value: 2 }, { key: 'in_progress', value: 2 },
+      { key: 'blocked', value: 1 }, { key: 'needs_verification', value: 2 }, { key: 'done', value: 2 }, { key: 'cancelled', value: 1 },
+    ]);
+    document.getElementById('an-bytool').innerHTML = buildBars([
+      { key: 'vector-index', value: 5 }, { key: 'log-pipe', value: 3 }, { key: 'doc-gen', value: 2 }, { key: 'alert', value: 1 }, { key: 'legacy', value: 1 },
+    ]);
+    document.getElementById('an-byactivity').innerHTML = buildBars([
+      { key: 'ai-memory-hub', value: 7 }, { key: 'infra-monitor', value: 3 }, { key: 'docs-site', value: 2 }, { key: 'legacy-tool', value: 0 },
+    ]);
+
+    // ============ Overview ============
+    const TILES = [
+      { label: '记忆总量', value: '12.4k', sub: 'records' },
+      { label: '任务总数', value: '12', sub: 'active + done' },
+      { label: '工具连通', value: '10/12', sub: 'connected' },
+      { label: '健康分', value: '92', sub: 'analysis.score' },
+    ];
+    const sparkPH = `<div class="placeholder-block placeholder-block--mini">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      <span class="ph-title">sparkline · 无后端时序端点</span>
+    </div>`;
+    document.getElementById('overview-tiles').innerHTML = TILES.map(t => `
+      <div class="stat-tile">
+        <span class="st-label">${t.label}</span>
+        <span class="st-value">${t.value}</span>
+        <span class="st-sub">${t.sub}</span>
+        ${sparkPH}
+      </div>`).join('');
+
+    document.getElementById('overview-donut').innerHTML = buildDonut([
+      { value: 6, label: 'ok',      color: TOK.success },
+      { value: 2, label: 'warning', color: TOK.warning },
+      { value: 1, label: 'danger',  color: TOK.danger },
+      { value: 1, label: 'info',    color: TOK.info },
+    ], '10', 'tools');
+  </script>
+</body>
+</html>

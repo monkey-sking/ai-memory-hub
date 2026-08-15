@@ -48,3 +48,19 @@ CHERRY_STUDIO.md
 .codebuddy/
 .runtime/
 .tmp-wfproj/
+
+# WorkBuddy project data (local memory, automations, skills, session state).
+# Personal machine state — must never be committed or uploaded.
+.workbuddy/
+**/.workbuddy/
+
+# dashboard-next build / verify artifacts (not source)
+dashboard-next/.build-verify/
+dashboard-next/dist-bugfix/
+dashboard-next/dist-qa/
+dashboard-next/dist-verify/
+dashboard-next/dist-*/
+
+# Catch-all local env files (secrets)
+.env*
+*.local

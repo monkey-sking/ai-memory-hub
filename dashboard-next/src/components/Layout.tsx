@@ -8,14 +8,20 @@ import {
   ChevronRight,
   Database,
   FolderKanban,
+  Gauge,
+  GitPullRequest,
   LayoutDashboard,
   ListTodo,
   Menu,
   MessageSquare,
+  Moon,
   Puzzle,
   Radio,
   Search,
+  Server,
   Settings,
+  Sun,
+  Users,
   Workflow,
   Wrench,
   Zap
@@ -23,33 +29,28 @@ import {
 import type { AppLanguage, AppOutletContext } from '../lib/i18n'
 import Sidebar, { type NavGroup } from './Sidebar'
 import { TopbarSlotOutlet, TopbarSlotProvider } from './DashboardHeader'
+import { ErrorBoundary } from './ErrorBoundary'
+import { apiGet } from '../lib/api'
+import { cn } from '@/lib/utils'
 import './Layout.css'
 
 const LANGUAGE_KEY = 'hub-language'
 const SIDEBAR_KEY = 'hub-sidebar-collapsed'
+const DENSITY_KEY = 'hub-density'
 const DESKTOP_QUERY = '(min-width: 768px)'
-/** Tailwind `xl`. Below this the 256px rail eats too much of the content column. */
 const ROOMY_RAIL_QUERY = '(min-width: 1280px)'
 
-/**
- * The rail has three states, not two.
- *
- * `null` means "the user has never expressed a preference", and only then does
- * the viewport decide (§9.4: icon rail between 1024px and 1280px). The moment
- * the user clicks the toggle we store an explicit choice, and from then on it
- * wins at every width, in both directions.
- */
 type SidebarPreference = 'collapsed' | 'expanded' | null
+type Density = 'compact' | 'comfortable'
 
 function readSidebarPreference(): SidebarPreference {
   const stored = localStorage.getItem(SIDEBAR_KEY)
   if (stored === 'collapsed' || stored === '1') return 'collapsed'
   if (stored === 'expanded') return 'expanded'
-  // Legacy '0' is NOT read back as an explicit "expanded". The previous build
-  // wrote it on every mount whether or not the user ever clicked the toggle, so
-  // every existing install carries one; honouring it would pin the rail open
-  // and the responsive default below would never fire for anybody.
   return null
+}
+function readDensity(): Density {
+  return localStorage.getItem(DENSITY_KEY) === 'comfortable' ? 'comfortable' : 'compact'
 }
 
 function useMediaQuery(query: string): boolean {
@@ -64,14 +65,7 @@ function useMediaQuery(query: string): boolean {
   const getSnapshot = useCallback(() => window.matchMedia(query).matches, [query])
   return useSyncExternalStore(subscribe, getSnapshot, () => false)
 }
-/**
- * The one route table for the whole console. The sidebar renders it and the
- * topbar breadcrumb derives its label from it, so the highlighted nav item and
- * the breadcrumb can never disagree.
- *
- * The breadcrumb is a `<span>` in a `<nav>`, not a heading: the chrome never
- * renders an `<h1>`. Each page owns its own heading via `<PageShell title>`.
- */
+
 const navGroups: NavGroup[] = [
   {
     id: 'collaboration',
@@ -80,7 +74,9 @@ const navGroups: NavGroup[] = [
       { to: '/dashboard', icon: LayoutDashboard, label: { zh: '概览', en: 'Overview' } },
       { to: '/tasks', icon: ListTodo, label: { zh: '任务', en: 'Tasks' } },
       { to: '/workflows', icon: Workflow, label: { zh: '工作流', en: 'Workflows' } },
-      { to: '/memory', icon: Brain, label: { zh: '记忆', en: 'Memory' } }
+      { to: '/memory', icon: Brain, label: { zh: '记忆', en: 'Memory' } },
+      { to: '/sessions', icon: Users, label: { zh: '会话', en: 'Sessions' } },
+      { to: '/reviews', icon: GitPullRequest, label: { zh: '评审', en: 'Reviews' } }
     ]
   },
   {
@@ -104,23 +100,24 @@ const navGroups: NavGroup[] = [
       { to: '/backups', icon: Database, label: { zh: '备份', en: 'Backups' } },
       { to: '/projects', icon: FolderKanban, label: { zh: '项目', en: 'Projects' } },
       { to: '/health', icon: Activity, label: { zh: '健康', en: 'Health' } },
+      { to: '/runners', icon: Server, label: { zh: '调度器', en: 'Runners' } },
       { to: '/settings', icon: Settings, label: { zh: '设置', en: 'Settings' } }
     ]
   }
 ]
 
 const copy = {
-  zh: {
-    skip: '跳到主要内容',
-    openNav: '打开导航',
-    fallbackTitle: '概览'
-  },
-  en: {
-    skip: 'Skip to main content',
-    openNav: 'Open navigation',
-    fallbackTitle: 'Overview'
-  }
+  zh: { skip: '跳到主要内容', openNav: '打开导航', search: '搜索记忆、工具、任务…', health: '系统状态' },
+  en: { skip: 'Skip to main content', openNav: 'Open navigation', search: 'Search memory, tools, tasks…', health: 'System status' }
 } as const
+
+type HealthTone = 'success' | 'warning' | 'error' | 'unknown'
+const HEALTH_DOT: Record<HealthTone, string> = {
+  success: 'var(--color-success)',
+  warning: 'var(--color-warning)',
+  error: 'var(--color-danger)',
+  unknown: 'var(--color-ink-4)'
+}
 
 export default function Layout() {
   const { pathname } = useLocation()
@@ -129,10 +126,23 @@ export default function Layout() {
   )
   const [sidebarPreference, setSidebarPreference] = useState<SidebarPreference>(readSidebarPreference)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const [theme, setTheme] = useState<'dark' | 'light'>(
+    () => (localStorage.getItem('hub-theme') === 'light' ? 'light' : 'dark')
+  )
+  const [density, setDensity] = useState<Density>(readDensity)
+  const [health, setHealth] = useState<{ tone: HealthTone; label: string }>({ tone: 'unknown', label: '—' })
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+    localStorage.setItem('hub-theme', theme)
+  }, [theme])
+
+  useEffect(() => {
+    document.documentElement.dataset.density = density
+    localStorage.setItem(DENSITY_KEY, density)
+  }, [density])
 
   const roomyRail = useMediaQuery(ROOMY_RAIL_QUERY)
-  // One value drives the rail width, the label visibility and the tooltips, so
-  // a 56px rail can never end up rendering clipped text instead of icons.
   const sidebarCollapsed = sidebarPreference ? sidebarPreference === 'collapsed' : !roomyRail
 
   useEffect(() => {
@@ -140,18 +150,11 @@ export default function Layout() {
     document.documentElement.lang = language
   }, [language])
 
-  // Deliberately never writes when the preference is null: persisting a default
-  // the user never chose is what silently disabled the responsive rule before.
   useEffect(() => {
     if (!sidebarPreference) return
-    // Write the unambiguous encoding, never legacy '1'/'0'. The reader discards
-    // a legacy '0', so round-tripping "expanded" through it would silently drop
-    // the one choice §9.4 most needs to survive: expanded at 1024-1280px.
     localStorage.setItem(SIDEBAR_KEY, sidebarPreference)
   }, [sidebarPreference])
 
-  // Growing past the md breakpoint must not leave a modal sheet trapping focus.
-  // (Route changes close the sheet through the nav items' own click handler.)
   useEffect(() => {
     const query = window.matchMedia(DESKTOP_QUERY)
     const onChange = (event: MediaQueryListEvent) => {
@@ -161,19 +164,40 @@ export default function Layout() {
     return () => query.removeEventListener('change', onChange)
   }, [])
 
+  // Real system health → topbar light (no fabricated status).
+  const loadHealth = useCallback(() => {
+    apiGet<{ status?: string; ok?: boolean }>('/api/health')
+      .then(payload => {
+        const s = String(payload.status ?? '').toLowerCase()
+        if (s.includes('degraded') || s.includes('warn')) setHealth({ tone: 'warning', label: '降级' })
+        else if (s.includes('down') || s.includes('error') || s.includes('fail')) setHealth({ tone: 'error', label: '异常' })
+        else if (s.includes('ok') || s.includes('healthy') || payload.ok) setHealth({ tone: 'success', label: '运行中' })
+        else setHealth({ tone: 'unknown', label: '未知' })
+      })
+      .catch(() => setHealth({ tone: 'unknown', label: '未知' }))
+  }, [])
+  useEffect(() => {
+    loadHealth()
+    const t = window.setInterval(loadHealth, 15000)
+    return () => window.clearInterval(t)
+  }, [loadHealth])
+
   const toggleLanguage = useCallback(() => setLanguage(value => (value === 'zh' ? 'en' : 'zh')), [])
   const toggleSidebar = useCallback(
     () => setSidebarPreference(sidebarCollapsed ? 'expanded' : 'collapsed'),
     [sidebarCollapsed]
+  )
+  const toggleDensity = useCallback(
+    () => setDensity(value => (value === 'compact' ? 'comfortable' : 'compact')),
+    []
   )
   const closeMobileNav = useCallback(() => setMobileNavOpen(false), [])
 
   const text = copy[language]
   const pageTitle = useMemo(() => {
     const match = navGroups.flatMap(group => group.items).find(item => item.to === pathname)
-    return match ? match.label[language] : text.fallbackTitle
-  }, [pathname, language, text.fallbackTitle])
-
+    return match ? match.label[language] : text.skip
+  }, [pathname, language, text.skip])
   const pageGroup = useMemo(() => {
     for (const group of navGroups) {
       if (group.items.some(item => item.to === pathname)) return group.label[language]
@@ -188,7 +212,7 @@ export default function Layout() {
 
   return (
     <TopbarSlotProvider>
-      <div className="flex h-svh overflow-hidden bg-canvas-deep p-3 text-ink gap-3 lg:gap-4 lg:p-4">
+      <div className="flex min-h-svh bg-canvas text-ink">
         <a className="skip-to-main" href="#main-content">{text.skip}</a>
 
         <Sidebar
@@ -201,38 +225,80 @@ export default function Layout() {
         />
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-sm">
-            <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 px-4 lg:px-6">
+          {/* Proto topbar: collapse(mobile) · breadcrumb · global search · health · density · theme · slot */}
+          <header className="sticky top-0 z-30 flex h-[var(--bar-h)] shrink-0 items-center gap-3 border-b border-line bg-canvas px-3 lg:px-4">
+            <button
+              type="button"
+              className="hub-icon-btn grid md:hidden"
+              aria-label={text.openNav}
+              aria-expanded={mobileNavOpen}
+              onClick={() => setMobileNavOpen(true)}
+            >
+              <Menu className="size-4" aria-hidden="true" />
+            </button>
+
+            <nav aria-label={text.openNav} className="flex min-w-0 items-center gap-1.5 text-[13px]">
+              {pageGroup ? <span className="shrink-0 text-ink-3">{pageGroup}</span> : null}
+              {pageGroup ? <ChevronRight className="size-3.5 shrink-0 text-ink-4" aria-hidden="true" /> : null}
+              <span className="min-w-0 truncate font-medium text-ink-1">{pageTitle}</span>
+            </nav>
+
+            <div className="relative mx-auto hidden w-[min(420px,38vw)] md:block">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-ink-4" aria-hidden="true" />
+              <input
+                type="search"
+                placeholder={text.search}
+                aria-label={text.search}
+                className="h-[var(--control-h)] w-full rounded-sm border border-line bg-surface-sunk pl-8 pr-16 text-[13px] text-ink-1 placeholder:text-ink-4 focus:border-accent-base focus:shadow-focus"
+              />
+              <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded-xs border border-line bg-surface px-1.5 py-0.5 font-mono text-[10px] text-ink-5">⌘K</kbd>
+            </div>
+
+            <div className="ml-auto flex shrink-0 items-center gap-3">
+              <div className="flex items-center gap-2" title={`${text.health}：${health.label}`}>
+                <span className="relative flex size-2">
+                  <span
+                    className="absolute inline-flex h-full w-full rounded-full opacity-60 motion-safe:animate-ping"
+                    style={{ background: HEALTH_DOT[health.tone] }}
+                  />
+                  <span className="relative inline-flex size-2 rounded-full" style={{ background: HEALTH_DOT[health.tone] }} />
+                </span>
+                <span className="hidden text-[13px] text-ink-2 lg:inline">{health.label}</span>
+              </div>
+
+              <span className="hidden h-5 w-px bg-line md:inline-block" />
+
               <button
                 type="button"
-                className="hub-icon-btn grid md:hidden"
-                aria-label={text.openNav}
-                aria-controls="app-sidebar-sheet"
-                aria-expanded={mobileNavOpen}
-                onClick={() => setMobileNavOpen(true)}
+                className="hub-icon-btn grid"
+                aria-label="切换密度"
+                aria-pressed={density === 'comfortable'}
+                title={density === 'comfortable' ? '紧凑' : '宽松'}
+                onClick={toggleDensity}
               >
-                <Menu className="size-4" aria-hidden="true" />
+                <Gauge className="size-4" aria-hidden="true" />
               </button>
 
-              <nav aria-label={text.openNav} className="flex min-w-0 items-center gap-2 text-sm">
-                {pageGroup ? (
-                  <span className="shrink-0 text-ink-3">{pageGroup}</span>
-                ) : null}
-                {pageGroup ? (
-                  <ChevronRight className="size-3.5 shrink-0 text-ink-4" aria-hidden="true" />
-                ) : null}
-                <span className="min-w-0 truncate font-medium text-ink-2">{pageTitle}</span>
-              </nav>
+              <button
+                type="button"
+                className="hub-icon-btn grid"
+                aria-label={theme === 'dark' ? '切换到浅色' : '切换到深色'}
+                onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+              >
+                {theme === 'dark' ? <Sun className="size-4" aria-hidden="true" /> : <Moon className="size-4" aria-hidden="true" />}
+              </button>
 
-              <TopbarSlotOutlet className="ml-auto flex shrink-0 items-center gap-2" />
-            </header>
+              <TopbarSlotOutlet className={cn('flex shrink-0 items-center gap-2')} />
+            </div>
+          </header>
 
-            <main id="main-content" className="min-h-0 flex-1 overflow-y-auto">
-              <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-6 px-4 py-6 lg:px-6 lg:py-8">
+          <main id="main-content" className="min-h-0 flex-1 overflow-y-auto">
+            <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-[var(--section-gap)] p-[var(--section-gap)] lg:px-6">
+              <ErrorBoundary>
                 <Outlet context={outletContext} />
-              </div>
-            </main>
-          </div>
+              </ErrorBoundary>
+            </div>
+          </main>
         </div>
       </div>
     </TopbarSlotProvider>

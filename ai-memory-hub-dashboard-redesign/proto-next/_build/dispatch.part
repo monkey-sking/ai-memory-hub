@@ -1,0 +1,199 @@
+      <!-- 页面头 -->
+      <header class="page-head">
+        <div>
+          <h1 class="ttl">调度</h1>
+          <p class="sub">工具调度队列与触发策略 · 共 24 条调度规则</p>
+        </div>
+        <div class="page-head__ctrls">
+          <div class="seg" role="tablist">
+            <button class="is-active" type="button">全部</button>
+            <button type="button">Cron</button>
+            <button type="button">事件</button>
+          </div>
+          <button class="btn btn--secondary"><svg class="icon"><use href="#i-refresh"/></svg>刷新</button>
+          <button class="btn btn--primary"><svg class="icon"><use href="#i-plus"/></svg>新建调度</button>
+        </div>
+      </header>
+
+      <!-- 统计行 -->
+      <section class="metrics metrics--4" aria-label="调度统计">
+        <article class="metric">
+          <div class="metric__top"><span class="metric__label">待调度</span><svg class="metric__icon icon"><use href="#i-clock"/></svg></div>
+          <div class="metric__value">6</div>
+          <svg class="spark" viewBox="0 0 120 32" preserveAspectRatio="none" aria-hidden="true">
+            <path d="M0 20 L 10.9 24 L 21.8 18 L 32.7 22 L 43.6 16 L 54.5 20 L 65.5 14 L 76.4 18 L 87.3 12 L 98.2 16 L 109.1 10 L 120 12 L 120 32 L 0 32 Z" style="fill:var(--accent-soft)"/>
+            <path d="M0 20 L 10.9 24 L 21.8 18 L 32.7 22 L 43.6 16 L 54.5 20 L 65.5 14 L 76.4 18 L 87.3 12 L 98.2 16 L 109.1 10 L 120 12" fill="none" style="stroke:var(--accent)" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+          </svg>
+          <div class="metric__foot"><span class="delta delta--bad">▲ 2</span><span class="metric__note">最近窗口 12 分钟后</span></div>
+        </article>
+
+        <article class="metric">
+          <div class="metric__top"><span class="metric__label">运行中</span><svg class="metric__icon icon"><use href="#i-play"/></svg></div>
+          <div class="metric__value">3</div>
+          <svg class="spark" viewBox="0 0 120 32" preserveAspectRatio="none" aria-hidden="true">
+            <path d="M0 22 L 10.9 18 L 21.8 24 L 32.7 20 L 43.6 26 L 54.5 16 L 65.5 20 L 76.4 14 L 87.3 18 L 98.2 22 L 109.1 16 L 120 12 L 120 32 L 0 32 Z" style="fill:var(--accent-soft)"/>
+            <path d="M0 22 L 10.9 18 L 21.8 24 L 32.7 20 L 43.6 26 L 54.5 16 L 65.5 20 L 76.4 14 L 87.3 18 L 98.2 22 L 109.1 16 L 120 12" fill="none" style="stroke:var(--accent)" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+          </svg>
+          <div class="metric__foot"><span class="delta delta--good">▲ 1</span><span class="metric__note">并发上限 5</span></div>
+        </article>
+
+        <article class="metric">
+          <div class="metric__top"><span class="metric__label">已完成</span><svg class="metric__icon icon"><use href="#i-check"/></svg></div>
+          <div class="metric__value">1,842</div>
+          <svg class="spark" viewBox="0 0 120 32" preserveAspectRatio="none" aria-hidden="true">
+            <path d="M0 29 L 10.9 27 L 21.8 25 L 32.7 23 L 43.6 21 L 54.5 18 L 65.5 16 L 76.4 14 L 87.3 11 L 98.2 9 L 109.1 6 L 120 3 L 120 32 L 0 32 Z" style="fill:var(--accent-soft)"/>
+            <path d="M0 29 L 10.9 27 L 21.8 25 L 32.7 23 L 43.6 21 L 54.5 18 L 65.5 16 L 76.4 14 L 87.3 11 L 98.2 9 L 109.1 6 L 120 3" fill="none" style="stroke:var(--accent)" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+          </svg>
+          <div class="metric__foot"><span class="delta delta--good">▲ 8.1%</span><span class="metric__note">近 7 日累计</span></div>
+        </article>
+
+        <article class="metric">
+          <div class="metric__top"><span class="metric__label">失败</span><svg class="metric__icon icon"><use href="#i-warn"/></svg></div>
+          <div class="metric__value">2</div>
+          <svg class="spark" viewBox="0 0 120 32" preserveAspectRatio="none" aria-hidden="true">
+            <path d="M0 27 L 10.9 29 L 21.8 28 L 32.7 29 L 43.6 26 L 54.5 29 L 65.5 24 L 76.4 29 L 87.3 27 L 98.2 12 L 109.1 20 L 120 25 L 120 32 L 0 32 Z" style="fill:var(--accent-soft)"/>
+            <path d="M0 27 L 10.9 29 L 21.8 28 L 32.7 29 L 43.6 26 L 54.5 29 L 65.5 24 L 76.4 29 L 87.3 27 L 98.2 12 L 109.1 20 L 120 25" fill="none" style="stroke:var(--accent)" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+          </svg>
+          <div class="metric__foot"><span class="delta delta--bad">▲ 1</span><span class="metric__note">backup-agent 连续 2 次</span></div>
+        </article>
+      </section>
+
+      <!-- 调度队列 -->
+      <section class="table-wrap">
+        <div class="toolbar">
+          <div class="search--sm">
+            <svg class="icon"><use href="#i-search"/></svg>
+            <input type="text" placeholder="按工具名或表达式过滤…" aria-label="过滤调度" />
+          </div>
+          <button class="select" type="button">状态：全部 <svg class="icon"><use href="#i-chev-down"/></svg></button>
+          <button class="select" type="button">触发方式：全部 <svg class="icon"><use href="#i-chev-down"/></svg></button>
+          <button class="btn btn--ghost btn--xs"><svg class="icon"><use href="#i-sort"/></svg>按下次运行排序</button>
+          <span class="spacer"></span>
+          <span class="toolbar__count">24 条 · 显示 1–8</span>
+        </div>
+
+        <div class="table-scroll">
+          <table class="data">
+            <thead>
+              <tr>
+                <th class="sortable"><span class="th-in">目标工具</span></th>
+                <th>触发方式</th>
+                <th class="sortable is-sorted"><span class="th-in">下次运行 <svg class="th-sort icon icon--sm"><use href="#i-sort"/></svg></span></th>
+                <th>状态</th>
+                <th class="col-act">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="tool-cell"><span class="dot" style="--c:var(--success)"></span><b>code-index</b><span class="muted mono">v2.4.1</span></span></td>
+                <td><span class="trig"><span class="badge badge--neutral">CRON</span><span class="trig__expr">0 */2 * * *</span></span></td>
+                <td><span class="when__abs">15:00:00</span><span class="when__rel">12 分钟后</span></td>
+                <td><span class="badge badge--neutral">待调度</span></td>
+                <td class="col-act"><span class="act">
+                  <button class="btn btn--secondary btn--xs"><svg class="icon"><use href="#i-play"/></svg>立即调度</button>
+                  <button class="iconbtn" aria-label="暂停"><svg class="icon"><use href="#i-pause"/></svg></button>
+                  <button class="iconbtn" aria-label="编辑"><svg class="icon"><use href="#i-edit"/></svg></button>
+                </span></td>
+              </tr>
+              <tr>
+                <td><span class="tool-cell"><span class="dot dot--live" style="--c:var(--info)"></span><b>vector-store</b><span class="muted mono">v0.9.7</span></span></td>
+                <td><span class="trig"><span class="badge badge--info">事件</span><span class="trig__expr">memory.upsert</span></span></td>
+                <td><span class="when__abs">实时</span><span class="when__rel">上次 14:31:54</span></td>
+                <td><span class="badge badge--info">运行中</span></td>
+                <td class="col-act"><span class="act">
+                  <button class="btn btn--secondary btn--xs"><svg class="icon"><use href="#i-play"/></svg>立即调度</button>
+                  <button class="iconbtn" aria-label="暂停"><svg class="icon"><use href="#i-pause"/></svg></button>
+                  <button class="iconbtn" aria-label="编辑"><svg class="icon"><use href="#i-edit"/></svg></button>
+                </span></td>
+              </tr>
+              <tr>
+                <td><span class="tool-cell"><span class="dot" style="--c:var(--error)"></span><b>backup-agent</b><span class="muted mono">v1.2.0</span></span></td>
+                <td><span class="trig"><span class="badge badge--neutral">CRON</span><span class="trig__expr">0 3 * * *</span></span></td>
+                <td><span class="when__abs">明日 03:00:00</span><span class="when__rel">重试 2/3</span></td>
+                <td><span class="badge badge--error">失败</span></td>
+                <td class="col-act"><span class="act">
+                  <button class="btn btn--secondary btn--xs"><svg class="icon"><use href="#i-refresh"/></svg>立即调度</button>
+                  <button class="iconbtn" aria-label="暂停"><svg class="icon"><use href="#i-pause"/></svg></button>
+                  <button class="iconbtn" aria-label="编辑"><svg class="icon"><use href="#i-edit"/></svg></button>
+                </span></td>
+              </tr>
+              <tr>
+                <td><span class="tool-cell"><span class="dot" style="--c:var(--warning)"></span><b>doc-parser</b><span class="muted mono">v1.7.4</span></span></td>
+                <td><span class="trig"><span class="badge badge--warning">水位</span><span class="trig__expr">queue &gt; 12</span></span></td>
+                <td><span class="when__abs">条件待满足</span><span class="when__rel">当前积压 18</span></td>
+                <td><span class="badge badge--neutral">待调度</span></td>
+                <td class="col-act"><span class="act">
+                  <button class="btn btn--secondary btn--xs"><svg class="icon"><use href="#i-play"/></svg>立即调度</button>
+                  <button class="iconbtn" aria-label="暂停"><svg class="icon"><use href="#i-pause"/></svg></button>
+                  <button class="iconbtn" aria-label="编辑"><svg class="icon"><use href="#i-edit"/></svg></button>
+                </span></td>
+              </tr>
+              <tr>
+                <td><span class="tool-cell"><span class="dot dot--live" style="--c:var(--info)"></span><b>git-agent</b><span class="muted mono">v2.4.1</span></span></td>
+                <td><span class="trig"><span class="badge badge--info">Webhook</span><span class="trig__expr">push:main</span></span></td>
+                <td><span class="when__abs">由外部触发</span><span class="when__rel">上次 14:18:44</span></td>
+                <td><span class="badge badge--info">运行中</span></td>
+                <td class="col-act"><span class="act">
+                  <button class="btn btn--secondary btn--xs"><svg class="icon"><use href="#i-play"/></svg>立即调度</button>
+                  <button class="iconbtn" aria-label="暂停"><svg class="icon"><use href="#i-pause"/></svg></button>
+                  <button class="iconbtn" aria-label="编辑"><svg class="icon"><use href="#i-edit"/></svg></button>
+                </span></td>
+              </tr>
+              <tr>
+                <td><span class="tool-cell"><span class="dot" style="--c:var(--success)"></span><b>embedder</b><span class="muted mono">v0.6.2</span></span></td>
+                <td><span class="trig"><span class="badge badge--neutral">CRON</span><span class="trig__expr">*/15 * * * *</span></span></td>
+                <td><span class="when__abs">14:45:00</span><span class="when__rel">已于 3 分钟前完成</span></td>
+                <td><span class="badge badge--success">已完成</span></td>
+                <td class="col-act"><span class="act">
+                  <button class="btn btn--secondary btn--xs"><svg class="icon"><use href="#i-play"/></svg>立即调度</button>
+                  <button class="iconbtn" aria-label="暂停"><svg class="icon"><use href="#i-pause"/></svg></button>
+                  <button class="iconbtn" aria-label="编辑"><svg class="icon"><use href="#i-edit"/></svg></button>
+                </span></td>
+              </tr>
+              <tr>
+                <td><span class="tool-cell"><span class="dot" style="--c:var(--success)"></span><b>notifier</b><span class="muted mono">v1.3.0</span></span></td>
+                <td><span class="trig"><span class="badge badge--neutral">CRON</span><span class="trig__expr">0 9 * * 1-5</span></span></td>
+                <td><span class="when__abs">明日 09:00:00</span><span class="when__rel">18 小时后</span></td>
+                <td><span class="badge badge--success">已完成</span></td>
+                <td class="col-act"><span class="act">
+                  <button class="btn btn--secondary btn--xs"><svg class="icon"><use href="#i-play"/></svg>立即调度</button>
+                  <button class="iconbtn" aria-label="暂停"><svg class="icon"><use href="#i-pause"/></svg></button>
+                  <button class="iconbtn" aria-label="编辑"><svg class="icon"><use href="#i-edit"/></svg></button>
+                </span></td>
+              </tr>
+              <tr>
+                <td><span class="tool-cell"><span class="dot dot--live" style="--c:var(--info)"></span><b>fs-agent</b><span class="muted mono">v2.4.1</span></span></td>
+                <td><span class="trig"><span class="badge badge--info">监听</span><span class="trig__expr">debounce 2s</span></span></td>
+                <td><span class="when__abs">实时</span><span class="when__rel">上次 14:17:11</span></td>
+                <td><span class="badge badge--info">运行中</span></td>
+                <td class="col-act"><span class="act">
+                  <button class="btn btn--secondary btn--xs"><svg class="icon"><use href="#i-play"/></svg>立即调度</button>
+                  <button class="iconbtn" aria-label="暂停"><svg class="icon"><use href="#i-pause"/></svg></button>
+                  <button class="iconbtn" aria-label="编辑"><svg class="icon"><use href="#i-edit"/></svg></button>
+                </span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="pager">
+          <span>每页 8 条</span>
+          <span class="spacer"></span>
+          <div class="pages">
+            <button class="pbtn" aria-label="上一页"><svg class="icon icon--sm" style="transform:rotate(180deg)"><use href="#i-chev-right"/></svg></button>
+            <button class="pbtn on">1</button>
+            <button class="pbtn">2</button>
+            <button class="pbtn">3</button>
+            <button class="pbtn" aria-label="下一页"><svg class="icon icon--sm"><use href="#i-chev-right"/></svg></button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 频率 / 时区说明 -->
+      <p class="note">
+        <svg class="icon"><use href="#i-info"/></svg>
+        <span>
+          全部调度以本地时区 <b>Asia/Shanghai (UTC+8)</b> 计算；Cron 精度到分钟，触发窗口带 <span class="mono">±30s</span> 抖动以避免同时惊群。
+          事件与监听类调度不占用 Cron 并发额度，失败后按 <span class="mono">1m / 5m / 30m</span> 退避重试至多 3 次。
+        </span>
+      </p>

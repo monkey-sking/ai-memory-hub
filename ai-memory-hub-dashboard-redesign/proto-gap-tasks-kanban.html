@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<!--
+  proto-gap-tasks-kanban.html — AMH Dashboard · Tasks kanban gap prototype
+  Design system: dashboard-next/src/index.css @theme (Plan A) via proto-gap.css
+  Component geometry: DESIGN-SPEC-3GAPS.md §4 (.kanban-* )
+  7 columns = backend enum (tasks.js:43-59):
+    open | claimed | in_progress | blocked | needs_verification | done | cancelled
+  Drag = native HTML5 DnD → drop writes POST /api/task/status {id,status}
+  STATUS: static design prototype. No chart/drag libs. No failed column, no Chinese 4-col names.
+-->
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>任务看板 · AMH Dashboard 原型</title>
+  <link rel="stylesheet" href="proto-gap.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <!-- ===================== Sidebar ===================== -->
+    <aside class="sidebar">
+      <div class="sidebar__brand">
+        <div class="sidebar__logo">M</div>
+        <div class="sidebar__name">AI Memory Hub<small>Dashboard · Plan A</small></div>
+      </div>
+      <div class="sidebar__section">工作区</div>
+      <nav>
+        <a href="proto-gap-workflows.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+          工作流
+        </a>
+        <a href="proto-gap-tasks-kanban.html" class="active" aria-current="page">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+          任务看板
+        </a>
+        <a href="proto-gap-charts.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="20" x2="6" y2="16"/><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/></svg>
+          富图表
+        </a>
+      </nav>
+      <div class="sidebar__spacer"></div>
+      <div class="sidebar__foot">静态设计原型 · 3-Gap</div>
+    </aside>
+
+    <!-- ===================== Main ===================== -->
+    <div class="main">
+      <div class="proto-banner">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        <span><strong>静态设计原型</strong> · 拖拽卡片落列将写回 <code style="font-family:var(--font-mono)">POST /api/task/status {id, status}</code>（数据层已就绪，落地仅缺拖拽 UI）。</span>
+      </div>
+
+      <header class="page-header">
+        <div class="page-header__titles">
+          <h1>任务</h1>
+          <p class="subtitle">7 列看板 · 列定义 = 后端枚举（open / claimed / in_progress / blocked / needs_verification / done / cancelled）</p>
+        </div>
+        <div class="page-header__actions">
+          <div class="view-toggle" role="tablist" aria-label="视图切换">
+            <button id="view-kanban" class="active" role="tab" aria-selected="true">看板视图</button>
+            <button id="view-list" role="tab" aria-selected="false">列表视图</button>
+          </div>
+        </div>
+      </header>
+
+      <div class="page-content">
+        <!-- Kanban board (default active) -->
+        <div class="kanban-board" id="kanban-board"><!-- columns rendered by JS --></div>
+
+        <!-- List view (toggled) -->
+        <div class="task-list" id="task-list">
+          <table>
+            <thead>
+              <tr><th>标题</th><th>项目</th><th>状态</th><th>优先级</th><th>负责人</th><th>截止</th></tr>
+            </thead>
+            <tbody id="task-list-body"><!-- rows rendered by JS --></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- write-back indicator -->
+  <div class="writeback-bar" id="wb"><span class="dot"></span><span id="wb-text"></span></div>
+
+  <script>
+    // ---- Column definitions (backend enum = single source of truth) ----
+    const COLUMNS = [
+      { value: 'open',              dot: 'dot-ink-3',    label: 'Open' },
+      { value: 'claimed',           dot: 'dot-info',     label: 'Claimed' },
+      { value: 'in_progress',       dot: 'dot-accent',   label: 'In progress' },
+      { value: 'blocked',           dot: 'dot-danger',   label: 'Blocked' },
+      { value: 'needs_verification',dot: 'dot-warning',  label: 'Needs verification' },
+      { value: 'done',              dot: 'dot-success',  label: 'Done' },
+      { value: 'cancelled',         dot: 'dot-line',     label: 'Cancelled' },
+    ];
+
+    // ---- Example task data (shape aligns with backend task schema) ----
+    // { id, status, priority, project, title, progress(Number|null), assignee, due }
+    const TASKS = [
+      { id: 't-1001', status: 'open',    priority: 'high',   project: 'ai-memory-hub', title: '分析代码结构并生成文档', progress: null, assignee: 'alice', due: '2025-08-20' },
+      { id: 't-1002', status: 'open',    priority: 'normal', project: 'infra-monitor',  title: '梳理监控指标口径',     progress: null, assignee: 'bob',   due: '2025-08-22' },
+      { id: 't-1003', status: 'claimed', priority: 'urgent', project: 'ai-memory-hub', title: '修复索引回灌失败',     progress: null, assignee: 'carol', due: '2025-08-18' },
+      { id: 't-1004', status: 'claimed', priority: 'low',    project: 'docs-site',      title: '校对术语表',           progress: null, assignee: 'dave',  due: '2025-08-25' },
+      { id: 't-1005', status: 'in_progress', priority: 'high', project: 'ai-memory-hub', title: '实现向量索引模块',   progress: 60, assignee: 'bob',   due: '2025-08-19' },
+      { id: 't-1006', status: 'in_progress', priority: 'normal', project: 'infra-monitor', title: '迁移日志管道',     progress: 35, assignee: 'erin',  due: '2025-08-21' },
+      { id: 't-1007', status: 'blocked',  priority: 'urgent', project: 'ai-memory-hub', title: '等待上游 schema 冻结', progress: null, assignee: 'frank', due: '2025-08-17' },
+      { id: 't-1008', status: 'needs_verification', priority: 'high', project: 'ai-memory-hub', title: '质量门禁结果复核', progress: null, assignee: 'carol', due: '2025-08-18' },
+      { id: 't-1009', status: 'needs_verification', priority: 'normal', project: 'docs-site', title: '发布前内容校验', progress: null, assignee: 'dave', due: '2025-08-23' },
+      { id: 't-1010', status: 'done',     priority: 'normal', project: 'ai-memory-hub', title: '定义记忆检索计划',     progress: 100, assignee: 'alice', due: '2025-08-12' },
+      { id: 't-1011', status: 'done',     priority: 'low',    project: 'infra-monitor',  title: '配置告警阈值',         progress: 100, assignee: 'erin',  due: '2025-08-10' },
+      { id: 't-1012', status: 'cancelled',priority: 'low',    project: 'legacy-tool',    title: '废弃旧导出脚本',       progress: null, assignee: 'frank', due: '2025-08-09' },
+    ];
+
+    const board = document.getElementById('kanban-board');
+    const STATUS_LABEL = Object.fromEntries(COLUMNS.map(c => [c.value, c.label]));
+    const PRIORITY_LABEL = { low: 'low', normal: 'normal', high: 'high', urgent: 'urgent' };
+
+    function cardHTML(t) {
+      const initial = (t.assignee || '?').charAt(0).toUpperCase();
+      const progress = (t.progress != null)
+        ? `<div class="kanban-card-progress"><div class="track"><div class="bar" style="width:${t.progress}%"></div></div></div>`
+        : '';
+      return `
+        <article class="kanban-card" draggable="true" data-id="${t.id}">
+          <div class="kanban-card-top">
+            <span class="kanban-card-prio prio-${t.priority}" title="priority: ${PRIORITY_LABEL[t.priority]}"></span>
+            <span class="kanban-card-project">${t.project}</span>
+          </div>
+          <div class="kanban-card-title">${t.title}</div>
+          ${progress}
+          <div class="kanban-card-meta">
+            <span class="assignee"><span class="avatar">${initial}</span>${t.assignee}</span>
+            <time>截止 ${t.due}</time>
+          </div>
+        </article>`;
+    }
+
+    function renderBoard() {
+      board.innerHTML = COLUMNS.map(col => {
+        const items = TASKS.filter(t => t.status === col.value);
+        const cards = items.length ? items.map(cardHTML).join('') : '';
+        return `
+          <section class="kanban-column" data-status="${col.value}">
+            <header class="kanban-column-header">
+              <span class="kanban-col-dot ${col.dot}"></span>
+              <span class="kanban-col-name">${col.label}</span>
+              <span class="kanban-col-count">${items.length}</span>
+            </header>
+            <div class="kanban-column-body">${cards}</div>
+          </section>`;
+      }).join('');
+      bindDnD();
+    }
+
+    function renderList() {
+      const body = document.getElementById('task-list-body');
+      body.innerHTML = TASKS.map(t => `
+        <tr>
+          <td><span class="t-title">${t.title}</span></td>
+          <td>${t.project}</td>
+          <td><span class="badge badge--plain ${badgeFor(t.status)}">${STATUS_LABEL[t.status]}</span></td>
+          <td><span class="badge badge--plain prio-${t.priority}">${PRIORITY_LABEL[t.priority]}</span></td>
+          <td>${t.assignee}</td>
+          <td class="tabular">${t.due}</td>
+        </tr>`).join('');
+    }
+
+    function badgeFor(status) {
+      if (status === 'done') return 'badge--success';
+      if (status === 'blocked' || status === 'cancelled') return 'badge--danger';
+      if (status === 'needs_verification') return 'badge--warning';
+      if (status === 'in_progress') return 'badge--accent';
+      if (status === 'claimed') return 'badge--info';
+      return 'badge--neutral';
+    }
+
+    // ---- Native HTML5 drag & drop ----
+    let draggedId = null;
+    function bindDnD() {
+      document.querySelectorAll('.kanban-card').forEach(card => {
+        card.addEventListener('dragstart', e => {
+          draggedId = card.getAttribute('data-id');
+          card.classList.add('dragging');
+          e.dataTransfer.setData('text/plain', draggedId);
+          e.dataTransfer.effectAllowed = 'move';
+        });
+        card.addEventListener('dragend', () => card.classList.remove('dragging'));
+      });
+      document.querySelectorAll('.kanban-column').forEach(col => {
+        col.addEventListener('dragover', e => { e.preventDefault(); col.classList.add('drag-over'); e.dataTransfer.dropEffect = 'move'; });
+        col.addEventListener('dragleave', () => col.classList.remove('drag-over'));
+        col.addEventListener('drop', e => {
+          e.preventDefault();
+          col.classList.remove('drag-over');
+          const id = e.dataTransfer.getData('text/plain') || draggedId;
+          const target = col.getAttribute('data-status');
+          const task = TASKS.find(t => t.id === id);
+          if (task && task.status !== target) {
+            task.status = target;
+            // progress only meaningful in in_progress
+            task.progress = (target === 'in_progress') ? (task.progress ?? 0)
+                          : (target === 'done') ? 100 : null;
+            renderBoard();
+            renderList();
+            showWriteback(id, target);
+            console.log('POST /api/task/status', { id, status: target });
+          }
+          draggedId = null;
+        });
+      });
+    }
+
+    // ---- Write-back indicator ----
+    let wbTimer = null;
+    function showWriteback(id, status) {
+      const bar = document.getElementById('wb');
+      document.getElementById('wb-text').textContent = `将 id=${id} 状态置为 ${status}（POST /api/task/status）`;
+      bar.classList.add('show');
+      clearTimeout(wbTimer);
+      wbTimer = setTimeout(() => bar.classList.remove('show'), 2800);
+    }
+
+    // ---- View toggle ----
+    const listEl = document.getElementById('task-list');
+    document.getElementById('view-kanban').addEventListener('click', function () {
+      this.classList.add('active'); this.setAttribute('aria-selected', 'true');
+      document.getElementById('view-list').classList.remove('active');
+      document.getElementById('view-list').setAttribute('aria-selected', 'false');
+      board.style.display = 'flex'; listEl.classList.remove('show');
+    });
+    document.getElementById('view-list').addEventListener('click', function () {
+      this.classList.add('active'); this.setAttribute('aria-selected', 'true');
+      document.getElementById('view-kanban').classList.remove('active');
+      document.getElementById('view-kanban').setAttribute('aria-selected', 'false');
+      board.style.display = 'none'; listEl.classList.add('show');
+    });
+
+    renderBoard();
+    renderList();
+  </script>
+</body>
+</html>

@@ -2,12 +2,17 @@
 
 /*
  * ============================================================================
- * Design tokens — SINGLE SOURCE OF TRUTH
+ * Design tokens — SINGLE SOURCE OF TRUTH  (Plan A · Linear / indigo-violet)
  * ============================================================================
  * Everything visual (color / type / radius / elevation / motion) is declared
  * inside @theme so that Tailwind utilities AND hand-written CSS resolve to the
- * exact same value. Never redeclare a radius/shadow/size outside this block:
- * that is what produced the "8px vs 16px on the same screen" drift before.
+ * exact same value. Never redeclare a radius/shadow/size outside this block.
+ *
+ * BASELINE = DARK (Linear-style near-black cool neutral + #6E5EF2 indigo accent).
+ * Light mode is an explicit override under [data-theme="light"] (reuses the
+ * original, carefully AA-tuned light values with the teal accent swapped for
+ * indigo). Names are preserved 1:1 so `ui/` primitives and hand-written CSS
+ * keep working; only the VALUES changed.
  *
  * Legacy aliases (--bg, --text, --accent, --space-*) live in :root below and
  * only ever point back at a @theme token.
@@ -23,24 +28,8 @@
     ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Mono", Menlo, Consolas,
     "Liberation Mono", monospace;
 
-  /*
-   * Dense console scale — no ad-hoc sizes allowed elsewhere.
-   *
-   * The floor is 12px, not 11px. No reference console goes below 12: Radix
-   * Themes' 9-step scale starts there, Geist's smallest label is 12 ("tertiary
-   * level text in busy views"), Linear's caption is 12. We had table headers,
-   * badges, list-row subtitles and timestamps all at 11px, which is the single
-   * biggest reason the console read as washed out.
-   *
-   * Line-heights are deliberately UNCHANGED from the 11/12px era: every
-   * consumer sits in a fixed-height box (h-5 badge, h-10 table head, h-full
-   * row), so the size bump costs zero reflow.
-   *
-   * Tracking was badly overdone in both directions — +0.02em at 11px is 8x
-   * Radix's measured value for that size, and -0.018em at 24px is ~3x. Both
-   * are "trying to look designed" tells. These are Radix's numbers.
-   */
-  --text-2xs: 11px; /* kbd chips + unit suffixes ONLY — never body or labels */
+  /* Dense console scale — floor 12px. */
+  --text-2xs: 11px; /* kbd chips + unit suffixes ONLY */
   --text-2xs--line-height: 16px;
   --text-2xs--letter-spacing: 0.01em;
   --text-xs: 12px;
@@ -64,210 +53,104 @@
   --text-3xl--line-height: 36px;
   --text-3xl--letter-spacing: -0.0075em;
 
-  /*
-   * 4 weights only. `bold` is 700, not 680: 680 is a variable-font axis value,
-   * and only "Segoe UI Variable" in our stack has a continuous wght axis. On
-   * every other face it rounds to 700 regardless, and where the variable face
-   * is absent it can trigger synthetic bolding — which `font-synthesis: none`
-   * below then suppresses, silently rendering 400.
-   */
   --font-weight-normal: 400;
   --font-weight-medium: 500;
   --font-weight-semibold: 600;
   --font-weight-bold: 700;
 
   /*
-   * ---- Neutral ramp (Radix `sage`, light) -------------------------------
-   * Sage is the correct neutral for a teal accent — Radix's natural-pairing
-   * table maps sage to mint/teal/jade/green, and our old neutrals were already
-   * green-shifted. This is a re-grade, not a re-hue: the page temperature is
-   * unchanged, only the separation between steps.
-   *
-   * Step semantics (Radix, verbatim):
-   *   1-2   app/subtle backgrounds
-   *   3-5   component backgrounds: normal / hover / pressed
-   *   6     borders + separators on NON-interactive things (cards, rails)
-   *   7     borders on INTERACTIVE things (inputs, buttons)
-   *   8     hovered interactive border / focus-ring source
-   *   9-10  solid fills, decorative icons, placeholder
-   *   11-12 secondary text / primary text
+   * ---- Neutral ramp (dark, cool) ---------------------------------------
+   * Step semantics follow the same Radix convention as before, inverted for a
+   * dark surface: 1-2 deepest backgrounds, 3-5 component backgrounds
+   * (normal/hover/pressed), 6-7 borders, 8 hovered border / focus source,
+   * 9-10 decorative, 11-12 secondary/primary text.
    */
-  --color-n1: #fbfdfc;
-  --color-n2: #f7f9f8;
-  --color-n3: #eef1f0;
-  --color-n4: #e6e9e8;
-  --color-n5: #dfe2e0;
-  --color-n6: #d7dad9;
-  --color-n7: #cbcfcd;
-  --color-n8: #b8bcba;
-  --color-n9: #868e8b;
-  --color-n10: #7c8481;
-  --color-n11: #5f6563;
-  --color-n12: #1a211e;
+  --color-n1: #0e0f12;
+  --color-n2: #15161a;
+  --color-n3: #1a1b21;
+  --color-n4: #1e1f25;
+  --color-n5: #24262d;
+  --color-n6: #2a2b31;
+  --color-n7: #32343c;
+  --color-n8: #3a3c44;
+  --color-n9: #54585f;
+  --color-n10: #6a6e78;
+  --color-n11: #9ca1ac;
+  --color-n12: #f2f3f5;
 
-  /* Semantic neutrals, aliased onto the ramp above. */
-  --color-canvas: var(--color-n3); /* was #f6f8f8 = 1.066:1 vs a white panel;
-                                      now 1.137:1. A panel can only read as a
-                                      panel if the page behind it differs. */
-  /* The app shell sits on a STEP DEEPER than `--color-canvas` so the white
-     content panel reads as FLOATING, not as a white page with white cards on
-     it. This is the single biggest "doesn't look like an admin template" lever
-     (shadcn inset sidebar variant): sidebar + content panel are both
-     `--color-surface` (white) and the gap of `--color-canvas-deep` between them
-     is what creates the elevation, not a border or shadow. */
-  --color-canvas-deep: #e9edec;
-  --color-surface: #ffffff;
-  /* Was #fbfcfc — 1.017:1 against white, i.e. not a colour. It was doing real
-     structural work (Panel's toolbar band, EmptyState's fill) while being
-     invisible. "Raised above white" is impossible in light mode; the concept
-     was wrong, so this is now a fill, not an elevation. */
-  --color-surface-raised: var(--color-n3);
-  --color-surface-sunk: var(--color-n4);
-  --color-line: var(--color-n6); /* was #e4e8e8 = 1.249:1. With up to five
-                                    nested hairlines inside 40px, 1.25:1 does
-                                    not stack into structure, it stacks into
-                                    fog. Now 1.425:1. */
-  --color-line-strong: var(--color-n7);
-  --color-line-active: var(--color-n8);
-  --color-ink: #131c1b;
-  --color-ink-2: #4a5654;
-  --color-ink-3: var(--color-n11); /* was #6b7674 = 4.70:1, ~22% lighter than
-                                      the canonical secondary text. Now 6.01:1. */
-  --color-ink-4: var(--color-n10); /* disabled text ONLY — 3.78:1 is below AA,
-                                      so placeholders stay on ink-3. */
-  --color-ink-5: var(--color-n9); /* decorative icons */
+  /* Semantic neutrals (dark baseline). */
+  --color-canvas: #0b0c0e;        /* app page background */
+  --color-canvas-deep: #07080a;   /* app shell / gap behind floating panels */
+  --color-surface: #15161a;       /* raised panel / card */
+  --color-surface-raised: #1e1f25;
+  --color-surface-sunk: #0e0f12;  /* inset wells, code blocks */
+  --color-line: #2a2b31;
+  --color-line-strong: #3a3c44;
+  --color-line-active: #4a4c55;
+  --color-ink: #f2f3f5;           /* primary text */
+  --color-ink-2: #c5c8cf;         /* headings / emphasized */
+  --color-ink-3: #9ca1ac;         /* secondary text (>=4.5:1 on surface) */
+  --color-ink-4: #7a7f8a;         /* disabled text ONLY */
+  --color-ink-5: #6a6e78;         /* decorative icons */
 
-  /* Interactive component backgrounds. Previously ONE token (surface-sunk) was
-     serving normal + hover + pressed, so secondary/outline buttons had a hover
-     state and a pressed state that resolved to the same value — i.e. no press
-     feedback at all. */
-  --color-fill: var(--color-n3);
-  --color-fill-hover: var(--color-n4);
-  --color-fill-active: var(--color-n5);
+  --color-fill: #1e1f25;          /* interactive component bg (normal) */
+  --color-fill-hover: #26282f;
+  --color-fill-active: #2e3038;
 
-  /* ---- Teal accent (Radix `teal`, light) -------------------------------- */
-  --color-teal-3: #e0f8f3;
-  --color-teal-4: #ccf3ea;
-  --color-teal-5: #b8eae0;
-  --color-teal-6: #a1ded2;
-  --color-teal-7: #83cdc1;
-  --color-teal-8: #53b9ab;
-  --color-teal-9: #12a594;
-  --color-teal-10: #0d9b8a;
-  --color-teal-11: #008573;
+  /* ---- Indigo accent (Plan A) ----------------------------------------- */
+  --color-accent-base: #6e5ef2;
+  --color-accent-hover: #8275f6;
+  --color-accent-active: #5b4bd6;
+  --color-accent-bright: #9d93f8;
+  --color-accent-tint: rgb(110 94 242 / 0.12);     /* selected-row / chip fill */
+  --color-accent-tint-2: rgb(110 94 242 / 0.18);
+  --color-accent-tint-3: rgb(110 94 242 / 0.26);
+  --color-accent-line: #4b3fb0;
+  --color-accent-border: #5b4bd6;
+  --color-accent-solid: #6e5ef2;
+  --color-accent-solid-hover: #8275f6;
+  /* Text ON a step-3 tint — light indigo so it clears AA on the dark tint. */
+  --color-accent-text: #b7afff;
 
-  /* Kept dark: white text on #0f766e is 5.48:1. Radix's solid step (teal-9)
-     is only 3.07:1 with white, so swapping it in would be an a11y regression
-     on every primary button. */
-  --color-accent-base: #0f766e;
-  --color-accent-hover: #115e59;
-  --color-accent-active: #134e4a;
-  --color-accent-bright: var(--color-teal-9);
-  --color-accent-tint: var(--color-teal-3); /* was #eff6f5 — channel spread 7
-                                               vs teal-3's 24. A "selected" row
-                                               tinted at spread-7 reads as
-                                               slightly dirty white. */
-  --color-accent-tint-2: var(--color-teal-4);
-  --color-accent-tint-3: var(--color-teal-5);
-  --color-accent-line: var(--color-teal-6);
-  --color-accent-border: var(--color-teal-7);
-  /* THE signal colour. Never carries text, so its 3.07:1 is irrelevant — it is
-     a 2px selection rail, a 6px live dot, an active-nav indicator, a chart
-     series. This is what gives the page a memorable accent without dragging
-     filled buttons below AA. */
-  --color-accent-solid: var(--color-teal-9);
-  --color-accent-solid-hover: var(--color-teal-10);
-  /*
-   * Text ON a step-3 tint. NOT the same as the step-11 token.
-   *
-   * Radix guarantees step 11 clears 4.5:1 against steps 1-2 — the app
-   * background — NOT against step 3, which is a filled component background and
-   * measurably darker. Putting step-11 text on a step-3 tint lands every
-   * variant in the 4.1-4.5 range, i.e. below AA for 12px text. I shipped
-   * exactly that bug and two separate audits caught it.
-   *
-   * Step 12 would pass (10.5-11.3) but is near-black and throws away the hue
-   * that makes badges scannable at a glance. These sit between 11 and 12:
-   * 5.95-6.56 on their own tint, 6.56-7.53 on white, hue preserved, and with
-   * enough margin that a future tint tweak will not silently re-break them.
-   */
-  --color-accent-text: #00695c;
-
-  /*
-   * Focus: 1px solid + 3px translucent halo, not a 2px solid slab.
-   *
-   * The original rgba(15,118,110,0.22) was 1.25:1 — invisible, and every
-   * consumer pairs it with `focus-visible:outline-none` which removes the
-   * fallback. Making it solid accent fixed contrast but produced a 3px dark
-   * slab (input.tsx also sets focus-visible:border-accent-base, so the border
-   * and ring compound). Radix's own answer, teal-8, is 2.36:1 and fails 1.4.11
-   * alone. The two-part ring is how Linear and Stripe resolve this: the solid
-   * inner line carries the contrast requirement, the halo does the looking.
-   */
-  --color-focus: #0f766e;
-  --color-focus-halo: rgb(15 118 110 / 0.24);
-  /*
-   * TWO focus recipes, because the two control families differ in whether they
-   * already own a border that can carry the contrast requirement.
-   *
-   *   --shadow-focus       for controls that do NOT recolour their border
-   *                        (buttons, tabs, tiles, icon buttons, rows). The
-   *                        solid 1px ring supplies WCAG 1.4.11 itself.
-   *   --shadow-focus-field for bordered fields that DO set
-   *                        `focus-visible:border-focus`. Adding the solid ring
-   *                        on top of an already-focus-coloured border just
-   *                        thickens it into a slab, so this is halo only.
-   *
-   * Use one of these two. Do not hand-write a `0 0 0 Npx` focus shadow at a
-   * call site — that is how the ring silently drifts out of sync.
-   */
+  /* ---- Focus (indigo) ------------------------------------------------- */
+  --color-focus: #6e5ef2;
+  --color-focus-halo: rgb(110 94 242 / 0.30);
   --shadow-focus: 0 0 0 1px var(--color-focus), 0 0 0 4px var(--color-focus-halo);
   --shadow-focus-field: 0 0 0 3px var(--color-focus-halo);
-  /* Invalid fields need their own halo. A `ring-danger/N` utility supplies only
-   * a ring COLOUR — Tailwind emits no ring shadow without a width utility — so
-   * pairing it with a `shadow-*` focus treatment silently renders nothing and
-   * the field keeps the ordinary teal halo while being in an error state. */
-  --color-danger-halo: rgb(206 44 49 / 0.24);
+  --color-danger-halo: rgb(248 81 73 / 0.28);
   --shadow-focus-invalid: 0 0 0 1px var(--color-danger), 0 0 0 4px var(--color-danger-halo);
   --color-accent-ring: var(--color-focus);
 
   /*
-   * ---- Status (Radix jade / red / amber / blue, light) -------------------
-   * Four steps each, not two. The `-line` tokens are the important addition:
-   * badges previously composed their border as `border-success/20`, and a 20%
-   * alpha of a saturated hue over a near-white tint composites to a GREY
-   * (#15803d @20% over #eaf6ee is about #cfe1d3). Every status badge was
-   * outlined in grey. A literal step-6 hex is saturated, and that is the
-   * difference between a badge and a badge-shaped blob.
-   * `-solid` (step 9) is for dots, bars and chart series — never text.
+   * ---- Status (dark-safe) ----------------------------------------------
+   * `-tint` = translucent fill, `-line` = saturated border hex, bare = solid
+   * text on dark surface, `-text` = text ON the tint, `-solid` = dots/bars only.
    */
-  --color-success-tint: #e6f7ed; /* jade-3 */
-  --color-success-line: #acdec8; /* jade-6 */
-  --color-success: #208368; /* jade-11 — text on WHITE */
-  --color-success-text: #15633f; /* text on the tint — see accent-text above */
-  --color-success-solid: #29a383; /* jade-9 */
+  --color-success-tint: rgb(63 185 80 / 0.12);
+  --color-success-line: #2ea043;
+  --color-success: #3fb950;
+  --color-success-text: #7ee29b;
+  --color-success-solid: #3fb950;
 
-  --color-warning-tint: #fff7c2; /* amber-3 — 2.8x the chroma of #fdf3e7 */
-  --color-warning-line: #e9c162; /* amber-7 */
-  --color-warning: #ab6400; /* amber-11 — text on WHITE */
-  --color-warning-text: #8a4f00; /* text on the tint */
-  --color-warning-solid: #ffc53d; /* amber-9 — needs a DARK foreground */
+  --color-warning-tint: rgb(210 153 34 / 0.12);
+  --color-warning-line: #bb8009;
+  --color-warning: #d29922;
+  --color-warning-text: #e3b341;
+  --color-warning-solid: #d29922;
 
-  --color-danger-tint: #feebec; /* red-3 */
-  --color-danger-line: #fdbdbe; /* red-6 */
-  --color-danger: #ce2c31; /* red-11 — text on WHITE */
-  --color-danger-text: #a51c23; /* text on the tint */
-  --color-danger-solid: #e5484d; /* red-9 */
-  --color-danger-hover: #b91c1c; /* red-700 — button hover fill */
-  --color-danger-active: #a51c23; /* red-800 — button pressed fill */
+  --color-danger-tint: rgb(248 81 73 / 0.12);
+  --color-danger-line: #f85149;
+  --color-danger: #f85149;
+  --color-danger-text: #ff7b72;
+  --color-danger-solid: #f85149;
+  --color-danger-hover: #da3633;
+  --color-danger-active: #b62324;
 
-  /* Indigo -> true blue: #1d4ed8 sat close to the teal accent in hue, so
-     "info" and "accent" were hard to tell apart. blue-11 reads further away. */
-  --color-info-tint: #e6f4fe; /* blue-3 */
-  --color-info-line: #acd8fc; /* blue-6 */
-  --color-info: #0d74ce; /* blue-11 — text on WHITE */
-  --color-info-text: #0a5aa0; /* text on the tint */
-  --color-info-solid: #0090ff; /* blue-9 */
+  --color-info-tint: rgb(88 166 255 / 0.12);
+  --color-info-line: #388bfb;
+  --color-info: #58a6ff;
+  --color-info-text: #79c0ff;
+  --color-info-solid: #58a6ff;
 
   /* ---- Semantic aliases consumed by the shadcn-style primitives -------- */
   --color-background: var(--color-canvas);
@@ -287,70 +170,37 @@
   --color-destructive: var(--color-danger);
   --color-destructive-foreground: #ffffff;
   --color-border: var(--color-line);
-  /* Border colour for form controls. Was `--color-surface` (#ffffff), which
-   * made every `border-input` control an invisible field on a white panel. */
-  /* Field border MUST clear WCAG 1.4.11 (3:1) against white AND against the
-     deeper app canvas, because inputs sit on both. The old `--color-line-strong`
-     (#cbcfcd) was only 1.57:1. #79807e measures 3.57:1 on white and 3.08:1 on
-     `--color-canvas-deep` — the floor for a control's only visual boundary.
-     Re-measure if `--color-surface` / `--color-canvas-deep` change. */
-  --color-input: #79807e;
+  --color-input: #4a4c55; /* control border, >=3:1 on both surface and canvas */
   --color-ring: var(--color-accent-base);
 
   /* ---- Radius — tight console geometry --------------------------------- */
-  --radius-xs: 4px;
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 10px;
-  --radius-xl: 14px;
-  --radius-2xl: 18px;
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;     /* proto: card / panel */
+  --radius-xl: 12px;    /* proto: raised panel */
+  --radius-2xl: 16px;   /* proto: drawer / overlay */
   --radius-3xl: 24px;
   --radius-full: 999px;
 
-  /* ---- Elevation — 5 levels, nothing else ------------------------------ */
-  /*
-   * Two mechanisms every reference elevation has and ours had none of:
-   *
-   * 1. A `0 0 0 1px` ALPHA ring as the first layer. Because it's alpha it
-   *    darkens whatever it sits over, instead of being a fixed grey that only
-   *    looks right on white.
-   * 2. NEGATIVE SPREAD on the wide layers (-2 / -6 / -12 / -24). This is what
-   *    stops a 20-64px blur from turning into a grey halo. Our old shadows
-   *    were flat 2-layer blurs at 4% with zero spread, which is why every
-   *    popover read as smudged rather than floating.
-   *
-   * Base colour is sage-12 (26 33 30) so shadows stay hue-matched to the
-   * neutral ramp. Modelled on Radix Themes --shadow-2/3/4/5.
-   */
-  --shadow-2xs: 0 1px 1px 0 rgb(26 33 30 / 0.05);
-  --shadow-xs: 0 1px 2px 0 rgb(26 33 30 / 0.06);
+  /* ---- Elevation — 5 levels, black-tinted for dark UI ----------------- */
+  --shadow-2xs: 0 1px 1px 0 rgb(0 0 0 / 0.4);
+  --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.45);
   --shadow-sm:
-    0 0 0 1px rgb(26 33 30 / 0.05), 0 1px 2px -1px rgb(26 33 30 / 0.1),
-    0 2px 6px -2px rgb(26 33 30 / 0.08);
+    0 0 0 1px rgb(0 0 0 / 0.5), 0 1px 2px -1px rgb(0 0 0 / 0.55),
+    0 2px 6px -2px rgb(0 0 0 / 0.5);
   --shadow-md:
-    0 0 0 1px rgb(26 33 30 / 0.05), 0 2px 4px -2px rgb(26 33 30 / 0.08),
-    0 8px 20px -6px rgb(26 33 30 / 0.12);
+    0 0 0 1px rgb(0 0 0 / 0.5), 0 2px 4px -2px rgb(0 0 0 / 0.5),
+    0 8px 20px -6px rgb(0 0 0 / 0.55);
   --shadow-lg:
-    0 0 0 1px rgb(26 33 30 / 0.06), 0 4px 8px -4px rgb(26 33 30 / 0.08),
-    0 16px 36px -12px rgb(26 33 30 / 0.16), 0 32px 64px -24px rgb(26 33 30 / 0.1);
+    0 0 0 1px rgb(0 0 0 / 0.55), 0 4px 8px -4px rgb(0 0 0 / 0.5),
+    0 16px 36px -12px rgb(0 0 0 / 0.6), 0 32px 64px -24px rgb(0 0 0 / 0.55);
   --shadow-xl:
-    0 0 0 1px rgb(26 33 30 / 0.07), 0 8px 16px -6px rgb(26 33 30 / 0.1),
-    0 28px 64px -20px rgb(26 33 30 / 0.2), 0 48px 96px -40px rgb(26 33 30 / 0.14);
-  /* Inset shading — NOT elevation, so it does not violate the L1 no-shadow rule. */
-  --shadow-inset-field: inset 0 1px 2px 0 rgb(26 33 30 / 0.04);
+    0 0 0 1px rgb(0 0 0 / 0.6), 0 8px 16px -6px rgb(0 0 0 / 0.55),
+    0 28px 64px -20px rgb(0 0 0 / 0.65), 0 48px 96px -40px rgb(0 0 0 / 0.6);
+  --shadow-inset-field: inset 0 1px 2px 0 rgb(0 0 0 / 0.3);
 
-  /*
-   * ---- Motion ------------------------------------------------------------
-   * Positional properties and colour properties need DIFFERENT curves.
-   * `ease-out-quint` front-loads ~80% of the change into the first quarter of
-   * the duration. That is right for a transform and wrong for a background
-   * crossfade, where it reads as a snap rather than a transition — yet every
-   * colour transition in the codebase was using it.
-   *
-   *   transform / position  -> --ease-out-quint
-   *   colour / opacity      -> --ease-color
-   *   exits                 -> --ease-exit (exits should accelerate away)
-   */
+  /* ---- Motion ---------------------------------------------------------- */
   --ease-out-quint: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
   --ease-color: cubic-bezier(0.4, 0, 0.2, 1);
@@ -390,23 +240,30 @@
   --warning: var(--color-warning);
   --danger: var(--color-danger);
   --success: var(--color-success);
+  --accent-solid: var(--color-accent-active); /* referenced once in Dashboard.css */
 
-  /* -- Layout ------------------------------------------------------------ */
-  --sidebar-width: 248px;
-  --sidebar-collapsed-width: 68px;
-  --topbar-height: 56px;
+  /* -- Layout (proto: --sidebar-w 240 / collapsed 56) ------------------- */
+  --sidebar-width: 240px;
+  --sidebar-collapsed-width: 56px;
+  --topbar-height: 44px;   /* proto: --bar-h compact */
   --page-max: 1440px;
-  --page-gutter: 24px;
+  --page-gutter: 16px;
 
-  /* -- Spacing (4px base, mirrors Tailwind's 1/2/3/4/5/6/8) -------------- */
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-6: 24px;
-  --space-8: 32px;
+  /* -- Spacing (proto 12-step scale) ------------------------------------ */
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 6px;
+  --space-4: 8px;
+  --space-5: 12px;
+  --space-6: 16px;
+  --space-7: 20px;
+  --space-8: 24px;
+  --space-9: 32px;
+  --space-10: 40px;
+  --space-11: 48px;
+  --space-12: 64px;
 
-  /* -- Back-compat aliases for the old radius/shadow names --------------- */
+  /* -- Back-compat aliases ---------------------------------------------- */
   --radius: var(--radius-md);
   --shadow: var(--shadow-sm);
   --shadow-raised: var(--shadow-md);
@@ -424,6 +281,123 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/*
+ * Double density (proto §2). Components consume these via arbitrary Tailwind
+ * values, e.g. `gap-[var(--section-gap)]` / `p-[var(--card-pad)]` /
+ * `h-[var(--row-h)]`. Default = compact; comfortable is opt-in via the
+ * topbar density toggle which sets `document.documentElement.dataset.density`.
+ */
+:root {
+  --density-base: 13px;
+  --row-h: 30px;
+  --control-h: 28px;
+  --card-pad: 12px;
+  --section-gap: 16px;
+  --bar-h: 44px;
+}
+[data-density="compact"] {
+  --density-base: 13px;
+  --row-h: 30px;
+  --control-h: 28px;
+  --card-pad: 12px;
+  --section-gap: 16px;
+  --bar-h: 44px;
+}
+[data-density="comfortable"] {
+  --density-base: 14px;
+  --row-h: 40px;
+  --control-h: 34px;
+  --card-pad: 16px;
+  --section-gap: 24px;
+  --bar-h: 48px;
+}
+
+/*
+ * Light mode = explicit override. Reuses the original, AA-tuned light palette
+ * (cool neutral + white surface) with the teal accent swapped for an
+ * AA-compliant indigo (#5B4BD6 base so white text clears 4.5:1 on buttons).
+ */
+[data-theme="light"] {
+  --color-canvas: #f1f3f4;
+  --color-canvas-deep: #e4e8e7;
+  --color-surface: #ffffff;
+  --color-surface-raised: #f3f5f5;
+  --color-surface-sunk: #e6e9e8;
+  --color-line: #d7dad9;
+  --color-line-strong: #cbcfcd;
+  --color-line-active: #b8bcba;
+  --color-ink: #131c1b;
+  --color-ink-2: #4a5654;
+  --color-ink-3: #5f6563;
+  --color-ink-4: #7c8481;
+  --color-ink-5: #868e8b;
+  --color-fill: #eef1f0;
+  --color-fill-hover: #e6e9e8;
+  --color-fill-active: #dfe2e0;
+
+  --color-accent-base: #5b4bd6;
+  --color-accent-hover: #4b3db0;
+  --color-accent-active: #3f33a0;
+  --color-accent-bright: #6e5ef2;
+  --color-accent-tint: rgb(91 75 214 / 0.10);
+  --color-accent-tint-2: rgb(91 75 214 / 0.16);
+  --color-accent-tint-3: rgb(91 75 214 / 0.22);
+  --color-accent-line: #b9b0f0;
+  --color-accent-border: #8275f6;
+  --color-accent-solid: #5b4bd6;
+  --color-accent-solid-hover: #4b3db0;
+  --color-accent-text: #3a2fa0;
+
+  --color-focus: #5b4bd6;
+  --color-focus-halo: rgb(91 75 214 / 0.24);
+  --color-input: #79807e;
+
+  --color-success-tint: #e6f7ed;
+  --color-success-line: #acdec8;
+  --color-success: #208368;
+  --color-success-text: #15633f;
+  --color-success-solid: #29a383;
+
+  --color-warning-tint: #fff7c2;
+  --color-warning-line: #e9c162;
+  --color-warning: #ab6400;
+  --color-warning-text: #8a4f00;
+  --color-warning-solid: #ffc53d;
+
+  --color-danger-tint: #feebec;
+  --color-danger-line: #fdbdbe;
+  --color-danger: #ce2c31;
+  --color-danger-text: #a51c23;
+  --color-danger-solid: #e5484d;
+  --color-danger-hover: #b91c1c;
+  --color-danger-active: #a51c23;
+  --color-danger-halo: rgb(206 44 49 / 0.24);
+
+  --color-info-tint: #e6f4fe;
+  --color-info-line: #acd8fc;
+  --color-info: #0d74ce;
+  --color-info-text: #0a5aa0;
+  --color-info-solid: #0090ff;
+
+  --shadow-2xs: 0 1px 1px 0 rgb(26 33 30 / 0.05);
+  --shadow-xs: 0 1px 2px 0 rgb(26 33 30 / 0.06);
+  --shadow-sm:
+    0 0 0 1px rgb(26 33 30 / 0.05), 0 1px 2px -1px rgb(26 33 30 / 0.1),
+    0 2px 6px -2px rgb(26 33 30 / 0.08);
+  --shadow-md:
+    0 0 0 1px rgb(26 33 30 / 0.05), 0 2px 4px -2px rgb(26 33 30 / 0.08),
+    0 8px 20px -6px rgb(26 33 30 / 0.12);
+  --shadow-lg:
+    0 0 0 1px rgb(26 33 30 / 0.06), 0 4px 8px -4px rgb(26 33 30 / 0.08),
+    0 16px 36px -12px rgb(26 33 30 / 0.16), 0 32px 64px -24px rgb(26 33 30 / 0.1);
+  --shadow-xl:
+    0 0 0 1px rgb(26 33 30 / 0.07), 0 8px 16px -6px rgb(26 33 30 / 0.1),
+    0 28px 64px -20px rgb(26 33 30 / 0.2), 0 48px 96px -40px rgb(26 33 30 / 0.14);
+
+  color: var(--color-ink);
+  background: var(--color-canvas);
 }
 
 * {
@@ -447,13 +421,6 @@ body {
   line-height: var(--text-base--line-height);
 }
 
-/*
- * These resets MUST stay inside `@layer base`. Unlayered declarations beat
- * every cascade layer regardless of specificity, so writing them bare made
- * `font: inherit` outrank `.text-sm` and `color: inherit` outrank
- * `.text-white` — every button silently inherited its parent's size and
- * colour (primary buttons measured 3.17:1, the chat send button 1.09:1).
- */
 @layer base {
   button,
   input,
@@ -479,17 +446,6 @@ table,
   font-feature-settings: "tnum" 1;
 }
 
-/*
- * Global keyboard-focus fallback for anything that does not opt into the
- * `--shadow-focus` treatment. `outline` is used rather than `box-shadow` so it
- * cannot be overwritten by a component's own shadow.
- *
- * There used to be a `border-radius: var(--radius-xs)` here. That does NOT
- * round the outline — it overrides the ELEMENT's own radius while focused, so
- * focusing a 14px-radius card or an 8px control made it visibly snap to 4px
- * and back. Modern browsers already follow the element's border radius when
- * drawing an outline, so nothing is needed.
- */
 :focus-visible {
   outline: 2px solid var(--color-accent-base);
   outline-offset: 2px;
@@ -497,7 +453,7 @@ table,
 
 ::selection {
   background: var(--color-accent-tint-2);
-  color: var(--color-accent-active);
+  color: var(--color-accent-text);
 }
 
 /* Consistent, quiet scrollbars everywhere. */
@@ -526,22 +482,15 @@ table,
   background: transparent;
 }
 
-/*
- * `svh`, not `vh`. On mobile `100vh` measures the viewport with browser chrome
- * retracted, so it is taller than what is actually visible. The app shell
- * (`Layout.tsx`) is `h-svh overflow-hidden`, so a `100vh` floor here makes
- * #root taller than its own child and the page scrolls by the chrome height
- * even though the shell declares it cannot.
- */
 #root {
   min-height: 100svh;
 }
 
 /*
- * Hand-written motion. This project has no `tailwindcss-animate` / `tw-animate-css`
- * plugin, so `animate-in`, `fade-in-0`, `zoom-in-95` and `slide-in-from-*` emit
- * nothing at all. Entrance/exit motion must be declared here and keyed off
- * `[data-state]` (Radix) or a real class — never off those utilities.
+ * Hand-written motion. This project has no `tailwindcss-animate` plugin, so
+ * `animate-in` / `fade-in-0` / `zoom-in-95` / `slide-in-from-*` emit nothing.
+ * Entrance/exit motion must be declared here and keyed off `[data-state]`
+ * (Radix) or a real class.
  */
 @keyframes amh-fade-in {
   from { opacity: 0; }

@@ -1,6 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { CheckCircle2, Download, RefreshCw, ShieldAlert, Upload } from 'lucide-react'
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Download,
+  GitBranch,
+  Layers,
+  RefreshCw,
+  Search,
+  ShieldAlert,
+  Upload
+} from 'lucide-react'
 import { apiGet, apiPost, asArray } from '../lib/api'
 import { dashboardLabels } from '../lib/dashboardCopy'
 import { toolDisplayNames } from '../lib/toolMetadata'
@@ -11,14 +21,12 @@ import { Button } from '../components/ui/button'
 import { fieldBaseStyles } from '../components/ui/input'
 import {
   EmptyState,
-  ErrorState,
   FilterBar,
   LoadingState,
   PageShell,
-  Panel,
-  StatTile,
-  StatTileGrid
+  Panel
 } from '../components/shell'
+import { AlertBanner, MetricCard, MetricGrid, PageHead } from '@/components/ds'
 import { CredentialForm } from '../components/CredentialForm'
 import { RelatedEntities } from '../components/RelatedEntities'
 import './Skills.css'
@@ -74,6 +82,10 @@ export default function Skills() {
   const importedIds = new Set(asArray<SkillPackage>(snapshot.packages).map(item => item.id))
   const discoverable = scan.filter(item => !importedIds.has(item.id)).slice(0, 150)
 
+  const conflictsCount = packages.filter(item => item.conflict).length + scan.filter(found => found.status === 'conflict').length
+  const variantCount = scan.filter(item => item.status === 'variant').length
+  const protectedCount = scan.filter(item => item.status === 'protected').length
+
   const importSkill = async (item: ScanGroup) => {
     const source = item.sources.find(candidate => candidate.path === sourceChoice[item.id]) || item.sources[0]
     if (!source) return
@@ -121,52 +133,58 @@ export default function Skills() {
   }
 
   return (
-    <PageShell
-      title={copy.skills.title}
-      description={copy.skills.subtitle}
-      contentClassName="flex flex-col gap-6"
-      actions={
-        <>
-          <Button variant="secondary" onClick={() => void load()} disabled={busy}>
-            <RefreshCw className={cn('h-4 w-4', busy && 'animate-spin')} />
-            {copy.skills.refreshStatus}
-          </Button>
-          <Button onClick={() => void syncSkills()} disabled={busy}>
-            <Upload className="h-4 w-4" />
-            {copy.skills.syncToAgents}
-          </Button>
-        </>
-      }
-      toolbar={
-        <div role="group" aria-label={copy.skills.syncTargets} className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-medium text-ink-3">{copy.skills.syncTargets}</span>
-          {SYNC_TARGETS.map(target => (
-            <Button
-              key={target}
-              size="sm"
-              variant={selectedTargets[target] ? 'primary' : 'secondary'}
-              aria-pressed={Boolean(selectedTargets[target])}
-              onClick={() => setSelectedTargets(previous => ({ ...previous, [target]: !previous[target] }))}
-            >
-              {toolDisplayNames[language][target] || target}
+    <PageShell contentClassName="flex flex-col gap-6">
+      <PageHead
+        title={copy.skills.title}
+        subtitle={copy.skills.subtitle}
+        actions={
+          <>
+            <Button variant="secondary" onClick={() => void load()} disabled={busy}>
+              <RefreshCw className={cn('h-4 w-4', busy && 'animate-spin')} />
+              {copy.skills.refreshStatus}
             </Button>
-          ))}
-        </div>
-      }
-    >
-      {message ? <ErrorState variant="inline" title={copy.error} description={message} /> : null}
+            <Button onClick={() => void syncSkills()} disabled={busy}>
+              <Upload className="h-4 w-4" />
+              {copy.skills.syncToAgents}
+            </Button>
+          </>
+        }
+      />
 
-      <StatTileGrid columns={3}>
-        <StatTile label={copy.skills.registrySkills} value={packages.length} />
-        <StatTile label={copy.skills.enabledHere} value={asArray(snapshot.selected).length} />
-        <StatTile label={copy.skills.discoveredLocally} value={scan.length} />
-        <StatTile
+      <div role="group" aria-label={copy.skills.syncTargets} className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-medium text-ink-3">{copy.skills.syncTargets}</span>
+        {SYNC_TARGETS.map(target => (
+          <Button
+            key={target}
+            size="sm"
+            variant={selectedTargets[target] ? 'primary' : 'secondary'}
+            aria-pressed={Boolean(selectedTargets[target])}
+            onClick={() => setSelectedTargets(previous => ({ ...previous, [target]: !previous[target] }))}
+          >
+            {toolDisplayNames[language][target] || target}
+          </Button>
+        ))}
+      </div>
+
+      {message ? <AlertBanner tone="error" title={copy.error} description={message} /> : null}
+
+      {conflictsCount > 0 ? (
+        <AlertBanner tone="warning" title={copy.skills.conflicts} description={copy.skills.contentConflict} />
+      ) : null}
+
+      <MetricGrid>
+        <MetricCard label={copy.skills.registrySkills} value={packages.length} icon={Layers} />
+        <MetricCard label={copy.skills.enabledHere} value={asArray(snapshot.selected).length} icon={CheckCircle2} />
+        <MetricCard label={copy.skills.discoveredLocally} value={scan.length} icon={Search} />
+        <MetricCard
           label={copy.skills.conflicts}
-          value={<span className={cn(packages.some(item => item.conflict) && 'text-danger')}>{packages.filter(item => item.conflict || scan.some(found => found.id === item.id && found.status === 'conflict')).length}</span>}
+          value={conflictsCount}
+          icon={AlertTriangle}
+          note={conflictsCount > 0 ? copy.skills.contentConflict : copy.skills.readyToImport}
         />
-        <StatTile label={copy.skills.targetVariants} value={scan.filter(item => item.status === 'variant').length} />
-        <StatTile label={copy.skills.protectedCore} value={scan.filter(item => item.status === 'protected').length} />
-      </StatTileGrid>
+        <MetricCard label={copy.skills.targetVariants} value={variantCount} icon={GitBranch} />
+        <MetricCard label={copy.skills.protectedCore} value={protectedCount} icon={ShieldAlert} note={copy.skills.coreAdapterProtected} />
+      </MetricGrid>
 
       <Panel
         title={copy.skills.canonicalRegistry}

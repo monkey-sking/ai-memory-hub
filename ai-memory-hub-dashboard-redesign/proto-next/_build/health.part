@@ -1,0 +1,211 @@
+      <!-- 告警横幅（error 语义，左 3px 边 + 图标双重编码） -->
+      <div class="banner banner--error" role="alert">
+        <svg class="banner__icon icon"><use href="#i-warn"/></svg>
+        <div class="banner__body">
+          <div class="banner__title">索引器健康检查失败</div>
+          <div class="banner__desc">indexer 自 14:02 起连续 4 次探测超时，向量重建已暂停；检索仍走上次成功的快照，结果可能滞后约 30 分钟。</div>
+        </div>
+        <button class="banner__x" aria-label="关闭"><svg class="icon icon--sm"><use href="#i-x"/></svg></button>
+      </div>
+
+      <!-- 页面头 -->
+      <header class="page-head">
+        <div>
+          <h1 class="ttl">健康</h1>
+          <p class="sub">依赖服务探测、资源占用与近期健康事件</p>
+        </div>
+        <div class="page-head__ctrls">
+          <span class="sec-head__meta">上次检查 14:32:08 · 每 30s</span>
+          <button class="btn btn--secondary"><svg class="icon"><use href="#i-refresh"/></svg>重新检查</button>
+        </div>
+      </header>
+
+      <!-- 关键指标 -->
+      <section class="metrics metrics--4" aria-label="健康指标">
+        <article class="metric">
+          <div class="metric__top"><span class="metric__label">连续运行</span><svg class="metric__icon icon"><use href="#i-clock"/></svg></div>
+          <div class="metric__value">12<span class="metric__unit">d</span> 4<span class="metric__unit">h</span></div>
+          <svg class="spark" viewBox="0 0 120 32" preserveAspectRatio="none" aria-hidden="true">
+            <path d="M0 24 L 10.9 22 L 21.8 20 L 32.7 18 L 43.6 16 L 54.5 14 L 65.5 12 L 76.4 10 L 87.3 8 L 98.2 6 L 109.1 5 L 120 3 L 120 32 L 0 32 Z" style="fill:var(--accent-soft)"/>
+            <path d="M0 24 L 10.9 22 L 21.8 20 L 32.7 18 L 43.6 16 L 54.5 14 L 65.5 12 L 76.4 10 L 87.3 8 L 98.2 6 L 109.1 5 L 120 3" fill="none" style="stroke:var(--accent)" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+          </svg>
+          <div class="metric__foot"><span class="metric__note">上次重启 08-02 10:24</span></div>
+        </article>
+
+        <article class="metric">
+          <div class="metric__top"><span class="metric__label">平均探测延迟</span><svg class="metric__icon icon"><use href="#i-radio"/></svg></div>
+          <div class="metric__value">46<span class="metric__unit"> ms</span></div>
+          <svg class="spark" viewBox="0 0 120 32" preserveAspectRatio="none" aria-hidden="true">
+            <path d="M0 14 L 10.9 18 L 21.8 12 L 32.7 16 L 43.6 10 L 54.5 20 L 65.5 13 L 76.4 17 L 87.3 11 L 98.2 15 L 109.1 9 L 120 12 L 120 32 L 0 32 Z" style="fill:var(--accent-soft)"/>
+            <path d="M0 14 L 10.9 18 L 21.8 12 L 32.7 16 L 43.6 10 L 54.5 20 L 65.5 13 L 76.4 17 L 87.3 11 L 98.2 15 L 109.1 9 L 120 12" fill="none" style="stroke:var(--accent)" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+          </svg>
+          <div class="metric__foot"><span class="delta delta--good">▼ 6 ms</span><span class="metric__note">较昨日</span></div>
+        </article>
+
+        <article class="metric">
+          <div class="metric__top"><span class="metric__label">请求成功率</span><svg class="metric__icon icon"><use href="#i-check"/></svg></div>
+          <div class="metric__value">99.7<span class="metric__unit">%</span></div>
+          <svg class="spark" viewBox="0 0 120 32" preserveAspectRatio="none" aria-hidden="true">
+            <path d="M0 8 L 10.9 6 L 21.8 10 L 32.7 5 L 43.6 7 L 54.5 4 L 65.5 9 L 76.4 3 L 87.3 6 L 98.2 4 L 109.1 5 L 120 3 L 120 32 L 0 32 Z" style="fill:var(--accent-soft)"/>
+            <path d="M0 8 L 10.9 6 L 21.8 10 L 32.7 5 L 43.6 7 L 54.5 4 L 65.5 9 L 76.4 3 L 87.3 6 L 98.2 4 L 109.1 5 L 120 3" fill="none" style="stroke:var(--accent)" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+          </svg>
+          <div class="metric__foot"><span class="delta delta--bad">▼ 0.2%</span><span class="metric__note">近 24h · 目标 99.9%</span></div>
+        </article>
+
+        <article class="metric">
+          <div class="metric__top"><span class="metric__label">今日告警</span><svg class="metric__icon icon"><use href="#i-bell"/></svg></div>
+          <div class="metric__value">7</div>
+          <svg class="spark" viewBox="0 0 120 32" preserveAspectRatio="none" aria-hidden="true">
+            <path d="M0 26 L 10.9 29 L 21.8 27 L 32.7 29 L 43.6 24 L 54.5 29 L 65.5 28 L 76.4 20 L 87.3 26 L 98.2 14 L 109.1 22 L 120 18 L 120 32 L 0 32 Z" style="fill:var(--accent-soft)"/>
+            <path d="M0 26 L 10.9 29 L 21.8 27 L 32.7 29 L 43.6 24 L 54.5 29 L 65.5 28 L 76.4 20 L 87.3 26 L 98.2 14 L 109.1 22 L 120 18" fill="none" style="stroke:var(--accent)" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+          </svg>
+          <div class="metric__foot"><span class="delta delta--bad">▲ 3</span><span class="metric__note">5 warn · 2 error</span></div>
+        </article>
+      </section>
+
+      <!-- 服务检查 + 状态分布 -->
+      <section class="charts">
+        <article class="card">
+          <div class="card__head">
+            <div><h2 class="ttl">服务检查</h2><p class="sub">5 项依赖探测 · 每 30 秒一轮</p></div>
+            <span class="badge badge--warning"><span class="dot dot--sm" style="--c:var(--warning)"></span>DEGRADED</span>
+          </div>
+          <ul class="svc">
+            <li class="svc__row">
+              <span class="dot" style="--c:var(--success)"></span>
+              <span class="svc__id">
+                <span class="svc__name">API 服务</span>
+                <span class="svc__ep">GET /api/health</span>
+              </span>
+              <span class="svc__lat">42 ms</span>
+              <span class="svc__up">uptime <span class="mono">99.98%</span></span>
+              <span class="badge badge--success">正常</span>
+            </li>
+            <li class="svc__row">
+              <span class="dot" style="--c:var(--success)"></span>
+              <span class="svc__id">
+                <span class="svc__name">WebSocket 通道</span>
+                <span class="svc__ep">ws://127.0.0.1:8787/ws</span>
+              </span>
+              <span class="svc__lat">18 ms</span>
+              <span class="svc__up">连接 <span class="mono">12</span></span>
+              <span class="badge badge--success">正常</span>
+            </li>
+            <li class="svc__row">
+              <span class="dot" style="--c:var(--success)"></span>
+              <span class="svc__id">
+                <span class="svc__name">数据库</span>
+                <span class="svc__ep">sqlite://data/memory.db</span>
+              </span>
+              <span class="svc__lat">7 ms</span>
+              <span class="svc__up"><span class="mono">1,284</span> 条 · 312 MB</span>
+              <span class="badge badge--success">正常</span>
+            </li>
+            <li class="svc__row">
+              <span class="dot" style="--c:var(--warning)"></span>
+              <span class="svc__id">
+                <span class="svc__name">调度器</span>
+                <span class="svc__ep">scheduler · tick 1s</span>
+              </span>
+              <span class="svc__lat">312 ms</span>
+              <span class="svc__up">队列积压 <span class="mono">18</span></span>
+              <span class="badge badge--warning">降级</span>
+            </li>
+            <li class="svc__row">
+              <span class="dot" style="--c:var(--error)"></span>
+              <span class="svc__id">
+                <span class="svc__name">索引器</span>
+                <span class="svc__ep">indexer · vector rebuild</span>
+              </span>
+              <span class="svc__lat is-bad">超时</span>
+              <span class="svc__up">上次成功 <span class="mono">14:02</span></span>
+              <span class="badge badge--error">异常</span>
+            </li>
+          </ul>
+          <div class="svc-foot">
+            <span>探测超时阈值 <span class="mono">2s</span> · 连续 3 次失败即标记异常</span>
+            <span class="spacer"></span>
+            <a href="#">查看探测历史</a>
+          </div>
+        </article>
+
+        <!-- 健康状态环形 -->
+        <article class="card dist-card">
+          <div class="card__head">
+            <div><h2 class="ttl">检查项分布</h2><p class="sub">按最近一轮探测结果</p></div>
+          </div>
+          <div class="donut">
+            <svg viewBox="0 0 140 140" role="img" aria-label="健康检查分布：正常 3、降级 1、异常 1">
+              <circle class="ring" cx="70" cy="70" r="54" fill="none" stroke-width="14"/>
+              <circle class="seg" cx="70" cy="70" r="54" fill="none" style="stroke:var(--success)" stroke-width="14" stroke-dasharray="203.6 135.7" stroke-dashoffset="0"/>
+              <circle class="seg" cx="70" cy="70" r="54" fill="none" style="stroke:var(--warning)" stroke-width="14" stroke-dasharray="67.9 271.4" stroke-dashoffset="-203.6"/>
+              <circle class="seg" cx="70" cy="70" r="54" fill="none" style="stroke:var(--error)"   stroke-width="14" stroke-dasharray="67.9 271.4" stroke-dashoffset="-271.5"/>
+            </svg>
+            <div class="donut__center"><span class="donut__num">94</span><span class="donut__lbl">健康分</span></div>
+          </div>
+          <ul class="legend-list">
+            <li><span class="dot" style="--c:var(--success)"></span>正常<span class="legend-list__val">3</span></li>
+            <li><span class="dot" style="--c:var(--warning)"></span>降级<span class="legend-list__val">1</span></li>
+            <li><span class="dot" style="--c:var(--error)"></span>异常<span class="legend-list__val">1</span></li>
+          </ul>
+        </article>
+      </section>
+
+      <!-- 健康事件 + 资源占用 -->
+      <section class="split">
+        <article class="card stream">
+          <div class="card__head">
+            <div><h2 class="ttl">健康事件</h2><p class="sub">仅显示探测与资源相关记录</p></div>
+            <div class="stream__ctrls">
+              <button class="btn btn--ghost btn--xs"><svg class="icon"><use href="#i-chev-down"/></svg>级别</button>
+              <span class="badge badge--neutral">实时</span>
+            </div>
+          </div>
+          <div class="log">
+            <div class="log__row"><span class="log__t">14:32:08</span><span class="lvl lvl--info"><i class="lvl__dot"></i>INFO</span><span class="log__m">健康轮次 <code>#4128</code> 完成 · 3 正常 / 1 降级 / 1 异常</span></div>
+            <div class="log__row"><span class="log__t">14:31:38</span><span class="lvl lvl--error"><i class="lvl__dot"></i>ERROR</span><span class="log__m">indexer 探测超时（第 4 次）· 向量重建已暂停</span></div>
+            <div class="log__row"><span class="log__t">14:30:11</span><span class="lvl lvl--warn"><i class="lvl__dot"></i>WARN</span><span class="log__m">scheduler tick 延迟 312ms（阈值 200ms）· 队列 18</span></div>
+            <div class="log__row"><span class="log__t">14:28:02</span><span class="lvl lvl--warn"><i class="lvl__dot"></i>WARN</span><span class="log__m">磁盘使用率达 68%，低于告警线 80%，建议清理 <code>.cache</code></span></div>
+            <div class="log__row"><span class="log__t">14:24:47</span><span class="lvl lvl--info"><i class="lvl__dot"></i>INFO</span><span class="log__m">数据库 WAL 检查点完成 · 回收 24 MB</span></div>
+            <div class="log__row"><span class="log__t">14:20:02</span><span class="lvl lvl--debug"><i class="lvl__dot"></i>DEBUG</span><span class="log__m">资源采样 cpu 14% / mem 2.6G / disk 312G</span></div>
+            <div class="log__row"><span class="log__t">14:14:19</span><span class="lvl lvl--info"><i class="lvl__dot"></i>INFO</span><span class="log__m">WebSocket 心跳全部正常 · 12 个连接 RTT &lt; 25ms</span></div>
+            <div class="log__row"><span class="log__t">14:02:33</span><span class="lvl lvl--error"><i class="lvl__dot"></i>ERROR</span><span class="log__m">indexer 首次探测失败 · <code>ECONNRESET</code></span></div>
+            <div class="log__row"><span class="log__t">13:56:05</span><span class="lvl lvl--info"><i class="lvl__dot"></i>INFO</span><span class="log__m">健康分由 96 降至 94 · 触发因素 scheduler 延迟</span></div>
+          </div>
+        </article>
+
+        <aside class="card">
+          <div class="card__head">
+            <div><h2 class="ttl">资源占用</h2><p class="sub">本机 · 5 秒采样</p></div>
+          </div>
+          <div class="res">
+            <div class="res__row">
+              <div class="res__top"><span class="res__k">CPU</span><span class="res__v">14%</span></div>
+              <div class="res__track"><div class="res__fill" style="width:14%;--c:var(--accent)"></div></div>
+              <div class="res__foot"><span>8 核 · 负载 1.12</span><span class="mono">峰值 38%</span></div>
+            </div>
+            <div class="res__row">
+              <div class="res__top"><span class="res__k">内存</span><span class="res__v">42%</span></div>
+              <div class="res__track"><div class="res__fill" style="width:42%;--c:var(--accent)"></div></div>
+              <div class="res__foot"><span>2.6 GB / 6.2 GB</span><span class="mono">峰值 3.4 GB</span></div>
+            </div>
+            <div class="res__row">
+              <div class="res__top"><span class="res__k">磁盘</span><span class="res__v">68%</span></div>
+              <div class="res__track"><div class="res__fill" style="width:68%;--c:var(--warning)"></div></div>
+              <div class="res__foot"><span>312 GB / 460 GB</span><span class="mono">告警线 80%</span></div>
+            </div>
+          </div>
+          <div class="svc-foot">
+            <span>超过告警线将自动降级非关键调度</span>
+          </div>
+        </aside>
+      </section>
+
+      <!-- 说明 -->
+      <p class="note">
+        <svg class="icon"><use href="#i-info"/></svg>
+        <span>
+          健康分按检查项权重加权：<b>API / 数据库</b> 各占 25%，<b>WebSocket / 调度器 / 索引器</b> 各占 
+          <span class="mono">16.7%</span>；降级计半分，异常不计分。分数低于 <span class="mono">80</span> 时会推送通知并暂停非关键调度。
+        </span>
+      </p>

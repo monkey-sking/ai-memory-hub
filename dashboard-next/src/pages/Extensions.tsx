@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { AlertTriangle, CheckCircle2, Download, GitCompare, RefreshCw, ShieldAlert, Upload } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Download, GitCompare, Puzzle, RefreshCw, ShieldAlert, Upload } from 'lucide-react'
 import { apiGet, apiPost, asArray } from '../lib/api'
 import { toolIconFiles, toolDisplayNames } from '../lib/toolMetadata'
 import { dashboardLabels, type DashboardCopy } from '../lib/dashboardCopy'
@@ -10,15 +10,17 @@ import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import {
   EmptyState,
-  ErrorState,
   FilterBar,
-  LoadingState,
-  PageShell,
-  Panel,
-  StatTile,
-  StatTileGrid,
-  StatusTabs
+  LoadingState
 } from '../components/shell'
+import {
+  AlertBanner,
+  Card,
+  MetricCard,
+  MetricGrid,
+  PageHead,
+  SectionTabs
+} from '@/components/ds'
 
 type ExtensionRecord = {
   id: string
@@ -82,7 +84,7 @@ export default function Extensions() {
     try {
       const [extRes, statusRes] = await Promise.all([
         apiGet<{ ok: boolean; records: ExtensionRecord[]; diff?: { changes?: DiffChange[] } }>('/api/extensions'),
-        apiGet<{ ok: boolean } & StatusResponse>('/api/extensions/status'),
+        apiGet<{ ok: boolean } & StatusResponse>('/api/extensions/status')
       ])
       setRecords(asArray<ExtensionRecord>(extRes.records))
       const initialChanges = asArray<DiffChange>(extRes.diff?.changes)
@@ -199,44 +201,61 @@ export default function Extensions() {
     }
   }
 
-  const kindFilter = (kind: 'all' | 'mcp') => {
-    setKindFilterValue(kind)
-  }
+  const kindFilter = (kind: string) => setKindFilterValue(kind === 'mcp' ? 'mcp' : 'all')
 
   const appStatus = status?.clients || {}
 
   return (
-    <PageShell
-      title={copy.extensions.title}
-      description={copy.extensions.subtitle}
-      contentClassName="flex flex-col gap-6"
-      actions={
-        <>
-          <Button variant="secondary" onClick={() => void load()} disabled={busy}>
-            <RefreshCw className={cn('h-4 w-4', busy && 'animate-spin')} />
-            {copy.extensions.refresh}
-          </Button>
-          <Button variant="secondary" onClick={() => void importExtensions()} disabled={busy}>
-            <Download className="h-4 w-4" />
-            {copy.extensions.importAll}
-          </Button>
-          <Button onClick={() => void runDiff()} disabled={busy}>
-            <GitCompare className="h-4 w-4" />
-            {copy.extensions.diff}
-          </Button>
-        </>
-      }
-      tabs={
-        <StatusTabs
-          label={copy.type}
-          value={kindFilterValue}
-          onChange={value => kindFilter(value === 'mcp' ? 'mcp' : 'all')}
-          allItem={{ value: 'all', label: copy.extensions.all, count: records.length }}
-          items={[{ value: 'mcp', label: copy.extensions.mcp, count: mcpRecords.length }]}
+    <>
+      <PageHead
+        title={copy.extensions.title}
+        subtitle={copy.extensions.subtitle}
+        actions={
+          <>
+            <Button variant="secondary" onClick={() => void load()} disabled={busy}>
+              <RefreshCw className={cn('h-4 w-4', busy && 'animate-spin')} />
+              {copy.extensions.refresh}
+            </Button>
+            <Button variant="secondary" onClick={() => void importExtensions()} disabled={busy}>
+              <Download className="h-4 w-4" />
+              {copy.extensions.importAll}
+            </Button>
+            <Button onClick={() => void runDiff()} disabled={busy}>
+              <GitCompare className="h-4 w-4" />
+              {copy.extensions.diff}
+            </Button>
+          </>
+        }
+      />
+
+      {message ? (
+        messageKind === 'error'
+          ? <AlertBanner tone="error" title={copy.error} description={message} onDismiss={() => setMessage('')} />
+          : <AlertBanner tone="info" title={copy.extensions.previewComplete} description={message} onDismiss={() => setMessage('')} />
+      ) : null}
+
+      <MetricGrid>
+        <MetricCard label={copy.extensions.registryMcp} value={mcpRecords.length} icon={Puzzle} />
+        <MetricCard label={copy.extensions.managed} value={managedCount} />
+        <MetricCard
+          label={copy.extensions.conflicts}
+          value={<span className={cn(conflictCount > 0 && 'text-danger')}>{conflictCount}</span>}
         />
-      }
-      toolbar={
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-4">
+        <MetricCard label={copy.extensions.toAdd} value={addCount} />
+        <MetricCard label={copy.extensions.currentBadge} value={currentCount} />
+      </MetricGrid>
+
+      <SectionTabs
+        tabs={[
+          { id: 'all', label: copy.extensions.all, badge: records.length },
+          { id: 'mcp', label: copy.extensions.mcp, badge: mcpRecords.length }
+        ]}
+        active={kindFilterValue}
+        onChange={kindFilter}
+      />
+
+      <Card title={copy.skills.syncTargets} toolbar={<span className="text-xs text-ink-3">{copy.extensions.skillManagement}</span>}>
+        <div className="flex flex-col gap-3 p-[var(--card-pad)] md:flex-row md:items-center md:gap-4">
           <div role="group" aria-label={copy.toolReadiness} className="flex flex-wrap items-center gap-2">
             {APPS.map(app => (
               <Button
@@ -267,48 +286,23 @@ export default function Extensions() {
             </Button>
           </div>
         </div>
-      }
-      footer={
-        <>
-          <span>{copy.extensions.skillManagement}</span>
-          <a href="/skills" className="text-accent-base hover:underline">{copy.extensions.openSkillsPage}</a>
-        </>
-      }
-    >
-      {message ? (
-        messageKind === 'error'
-          ? <ErrorState variant="inline" title={copy.error} description={message} />
-          : <p role="status" className="rounded-md border border-info-line bg-info-tint px-3 py-2 text-sm text-info-text">{message}</p>
-      ) : null}
+      </Card>
 
-      <StatTileGrid columns={3}>
-        <StatTile label={copy.extensions.registryMcp} value={mcpRecords.length} />
-        <StatTile label={copy.extensions.managed} value={managedCount} />
-        <StatTile
-          label={copy.extensions.conflicts}
-          value={<span className={cn(conflictCount > 0 && 'text-danger')}>{conflictCount}</span>}
-        />
-      </StatTileGrid>
-
-      <Panel title={copy.toolReadiness} count={APPS.filter(app => appStatus[app]).length}>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <Card title={copy.toolReadiness} count={APPS.filter(app => appStatus[app]).length}>
+        <div className="grid gap-3 p-[var(--card-pad)] sm:grid-cols-2 xl:grid-cols-4">
           {APPS.map(app => (
             <ClientStatus key={app} app={app} client={appStatus[app]} copy={copy} language={language} />
           ))}
         </div>
-      </Panel>
+      </Card>
 
       {showPreview ? (
-        <Panel
+        <Card
           title={copy.extensions.diffPreview}
           count={groupedDiffChanges.length}
           flushBody
-          actions={<Button size="sm" variant="ghost" onClick={() => setShowPreview(false)}>{copy.close}</Button>}
-          footer={
-            <span className="truncate tabular-nums">
-              {addCount} {copy.extensions.toAdd} · {conflictCount} {copy.extensions.conflicts} · {currentCount} {copy.extensions.current}
-            </span>
-          }
+          toolbar={<Button size="sm" variant="ghost" onClick={() => setShowPreview(false)}>{copy.close}</Button>}
+          bodyClassName="pb-[var(--card-pad)]"
         >
           {groupedDiffChanges.length ? (
             groupedDiffChanges.map(change => (
@@ -336,22 +330,21 @@ export default function Extensions() {
           ) : (
             <EmptyState size="sm" icon={null} title={copy.extensions.noDifferences} />
           )}
-        </Panel>
+          <div className="border-t border-line px-4 py-2 text-xs tabular-nums text-ink-3">
+            {addCount} {copy.extensions.toAdd} · {conflictCount} {copy.extensions.conflicts} · {currentCount} {copy.extensions.current}
+          </div>
+        </Card>
       ) : null}
 
       {lastSyncResult ? (
-        <div role="status" className="flex flex-wrap items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3">
-          <Badge variant={lastSyncResult.applied ? 'success' : 'neutral'}>
-            {lastSyncResult.applied ? <CheckCircle2 className="h-3 w-3" /> : <GitCompare className="h-3 w-3" />}
-            {lastSyncResult.applied ? copy.extensions.applied : copy.extensions.previewOnly}
-          </Badge>
-          {lastSyncResult.changes ? (
-            <span className="text-sm tabular-nums text-ink-3">{lastSyncResult.changes.length} {copy.extensions.changes}</span>
-          ) : null}
-        </div>
+        <AlertBanner
+          tone={lastSyncResult.applied ? 'success' : 'info'}
+          title={lastSyncResult.applied ? copy.extensions.applied : copy.extensions.previewOnly}
+          description={lastSyncResult.changes ? `${lastSyncResult.changes.length} ${copy.extensions.changes}` : undefined}
+        />
       ) : null}
 
-      <Panel
+      <Card
         title={copy.extensions.syncedExtensions}
         count={filteredRecords.length}
         flushBody
@@ -419,8 +412,8 @@ export default function Extensions() {
             description={records.length ? undefined : copy.extensions.emptySynced}
           />
         )}
-      </Panel>
-    </PageShell>
+      </Card>
+    </>
   )
 }
 

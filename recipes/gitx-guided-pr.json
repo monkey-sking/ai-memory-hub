@@ -1,0 +1,107 @@
+{
+  "name": "gitx-guided-pr",
+  "title": "GitX Guided Git and Pull Request Flow",
+  "description": "A guided, visible Git workflow inspired by GitX: inspect repository state and history, isolate work, make small commits, verify, request review, and prepare a pull request without implicit remote mutation.",
+  "version": "1.0.0",
+  "variables": {
+    "feature": "gitx-guided-pr",
+    "priority": "normal",
+    "maxRepairAttempts": "2"
+  },
+  "qualityGate": {
+    "verifyCommands": [
+      {
+        "id": "git-diff-check",
+        "source": "workflow",
+        "required": true,
+        "description": "Check whitespace errors and capture the final diff summary."
+      },
+      {
+        "id": "project-verification",
+        "source": "task-spec",
+        "required": true,
+        "description": "Run the project's declared focused verification commands."
+      }
+    ],
+    "reviewRequired": true,
+    "maxRepairAttempts": 2,
+    "stopWhen": [
+      "working_tree_context_unclear",
+      "conflict_requires_human_choice",
+      "push_or_merge_requires_approval",
+      "verification_unavailable",
+      "max_repair_attempts_reached"
+    ],
+    "allowedActions": [
+      "inspect_git_state",
+      "inspect_git_history",
+      "local_file_edits",
+      "focused_tests",
+      "local_commits_when_guardrails_allow",
+      "prepare_pull_request_metadata"
+    ],
+    "forbiddenActions": [
+      "git_push_without_approval",
+      "git_merge_without_approval",
+      "git_reset_without_approval",
+      "file_deletion_without_approval",
+      "dependency_install_without_approval"
+    ]
+  },
+  "roles": {
+    "planner": {
+      "description": "Makes repository state, branch base, scope, and stop conditions explicit before edits."
+    },
+    "executor": {
+      "description": "Makes small, reviewable local changes and commits only within the approved scope."
+    },
+    "reviewer": {
+      "description": "Reviews the diff, commit history, verification evidence, and PR readiness."
+    },
+    "observer": {
+      "description": "Maintains the state transition and records the final handoff without performing remote mutation."
+    }
+  },
+  "steps": [
+    {
+      "id": "visible-start",
+      "role": "planner",
+      "task": "Inspect git status, current branch, upstream, recent history, and changed-file ownership. Summarize base commit, working-tree state, scope, and non-goals. Stop if unrelated user changes or an unclear base branch make safe isolation impossible.",
+      "outputFields": ["base", "branch", "status", "history", "scope", "nonGoals", "stopWhen"]
+    },
+    {
+      "id": "isolate-work",
+      "role": "executor",
+      "task": "Use an AMH isolated worktree when dispatch isolation is enabled; otherwise preserve the current tree and do not overwrite unrelated edits. Record branch, worktree, base commit, and ownership before implementation.",
+      "dependsOn": ["visible-start"]
+    },
+    {
+      "id": "small-commits",
+      "role": "executor",
+      "task": "Implement the approved scope in small coherent increments. Keep commits reviewable and explain what each commit changes. Do not push, merge, reset, delete, or install dependencies without fresh approval.",
+      "dependsOn": ["isolate-work"]
+    },
+    {
+      "id": "verify-and-summarize",
+      "role": "executor",
+      "task": "Run focused project verification, git diff --check, and capture changed files, diff stat, commit list, test results, and residual risks. Mark review-ready only when evidence is present.",
+      "dependsOn": ["small-commits"],
+      "verifyCommands": ["git diff --check"]
+    },
+    {
+      "id": "pull-request-review",
+      "role": "reviewer",
+      "task": "Review the branch/worktree, commit history, diff, tests, and safety constraints. Return PASS only when the change is reviewable and PR-ready; otherwise list blockers with file or command evidence. A PR-ready result does not authorize push or merge.",
+      "dependsOn": ["verify-and-summarize"],
+      "reviewRequired": true
+    },
+    {
+      "id": "repair-or-handoff",
+      "role": "observer",
+      "task": "If review or verification fails, create a bounded repair attempt and repeat verification. If both pass, record a PR handoff containing branch, base, commits, diff summary, tests, review result, and explicit next action: human-authorized push/PR/merge. Never perform remote mutation implicitly.",
+      "dependsOn": ["pull-request-review"],
+      "maxRepairAttempts": 2,
+      "reviewRequired": true
+    }
+  ]
+}

@@ -27,8 +27,8 @@ test("daemon lock rejects a second live owner", async () => {
 test("daemon lock replaces a stale owner", async () => {
   const memoryDir = await fs.mkdtemp(path.join(os.tmpdir(), "amh-daemon-lock-"));
   try {
-    const stale = acquireDaemonLock(memoryDir, { pid: 101, isProcessAlive: () => false });
-    releaseDaemonLock(stale, { pid: 101 });
+    await fs.mkdir(path.join(memoryDir, "state"), { recursive: true });
+    await fs.writeFile(path.join(memoryDir, "state", "daemon.lock"), JSON.stringify({ pid: 101, token: "stale" }));
     const fresh = acquireDaemonLock(memoryDir, { pid: 202, isProcessAlive: () => false });
     assert.equal(fresh.acquired, true);
     assert.equal(fresh.pid, 202);
@@ -36,6 +36,29 @@ test("daemon lock replaces a stale owner", async () => {
   } finally {
     await fs.rm(memoryDir, { recursive: true, force: true });
   }
+});
+
+test("daemon lock refuses to treat a malformed lock as stale", async () => {
+  const memoryDir = await fs.mkdtemp(path.join(os.tmpdir(), "amh-daemon-lock-"));
+  try {
+    await fs.mkdir(path.join(memoryDir, "state"), { recursive: true });
+    await fs.writeFile(path.join(memoryDir, "state", "daemon.lock"), "{\"pid\":");
+    const result = acquireDaemonLock(memoryDir, { pid: 202, isProcessAlive: () => false });
+    assert.equal(result.acquired, false);
+    assert.equal(result.reason, "invalid-lock");
+  } finally { await fs.rm(memoryDir, { recursive: true, force: true }); }
+});
+
+test("old owner cannot release a replacement lock with the same pid", async () => {
+  const memoryDir = await fs.mkdtemp(path.join(os.tmpdir(), "amh-daemon-lock-"));
+  try {
+    const first = acquireDaemonLock(memoryDir, { pid: 101, isProcessAlive: () => false });
+    releaseDaemonLock(first, { pid: 101 });
+    const second = acquireDaemonLock(memoryDir, { pid: 101, isProcessAlive: () => false });
+    assert.equal(releaseDaemonLock(first, { pid: 101 }), false);
+    await fs.stat(path.join(memoryDir, "state", "daemon.lock"));
+    releaseDaemonLock(second, { pid: 101 });
+  } finally { await fs.rm(memoryDir, { recursive: true, force: true }); }
 });
 
 test("daemon --force refuses to start beside a live daemon", async () => {

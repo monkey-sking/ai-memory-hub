@@ -12,11 +12,15 @@ export function acquireDaemonLock(memoryDir, { pid = process.pid, isProcessAlive
   fs.mkdirSync(path.dirname(lockPath), { recursive: true });
   try {
     const fd = fs.openSync(lockPath, "wx");
-    fs.writeFileSync(fd, `${JSON.stringify({ pid, acquiredAt: new Date().toISOString() })}\n`, "utf8");
-    return { acquired: true, fd, lockPath, pid };
+    const token = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    fs.writeFileSync(fd, `${JSON.stringify({ pid, token, acquiredAt: new Date().toISOString() })}\n`, "utf8");
+    return { acquired: true, fd, lockPath, pid, token };
   } catch (error) {
     if (error.code !== "EEXIST") throw error;
     const existing = readDaemonLock(lockPath);
+    if (!existing) {
+      return { acquired: false, lockPath, pid: null, reason: "invalid-lock" };
+    }
     const existingPid = Number(existing?.pid || 0);
     if (existingPid > 0 && isProcessAlive(existingPid)) {
       return { acquired: false, lockPath, pid: existingPid, reason: "already-running" };
@@ -32,7 +36,8 @@ export function releaseDaemonLock(lock, { pid = process.pid } = {}) {
   if (!lock?.lockPath) return false;
   try {
     const current = readDaemonLock(lock.lockPath);
-    if (Number(current?.pid || 0) !== Number(pid)) return false;
+    if (!current || Number(current.pid || 0) !== Number(pid)) return false;
+    if (lock.token && current.token !== lock.token) return false;
     if (lock.fd != null) fs.closeSync(lock.fd);
     fs.unlinkSync(lock.lockPath);
     return true;

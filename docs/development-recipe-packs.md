@@ -63,6 +63,8 @@ the relay retry limit for task dispatch and retry.
 - `lights-out-local`: local unattended loop engineering with guardrails,
   implementation, verification, review, bounded repair, final verification, and
   closure.
+- `gitx-guided-pr`: visible Git state/history, isolated work, small commits,
+  verification, review, and an explicit pull-request handoff.
 
 Built-in templates live in the repository `recipes/` directory. User templates
 in `~/.ai-memory/recipes/` are still supported and override built-ins with the

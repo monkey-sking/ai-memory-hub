@@ -4,8 +4,10 @@ import path from "node:path";
 
 // P1 (borrowed from Cumora participants, taken further): `role` is a first-class entity so we can
 // ask "who plays what role" and "what permissions a role binds" — Cumora only has flat role fields.
-const ENTITY_TYPES = new Set(["memory", "skill", "skill-pack", "project", "task", "workflow", "agent", "tool", "role"]);
-const RELATION_TYPES = new Set(["uses", "supports", "belongs-to", "depends-on", "enabled-in", "derived-from", "related-to", "plays-role"]);
+// P2 (AMH-exclusive, Cumora has no team entity): `team` is a first-class org entity so we can model
+// who belongs to which team and scope work/permissions per team — going further than Cumora.
+const ENTITY_TYPES = new Set(["memory", "skill", "skill-pack", "project", "task", "workflow", "agent", "tool", "role", "team"]);
+const RELATION_TYPES = new Set(["uses", "supports", "belongs-to", "depends-on", "enabled-in", "derived-from", "related-to", "plays-role", "member-of"]);
 
 export function readRelations(memoryDir) {
   const file = path.join(path.resolve(memoryDir), "relations", "events.jsonl");

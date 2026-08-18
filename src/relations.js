@@ -2,8 +2,10 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
-const ENTITY_TYPES = new Set(["memory", "skill", "skill-pack", "project", "task", "workflow", "agent", "tool"]);
-const RELATION_TYPES = new Set(["uses", "supports", "belongs-to", "depends-on", "enabled-in", "derived-from", "related-to"]);
+// P1 (borrowed from Cumora participants, taken further): `role` is a first-class entity so we can
+// ask "who plays what role" and "what permissions a role binds" — Cumora only has flat role fields.
+const ENTITY_TYPES = new Set(["memory", "skill", "skill-pack", "project", "task", "workflow", "agent", "tool", "role"]);
+const RELATION_TYPES = new Set(["uses", "supports", "belongs-to", "depends-on", "enabled-in", "derived-from", "related-to", "plays-role"]);
 
 export function readRelations(memoryDir) {
   const file = path.join(path.resolve(memoryDir), "relations", "events.jsonl");

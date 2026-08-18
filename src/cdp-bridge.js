@@ -317,12 +317,14 @@ class CDPBridge {
   }
 
   handleRadioList(clientId, params, id) {
-    const { limit, from, to } = params || {};
+    const { limit, from, to, consumer, ack } = params || {};
 
     const args = ['radio', 'list'];
     if (limit) args.push('--limit', String(limit));
     if (from) args.push('--from', from);
     if (to) args.push('--to', to);
+    if (consumer) args.push('--consumer', consumer);
+    if (ack) args.push('--ack');
 
     const result = this.execAMH(...args);
 

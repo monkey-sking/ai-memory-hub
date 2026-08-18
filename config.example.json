@@ -11,6 +11,9 @@
       "pruneAfterSync": true
     }
   },
+  "task": {
+    "claimTtlMs": 1800000
+  },
   "backup": {
     "github": {
       "enabled": false,

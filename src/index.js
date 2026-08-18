@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import http from "node:http";
-import { spawnSync, execSync } from "node:child_process";
+import { spawnSync, execSync, spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import nunjucks from "nunjucks";
 import { createSearchDb, rebuildIndex, searchIndex, getIndexStats, tokenizeChinese } from "./fts5-search.js";
@@ -18,6 +18,7 @@ import { createDashboardMetricsApi } from "./dashboard/metrics.js";
 import { createDashboardProjectsApi } from "./dashboard/projects.js";
 import { createDashboardRadioApi } from "./dashboard/radio.js";
 import { createDashboardRealtimeApi } from "./dashboard/realtime.js";
+import { getBackgroundQueue } from "./background-queue.js";
 import { createDashboardSettingsApi, defaultDashboardShortcuts } from "./dashboard/settings.js";
 import { createDashboardSearchApi } from "./dashboard/search.js";
 import { createDashboardTasksApi } from "./dashboard/tasks.js";
@@ -48,6 +49,8 @@ import { disableProjectSkill, getSkillLifecycleState, loadProjectSkillManifest, 
 import { doctorSkillProjections, syncSkillProjections } from "./shared-skill-materializer.js";
 import { withPreparedSkillSource } from "./shared-skill-sources.js";
 import { listExtensions, importExtensions, diffExtensions, syncExtensions, removeExtensions, statusExtensions, diffSkillExtensions, syncSkillExtensions, removeSkillExtension } from "./extension-sync.js";
+import { writeFileAtomic } from "./atomic-write.js";
+import { exportMemoryBundle, importMemoryBundle } from "./data-port.js";
 import { listCredentialProfiles, setCredentialProfile, removeCredentialProfile, resolveCredential } from "./credentials.js";
 import { listRelatedEntities, recordMemoryRelations, recordRelation, rebuildMemoryRelations, revokeRelation } from "./relations.js";
 import { auditMemories } from "./memory-audit.js";
@@ -98,6 +101,44 @@ const DEFAULT_GITHUB_BACKUP_REPO_DIR = path.join(os.homedir(), ".ai-memory-githu
 const DEFAULT_GITHUB_BACKUP_TASK_NAME = "AI Memory Hub GitHub Backup";
 const DEFAULT_DISPATCH_ACK_TIMEOUT_MS = 5 * 60 * 1000;
 const DEFAULT_DISPATCH_RUN_TIMEOUT_MS = 10 * 60 * 1000;
+const DISPATCH_MAX_CONCURRENCY = 6;
+
+// Live dispatch-pool status for multi-runner collaboration visibility (feature ④).
+const dispatchRunState = {
+  active: false,
+  startedAt: "",
+  concurrency: 1,
+  total: 0,
+  queued: 0,
+  running: 0,
+  done: 0,
+  failed: 0,
+  jobs: Object.create(null)
+};
+
+function resetDispatchRunState(concurrency, total) {
+  dispatchRunState.active = true;
+  dispatchRunState.startedAt = new Date().toISOString();
+  dispatchRunState.concurrency = concurrency;
+  dispatchRunState.total = total;
+  dispatchRunState.queued = total;
+  dispatchRunState.running = 0;
+  dispatchRunState.done = 0;
+  dispatchRunState.failed = 0;
+  dispatchRunState.jobs = Object.create(null);
+}
+
+// Serializes shared JSONL record writes across concurrent dispatch jobs so
+// appendDispatchRunRecord / appendRelayStatus / appendDispatchLog don't interleave.
+function createDispatchRecordMutex() {
+  let chain = Promise.resolve();
+  return (fn) => {
+    const run = chain.then(fn);
+    chain = run.catch(() => {});
+    return run;
+  };
+}
+const dispatchRecordMutex = createDispatchRecordMutex();
 const DEFAULT_DISPATCH_MAX_RETRIES = 3;
 // Oscillation: N consecutive failed attempts with an identical (exitCode, error)
 // fingerprint mean the loop is stuck repeating the same call for the same result.
@@ -557,6 +598,8 @@ const ASYNC_CALL_TRANSITIONS = {
 const RECIPE_GATE_STRING_ARRAY_FIELDS = ["stopWhen", "allowedActions", "forbiddenActions", "reviewDimensions"];
 const RECIPE_GATE_FIELDS = ["verifyCommands", ...RECIPE_GATE_STRING_ARRAY_FIELDS, "reviewRequired", "maxRepairAttempts", "minimalImplementation", "dependencyBudget", "adversarialVerifier"];
 
+const runnerResolutionCache = new Map();
+
 const rawArgs = process.argv.slice(2);
 const parsedArgs = parseCliArgs(rawArgs);
 const args = parsedArgs.args;
@@ -883,7 +926,7 @@ function writeToolDeclaration(memoryDir, declaration) {
   const name = normalizeToolName(declaration.tool);
   const updated = existing.filter((entry) => normalizeToolName(entry.tool) !== name);
   updated.push(declaration);
-  fs.writeFileSync(file, updated.map((entry) => JSON.stringify(entry)).join("\n") + "\n", "utf8");
+  writeFileAtomic(file, updated.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
   return declaration;
 }
 
@@ -895,7 +938,7 @@ function removeToolDeclaration(memoryDir, tool) {
   if (remaining.length === existing.length) {
     return false;
   }
-  fs.writeFileSync(file, remaining.map((entry) => JSON.stringify(entry)).join("\n") + "\n", "utf8");
+  writeFileAtomic(file, remaining.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
   return true;
 }
 
@@ -1077,7 +1120,7 @@ function readModelsCache(memoryDir) {
 }
 
 function writeModelsCache(memoryDir, cache) {
-  fs.writeFileSync(getModelsCacheFile(memoryDir), JSON.stringify(cache, null, 2), "utf8");
+  writeFileAtomic(getModelsCacheFile(memoryDir), JSON.stringify(cache, null, 2));
 }
 
 function refreshModelsIfStale(memoryDir, { tool = "", force = false } = {}) {
@@ -3426,7 +3469,7 @@ function taskPurgeCommand(argv) {
       // Write filtered events atomically
       const tempEventsFile = `${eventsFile}.tmp.${Date.now()}`;
       ensureDir(path.dirname(tempEventsFile));
-      fs.writeFileSync(
+      writeFileAtomic(
         tempEventsFile,
         filteredEvents.map(e => JSON.stringify(e)).join("\n") + (filteredEvents.length ? "\n" : ""),
         "utf8"
@@ -3531,7 +3574,7 @@ function taskArchiveCommand(argv) {
   ensureDir(path.dirname(archiveEventsFile));
   fs.appendFileSync(archiveEventsFile, archiveEvents.map(e => JSON.stringify(e)).join("\n") + "\n", "utf8");
   fs.appendFileSync(archiveTasksFile, tasksToArchive.map(t => JSON.stringify(t)).join("\n") + "\n", "utf8");
-  fs.writeFileSync(eventsFile, keepEvents.map(e => JSON.stringify(e)).join("\n") + "\n", "utf8");
+  writeFileAtomic(eventsFile, keepEvents.map(e => JSON.stringify(e)).join("\n") + "\n", "utf8");
   
   // Re-materialize task projection
   materializeEntityProjection(config.memoryDir, getTaskEventStoreDefinition());
@@ -3896,7 +3939,7 @@ function radioArchiveCommand(argv) {
   // Write files
   ensureDir(path.dirname(archiveRadioFile));
   fs.appendFileSync(archiveRadioFile, archiveMessages.map(m => JSON.stringify(m)).join("\n") + "\n", "utf8");
-  fs.writeFileSync(radioFile, keepMessages.map(m => JSON.stringify(m)).join("\n") + "\n", "utf8");
+  writeFileAtomic(radioFile, keepMessages.map(m => JSON.stringify(m)).join("\n") + "\n", "utf8");
   
   console.log(`Successfully archived ${archiveMessages.length} radio message(s).`);
   console.log(`Active radio messages left: ${keepMessages.length}.`);
@@ -5164,7 +5207,7 @@ function writeDispatchReportIfUseful(memoryDir, job, result, relayState) {
     stdout,
     ""
   ];
-  fs.writeFileSync(file, lines.join("\n"), "utf8");
+  writeFileAtomic(file, lines.join("\n"), "utf8");
   return relativePath.replace(/\\/g, "/");
 }
 
@@ -5505,8 +5548,19 @@ function normalizeToolName(tool) {
   return String(tool || "").trim().toLowerCase();
 }
 
+// runnerResolutionCache 声明已上移至本文件 main() 调用之前，避免 TDZ
+
 function getToolRunner(tool) {
   const name = normalizeToolName(tool);
+  if (runnerResolutionCache.has(name)) {
+    return runnerResolutionCache.get(name);
+  }
+  const result = resolveToolRunnerUncached(name);
+  runnerResolutionCache.set(name, result);
+  return result;
+}
+
+function resolveToolRunnerUncached(name) {
   const profile = getRunnerProfile(name);
   if (!profile) {
     return {
@@ -5743,7 +5797,7 @@ function resolveRunnerCommand(profile) {
   };
 }
 
-function runDispatchJob(memoryDir, job, runner, options = {}) {
+function prepareDispatchJobContext(memoryDir, job, runner, options = {}) {
   const initialWorktree = options.isolateWorktree
     ? prepareDispatchWorktree(job, { root: options.worktreeRoot })
     : null;
@@ -5767,13 +5821,24 @@ function runDispatchJob(memoryDir, job, runner, options = {}) {
     cwd,
     transport: "amh-dispatch"
   });
-  let completed;
-  try {
-    completed = invokeRunnerCommand(runner, args, input, DEFAULT_DISPATCH_RUN_TIMEOUT_MS, cwd, resolveCredentialEnvironment(memoryDir, job.credentialRefs || job.credentials || []));
-  } catch (error) {
-    supervisor.finish(leaseSessionId, { status: "failed", error: error.message });
-    throw error;
-  }
+  return {
+    initialWorktree,
+    jobWithWorktree,
+    args,
+    input,
+    runId,
+    cwd,
+    startedAtMs,
+    startedAt,
+    invocation,
+    supervisor,
+    leaseSessionId,
+    credentialEnv: resolveCredentialEnvironment(memoryDir, job.credentialRefs || job.credentials || [])
+  };
+}
+
+function finalizeDispatchJob(memoryDir, job, runner, completed, ctx) {
+  const { initialWorktree, jobWithWorktree, runId, cwd, startedAtMs, startedAt, invocation, supervisor, leaseSessionId } = ctx;
   const finishedAtMs = Date.now();
   const finishedAt = new Date(finishedAtMs).toISOString();
   const parsed = parseRunnerOutput(memoryDir, jobWithWorktree, runner, completed.stdout);
@@ -5844,6 +5909,30 @@ function runDispatchJob(memoryDir, job, runner, options = {}) {
   };
 }
 
+function runDispatchJob(memoryDir, job, runner, options = {}) {
+  const ctx = prepareDispatchJobContext(memoryDir, job, runner, options);
+  let completed;
+  try {
+    completed = invokeRunnerCommand(runner, ctx.args, ctx.input, DEFAULT_DISPATCH_RUN_TIMEOUT_MS, ctx.cwd, ctx.credentialEnv);
+  } catch (error) {
+    ctx.supervisor.finish(ctx.leaseSessionId, { status: "failed", error: error.message });
+    throw error;
+  }
+  return finalizeDispatchJob(memoryDir, job, runner, completed, ctx);
+}
+
+async function runDispatchJobAsync(memoryDir, job, runner, options = {}) {
+  const ctx = prepareDispatchJobContext(memoryDir, job, runner, options);
+  let completed;
+  try {
+    completed = await invokeRunnerCommandAsync(runner, ctx.args, ctx.input, DEFAULT_DISPATCH_RUN_TIMEOUT_MS, ctx.cwd, ctx.credentialEnv);
+  } catch (error) {
+    ctx.supervisor.finish(ctx.leaseSessionId, { status: "failed", error: error.message });
+    throw error;
+  }
+  return finalizeDispatchJob(memoryDir, job, runner, completed, ctx);
+}
+
 function buildRunnerInvocation(runner, args = []) {
   const useCmdLauncher = process.platform === "win32" && runner.usesShell;
   const command = useCmdLauncher ? buildWindowsCmdLine(runner.command, args) : runner.command;
@@ -5881,6 +5970,69 @@ function invokeRunnerCommand(runner, args = [], input = "", timeoutMs = DEFAULT_
     input,
     env: { ...process.env, ...credentialEnv }
   });
+}
+
+// Async twin of invokeRunnerCommand for the concurrent dispatch pool (feature ④).
+// Uses non-blocking spawn so multiple tool runners can execute in parallel. Retries
+// only transient transport errors (spawn/connection), never logical exit failures.
+async function invokeRunnerCommandAsync(runner, args = [], input = "", timeoutMs = DEFAULT_DISPATCH_RUN_TIMEOUT_MS, cwd = process.cwd(), credentialEnv = {}, { transientRetries = 2, transientBackoffMs = 500 } = {}) {
+  const invocation = buildRunnerInvocation(runner, args);
+  const useCmdLauncher = invocation.usesShell;
+  const command = useCmdLauncher ? invocation.commandLine : runner.command;
+  const commandArgs = useCmdLauncher ? [] : args;
+  let lastError;
+  for (let attempt = 0; attempt <= transientRetries; attempt++) {
+    try {
+      // eslint-disable-next-line no-await-in-loop -- sequential retry, not parallel
+      const completed = await new Promise((resolve, reject) => {
+        let child;
+        try {
+          child = spawn(command, commandArgs, {
+            cwd,
+            env: { ...process.env, ...credentialEnv },
+            windowsHide: true,
+            shell: useCmdLauncher
+          });
+        } catch (spawnErr) {
+          reject(spawnErr);
+          return;
+        }
+        let stdout = "";
+        let stderr = "";
+        if (child.stdout) {
+          child.stdout.setEncoding("utf8").on("data", (d) => { stdout += d; });
+        }
+        if (child.stderr) {
+          child.stderr.setEncoding("utf8").on("data", (d) => { stderr += d; });
+        }
+        if (input && child.stdin) {
+          try { child.stdin.end(input); } catch {}
+        }
+        const timer = setTimeout(() => {
+          try { child.kill("SIGKILL"); } catch {}
+          resolve({ status: null, signal: "SIGKILL", stdout, stderr, error: { message: `Runner exceeded ${timeoutMs}ms timeout` } });
+        }, timeoutMs);
+        child.on("error", (err) => {
+          clearTimeout(timer);
+          reject(err);
+        });
+        child.on("close", (code, signal) => {
+          clearTimeout(timer);
+          resolve({ status: code, signal, stdout, stderr, error: null });
+        });
+      });
+      return completed;
+    } catch (error) {
+      lastError = error;
+      const text = String(error?.code || error?.message || "");
+      const transient = /ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPERM|EPIPE|ENOENT/i.test(text);
+      if (!transient || attempt === transientRetries) {
+        throw error;
+      }
+      await new Promise((r) => setTimeout(r, transientBackoffMs * (attempt + 1)));
+    }
+  }
+  throw lastError;
 }
 
 function buildWindowsCmdLine(command, args = []) {
@@ -6177,7 +6329,7 @@ function writeDispatchRunLog(memoryDir, runId, stream, text) {
   const relativePath = path.join(DISPATCH_RUNS_DIR, `${safeRunId}.${safeStream}.log`);
   const file = path.join(memoryDir, relativePath);
   ensureDir(path.dirname(file));
-  fs.writeFileSync(file, String(text || ""), "utf8");
+  writeFileAtomic(file, String(text || ""), "utf8");
   return relativePath.replace(/\\/g, "/");
 }
 
@@ -6930,7 +7082,7 @@ function memoryHookRemoveCommand(argv) {
   if (!fs.existsSync(hooksFile)) { console.log("No hooks found."); return; }
   const hooks = readEvents(hooksFile);
   const updated = hooks.map(h => h.id === id ? { ...h, active: false, removedAt: new Date().toISOString() } : h);
-  fs.writeFileSync(hooksFile, updated.map(h => JSON.stringify(h)).join("\n") + "\n", "utf8");
+  writeFileAtomic(hooksFile, updated.map(h => JSON.stringify(h)).join("\n") + "\n", "utf8");
   console.log(JSON.stringify({ ok: true, removed: id }));
 }
 
@@ -7269,7 +7421,7 @@ function resolveGitConflictsInFile(filePath) {
     return tsA.localeCompare(tsB);
   });
   
-  fs.writeFileSync(filePath, sortedRecords.map(r => JSON.stringify(r)).join("\n") + "\n", "utf8");
+  writeFileAtomic(filePath, sortedRecords.map(r => JSON.stringify(r)).join("\n") + "\n", "utf8");
   console.log(`Resolved conflict: ${path.basename(filePath)} successfully rewritten with ${sortedRecords.length} unique records.`);
   return true;
 }
@@ -7320,7 +7472,7 @@ function mergeFolders(localDir, sourceDir) {
     });
     
     ensureDir(path.dirname(localFile));
-    fs.writeFileSync(localFile, sortedRecords.map(r => JSON.stringify(r)).join("\n") + "\n", "utf8");
+    writeFileAtomic(localFile, sortedRecords.map(r => JSON.stringify(r)).join("\n") + "\n", "utf8");
     console.log(`Successfully merged ${relPath}. Total unique records: ${sortedRecords.length}`);
   }
 }
@@ -7668,7 +7820,7 @@ function daemonCommand(argv) {
     try {
       ensureDir(path.dirname(file));
       if (!fs.existsSync(file)) {
-        fs.writeFileSync(file, "", "utf8");
+        writeFileAtomic(file, "", "utf8");
       }
       const watcher = fs.watch(file, { persistent: false }, (eventType) => {
         if (eventType === "change" || eventType === "rename") {
@@ -7715,7 +7867,7 @@ function updateSkillCandidate(memoryDir, id, updater) {
   candidates[index] = updater(candidates[index]);
   const file = getSkillCandidatesFile(memoryDir);
   ensureDir(path.dirname(file));
-  fs.writeFileSync(file, candidates.map((candidate) => JSON.stringify(candidate)).join("\n") + "\n", "utf8");
+  writeFileAtomic(file, candidates.map((candidate) => JSON.stringify(candidate)).join("\n") + "\n", "utf8");
   return candidates[index];
 }
 
@@ -8014,7 +8166,7 @@ function mergeSkillDelta(memoryDir, id) {
     const content = fs.readFileSync(file, "utf8");
     if (delta.original && content.includes(delta.original)) {
       const updated = content.replace(delta.original, delta.proposed);
-      fs.writeFileSync(file, updated, "utf8");
+      writeFileAtomic(file, updated, "utf8");
       delta.status = "merged";
       delta.mergedAt = new Date().toISOString();
       merged = true;
@@ -8034,7 +8186,7 @@ function writeSkillDeltas(memoryDir, deltas) {
   const file = getSkillDeltasFile(memoryDir);
   ensureDir(path.dirname(file));
   const lines = deltas.map((d) => JSON.stringify(d)).join("\n") + "\n";
-  fs.writeFileSync(file, lines, "utf8");
+  writeFileAtomic(file, lines, "utf8");
 }
 
 function skillDeltaCommand(argv) {
@@ -8182,7 +8334,7 @@ function readLoopCheckpoint(memoryDir) {
 function writeLoopCheckpoint(memoryDir, checkpoint) {
   const filePath = path.join(memoryDir, "state", LOOP_CHECKPOINT_FILE);
   ensureDir(path.dirname(filePath));
-  fs.writeFileSync(filePath, JSON.stringify(checkpoint, null, 2), "utf8");
+  writeFileAtomic(filePath, JSON.stringify(checkpoint, null, 2), "utf8");
 }
 
 function recordCheckpointJob(checkpoint, jobId, status, tool, project) {
@@ -8258,7 +8410,7 @@ function readDaemonPid(memoryDir) {
 function writeDaemonPid(memoryDir, pid) {
   const paths = getDaemonStatePaths(memoryDir);
   ensureDir(path.dirname(paths.pidFile));
-  fs.writeFileSync(paths.pidFile, `${pid}\n`, "utf8");
+  writeFileAtomic(paths.pidFile, `${pid}\n`, "utf8");
 }
 
 function clearDaemonPid(memoryDir, pid) {
@@ -8272,7 +8424,7 @@ function clearDaemonPid(memoryDir, pid) {
 function writeDaemonHeartbeat(memoryDir, data) {
   const filePath = path.join(memoryDir, "state", DAEMON_HEARTBEAT_FILE);
   ensureDir(path.dirname(filePath));
-  fs.writeFileSync(filePath, JSON.stringify({
+  writeFileAtomic(filePath, JSON.stringify({
     ...data,
     ts: new Date().toISOString()
   }, null, 2), "utf8");
@@ -8357,8 +8509,35 @@ function appCommand(argv) {
   ensureHub(config.memoryDir);
   const realtime = dashboardRealtime.createDashboardRealtime(config.memoryDir);
   const broadcastDashboardUpdate = (reason) => realtime.broadcastSnapshot(reason);
+  const backgroundQueue = getBackgroundQueue({
+    onProgress: (task) => {
+      try {
+        broadcastDashboardUpdate(`task:${task.status}`);
+        // 进度推送也走 snapshot 的附带字段由前端按需读取；此处仅触发刷新
+      } catch {
+        // ignore
+      }
+    }
+  });
 
   const server = http.createServer(async (req, res) => {
+    const requestStartedAt = Date.now();
+    const requestMethod = req.method || "GET";
+    const requestRawPath = String(req.url || "/").split(/[?#]/, 1)[0] || "/";
+    let requestCapturedStatus = 200;
+    const originalWriteHead = res.writeHead.bind(res);
+    res.writeHead = (status, ...rest) => {
+      requestCapturedStatus = status;
+      return originalWriteHead(status, ...rest);
+    };
+    res.on("finish", () => {
+      const ms = Date.now() - requestStartedAt;
+      const isError = requestCapturedStatus >= 400;
+      recordRequestMetric(requestMethod, requestRawPath, requestCapturedStatus, ms, isError);
+      if (process.env.AMH_LOG_REQUESTS === "1") {
+        console.log(`[req] ${requestMethod} ${requestRawPath} -> ${requestCapturedStatus} (${ms}ms)`);
+      }
+    });
     try {
       const url = new URL(req.url || "/", `http://${host}:${port}`);
       const rawPathname = String(req.url || "/").split(/[?#]/, 1)[0] || "/";
@@ -8379,12 +8558,12 @@ function appCommand(argv) {
       }
       if (req.method === "POST" && url.pathname === "/api/credentials") {
         const body = await readRequestJson(req);
-        const profile = setCredentialProfile(config.memoryDir, body);
+        const profile = withHubLock(config.memoryDir, "credentials:set", () => setCredentialProfile(config.memoryDir, body));
         return sendJson(res, { ok: true, profile });
       }
       if (req.method === "DELETE" && url.pathname === "/api/credentials") {
         const body = await readRequestJson(req);
-        return sendJson(res, { ok: true, profiles: removeCredentialProfile(config.memoryDir, body.id) });
+        return sendJson(res, { ok: true, profiles: withHubLock(config.memoryDir, "credentials:remove", () => removeCredentialProfile(config.memoryDir, body.id)) });
       }
       if (url.pathname === "/api/extensions") {
         const app = url.searchParams.get("app") || "";
@@ -8519,7 +8698,56 @@ function appCommand(argv) {
         return sendJson(res, { ok: true, ...(await statusExtensions(config.memoryDir, { homeDir })) });
       }
       if (req.method === "GET" && url.pathname === "/api/metrics") {
-        return sendJson(res, dashboardMetrics.calculateMetrics(config.memoryDir));
+        return sendJson(res, { ...dashboardMetrics.calculateMetrics(config.memoryDir), requests: getRequestMetricsSnapshot() });
+      }
+      // ── Phase 1.1: 后台任务队列查询/取消（独立命名空间，避免与看板任务 /api/tasks 冲突） ──
+      if (req.method === "GET" && url.pathname === "/api/background-tasks") {
+        return sendJson(res, { ok: true, tasks: backgroundQueue.list({ limit: Number(url.searchParams.get("limit")) || 50 }) });
+      }
+      if (req.method === "GET" && url.pathname.startsWith("/api/background-tasks/")) {
+        const id = url.pathname.slice("/api/background-tasks/".length);
+        const task = backgroundQueue.get(id);
+        if (!task) return sendJson(res, { ok: false, error: "task not found" }, 404);
+        return sendJson(res, { ok: true, task });
+      }
+      if (req.method === "POST" && url.pathname.startsWith("/api/background-tasks/") && url.pathname.endsWith("/cancel")) {
+        const id = url.pathname.slice("/api/background-tasks/".length, -"/cancel".length);
+        return sendJson(res, { ok: true, ...backgroundQueue.cancel(id) });
+      }
+      // ── feature ③: 数据导入/导出与迁移 ──────────────────────────────
+      if (req.method === "GET" && url.pathname === "/api/data/export") {
+        return sendJson(res, exportMemoryBundle(config.memoryDir));
+      }
+      if (req.method === "POST" && url.pathname === "/api/data/import") {
+        const body = await readRequestJson(req, 128 * 1024 * 1024);
+        const apply = body.apply === true;
+        if (url.searchParams.get("background") === "1" && apply) {
+          const enqueued = backgroundQueue.enqueue({
+            type: "data-import",
+            label: "导入数据迁移包",
+            run: async (ctx) => {
+              ctx.report(0.1, "taking safety backup");
+              const result = withHubLock(
+                config.memoryDir,
+                "data-import",
+                () => importMemoryBundle(config.memoryDir, body.bundle, { apply: true }),
+                config.sync.lockStaleMs
+              );
+              ctx.report(0.9, "imported");
+              return result;
+            }
+          });
+          return sendJson(res, { ok: true, background: true, task: enqueued });
+        }
+        const result = apply
+          ? withHubLock(
+              config.memoryDir,
+              "data-import",
+              () => importMemoryBundle(config.memoryDir, body.bundle, { apply: true }),
+              config.sync.lockStaleMs
+            )
+          : importMemoryBundle(config.memoryDir, body.bundle, { apply: false });
+        return sendJson(res, result);
       }
       if (req.method === "GET" && url.pathname === "/api/status") {
         return sendJson(res, getStatusObject());
@@ -8741,7 +8969,21 @@ function appCommand(argv) {
         return sendJson(res, { ...parseGithubWebhook(body), apply: false, hint: "Use amh gh webhook --data <file> --apply for explicit task updates." });
       }
       if (req.method === "GET" && url.pathname === "/api/detect") {
-        return sendJson(res, dashboardTools.getDashboardDetection(config.memoryDir));
+        // ?background=1 把全量重扫（冷启动 ~12s）收口到后台队列，立即返回 task id
+        if (url.searchParams.get("background") === "1") {
+          const enqueued = backgroundQueue.enqueue({
+            type: "detect",
+            label: "重新扫描已安装工具",
+            run: async (ctx) => {
+              ctx.report(0.1, "scanning install targets");
+              const tools = refreshDetectedTools(config.memoryDir);
+              ctx.report(0.9, "enriching connections");
+              return { tools };
+            }
+          });
+          return sendJson(res, { ok: true, background: true, task: enqueued });
+        }
+        return sendJson(res, dashboardTools.getDashboardDetection(config.memoryDir, { refresh: url.searchParams.get("refresh") === "1" }));
       }
       if (req.method === "GET" && url.pathname === "/api/tools") {
         return sendJson(res, dashboardTools.getDashboardTools(config.memoryDir, {
@@ -8829,12 +9071,40 @@ function appCommand(argv) {
       }
       if (req.method === "POST" && url.pathname === "/api/backups/create") {
         const body = await readRequestJson(req);
+        if (url.searchParams.get("background") === "1") {
+          const enqueued = backgroundQueue.enqueue({
+            type: "backup-create",
+            label: "创建备份",
+            run: async (ctx) => {
+              ctx.report(0.05, "preparing backup");
+              const result = dashboardBackups.createDashboardBackup(config, body);
+              broadcastDashboardUpdate("backup:create");
+              ctx.report(1, "backup created");
+              return { result };
+            }
+          });
+          return sendJson(res, { ok: true, background: true, task: enqueued });
+        }
         const result = dashboardBackups.createDashboardBackup(config, body);
         broadcastDashboardUpdate("backup:create");
         return sendJson(res, result);
       }
       if (req.method === "POST" && url.pathname === "/api/backups/prune") {
         const body = await readRequestJson(req);
+        if (url.searchParams.get("background") === "1") {
+          const enqueued = backgroundQueue.enqueue({
+            type: "backup-prune",
+            label: "按策略清理备份",
+            run: async (ctx) => {
+              ctx.report(0.05, "scanning retention policy");
+              const result = dashboardBackups.pruneDashboardBackups(config, body);
+              if (Boolean(body.apply)) broadcastDashboardUpdate("backup:prune");
+              ctx.report(1, "prune done");
+              return { result };
+            }
+          });
+          return sendJson(res, { ok: true, background: true, task: enqueued });
+        }
         const result = dashboardBackups.pruneDashboardBackups(config, body);
         if (Boolean(body.apply)) {
           broadcastDashboardUpdate("backup:prune");
@@ -8851,6 +9121,20 @@ function appCommand(argv) {
       }
       if (req.method === "POST" && url.pathname === "/api/backups/restore") {
         const body = await readRequestJson(req);
+        if (url.searchParams.get("background") === "1" && Boolean(body.apply)) {
+          const enqueued = backgroundQueue.enqueue({
+            type: "backup-restore",
+            label: `恢复备份 ${String(body.name || "")}`.trim(),
+            run: async (ctx) => {
+              ctx.report(0.05, "preparing restore");
+              const result = dashboardBackups.restoreDashboardBackup(config, body);
+              if (Boolean(body.apply)) broadcastDashboardUpdate("backup:restore");
+              ctx.report(1, "restore done");
+              return { result };
+            }
+          });
+          return sendJson(res, { ok: true, background: true, task: enqueued });
+        }
         const result = dashboardBackups.restoreDashboardBackup(config, body);
         if (Boolean(body.apply)) {
           broadcastDashboardUpdate("backup:restore");
@@ -8888,6 +9172,24 @@ function appCommand(argv) {
       }
       if (req.method === "POST" && url.pathname === "/api/health/repair") {
         const body = await readRequestJson(req);
+        if (url.searchParams.get("background") === "1") {
+          const enqueued = backgroundQueue.enqueue({
+            type: "health-repair",
+            label: "修复记忆健康问题",
+            run: async (ctx) => {
+              const apply = body.apply !== false;
+              ctx.report(0.05, "scanning issues");
+              const result = withHubLock(config.memoryDir, "health-repair", () => runMemoryHealthRepair(config, {
+                apply,
+                issueLimit: Number(body.limit || 10)
+              }), config.sync.lockStaleMs);
+              if (apply && result.applied.ledgerRecordsUpdated > 0) broadcastDashboardUpdate("health:repair");
+              ctx.report(1, "repair done");
+              return { result };
+            }
+          });
+          return sendJson(res, { ok: true, background: true, task: enqueued });
+        }
         const apply = body.apply !== false;
         const result = withHubLock(config.memoryDir, "health-repair", () => runMemoryHealthRepair(config, {
           apply,
@@ -9039,7 +9341,8 @@ function appCommand(argv) {
       }
       return sendJson(res, { error: "not found" }, 404);
     } catch (error) {
-      return sendJson(res, { error: error.message || String(error) }, 500);
+      console.error(`[req-error] ${requestMethod} ${requestRawPath}:`, error);
+      return sendErrorEnvelope(res, 500, error?.message || String(error), process.env.AMH_DEBUG === "1" ? String(error?.stack || "") : undefined);
     }
   });
 
@@ -9328,17 +9631,17 @@ function ensureHub(memoryDir) {
 
   const profilePath = path.join(memoryDir, "profile.md");
   if (!fs.existsSync(profilePath)) {
-    fs.writeFileSync(profilePath, "# Profile\n\nAdd stable user preferences here.\n", "utf8");
+    writeFileAtomic(profilePath, "# Profile\n\nAdd stable user preferences here.\n", "utf8");
   }
 
   const memoryPath = path.join(memoryDir, "MEMORY.md");
   if (!fs.existsSync(memoryPath)) {
-    fs.writeFileSync(memoryPath, "# Shared AI Memory\n\nNo local memories indexed yet.\n", "utf8");
+    writeFileAtomic(memoryPath, "# Shared AI Memory\n\nNo local memories indexed yet.\n", "utf8");
   }
 
   const bootstrapPath = path.join(memoryDir, "BOOTSTRAP.md");
   if (!fs.existsSync(bootstrapPath)) {
-    fs.writeFileSync(bootstrapPath, renderEmptyBootstrapSnapshot(memoryDir), "utf8");
+    writeFileAtomic(bootstrapPath, renderEmptyBootstrapSnapshot(memoryDir), "utf8");
   }
 
   const projectsFile = getProjectsFile(memoryDir);
@@ -9348,7 +9651,7 @@ function ensureHub(memoryDir) {
 
   const projectsReadmePath = path.join(memoryDir, "projects", "README.md");
   if (!fs.existsSync(projectsReadmePath)) {
-    fs.writeFileSync(projectsReadmePath, renderProjectRegistryReadme(), "utf8");
+    writeFileAtomic(projectsReadmePath, renderProjectRegistryReadme(), "utf8");
   }
 }
 
@@ -9765,11 +10068,12 @@ function detectTools(memoryDir = resolveMemoryDir()) {
     }
   ];
 
+  const installTargets = getInstallTargets(memoryDir);
   const tools = checks.map((check) => {
     // Use enhanced detection for vscode
     if (check.name === 'vscode') {
       const enhanced = detectVSCodeEnhanced();
-      return enrichToolConnection(enhanced, memoryDir);
+      return enrichToolConnection(enhanced, memoryDir, installTargets);
     }
 
     return enrichToolConnection({
@@ -9778,7 +10082,7 @@ function detectTools(memoryDir = resolveMemoryDir()) {
       installed: fs.existsSync(check.dir),
       dir: check.dir,
       files: fs.existsSync(check.dir) ? summarizeDir(check.dir) : []
-    }, memoryDir);
+    }, memoryDir, installTargets);
   });
 
   return tools;
@@ -10471,8 +10775,8 @@ function workflowGraphCommand(argv) {
   }
 }
 
-function enrichToolConnection(tool, memoryDir) {
-  const target = getInstallTargetForTool(memoryDir, tool.name);
+function enrichToolConnection(tool, memoryDir, installTargets) {
+  const target = getInstallTargetForTool(memoryDir, tool.name, installTargets);
   const instructionFile = target?.file || path.join(memoryDir, "tools", `${tool.name}-shared-memory.md`);
   const instruction = inspectSharedMemoryInstructions(instructionFile);
   const configured = instruction.configured;
@@ -10557,8 +10861,9 @@ function extractSharedSkillLayerVersion(text) {
   return match ? match[1] : "";
 }
 
-function getInstallTargetForTool(memoryDir, toolName) {
-  return getInstallTargets(memoryDir).find((target) => target.tool === toolName) || null;
+function getInstallTargetForTool(memoryDir, toolName, installTargets) {
+  const targets = installTargets || getInstallTargets(memoryDir);
+  return targets.find((target) => target.tool === toolName) || null;
 }
 
 function getLocalInstallTargets(cwd, memoryDir) {
@@ -11070,6 +11375,52 @@ function sendJson(res, value, status = 200) {
   res.end(JSON.stringify(value, null, 2));
 }
 
+// ── Phase 1.0: 可观测性 ───────────────────────────────────────────────
+// 请求级延迟直方图 + 错误计数，供 /api/metrics 复用。
+const requestMetrics = {
+  total: 0,
+  byStatus: Object.create(null),
+  byPath: Object.create(null), // path → { count, totalMs, errors, maxMs }
+  errors: 0,
+  startedAt: Date.now()
+};
+
+function recordRequestMetric(method, path, status, ms, isError) {
+  requestMetrics.total += 1;
+  const bucket = String(status).startsWith("2") || String(status).startsWith("3") ? "2xx3xx" : String(status);
+  requestMetrics.byStatus[bucket] = (requestMetrics.byStatus[bucket] || 0) + 1;
+  if (isError) requestMetrics.errors += 1;
+  const key = `${method} ${path}`;
+  const slot = requestMetrics.byPath[key] || (requestMetrics.byPath[key] = { count: 0, totalMs: 0, errors: 0, maxMs: 0 });
+  slot.count += 1;
+  slot.totalMs += ms;
+  slot.errors += isError ? 1 : 0;
+  if (ms > slot.maxMs) slot.maxMs = ms;
+}
+
+function getRequestMetricsSnapshot() {
+  const paths = Object.entries(requestMetrics.byPath)
+    .map(([key, v]) => ({ path: key, count: v.count, avgMs: Math.round(v.totalMs / v.count), maxMs: v.maxMs, errors: v.errors }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 25);
+  return {
+    uptimeMs: Date.now() - requestMetrics.startedAt,
+    total: requestMetrics.total,
+    errors: requestMetrics.errors,
+    byStatus: requestMetrics.byStatus,
+    topPaths: paths
+  };
+}
+
+// 统一错误信封：仅用于未捕获异常，局部 400/404 保持原样不动（不破坏前端契约）。
+function sendErrorEnvelope(res, status, message, details) {
+  res.writeHead(status, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store"
+  });
+  res.end(JSON.stringify({ ok: false, error: message, details: details || undefined, ts: new Date().toISOString() }, null, 2));
+}
+
 function getPageOptions(url) {
   return {
     offset: parsePageParam(url.searchParams.get("offset"), 0),
@@ -11166,12 +11517,12 @@ function getContentType(file) {
   }
 }
 
-function readRequestJson(req) {
+function readRequestJson(req, maxBytes = 1024 * 1024) {
   return new Promise((resolve, reject) => {
     let data = "";
     req.on("data", (chunk) => {
       data += chunk;
-      if (data.length > 1024 * 1024) {
+      if (data.length > maxBytes) {
         reject(new Error("request body too large"));
         req.destroy();
       }
@@ -11221,7 +11572,7 @@ function readLedger(memoryDir) {
 function writeLedger(memoryDir, ledger) {
   const file = path.join(memoryDir, "memories", "ledger.jsonl");
   ensureDir(path.dirname(file));
-  fs.writeFileSync(file, ledger.map((item) => JSON.stringify(item)).join("\n") + (ledger.length ? "\n" : ""), "utf8");
+  writeFileAtomic(file, ledger.map((item) => JSON.stringify(item)).join("\n") + (ledger.length ? "\n" : ""), "utf8");
 }
 
 function readTasks(memoryDir) {
@@ -11437,7 +11788,7 @@ function writePrompts(memoryDir, prompts) {
   const file = getPromptsFile(memoryDir);
   ensureDir(path.dirname(file));
   const lines = prompts.map((p) => JSON.stringify(normalizePrompt(p))).join("\n") + "\n";
-  fs.writeFileSync(file, lines, "utf8");
+  writeFileAtomic(file, lines, "utf8");
 }
 
 function deletePrompt(memoryDir, id) {
@@ -11933,7 +12284,7 @@ function materializeEntityProjection(memoryDir, definition) {
   const records = replayEntityEvents(readEntityEvents(memoryDir, definition), definition);
   const file = getEntityProjectionFile(memoryDir, definition);
   ensureDir(path.dirname(file));
-  fs.writeFileSync(file, records.map((record) => JSON.stringify(record)).join("\n") + (records.length ? "\n" : ""), "utf8");
+  writeFileAtomic(file, records.map((record) => JSON.stringify(record)).join("\n") + (records.length ? "\n" : ""), "utf8");
   return records;
 }
 
@@ -12686,7 +13037,7 @@ function appendUnreadReceipt(memoryDir, receipt) {
 function writeSessions(memoryDir, sessions) {
   const file = path.join(memoryDir, "context", "sessions.jsonl");
   ensureDir(path.dirname(file));
-  fs.writeFileSync(file, sessions.map((s) => JSON.stringify(s)).join("\n") + (sessions.length ? "\n" : ""), "utf8");
+  writeFileAtomic(file, sessions.map((s) => JSON.stringify(s)).join("\n") + (sessions.length ? "\n" : ""), "utf8");
 }
 
 function createSession({ title, createdBy, project, participants, context, artifacts }) {
@@ -12752,7 +13103,7 @@ function createRpcRequest({ from, to, method, params, timeout }) {
 function writeRpcRequest(memoryDir, request) {
   const file = path.join(memoryDir, "rpc", "requests", `${request.id}.json`);
   ensureDir(path.dirname(file));
-  fs.writeFileSync(file, JSON.stringify(request, null, 2) + "\n", "utf8");
+  writeFileAtomic(file, JSON.stringify(request, null, 2) + "\n", "utf8");
 }
 
 function readRpcRequest(memoryDir, requestId) {
@@ -12774,7 +13125,7 @@ function writeRpcResult(memoryDir, requestId, result) {
   };
   const file = path.join(memoryDir, "rpc", "results", `${requestId}.json`);
   ensureDir(path.dirname(file));
-  fs.writeFileSync(file, JSON.stringify(resultData, null, 2) + "\n", "utf8");
+  writeFileAtomic(file, JSON.stringify(resultData, null, 2) + "\n", "utf8");
   return resultData;
 }
 
@@ -12849,7 +13200,7 @@ function updateNotificationStatus(memoryDir, notificationId, status, deliveredTo
     return n;
   });
   ensureDir(path.dirname(file));
-  fs.writeFileSync(file, notifications.map((n) => JSON.stringify(n)).join("\n") + "\n", "utf8");
+  writeFileAtomic(file, notifications.map((n) => JSON.stringify(n)).join("\n") + "\n", "utf8");
 }
 
 function getNotificationChannels(severity, userChannels = []) {
@@ -12970,7 +13321,7 @@ function searchMemoriesForContext(memoryDir, query, project, limit = 10) {
 function writeContextPack(memoryDir, pack) {
   const file = path.join(memoryDir, "context", "packs", `${pack.id}.json`);
   ensureDir(path.dirname(file));
-  fs.writeFileSync(file, JSON.stringify(pack, null, 2) + "\n", "utf8");
+  writeFileAtomic(file, JSON.stringify(pack, null, 2) + "\n", "utf8");
   return file;
 }
 
@@ -13027,7 +13378,7 @@ function updateDispatchQueueEntry(memoryDir, entryId, updates) {
     return entry;
   });
   ensureDir(path.dirname(file));
-  fs.writeFileSync(file, entries.map((e) => JSON.stringify(e)).join("\n") + "\n", "utf8");
+  writeFileAtomic(file, entries.map((e) => JSON.stringify(e)).join("\n") + "\n", "utf8");
 }
 
 function getQueuedEntries(memoryDir) {
@@ -13916,7 +14267,7 @@ function writeTaskSpecProcessLogs(projectRoot, logs, completed) {
     }
     const file = resolveInside(projectRoot, relativeLogPath);
     ensureDir(path.dirname(file));
-    fs.writeFileSync(file, String(text || ""), "utf8");
+    writeFileAtomic(file, String(text || ""), "utf8");
     written[stream] = path.relative(projectRoot, file).replace(/\\/g, "/");
   }
   return written;
@@ -14332,9 +14683,9 @@ function getDaysSinceTimestamp(value) {
 
 function rebuildMemoryOutputs(config, ledger) {
   const index = buildMemoryIndex(ledger, config);
-  fs.writeFileSync(path.join(config.memoryDir, "MEMORY.md"), renderMemorySnapshot(index, config), "utf8");
-  fs.writeFileSync(path.join(config.memoryDir, "BOOTSTRAP.md"), renderBootstrapSnapshot(index, config), "utf8");
-  fs.writeFileSync(path.join(config.memoryDir, "INDEX.md"), renderIndexMarkdown(index), "utf8");
+  writeFileAtomic(path.join(config.memoryDir, "MEMORY.md"), renderMemorySnapshot(index, config), "utf8");
+  writeFileAtomic(path.join(config.memoryDir, "BOOTSTRAP.md"), renderBootstrapSnapshot(index, config), "utf8");
+  writeFileAtomic(path.join(config.memoryDir, "INDEX.md"), renderIndexMarkdown(index), "utf8");
   writeJson(path.join(config.memoryDir, "memories", "index.json"), index);
 }
 
@@ -15808,12 +16159,12 @@ function archiveInbox(memoryDir, events) {
   }
   const archiveName = `events-${new Date().toISOString().replace(/[:.]/g, "-")}.jsonl`;
   const archivePath = path.join(memoryDir, "synced", archiveName);
-  fs.writeFileSync(archivePath, events.map((event) => JSON.stringify(event)).join("\n") + "\n", "utf8");
+  writeFileAtomic(archivePath, events.map((event) => JSON.stringify(event)).join("\n") + "\n", "utf8");
 }
 
 function writeInboxEvents(inboxPath, events) {
   ensureDir(path.dirname(inboxPath));
-  fs.writeFileSync(inboxPath, events.map((event) => JSON.stringify(event)).join("\n") + (events.length ? "\n" : ""), "utf8");
+  writeFileAtomic(inboxPath, events.map((event) => JSON.stringify(event)).join("\n") + (events.length ? "\n" : ""), "utf8");
 }
 
 function getBackupFileCatalog(memoryDir) {
@@ -16576,7 +16927,7 @@ function exportGitHubBackupSnapshot(memoryDir, repoDir, files, { reason, started
   };
   if (snapshotChanged || !fs.existsSync(manifestPath) || !fs.existsSync(readmePath)) {
     writeJson(manifestPath, manifest);
-    fs.writeFileSync(readmePath, renderGitHubBackupReadme(manifest), "utf8");
+    writeFileAtomic(readmePath, renderGitHubBackupReadme(manifest), "utf8");
   }
   return {
     manifest: snapshotChanged || !existingManifest.generatedAt ? manifest : existingManifest,
@@ -17408,7 +17759,7 @@ function updateRadioMessage(memoryDir, id, patch) {
     message.id === id ? { ...message, ...patch } : message
   ));
   ensureDir(path.dirname(file));
-  fs.writeFileSync(file, messages.map((message) => JSON.stringify(message)).join("\n") + (messages.length ? "\n" : ""), "utf8");
+  writeFileAtomic(file, messages.map((message) => JSON.stringify(message)).join("\n") + (messages.length ? "\n" : ""), "utf8");
 }
 
 function appendJsonl(file, value) {
@@ -17445,7 +17796,7 @@ function syncSharedSkillLayer(file, snippet, { apply = false } = {}) {
     if (!apply) {
       return { status: "stale", changed: true };
     }
-    fs.writeFileSync(file, `${existing.slice(0, start)}${rendered}${existing.slice(endExclusive)}`, "utf8");
+    writeFileAtomic(file, `${existing.slice(0, start)}${rendered}${existing.slice(endExclusive)}`, "utf8");
     return { status: "updated", changed: true };
   }
 
@@ -17512,12 +17863,12 @@ function appendIfMissing(file, snippet, marker) {
     const addition = sections.filter(Boolean).map((section) => section.trim()).join("\n\n");
     if (addition) {
       const prefix = existing.trim() ? `${existing.trimEnd()}\n\n` : "";
-      fs.writeFileSync(file, `${prefix}${addition}\n`, "utf8");
+      writeFileAtomic(file, `${prefix}${addition}\n`, "utf8");
     }
     return;
   }
   const prefix = existing.trim() ? `${existing.trimEnd()}\n\n` : "";
-  fs.writeFileSync(file, `${prefix}${snippet.trim()}\n`, "utf8");
+  writeFileAtomic(file, `${prefix}${snippet.trim()}\n`, "utf8");
 }
 
 function extractSection(text, heading, nextHeading = "") {
@@ -17593,7 +17944,7 @@ function readJsonSafe(file, fallback = {}) {
 
 function writeJson(file, value) {
   ensureDir(path.dirname(file));
-  fs.writeFileSync(file, JSON.stringify(value, null, 2) + "\n", "utf8");
+  writeFileAtomic(file, JSON.stringify(value, null, 2) + "\n", "utf8");
 }
 
 function createId(input) {

@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { writeFileAtomic } from "./atomic-write.js";
 
 const ID_PATTERN = /^[a-z0-9][a-z0-9._-]{1,63}$/;
 
@@ -62,7 +63,7 @@ function readState(memoryDir) {
 function writeState(memoryDir, state) {
   const dir = path.join(memoryDir, "credentials");
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, "profiles.json"), `${JSON.stringify(state, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+  writeFileAtomic(path.join(dir, "profiles.json"), `${JSON.stringify(state, null, 2)}\n`, { mode: 0o600 });
 }
 
 function protect(value) {

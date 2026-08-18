@@ -13,10 +13,11 @@ export function createDashboardToolsApi({
   readDiscoveredModels,
   POLICY_OPERATIONS
 }) {
-  function getDashboardDetection(memoryDir) {
-    const tools = refreshDetectedTools(memoryDir);
+  function getDashboardDetection(memoryDir, { refresh = false } = {}) {
+    const tools = refresh ? refreshDetectedTools(memoryDir) : getCachedDetectedTools(memoryDir);
     return {
       tools,
+      cached: !refresh,
       summary: summarizeToolConnections(tools)
     };
   }

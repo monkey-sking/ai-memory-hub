@@ -7,11 +7,13 @@ import {
   Brain,
   ChevronRight,
   Database,
+  FileJson,
   FolderKanban,
   Gauge,
   GitPullRequest,
   LayoutDashboard,
   ListTodo,
+  Loader2,
   Menu,
   MessageSquare,
   Moon,
@@ -101,6 +103,9 @@ const navGroups: NavGroup[] = [
       { to: '/projects', icon: FolderKanban, label: { zh: '项目', en: 'Projects' } },
       { to: '/health', icon: Activity, label: { zh: '健康', en: 'Health' } },
       { to: '/runners', icon: Server, label: { zh: '调度器', en: 'Runners' } },
+      { to: '/tasks-center', icon: Loader2, label: { zh: '任务中心', en: 'Task Center' } },
+      { to: '/observability', icon: Gauge, label: { zh: '可观测', en: 'Observability' } },
+      { to: '/data-migration', icon: FileJson, label: { zh: '数据迁移', en: 'Data Migration' } },
       { to: '/settings', icon: Settings, label: { zh: '设置', en: 'Settings' } }
     ]
   }

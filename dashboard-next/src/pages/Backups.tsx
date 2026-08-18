@@ -109,6 +109,10 @@ export default function Backups() {
 
   const [deleteName, setDeleteName] = useState('')
 
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
+  const [pruneOpen, setPruneOpen] = useState(false)
+
   const [busy, setBusy] = useState('')
   const [dialogError, setDialogError] = useState('')
 
@@ -228,6 +232,52 @@ export default function Backups() {
     }
   }
 
+  const toggleSelect = (name: string) => {
+    setSelected(prev => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
+  }
+
+  const toggleSelectAll = () => {
+    setSelected(prev => (prev.size === visibleList.length ? new Set() : new Set(visibleList.map(item => textOf(item.name)))))
+  }
+
+  const clearSelection = () => setSelected(new Set())
+
+  const confirmBulkDelete = async () => {
+    if (selected.size === 0 || busy === 'bulk-delete') return
+    setBusy('bulk-delete')
+    setDialogError('')
+    try {
+      await apiPost<AnyRecord>('/api/backups/delete', { names: [...selected], apply: true })
+      setSelected(new Set())
+      setBulkDeleteOpen(false)
+      await load()
+    } catch (nextError) {
+      setDialogError(nextError instanceof Error ? nextError.message : String(nextError))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const confirmPrune = async () => {
+    if (busy === 'prune') return
+    setBusy('prune')
+    setDialogError('')
+    try {
+      await apiPost<AnyRecord>('/api/backups/prune', { apply: true })
+      setPruneOpen(false)
+      await load()
+    } catch (nextError) {
+      setDialogError(nextError instanceof Error ? nextError.message : String(nextError))
+    } finally {
+      setBusy('')
+    }
+  }
+
   const restoreSummary = asRecord(restorePlan?.summary)
 
   // Alert banner surfaces real issues only (failed sets or prune candidates).
@@ -338,6 +388,14 @@ export default function Backups() {
                   <Plus className="h-4 w-4" />
                   {copy.createBackup}
                 </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => { setDialogError(''); setPruneOpen(true) }}
+                  disabled={loading || busy === 'prune'}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  {language === 'zh' ? '按策略清理' : 'Prune by policy'}
+                </Button>
                 <div
                   role="tablist"
                   aria-label={copy.kind}
@@ -349,7 +407,7 @@ export default function Backups() {
                       type="button"
                       role="tab"
                       aria-selected={kindFilter === option}
-                      onClick={() => setKindFilter(option)}
+                      onClick={() => { setKindFilter(option); setSelected(new Set()) }}
                       className={cn(
                         'h-7 rounded px-3 text-xs font-medium transition-colors',
                         kindFilter === option ? 'bg-surface text-ink' : 'text-ink-3 hover:text-ink'
@@ -362,12 +420,43 @@ export default function Backups() {
               </div>
             }
           >
-            {loading && !backupList.length ? (
+            {selected.size > 0 ? (
+            <div className="flex flex-wrap items-center gap-3 border-b border-line bg-surface-sunk px-4 py-2.5">
+              <span className="text-sm text-ink-2">
+                {language === 'zh' ? `已选 ${selected.size} 项` : `${selected.size} selected`}
+              </span>
+              <div className="ml-auto flex items-center gap-2">
+                <Button variant="ghost" size="sm" onClick={clearSelection}>
+                  {copy.cancel}
+                </Button>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  disabled={busy === 'bulk-delete'}
+                  onClick={() => setBulkDeleteOpen(true)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  {language === 'zh' ? `删除选中 (${selected.size})` : `Delete selected (${selected.size})`}
+                </Button>
+              </div>
+            </div>
+          ) : null}
+
+          {loading && !backupList.length ? (
               <LoadingState variant="rows" label={copy.refreshing} className="p-4" />
             ) : visibleList.length ? (
               <Table bordered={false} containerClassName="rounded-none" maxHeight="460px">
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-10">
+                      <input
+                        type="checkbox"
+                        aria-label={language === 'zh' ? '全选' : 'Select all'}
+                        className="h-4 w-4 cursor-pointer accent-[var(--accent-base)]"
+                        checked={visibleList.length > 0 && selected.size === visibleList.length}
+                        onChange={toggleSelectAll}
+                      />
+                    </TableHead>
                     <TableHead>{copy.id}</TableHead>
                     <TableHead>{copy.kind}</TableHead>
                     <TableHead numeric>{copy.bytes}</TableHead>
@@ -382,6 +471,15 @@ export default function Backups() {
                     const token = statusToken(item)
                     return (
                       <TableRow key={name || `backup-${textOf(item.createdAt)}`}>
+                        <TableCell>
+                          <input
+                            type="checkbox"
+                            aria-label={`${language === 'zh' ? '选择' : 'Select'} ${name}`}
+                            className="h-4 w-4 cursor-pointer accent-[var(--accent-base)]"
+                            checked={selected.has(name)}
+                            onChange={() => toggleSelect(name)}
+                          />
+                        </TableCell>
                         <TableCell>
                           <span className="font-mono text-ink">{name || '-'}</span>
                         </TableCell>
@@ -546,6 +644,77 @@ export default function Backups() {
             </DialogClose>
             <Button variant="danger" size="sm" disabled={busy === 'delete'} onClick={() => void confirmDelete()}>
               {busy === 'delete' ? copy.running : copy.deleteSelected}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* Bulk delete confirmation dialog */}
+      <Dialog
+        open={bulkDeleteOpen}
+        onOpenChange={open => {
+          if (!open) {
+            setBulkDeleteOpen(false)
+            setDialogError('')
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {language === 'zh' ? `删除 ${selected.size} 个备份？` : `Delete ${selected.size} backups?`}
+            </DialogTitle>
+            <DialogDescription>
+              {language === 'zh'
+                ? `将永久删除选中的 ${selected.size} 个备份集，此操作不可恢复。`
+                : `Permanently deletes the ${selected.size} selected backup sets. This cannot be undone.`}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogBody className="flex flex-col gap-3">
+            {dialogError ? <ErrorState variant="inline" title={dialogError} /> : null}
+          </DialogBody>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="secondary" size="sm">
+                {copy.cancel}
+              </Button>
+            </DialogClose>
+            <Button variant="danger" size="sm" disabled={busy === 'bulk-delete'} onClick={() => void confirmBulkDelete()}>
+              {busy === 'bulk-delete' ? copy.running : copy.deleteSelected}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Prune by policy confirmation dialog */}
+      <Dialog
+        open={pruneOpen}
+        onOpenChange={open => {
+          if (!open) {
+            setPruneOpen(false)
+            setDialogError('')
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{language === 'zh' ? '按保留策略清理？' : 'Prune by retention policy?'}</DialogTitle>
+            <DialogDescription>
+              {language === 'zh'
+                ? '将删除超出保留策略（pre-sync 20 / daily 7 / weekly 4 / pre-pull 20）的备份，仅保留最近若干份。此操作不可恢复。'
+                : 'Deletes backups outside the retention policy (pre-sync 20 / daily 7 / weekly 4 / pre-pull 20). This cannot be undone.'}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogBody className="flex flex-col gap-3">
+            {dialogError ? <ErrorState variant="inline" title={dialogError} /> : null}
+          </DialogBody>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="secondary" size="sm">
+                {copy.cancel}
+              </Button>
+            </DialogClose>
+            <Button variant="danger" size="sm" disabled={busy === 'prune'} onClick={() => void confirmPrune()}>
+              {busy === 'prune' ? copy.running : (language === 'zh' ? '立即清理' : 'Prune now')}
             </Button>
           </DialogFooter>
         </DialogContent>

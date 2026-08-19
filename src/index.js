@@ -9209,6 +9209,113 @@ function appCommand(argv) {
         const body = await readRequestJson(req);
         return sendJson(res, { ok: true, relation: revokeRelation(config.memoryDir, body.id, body.reason || "") });
       }
+      // ── Agent / Role / Team registry endpoints ──
+      if (req.method === "GET" && url.pathname === "/api/agents") {
+        const agents = readAgents(config.memoryDir);
+        const roles = readRoles(config.memoryDir);
+        const rels = readRelations(config.memoryDir);
+        const enriched = agents.map((a) => {
+          const roleBindings = rels.filter((r) => r.relation === "plays-role" && r.from === `agent:${a.id}`);
+          return { ...a, roleBindings: roleBindings.map((r) => r.to) };
+        });
+        return sendJson(res, { agents: enriched, roles });
+      }
+      if (req.method === "GET" && url.pathname === "/api/roles") {
+        return sendJson(res, { roles: readRoles(config.memoryDir) });
+      }
+      if (req.method === "GET" && url.pathname === "/api/teams") {
+        const teams = readTeams(config.memoryDir);
+        const agents = readAgents(config.memoryDir);
+        const rels = readRelations(config.memoryDir);
+        const enriched = teams.map((t) => {
+          const memberRels = rels.filter((r) => r.relation === "member-of" && r.status === "active" && r.to?.type === "team" && String(r.to?.id).toLowerCase() === String(t.id).toLowerCase());
+          return { ...t, memberCount: memberRels.length, memberIds: memberRels.map((r) => r.from?.id || "") };
+        });
+        return sendJson(res, { teams: enriched, agents: agents.map((a) => ({ id: a.id, name: a.name, status: a.status })) });
+      }
+      // ── Role CRUD ──
+      if (req.method === "POST" && url.pathname === "/api/roles") {
+        const body = await readRequestJson(req);
+        if (!body.id || typeof body.id !== "string") return sendJson(res, { error: "id is required" }, 400);
+        const existing = readRoleById(config.memoryDir, body.id) || {};
+        const role = writeRole(config.memoryDir, {
+          ...existing,
+          id: existing.id || body.id,
+          name: body.name || existing.name || body.id,
+          description: body.description ?? existing.description ?? "",
+          permissions: Array.isArray(body.permissions) ? body.permissions : (existing.permissions || []),
+          createdAt: existing.createdAt || new Date().toISOString(),
+        });
+        return sendJson(res, { ok: true, role });
+      }
+      if (req.method === "DELETE" && url.pathname === "/api/roles") {
+        const id = (url.searchParams.get("id") || "").trim();
+        if (!id) return sendJson(res, { error: "id is required" }, 400);
+        const roles = readRoles(config.memoryDir);
+        const next = roles.filter((r) => String(r.id).toLowerCase() !== id.toLowerCase());
+        if (next.length === roles.length) return sendJson(res, { error: "role not found" }, 404);
+        writeFileAtomic(getRoleRegistryFile(config.memoryDir), next.map((r) => JSON.stringify(r)).join("\n") + (next.length ? "\n" : ""), "utf8");
+        return sendJson(res, { ok: true, deleted: id });
+      }
+      // ── Team CRUD ──
+      if (req.method === "POST" && url.pathname === "/api/teams") {
+        const body = await readRequestJson(req);
+        if (!body.id || typeof body.id !== "string") return sendJson(res, { error: "id is required" }, 400);
+        const existing = readTeamById(config.memoryDir, body.id) || {};
+        const team = writeTeam(config.memoryDir, {
+          ...existing,
+          id: existing.id || body.id,
+          name: body.name || existing.name || body.id,
+          description: body.description ?? existing.description ?? "",
+          createdAt: existing.createdAt || new Date().toISOString(),
+        });
+        return sendJson(res, { ok: true, team });
+      }
+      if (req.method === "DELETE" && url.pathname === "/api/teams") {
+        const id = (url.searchParams.get("id") || "").trim();
+        if (!id) return sendJson(res, { error: "id is required" }, 400);
+        const teams = readTeams(config.memoryDir);
+        const next = teams.filter((t) => String(t.id).toLowerCase() !== id.toLowerCase());
+        if (next.length === teams.length) return sendJson(res, { error: "team not found" }, 404);
+        writeFileAtomic(getTeamRegistryFile(config.memoryDir), next.map((t) => JSON.stringify(t)).join("\n") + (next.length ? "\n" : ""), "utf8");
+        return sendJson(res, { ok: true, deleted: id });
+      }
+      if (req.method === "POST" && url.pathname === "/api/teams/member") {
+        const body = await readRequestJson(req);
+        if (!body.teamId || !body.agentId) return sendJson(res, { error: "teamId and agentId are required" }, 400);
+        const rel = recordRelation(config.memoryDir, {
+          from: { type: "agent", id: body.agentId },
+          to: { type: "team", id: body.teamId },
+          relation: "member-of",
+          source: "dashboard",
+          evidence: { note: `agent ${body.agentId} joined team ${body.teamId} via dashboard` },
+        });
+        return sendJson(res, { ok: true, relation: rel });
+      }
+      if (req.method === "DELETE" && url.pathname === "/api/teams/member") {
+        const teamId = (url.searchParams.get("teamId") || "").trim();
+        const agentId = (url.searchParams.get("agentId") || "").trim();
+        if (!teamId || !agentId) return sendJson(res, { error: "teamId and agentId are required" }, 400);
+        const rel = readRelations(config.memoryDir).find((r) => r.status === "active" && r.relation === "member-of" && r.from?.type === "agent" && String(r.from?.id).toLowerCase() === agentId.toLowerCase() && r.to?.type === "team" && String(r.to?.id).toLowerCase() === teamId.toLowerCase());
+        if (!rel) return sendJson(res, { error: "no active member-of relation found" }, 404);
+        revokeRelation(config.memoryDir, rel.id, "removed via dashboard");
+        return sendJson(res, { ok: true, removed: { agentId, teamId } });
+      }
+      // ── Agent persona/bio update ──
+      if (req.method === "POST" && url.pathname === "/api/agents") {
+        const body = await readRequestJson(req);
+        if (!body.id || typeof body.id !== "string") return sendJson(res, { error: "id is required" }, 400);
+        const existing = readAgentById(config.memoryDir, body.id) || { id: body.id, name: body.id, createdAt: new Date().toISOString() };
+        const agent = writeAgent(config.memoryDir, {
+          ...existing,
+          id: existing.id || body.id,
+          name: body.name || existing.name || body.id,
+          persona: body.persona ?? existing.persona ?? "",
+          bio: body.bio ?? existing.bio ?? "",
+          status: existing.status || "idle",
+        });
+        return sendJson(res, { ok: true, agent });
+      }
       if (req.method === "GET" && url.pathname === "/api/skills/doctor") {
         const project = url.searchParams.get("project") || process.cwd();
         const manifest = await loadProjectSkillManifest(project);

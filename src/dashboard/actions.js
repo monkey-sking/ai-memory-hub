@@ -1,5 +1,6 @@
 import path from "node:path";
 import fs from "node:fs";
+import { mirrorDelete } from "../sqlite-dualwrite.js";
 
 export function createDashboardActionsApi({
   appendIfMissing,
@@ -202,8 +203,9 @@ export function createDashboardActionsApi({
     return { ok: true, task, workflows, status: getStatusObject() };
   }
 
-  function runDashboardDispatch(config, body = {}) {
-    const results = executeDispatch(config.memoryDir, {
+  async function runDashboardDispatch(config, body = {}) {
+    const concurrency = Math.max(1, Math.min(Number(body.concurrency || 1), 6));
+    const results = await executeDispatch(config.memoryDir, {
       run: true,
       force: Boolean(body.force),
       to: body.to || "",
@@ -211,7 +213,8 @@ export function createDashboardActionsApi({
       limit: Number(body.limit || 10),
       model: body.model || "",
       isolateWorktree: Boolean(body.isolateWorktree),
-      worktreeRoot: body.worktreeRoot || ""
+      worktreeRoot: body.worktreeRoot || "",
+      concurrency
     });
     return { ok: true, results, status: getStatusObject() };
   }
@@ -361,6 +364,9 @@ export function createDashboardActionsApi({
 
         // Rematerialize projection
         materializeEntityProjection(config.memoryDir, definition);
+
+        // Mirror the purge into SQLite (no-op unless dual-write enabled)
+        mirrorDelete(config.memoryDir, "task", body.id);
 
         // Log the purge operation
         const logEntry = {

@@ -51,8 +51,10 @@ import { withPreparedSkillSource } from "./shared-skill-sources.js";
 import { listExtensions, importExtensions, diffExtensions, syncExtensions, removeExtensions, statusExtensions, diffSkillExtensions, syncSkillExtensions, removeSkillExtension } from "./extension-sync.js";
 import { writeFileAtomic } from "./atomic-write.js";
 import { exportMemoryBundle, importMemoryBundle } from "./data-port.js";
+import { mirrorUpsert, mirrorDelete, mirrorSync } from "./sqlite-dualwrite.js";
+import { openStore, closeStore, isMigrated, migrateFromJsonl, listTasks, listProjects, listWorkflows } from "./sqlite-store.js";
 import { listCredentialProfiles, setCredentialProfile, removeCredentialProfile, resolveCredential } from "./credentials.js";
-import { listRelatedEntities, recordMemoryRelations, recordRelation, rebuildMemoryRelations, revokeRelation } from "./relations.js";
+import { listRelatedEntities, readRelations, recordMemoryRelations, recordRelation, rebuildMemoryRelations, revokeRelation } from "./relations.js";
 import { auditMemories } from "./memory-audit.js";
 import {
   normalizeAdversarialVerifier,
@@ -94,6 +96,9 @@ const __dirname = path.dirname(__filename);
 
 const APP_NAME = "ai-memory-hub";
 const MEMORY_DIR_ENV = "AI_MEMORY_DIR";
+// P0.1 TTL default: a claim auto-releases after this idle window (borrowed from Cumora markThinking TTL).
+// Declared up here because main() runs as a top-level call before the task section below.
+const DEFAULT_CLAIM_TTL_MS = 30 * 60 * 1000;
 const DEFAULT_MEMORY_DIR = path.join(os.homedir(), ".ai-memory");
 const DEFAULT_CONFIG_PATH = path.join(DEFAULT_MEMORY_DIR, "config.json");
 const DEFAULT_GITHUB_BACKUP_REMOTE = "";
@@ -652,6 +657,12 @@ async function main() {
       return sessionCommand(rest);
     case "agent":
       return agentCommand(rest);
+    case "role":
+    case "roles":
+      return roleCommand(rest);
+    case "team":
+    case "teams":
+      return teamCommand(rest);
     case "review":
       return reviewCommand(rest);
     case "worktree":
@@ -704,6 +715,9 @@ async function main() {
       return packCommand(rest);
     case "sync":
       return syncCommand(rest);
+    case "sqlite":
+    case "db":
+      return sqliteCommand(rest);
     case "index":
       return indexCommand(rest);
     case "search":
@@ -1506,7 +1520,7 @@ function getStatusObject() {
   };
 }
 
-function connectCommand(argv) {
+async function connectCommand(argv) {
   const action = argv[0] && !argv[0].startsWith("--") ? argv[0] : "status";
   const actionArgs = action === "status" ? argv : argv.slice(1);
   switch (action) {
@@ -1569,7 +1583,7 @@ function connectStatusCommand(argv) {
   }, null, 2));
 }
 
-function connectSendCommand(argv, defaultType) {
+async function connectSendCommand(argv, defaultType) {
   const text = getOption(argv, "--text") || positionalArgs(argv).join(" ").trim();
   if (!text) {
     throw new Error("Usage: ai-memory-hub connect request --from <tool> --to codex --project <project> --text <message> [--task] [--run]");
@@ -1614,7 +1628,7 @@ function connectSendCommand(argv, defaultType) {
   appendJsonl(path.join(config.memoryDir, "radio", "messages.jsonl"), message);
 
   const dispatch = hasFlag(argv, "--run")
-    ? executeDispatch(config.memoryDir, {
+    ? await executeDispatch(config.memoryDir, {
       run: true,
       force: hasFlag(argv, "--force"),
       to,
@@ -1698,7 +1712,7 @@ function recordCommand(argv) {
   return { event, relations };
 }
 
-function radioCommand(argv) {
+async function radioCommand(argv) {
   const action = argv[0] || "list";
   const actionArgs = argv.slice(1);
   switch (action) {
@@ -1735,10 +1749,70 @@ function radioSendCommand(argv) {
   console.log(JSON.stringify(message, null, 2));
 }
 
+// P0.2 (borrowed from Cumora's unread cursor): each runner keeps its own read cursor so
+// parallel runners consume radio incrementally and never re-process the same message.
+function getRadioCursorFile(memoryDir, consumer) {
+  const safe = String(consumer || "all").replace(/[^a-zA-Z0-9_-]/g, "_");
+  return path.join(memoryDir, "radio", "cursors", `${safe}.json`);
+}
+
+function readRadioCursor(memoryDir, consumer) {
+  const file = getRadioCursorFile(memoryDir, consumer);
+  if (!fs.existsSync(file)) {
+    return { consumer: consumer || "all", lastMessageId: "", processedIds: [], updatedAt: "" };
+  }
+  try {
+    const data = JSON.parse(fs.readFileSync(file, "utf8"));
+    return {
+      consumer: data.consumer || consumer || "all",
+      lastMessageId: data.lastMessageId || "",
+      processedIds: Array.isArray(data.processedIds) ? data.processedIds : [],
+      updatedAt: data.updatedAt || ""
+    };
+  } catch {
+    return { consumer: consumer || "all", lastMessageId: "", processedIds: [], updatedAt: "" };
+  }
+}
+
+function writeRadioCursor(memoryDir, consumer, lastMessageId, processedIds) {
+  const file = getRadioCursorFile(memoryDir, consumer);
+  ensureDir(path.dirname(file));
+  const cursor = {
+    consumer: consumer || "all",
+    lastMessageId,
+    processedIds: processedIds.slice(-50),
+    updatedAt: new Date().toISOString()
+  };
+  writeFileAtomic(file, JSON.stringify(cursor, null, 2), "utf8");
+}
+
+function getUnreadRadioMessages(memoryDir, consumer) {
+  const messages = readRadioMessages(memoryDir);
+  const cursor = readRadioCursor(memoryDir, consumer);
+  const startIdx = cursor.lastMessageId
+    ? messages.findIndex((m) => m.id === cursor.lastMessageId)
+    : -1;
+  const after = startIdx === -1 ? messages : messages.slice(startIdx + 1);
+  const processed = new Set(cursor.processedIds);
+  return after.filter((m) => !processed.has(m.id));
+}
+
 function radioListCommand(argv) {
   const config = loadConfig();
   ensureHub(config.memoryDir);
   const limit = Number(getOption(argv, "--limit") || 20);
+  const consumer = getOption(argv, "--consumer");
+  const ack = hasFlag(argv, "--ack");
+  if (consumer) {
+    const unread = getUnreadRadioMessages(config.memoryDir, consumer);
+    const window = unread.slice(-limit);
+    if (ack && window.length > 0) {
+      const lastId = window[window.length - 1].id;
+      writeRadioCursor(config.memoryDir, consumer, lastId, unread.map((m) => m.id));
+    }
+    console.log(JSON.stringify(window, null, 2));
+    return;
+  }
   const messages = readRadioMessages(config.memoryDir).slice(-limit);
   console.log(JSON.stringify(messages, null, 2));
 }
@@ -2009,12 +2083,331 @@ function sessionCommand(argv) {
 
 function agentCommand(argv) {
   const action = argv[0] || "list";
-  if (!["list", "status"].includes(action)) throw new Error("Usage: ai-memory-hub agent list|status [--state <state>]");
+  if (action === "register") return agentRegisterCommand(argv.slice(1));
+  if (action === "show") return agentShowCommand(argv.slice(1));
+  if (action === "role") return agentRoleCommand(argv.slice(1));
+  if (action === "status") {
+    const sub = argv[1];
+    if (sub === "set") return agentSetStatusCommand(argv.slice(2));
+    // default: existing session projection (kept for backward-compat)
+    const config = loadConfig();
+    ensureHub(config.memoryDir);
+    const state = getOption(argv.slice(1), "--state") || "";
+    const sessions = dashboardAgentSessions.getDashboardAgentSessions(config.memoryDir).agentSessions;
+    console.log(JSON.stringify(state ? sessions.filter((item) => item.state === state) : sessions, null, 2));
+    return;
+  }
+  if (action === "list") return agentListCommand(argv.slice(1));
+  throw new Error("Usage: ai-memory-hub agent <list|register|show|status|role> ...");
+}
+
+// ---- P1: agent + role registries (borrowed from Cumora participants; role is a first-class entity here) ----
+
+function getAgentRegistryFile(memoryDir) {
+  return path.join(path.resolve(memoryDir), "agents", "agents.jsonl");
+}
+function readAgents(memoryDir) {
+  const file = getAgentRegistryFile(memoryDir);
+  if (!fs.existsSync(file)) return [];
+  return fs.readFileSync(file, "utf8").split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
+}
+function readAgentById(memoryDir, id) {
+  const key = String(id || "").trim().toLowerCase();
+  if (!key) return null;
+  return readAgents(memoryDir).find((a) => String(a.id || "").trim().toLowerCase() === key) || null;
+}
+function writeAgent(memoryDir, agent) {
+  const file = getAgentRegistryFile(memoryDir);
+  ensureDir(path.dirname(file));
+  const agents = readAgents(memoryDir);
+  const key = String(agent.id || "").trim().toLowerCase();
+  if (!key) throw new Error("agent requires an id");
+  const idx = agents.findIndex((a) => String(a.id || "").trim().toLowerCase() === key);
+  const nowIso = new Date().toISOString();
+  const next = { ...agent, id: agents[idx] ? agents[idx].id : agent.id, updatedAt: nowIso };
+  if (idx === -1) { next.createdAt = agent.createdAt || nowIso; agents.push(next); }
+  else agents[idx] = { ...agents[idx], ...next, id: agents[idx].id, createdAt: agents[idx].createdAt || nowIso };
+  writeFileAtomic(file, agents.map((a) => JSON.stringify(a)).join("\n") + (agents.length ? "\n" : ""), "utf8");
+  return next;
+}
+// Upsert an agent's live status; creates the agent record if it doesn't exist yet.
+// Used by P0 task-claim linkage so a runner that claims a task auto-shows as busy.
+function touchAgentStatus(memoryDir, id, state, by) {
+  const nowIso = new Date().toISOString();
+  const existing = readAgentById(memoryDir, id) || { id: String(id).trim(), name: String(id).trim(), createdAt: nowIso };
+  return writeAgent(memoryDir, { ...existing, status: state, statusBy: by || existing.statusBy || "system", statusAt: nowIso });
+}
+function getRoleRegistryFile(memoryDir) {
+  return path.join(path.resolve(memoryDir), "roles", "roles.jsonl");
+}
+function readRoles(memoryDir) {
+  const file = getRoleRegistryFile(memoryDir);
+  if (!fs.existsSync(file)) return [];
+  return fs.readFileSync(file, "utf8").split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
+}
+function readRoleById(memoryDir, id) {
+  const key = String(id || "").trim().toLowerCase();
+  if (!key) return null;
+  return readRoles(memoryDir).find((r) => String(r.id || "").trim().toLowerCase() === key) || null;
+}
+function writeRole(memoryDir, role) {
+  const file = getRoleRegistryFile(memoryDir);
+  ensureDir(path.dirname(file));
+  const roles = readRoles(memoryDir);
+  const key = String(role.id || "").trim().toLowerCase();
+  if (!key) throw new Error("role requires an id");
+  const idx = roles.findIndex((r) => String(r.id || "").trim().toLowerCase() === key);
+  const nowIso = new Date().toISOString();
+  const next = { ...role, id: roles[idx] ? roles[idx].id : role.id, updatedAt: nowIso };
+  if (idx === -1) { next.createdAt = role.createdAt || nowIso; roles.push(next); }
+  else roles[idx] = { ...roles[idx], ...next, id: roles[idx].id, createdAt: roles[idx].createdAt || nowIso };
+  writeFileAtomic(file, roles.map((r) => JSON.stringify(r)).join("\n") + (roles.length ? "\n" : ""), "utf8");
+  return next;
+}
+
+// P2: team registry (first-class org entity, Cumora has none).
+function getTeamRegistryFile(memoryDir) {
+  return path.join(path.resolve(memoryDir), "teams", "teams.jsonl");
+}
+function readTeams(memoryDir) {
+  const file = getTeamRegistryFile(memoryDir);
+  if (!fs.existsSync(file)) return [];
+  return fs.readFileSync(file, "utf8").split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
+}
+function readTeamById(memoryDir, id) {
+  const key = String(id || "").trim().toLowerCase();
+  if (!key) return null;
+  return readTeams(memoryDir).find((t) => String(t.id || "").trim().toLowerCase() === key) || null;
+}
+function writeTeam(memoryDir, team) {
+  const file = getTeamRegistryFile(memoryDir);
+  ensureDir(path.dirname(file));
+  const teams = readTeams(memoryDir);
+  const key = String(team.id || "").trim().toLowerCase();
+  if (!key) throw new Error("team requires an id");
+  const idx = teams.findIndex((t) => String(t.id || "").trim().toLowerCase() === key);
+  const nowIso = new Date().toISOString();
+  const next = { ...team, id: teams[idx] ? teams[idx].id : team.id, updatedAt: nowIso };
+  if (idx === -1) { next.createdAt = team.createdAt || nowIso; teams.push(next); }
+  else teams[idx] = { ...teams[idx], ...next, id: teams[idx].id, createdAt: teams[idx].createdAt || nowIso };
+  writeFileAtomic(file, teams.map((t) => JSON.stringify(t)).join("\n") + (teams.length ? "\n" : ""), "utf8");
+  return next;
+}
+
+function agentRegisterCommand(argv) {
+  const id = (getOption(argv, "--id") || positionalArgs(argv)[0] || "").trim();
+  if (!id) throw new Error("Usage: ai-memory-hub agent register --id <agent> [--name '...'] [--persona '...'] [--bio '...']");
   const config = loadConfig();
   ensureHub(config.memoryDir);
+  const existing = readAgentById(config.memoryDir, id) || {};
+  const agent = writeAgent(config.memoryDir, {
+    ...existing,
+    id: existing.id || id,
+    name: getOption(argv, "--name") || existing.name || id,
+    persona: getOption(argv, "--persona") || existing.persona || "",
+    bio: getOption(argv, "--bio") || existing.bio || "",
+    roles: Array.isArray(existing.roles) ? existing.roles : [],
+    status: existing.status || "idle",
+    createdAt: existing.createdAt || new Date().toISOString()
+  });
+  console.log(JSON.stringify(agent, null, 2));
+}
+
+function agentShowCommand(argv) {
+  const id = (getOption(argv, "--id") || positionalArgs(argv)[0] || "").trim();
+  if (!id) throw new Error("Usage: ai-memory-hub agent show --id <agent>");
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const agent = readAgentById(config.memoryDir, id);
+  if (!agent) throw new Error(`Agent not registered: ${id}`);
+  const roles = (agent.roles || []).map((rid) => readRoleById(config.memoryDir, rid)).filter(Boolean);
+  console.log(JSON.stringify({ ...agent, expandedRoles: roles }, null, 2));
+}
+
+function agentSetStatusCommand(argv) {
+  const id = (getOption(argv, "--id") || "").trim();
+  const state = (getOption(argv, "--state") || "").trim();
+  const by = getOption(argv, "--by") || getOption(argv, "--from") || "manual";
+  if (!id || !["idle", "busy", "done"].includes(state)) throw new Error("Usage: ai-memory-hub agent status set --id <agent> --state <idle|busy|done> [--by codex]");
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const agent = touchAgentStatus(config.memoryDir, id, state, by);
+  console.log(JSON.stringify(agent, null, 2));
+}
+
+function agentListCommand(argv) {
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  const registry = readAgents(config.memoryDir);
   const sessions = dashboardAgentSessions.getDashboardAgentSessions(config.memoryDir).agentSessions;
-  const state = getOption(argv.slice(1), "--state") || "";
-  console.log(JSON.stringify(state ? sessions.filter((item) => item.state === state) : sessions, null, 2));
+  const byId = new Map();
+  for (const a of registry) byId.set(String(a.id).toLowerCase(), { ...a, _source: "registry" });
+  for (const s of sessions) {
+    const sid = String(s.id || s.sessionId || "").toLowerCase();
+    if (!sid) continue;
+    const prev = byId.get(sid) || { id: s.id };
+    byId.set(sid, { ...prev, id: prev.id || s.id, liveState: s.state, lastSeen: s.updatedAt || prev.lastSeen, _source: prev._source || "session" });
+  }
+  const state = getOption(argv, "--state") || "";
+  let rows = [...byId.values()];
+  if (state) rows = rows.filter((r) => (r.status || r.liveState) === state);
+  console.log(JSON.stringify(rows, null, 2));
+}
+
+function agentRoleCommand(argv) {
+  const action = argv[0] || "list";
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  if (action === "add" || action === "remove") {
+    const agentId = (getOption(argv, "--agent") || "").trim();
+    const roleId = (getOption(argv, "--role") || "").trim();
+    if (!agentId || !roleId) throw new Error("Usage: ai-memory-hub agent role add|remove --agent <agent> --role <role>");
+    const agent = readAgentById(config.memoryDir, agentId);
+    if (!agent) throw new Error(`Agent not registered: ${agentId} (run 'agent register' first)`);
+    if (!readRoleById(config.memoryDir, roleId)) throw new Error(`Role not found: ${roleId} (run 'role create' first)`);
+    const roles = new Set(agent.roles || []);
+    if (action === "add") {
+      roles.add(roleId);
+      try {
+        recordRelation(config.memoryDir, { from: { type: "agent", id: agentId }, to: { type: "role", id: roleId }, relation: "plays-role", source: "agent-cli", evidence: { kind: "explicit" } });
+      } catch (_) { /* duplicate relation is fine */ }
+    } else {
+      roles.delete(roleId);
+      const rel = readRelations(config.memoryDir).find((r) => r.status === "active" && r.relation === "plays-role" && r.from.type === "agent" && String(r.from.id).toLowerCase() === agentId.toLowerCase() && r.to.type === "role" && String(r.to.id).toLowerCase() === roleId.toLowerCase());
+      if (rel) try { revokeRelation(config.memoryDir, rel.id, "agent role remove"); } catch (_) { /* ignore */ }
+    }
+    const updated = writeAgent(config.memoryDir, { ...agent, roles: [...roles] });
+    console.log(JSON.stringify(updated, null, 2));
+    return;
+  }
+  if (action === "list") {
+    const agentId = (getOption(argv, "--agent") || "").trim();
+    const agents = agentId ? [readAgentById(config.memoryDir, agentId)].filter(Boolean) : readAgents(config.memoryDir);
+    const rows = agents.map((a) => ({
+      id: a.id,
+      name: a.name,
+      roles: (a.roles || []).map((rid) => { const r = readRoleById(config.memoryDir, rid); return r ? { id: r.id, name: r.name } : { id: rid, name: "(missing)" }; })
+    }));
+    console.log(JSON.stringify(rows, null, 2));
+    return;
+  }
+  throw new Error("Usage: ai-memory-hub agent role <add|remove|list> --agent <agent> --role <role>");
+}
+
+function roleCommand(argv) {
+  const action = argv[0] || "list";
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  if (action === "create" || action === "update") {
+    const id = (getOption(argv, "--id") || positionalArgs(argv)[0] || "").trim();
+    if (!id) throw new Error("Usage: ai-memory-hub role create --id <role> [--name '...'] [--description '...'] [--permissions 'a,b']");
+    const existing = readRoleById(config.memoryDir, id) || {};
+    const perms = parseDeclaredList(getOption(argv, "--permissions") || "");
+    const mergedPerms = perms.concat(existing.permissions || []).filter((p, i, arr) => arr.indexOf(p) === i);
+    const role = writeRole(config.memoryDir, {
+      ...existing,
+      id: existing.id || id,
+      name: getOption(argv, "--name") || existing.name || id,
+      description: getOption(argv, "--description") || existing.description || "",
+      permissions: mergedPerms,
+      createdAt: existing.createdAt || new Date().toISOString()
+    });
+    console.log(JSON.stringify(role, null, 2));
+    return;
+  }
+  if (action === "show") {
+    const id = (getOption(argv, "--id") || positionalArgs(argv)[0] || "").trim();
+    if (!id) throw new Error("Usage: ai-memory-hub role show --id <role>");
+    const role = readRoleById(config.memoryDir, id);
+    if (!role) throw new Error(`Role not found: ${id}`);
+    // P1 (M:N symmetry): show which agents play this role, derived from agent.roles[].
+    const key = id.toLowerCase();
+    const members = readAgents(config.memoryDir)
+      .filter((a) => (a.roles || []).some((rid) => String(rid).toLowerCase() === key))
+      .map((a) => ({ id: a.id, name: a.name, status: a.status || "idle" }));
+    console.log(JSON.stringify({ ...role, members }, null, 2));
+    return;
+  }
+  if (action === "list") {
+    console.log(JSON.stringify(readRoles(config.memoryDir), null, 2));
+    return;
+  }
+  throw new Error("Usage: ai-memory-hub role <create|show|list> ...");
+}
+
+function teamCommand(argv) {
+  const action = argv[0] || "list";
+  const config = loadConfig();
+  ensureHub(config.memoryDir);
+  if (action === "create" || action === "update") {
+    const id = (getOption(argv, "--id") || positionalArgs(argv)[0] || "").trim();
+    if (!id) throw new Error("Usage: ai-memory-hub team create --id <team> [--name '...'] [--description '...']");
+    const existing = readTeamById(config.memoryDir, id) || {};
+    const team = writeTeam(config.memoryDir, {
+      ...existing,
+      id: existing.id || id,
+      name: getOption(argv, "--name") || existing.name || id,
+      description: getOption(argv, "--description") || existing.description || "",
+      createdAt: existing.createdAt || new Date().toISOString()
+    });
+    console.log(JSON.stringify(team, null, 2));
+    return;
+  }
+  if (action === "member") {
+    const sub = argv[1] || "list";
+    const teamId = getOption(argv, "--team") || "";
+    const agentId = getOption(argv, "--agent") || "";
+    if (!teamId || !agentId) throw new Error("Usage: ai-memory-hub team member <add|remove|list> --team <team> --agent <agent>");
+    const team = readTeamById(config.memoryDir, teamId);
+    if (!team) throw new Error(`Team not found: ${teamId}`);
+    if (sub === "add") {
+      const rel = recordRelation(config.memoryDir, {
+        from: { type: "agent", id: agentId },
+        to: { type: "team", id: teamId },
+        relation: "member-of",
+        source: "cli",
+        evidence: { note: `agent ${agentId} joined team ${teamId}` }
+      });
+      console.log(JSON.stringify(rel, null, 2));
+      return;
+    }
+    if (sub === "remove") {
+      const rel = readRelations(config.memoryDir).find((r) => r.status === "active" && r.relation === "member-of" && r.from.type === "agent" && String(r.from.id).toLowerCase() === agentId.toLowerCase() && r.to.type === "team" && String(r.to.id).toLowerCase() === teamId.toLowerCase());
+      if (!rel) throw new Error(`No active member-of relation: ${agentId} -> ${teamId}`);
+      const ev = revokeRelation(config.memoryDir, rel.id, "removed via cli");
+      console.log(JSON.stringify(ev, null, 2));
+      return;
+    }
+    if (sub === "list") {
+      const members = readRelations(config.memoryDir)
+        .filter((r) => r.status === "active" && r.relation === "member-of" && r.to.type === "team" && String(r.to.id).toLowerCase() === teamId.toLowerCase())
+        .map((r) => r.from.id);
+      console.log(JSON.stringify(members, null, 2));
+      return;
+    }
+    throw new Error("Usage: ai-memory-hub team member <add|remove|list> --team <team> --agent <agent>");
+  }
+  if (action === "show") {
+    const id = (getOption(argv, "--id") || positionalArgs(argv)[0] || "").trim();
+    if (!id) throw new Error("Usage: ai-memory-hub team show --id <team>");
+    const team = readTeamById(config.memoryDir, id);
+    if (!team) throw new Error(`Team not found: ${id}`);
+    // P2 (M:N symmetry, like role.show): expand which agents belong to this team.
+    const key = id.toLowerCase();
+    const members = readRelations(config.memoryDir)
+      .filter((r) => r.status === "active" && r.relation === "member-of" && r.to.type === "team" && String(r.to.id).toLowerCase() === key)
+      .map((r) => {
+        const a = readAgentById(config.memoryDir, r.from.id);
+        return { id: r.from.id, name: a ? a.name : r.from.id, status: a ? a.status || "idle" : "idle" };
+      });
+    console.log(JSON.stringify({ ...team, members }, null, 2));
+    return;
+  }
+  if (action === "list") {
+    console.log(JSON.stringify(readTeams(config.memoryDir), null, 2));
+    return;
+  }
+  throw new Error("Usage: ai-memory-hub team <create|show|list|member> ...");
 }
 
 function reviewCommand(argv) {
@@ -3287,6 +3680,35 @@ function taskListStatusMatches(task, status, includeCancelled) {
   return task.status === status;
 }
 
+// P0.1 (borrowed from Cumora's markThinking TTL): a claim carries a soft TTL so a
+// runner that crashes after claiming cannot wedge the task in "claimed" forever.
+function getClaimTtlMs(config) {
+  const ttl = config && config.task && config.task.claimTtlMs;
+  return Number.isFinite(ttl) && ttl > 0 ? ttl : DEFAULT_CLAIM_TTL_MS;
+}
+
+function isClaimStale(task, nowMs, ttlMs) {
+  if (!task || task.status !== "claimed") return false;
+  const expires = task.claimExpiresAt ? Date.parse(task.claimExpiresAt) : NaN;
+  if (!Number.isFinite(expires)) return false; // legacy claim without TTL -> don't auto-release
+  return nowMs > expires;
+}
+
+function releaseStaleClaim(task, nowIso) {
+  return {
+    ...task,
+    status: "open",
+    claimedAt: "",
+    claimExpiresAt: "",
+    lastAssignee: task.assignee || task.lastAssignee || "",
+    updatedAt: nowIso,
+    notes: [
+      ...(task.notes || []),
+      createTaskNote(task.assignee || "system", `Claim auto-released (TTL expired).`)
+    ]
+  };
+}
+
 function taskClaimCommand(argv) {
   const id = getOption(argv, "--id") || positionalArgs(argv)[0] || "";
   const by = getOption(argv, "--by") || getOption(argv, "--from") || "manual";
@@ -3295,19 +3717,54 @@ function taskClaimCommand(argv) {
   }
   const config = loadConfig();
   ensureHub(config.memoryDir);
-  return withHubLock(config.memoryDir, "task-claim", () => {
-    const task = updateTask(config.memoryDir, id, (current) => ({
-      ...current,
-      status: current.status === "open" ? "claimed" : current.status,
-      assignee: by,
-      updatedAt: new Date().toISOString(),
-      notes: [
-        ...(current.notes || []),
-        createTaskNote(by, `Claimed by ${by}.`)
-      ]
-    }));
-    console.log(JSON.stringify(task, null, 2));
+  const ttlMs = getClaimTtlMs(config);
+  // P1 linkage: if the current claim is stale, the previous assignee should drop back to idle.
+  const preTask = readTasks(config.memoryDir).find((t) => t.id === id);
+  const staleAssignee = preTask && isClaimStale(preTask, Date.parse(new Date().toISOString()), ttlMs) ? (preTask.assignee || "") : "";
+  const task = withHubLock(config.memoryDir, "task-claim", () => {
+    return updateTask(config.memoryDir, id, (current) => {
+      const nowIso = new Date().toISOString();
+      const nowMs = Date.parse(nowIso);
+      let next = current;
+      // Auto-release a stale claim before allowing a new one (Cumora-style self-heal).
+      if (isClaimStale(current, nowMs, ttlMs)) {
+        next = releaseStaleClaim(current, nowIso);
+      }
+      const alreadyClaimed = next.status === "claimed";
+      return {
+        ...next,
+        status: "claimed",
+        assignee: by,
+        claimedAt: nowIso,
+        claimExpiresAt: new Date(nowMs + ttlMs).toISOString(),
+        updatedAt: nowIso,
+        notes: [
+          ...(next.notes || []),
+          createTaskNote(by, alreadyClaimed ? `Re-claimed by ${by} (previous claim expired/released).` : `Claimed by ${by}.`)
+        ]
+      };
+    });
   }, config.sync.lockStaleMs);
+  // P0.3: broadcast the claim so peer runners can see who is working on what (Cumora glance).
+  try {
+    appendJsonl(path.join(config.memoryDir, "radio", "messages.jsonl"), createRadioMessage({
+      from: by,
+      to: "all",
+      type: "task-claim",
+      text: `Claimed task ${id}: ${task.title || ""}`,
+      project: task.project || ""
+    }));
+  } catch (e) {
+    // best-effort, non-blocking
+  }
+  // P1 linkage: claimer becomes busy; a stale previous assignee returns to idle (self-heal via P0 TTL).
+  try {
+    touchAgentStatus(config.memoryDir, by, "busy", by);
+    if (staleAssignee && staleAssignee !== by) touchAgentStatus(config.memoryDir, staleAssignee, "idle", "system");
+  } catch (e) {
+    // best-effort, non-blocking
+  }
+  console.log(JSON.stringify(task, null, 2));
 }
 
 function taskStatusCommand(argv) {
@@ -3368,7 +3825,7 @@ function taskDoneCommand(argv) {
   }
   const config = loadConfig();
   ensureHub(config.memoryDir);
-  return withHubLock(config.memoryDir, "task-done", () => {
+  const result = withHubLock(config.memoryDir, "task-done", () => {
     // OPC v1.1 P0: Check evaluation signals before allowing done
     if (!force) {
       const tasks = readTasks(config.memoryDir);
@@ -3396,8 +3853,16 @@ function taskDoneCommand(argv) {
       ]
     }));
     const minedCandidates = appendSkillCandidates(config.memoryDir, mineSkillCandidates(task));
-    console.log(JSON.stringify({ ...task, minedSkillCandidates: minedCandidates }, null, 2));
+    return { ...task, minedSkillCandidates: minedCandidates };
   }, config.sync.lockStaleMs);
+  // P1 linkage: completing a task frees the assignee back to idle (Cumora-style self-heal via P0 TTL).
+  try {
+    const doneBy = result.assignee || by;
+    if (doneBy) touchAgentStatus(config.memoryDir, doneBy, "idle", by);
+  } catch (_) {
+    // best-effort, non-blocking
+  }
+  console.log(JSON.stringify(result, null, 2));
 }
 
 function taskPurgeCommand(argv) {
@@ -3946,7 +4411,7 @@ function radioArchiveCommand(argv) {
 }
 
 
-function dispatchCommand(argv) {
+async function dispatchCommand(argv) {
   const action = argv[0] && !argv[0].startsWith("--") ? argv[0] : "";
   if (action === "retry") {
     return dispatchRetryCommand(argv.slice(1));
@@ -3969,7 +4434,7 @@ function dispatchCommand(argv) {
   const config = loadConfig();
   ensureHub(config.memoryDir);
 
-  const results = executeDispatch(config.memoryDir, { run, force, to, project, limit, model, respectRecipeDependencies, isolateWorktree, worktreeRoot });
+  const results = await executeDispatch(config.memoryDir, { run, force, to, project, limit, model, respectRecipeDependencies, isolateWorktree, worktreeRoot });
   if (results.length === 0) {
     console.log(JSON.stringify({ run, jobs: [], message: "No undispatched radio messages or active tasks matched." }, null, 2));
     return;
@@ -4388,7 +4853,170 @@ function dispatchRetryCommand(argv) {
   }, null, 2));
 }
 
-function executeDispatch(memoryDir, {
+// ── feature ④: prepare/process helpers extracted from executeDispatch ──
+// prepareDispatchJobForRun: does everything BEFORE the runner subprocess runs.
+// Returns { skip: result } for non-runnable/dry-run/permission-denied jobs,
+// or { job, runner, attempt, maxRetries, options } for jobs that should run.
+function prepareDispatchJobForRun(memoryDir, job, relayState, { model, run, isolateWorktree, worktreeRoot }) {
+  if (model) {
+    job.model = model;
+    const declared = readToolDeclarationByTool(memoryDir, job.tool)?.models || [];
+    const discovered = readDiscoveredModels(memoryDir, job.tool);
+    const knownModels = [...new Set([...declared, ...discovered])];
+    if (knownModels.length > 0 && !knownModels.includes(model) && !knownModels.some((known) => known.endsWith(`/${model}`) || known.endsWith(`:${model}`))) {
+      job.modelNote = `Requested model "${model}" is not in ${job.tool}'s declared/discovered list. Available: ${knownModels.length} model(s). Use "ai-memory-hub models --to ${job.tool} --refresh" to refresh from the provider.`;
+    }
+  }
+  const runner = getToolRunner(job.tool);
+  if (!runner.available) {
+    const result = { ...job, runnable: false, reason: runner.reason };
+    if (run && !runner.sharedStateOnly) {
+      const attempt = nextRelayAttempt(relayState, job);
+      const maxRetries = getDispatchJobMaxRetries(job);
+      const state = getRelayFailureState(attempt, maxRetries);
+      appendRelayStatus(memoryDir, job, {
+        state, attempt, maxRetries, exitCode: null, lastError: runner.reason,
+        sessionId: "", ackTimeout: DEFAULT_DISPATCH_ACK_TIMEOUT_MS,
+        nextRetryAt: computeNextRetryAt(attempt, maxRetries)
+      });
+      updateDispatchSourceState(memoryDir, job, {
+        deliveryState: state, dispatchId: job.id, threadKey: getDispatchThreadKey(job),
+        attempt, maxRetries, nextRetryAt: computeNextRetryAt(attempt, maxRetries),
+        sessionId: "", lastError: runner.reason
+      });
+      const statusMessage = appendDispatchStatusMessage(memoryDir, job, { ...result, relayState: state });
+      appendDispatchLog(memoryDir, result);
+      applyDispatchOutcome(memoryDir, job, { ...result, statusRadioId: statusMessage?.id || "" }, state, { statusMessage });
+    }
+    return { skip: result };
+  }
+  if (!run) {
+    const sourceKey = getDispatchSourceKey(job);
+    return { skip: {
+      ...job, runnable: true, dryRun: true, command: runner.preview,
+      relayState: relayState[sourceKey]?.state || "pending",
+      attempt: relayState[sourceKey]?.attempt || 0
+    }};
+  }
+  const attempt = nextRelayAttempt(relayState, job);
+  const maxRetries = getDispatchJobMaxRetries(job);
+  const permission = resolvePermission(memoryDir, {
+    actor: job.tool, actorRoles: job.roles || [],
+    project: job.project || "*", operation: "dispatch", scope: "all"
+  });
+  if (permission.decision === "deny") {
+    const result = {
+      ...job, runnable: false,
+      reason: `Permission denied: ${permission.reason}`,
+      exitCode: 403,
+      error: `Policy layer blocked dispatch: ${permission.reason}`
+    };
+    appendRelayStatus(memoryDir, job, {
+      state: "failed-permanent", attempt, maxRetries, exitCode: 403,
+      lastError: result.error, sessionId: "", ackTimeout: DEFAULT_DISPATCH_ACK_TIMEOUT_MS
+    });
+    updateDispatchSourceState(memoryDir, job, {
+      deliveryState: "failed-permanent", dispatchId: job.id, threadKey: getDispatchThreadKey(job),
+      attempt, maxRetries, nextRetryAt: "", sessionId: "", lastError: result.error
+    });
+    const statusMessage = appendDispatchStatusMessage(memoryDir, job, { ...result, relayState: "failed-permanent" });
+    appendDispatchLog(memoryDir, result);
+    applyDispatchOutcome(memoryDir, job, { ...result, statusRadioId: statusMessage?.id || "" }, "failed-permanent", { statusMessage });
+    return { skip: result };
+  }
+  if (permission.decision === "ask") {
+    const gate = appendApprovalGateEvent(memoryDir, {
+      status: "requested", actor: job.tool, scope: "dispatch", operation: "dispatch",
+      refId: job.id, refType: "dispatch-job", reason: permission.reason,
+      reviewer: "human", project: job.project || ""
+    });
+    const result = {
+      ...job, runnable: false,
+      reason: `Approval required: ${permission.reason}`,
+      exitCode: 451,
+      error: `Policy requires approval (gate ${gate.gateId}): ${permission.reason}`,
+      gateId: gate.gateId
+    };
+    appendRelayStatus(memoryDir, job, {
+      state: "approval-required", attempt, maxRetries, exitCode: 451,
+      lastError: result.error, sessionId: "", ackTimeout: DEFAULT_DISPATCH_ACK_TIMEOUT_MS,
+      gateId: gate.gateId
+    });
+    updateDispatchSourceState(memoryDir, job, {
+      deliveryState: "approval-required", dispatchId: job.id, threadKey: getDispatchThreadKey(job),
+      attempt, maxRetries, nextRetryAt: "", sessionId: "",
+      lastError: result.error, gateId: gate.gateId
+    });
+    const statusMessage = appendDispatchStatusMessage(memoryDir, job, { ...result, relayState: "approval-required" });
+    appendDispatchLog(memoryDir, result);
+    applyDispatchOutcome(memoryDir, job, { ...result, statusRadioId: statusMessage?.id || "" }, "approval-required", { statusMessage });
+    return { skip: result };
+  }
+  // permission.decision === "allow" → mark dispatched, prepare for run
+  appendRelayStatus(memoryDir, job, {
+    state: "dispatched", attempt, maxRetries, exitCode: null,
+    lastError: "", sessionId: "", ackTimeout: DEFAULT_DISPATCH_ACK_TIMEOUT_MS
+  });
+  updateDispatchSourceState(memoryDir, job, {
+    deliveryState: "dispatched", dispatchId: job.id, threadKey: getDispatchThreadKey(job),
+    attempt, maxRetries, nextRetryAt: "", sessionId: "", lastError: ""
+  });
+  return { job, runner, attempt, maxRetries, options: { isolateWorktree, worktreeRoot } };
+}
+
+// processDispatchJobResult: does everything AFTER the runner subprocess finishes.
+// Handles relay status updates, radio messages, dispatch log, and outcome application.
+function processDispatchJobResult(memoryDir, job, result, { attempt, maxRetries }) {
+  if (result.exitCode === 0) {
+    appendRelayStatus(memoryDir, job, {
+      state: "acked", attempt, maxRetries, exitCode: 0,
+      lastError: "", sessionId: result.sessionId || "",
+      ackTimeout: DEFAULT_DISPATCH_ACK_TIMEOUT_MS, nextRetryAt: "",
+      worktree: result.worktree || null
+    });
+    updateDispatchSourceState(memoryDir, job, {
+      deliveryState: "acked", dispatchId: job.id, threadKey: getDispatchThreadKey(job),
+      attempt, maxRetries, nextRetryAt: "", sessionId: result.sessionId || "",
+      lastError: "", worktree: result.worktree || null
+    });
+  }
+  const finalState = result.exitCode === 0 ? "completed" : getRelayFailureState(attempt, maxRetries);
+  const nextRetryAt = result.exitCode === 0 ? "" : computeNextRetryAt(attempt, maxRetries);
+  const lastError = result.exitCode === 0 ? "" : (result.error || result.stderr || "");
+  const fingerprint = result.exitCode === 0 ? "" : relayFailureFingerprint(result.exitCode, lastError);
+  let resolvedState = finalState;
+  let oscillating = false;
+  if (result.exitCode !== 0) {
+    const osc = getRelayFailureStateWithOscillation(memoryDir, job, attempt, maxRetries, fingerprint);
+    resolvedState = osc.state;
+    oscillating = osc.oscillating;
+  }
+  const resolvedNextRetryAt = resolvedState === "abandoned" ? "" : nextRetryAt;
+  appendRelayStatus(memoryDir, job, {
+    state: resolvedState, attempt, maxRetries, exitCode: result.exitCode,
+    lastError, sessionId: result.sessionId || "",
+    ackTimeout: DEFAULT_DISPATCH_ACK_TIMEOUT_MS, nextRetryAt: resolvedNextRetryAt,
+    worktree: result.worktree || null, fingerprint, oscillating
+  });
+  updateDispatchSourceState(memoryDir, job, {
+    deliveryState: resolvedState, dispatchId: job.id, threadKey: getDispatchThreadKey(job),
+    attempt, maxRetries, nextRetryAt: resolvedNextRetryAt,
+    sessionId: result.sessionId || "", lastError, worktree: result.worktree || null
+  });
+  const responseMessage = appendDispatchResponseMessage(memoryDir, job, { ...result, relayState: resolvedState });
+  const statusMessage = appendDispatchStatusMessage(memoryDir, job, { ...result, relayState: resolvedState, oscillating });
+  const enrichedResult = {
+    ...result, relayState: resolvedState, oscillating, attempt, maxRetries,
+    nextRetryAt: resolvedNextRetryAt,
+    responseRadioId: responseMessage?.id || "",
+    statusRadioId: statusMessage?.id || ""
+  };
+  appendDispatchLog(memoryDir, enrichedResult);
+  applyDispatchOutcome(memoryDir, job, enrichedResult, resolvedState, { responseMessage, statusMessage });
+  return enrichedResult;
+}
+
+async function executeDispatch(memoryDir, {
   run = false,
   force = false,
   to = "",
@@ -4397,269 +5025,35 @@ function executeDispatch(memoryDir, {
   model = "",
   respectRecipeDependencies = false,
   isolateWorktree = false,
-  worktreeRoot = ""
+  worktreeRoot = "",
+  concurrency = 1
 }) {
   const jobs = buildDispatchJobs(memoryDir, { to, project, limit, force, respectRecipeDependencies });
   const results = [];
   const relayState = readLatestRelayStatusBySource(memoryDir);
+  const preparedJobs = [];
   for (const job of jobs) {
-    if (model) {
-      job.model = model;
-      const declared = readToolDeclarationByTool(memoryDir, job.tool)?.models || [];
-      const discovered = readDiscoveredModels(memoryDir, job.tool);
-      const knownModels = [...new Set([...declared, ...discovered])];
-      if (knownModels.length > 0 && !knownModels.includes(model) && !knownModels.some((known) => known.endsWith(`/${model}`) || known.endsWith(`:${model}`))) {
-        job.modelNote = `Requested model "${model}" is not in ${job.tool}'s declared/discovered list. Available: ${knownModels.length} model(s). Use "ai-memory-hub models --to ${job.tool} --refresh" to refresh from the provider.`;
-      }
+    const prepared = prepareDispatchJobForRun(memoryDir, job, relayState, { model, run, isolateWorktree, worktreeRoot });
+    if (prepared.skip) {
+      results.push(prepared.skip);
+    } else {
+      preparedJobs.push(prepared);
     }
-    const runner = getToolRunner(job.tool);
-    if (!runner.available) {
-      const result = {
-        ...job,
-        runnable: false,
-        reason: runner.reason
-      };
-      if (run && !runner.sharedStateOnly) {
-        const attempt = nextRelayAttempt(relayState, job);
-        const maxRetries = getDispatchJobMaxRetries(job);
-        const state = getRelayFailureState(attempt, maxRetries);
-        appendRelayStatus(memoryDir, job, {
-          state,
-          attempt,
-          maxRetries,
-          exitCode: null,
-          lastError: runner.reason,
-          sessionId: "",
-          ackTimeout: DEFAULT_DISPATCH_ACK_TIMEOUT_MS,
-          nextRetryAt: computeNextRetryAt(attempt, maxRetries)
-        });
-        updateDispatchSourceState(memoryDir, job, {
-          deliveryState: state,
-          dispatchId: job.id,
-          threadKey: getDispatchThreadKey(job),
-          attempt,
-          maxRetries,
-          nextRetryAt: computeNextRetryAt(attempt, maxRetries),
-          sessionId: "",
-          lastError: runner.reason
-        });
-        const statusMessage = appendDispatchStatusMessage(memoryDir, job, { ...result, relayState: state });
-        appendDispatchLog(memoryDir, result);
-        applyDispatchOutcome(memoryDir, job, { ...result, statusRadioId: statusMessage?.id || "" }, state, {
-          statusMessage
-        });
-      }
-      results.push(result);
-      continue;
+  }
+  if (preparedJobs.length === 0) return results;
+  if (concurrency <= 1) {
+    // Sequential path — identical to pre-refactor behavior
+    for (const { job, runner, attempt, maxRetries, options } of preparedJobs) {
+      const result = runDispatchJob(memoryDir, job, runner, options);
+      results.push(processDispatchJobResult(memoryDir, job, result, { attempt, maxRetries }));
     }
-    if (!run) {
-      const sourceKey = getDispatchSourceKey(job);
-      results.push({
-        ...job,
-        runnable: true,
-        dryRun: true,
-        command: runner.preview,
-        relayState: relayState[sourceKey]?.state || "pending",
-        attempt: relayState[sourceKey]?.attempt || 0
-      });
-      continue;
+  } else {
+    // Concurrent path — bounded pool with live status
+    const poolResults = await runDispatchPool(memoryDir, preparedJobs.map((p) => ({ job: p.job, runner: p.runner, options: p.options })), { concurrency });
+    for (let i = 0; i < preparedJobs.length; i++) {
+      const { job, attempt, maxRetries } = preparedJobs[i];
+      results.push(processDispatchJobResult(memoryDir, job, poolResults[i], { attempt, maxRetries }));
     }
-    const attempt = nextRelayAttempt(relayState, job);
-    const maxRetries = getDispatchJobMaxRetries(job);
-
-    // Phase 3: Permission policy preflight check
-    const permission = resolvePermission(memoryDir, {
-      actor: job.tool,
-      actorRoles: job.roles || [],
-      project: job.project || "*",
-      operation: "dispatch",
-      scope: "all"
-    });
-    if (permission.decision === "deny") {
-      const result = {
-        ...job,
-        runnable: false,
-        reason: `Permission denied: ${permission.reason}`,
-        exitCode: 403,
-        error: `Policy layer blocked dispatch: ${permission.reason}`
-      };
-      appendRelayStatus(memoryDir, job, {
-        state: "failed-permanent",
-        attempt,
-        maxRetries,
-        exitCode: 403,
-        lastError: result.error,
-        sessionId: "",
-        ackTimeout: DEFAULT_DISPATCH_ACK_TIMEOUT_MS
-      });
-      updateDispatchSourceState(memoryDir, job, {
-        deliveryState: "failed-permanent",
-        dispatchId: job.id,
-        threadKey: getDispatchThreadKey(job),
-        attempt,
-        maxRetries,
-        nextRetryAt: "",
-        sessionId: "",
-        lastError: result.error
-      });
-      const statusMessage = appendDispatchStatusMessage(memoryDir, job, { ...result, relayState: "failed-permanent" });
-      appendDispatchLog(memoryDir, result);
-      applyDispatchOutcome(memoryDir, job, { ...result, statusRadioId: statusMessage?.id || "" }, "failed-permanent", {
-        statusMessage
-      });
-      results.push(result);
-      continue;
-    }
-    if (permission.decision === "ask") {
-      // Phase 2: Create approval gate
-      const gate = appendApprovalGateEvent(memoryDir, {
-        status: "requested",
-        actor: job.tool,
-        scope: "dispatch",
-        operation: "dispatch",
-        refId: job.id,
-        refType: "dispatch-job",
-        reason: permission.reason,
-        reviewer: "human",
-        project: job.project || ""
-      });
-      const result = {
-        ...job,
-        runnable: false,
-        reason: `Approval required: ${permission.reason}`,
-        exitCode: 451,
-        error: `Policy requires approval (gate ${gate.gateId}): ${permission.reason}`,
-        gateId: gate.gateId
-      };
-      appendRelayStatus(memoryDir, job, {
-        state: "approval-required",
-        attempt,
-        maxRetries,
-        exitCode: 451,
-        lastError: result.error,
-        sessionId: "",
-        ackTimeout: DEFAULT_DISPATCH_ACK_TIMEOUT_MS,
-        gateId: gate.gateId
-      });
-      updateDispatchSourceState(memoryDir, job, {
-        deliveryState: "approval-required",
-        dispatchId: job.id,
-        threadKey: getDispatchThreadKey(job),
-        attempt,
-        maxRetries,
-        nextRetryAt: "",
-        sessionId: "",
-        lastError: result.error,
-        gateId: gate.gateId
-      });
-      const statusMessage = appendDispatchStatusMessage(memoryDir, job, { ...result, relayState: "approval-required" });
-      appendDispatchLog(memoryDir, result);
-      applyDispatchOutcome(memoryDir, job, { ...result, statusRadioId: statusMessage?.id || "" }, "approval-required", {
-        statusMessage
-      });
-      results.push(result);
-      continue;
-    }
-    // permission.decision === "allow" → proceed
-
-    appendRelayStatus(memoryDir, job, {
-      state: "dispatched",
-      attempt,
-      maxRetries,
-      exitCode: null,
-      lastError: "",
-      sessionId: "",
-      ackTimeout: DEFAULT_DISPATCH_ACK_TIMEOUT_MS
-    });
-    updateDispatchSourceState(memoryDir, job, {
-      deliveryState: "dispatched",
-      dispatchId: job.id,
-      threadKey: getDispatchThreadKey(job),
-      attempt,
-      maxRetries,
-      nextRetryAt: "",
-      sessionId: "",
-      lastError: ""
-    });
-    const result = runDispatchJob(memoryDir, job, runner, { isolateWorktree, worktreeRoot });
-    if (result.exitCode === 0) {
-      appendRelayStatus(memoryDir, job, {
-        state: "acked",
-        attempt,
-        maxRetries,
-        exitCode: 0,
-        lastError: "",
-        sessionId: result.sessionId || "",
-        ackTimeout: DEFAULT_DISPATCH_ACK_TIMEOUT_MS,
-        nextRetryAt: "",
-        worktree: result.worktree || null
-      });
-      updateDispatchSourceState(memoryDir, job, {
-        deliveryState: "acked",
-        dispatchId: job.id,
-        threadKey: getDispatchThreadKey(job),
-        attempt,
-        maxRetries,
-        nextRetryAt: "",
-        sessionId: result.sessionId || "",
-        lastError: "",
-        worktree: result.worktree || null
-      });
-    }
-    const finalState = result.exitCode === 0 ? "completed" : getRelayFailureState(attempt, maxRetries);
-    const nextRetryAt = result.exitCode === 0 ? "" : computeNextRetryAt(attempt, maxRetries);
-    const lastError = result.exitCode === 0 ? "" : (result.error || result.stderr || "");
-    const fingerprint = result.exitCode === 0 ? "" : relayFailureFingerprint(result.exitCode, lastError);
-    let resolvedState = finalState;
-    let oscillating = false;
-    if (result.exitCode !== 0) {
-      const osc = getRelayFailureStateWithOscillation(memoryDir, job, attempt, maxRetries, fingerprint);
-      resolvedState = osc.state;
-      oscillating = osc.oscillating;
-    }
-    const resolvedNextRetryAt = resolvedState === "abandoned" ? "" : nextRetryAt;
-    appendRelayStatus(memoryDir, job, {
-      state: resolvedState,
-      attempt,
-      maxRetries,
-      exitCode: result.exitCode,
-      lastError,
-      sessionId: result.sessionId || "",
-      ackTimeout: DEFAULT_DISPATCH_ACK_TIMEOUT_MS,
-      nextRetryAt: resolvedNextRetryAt,
-      worktree: result.worktree || null,
-      fingerprint,
-      oscillating
-    });
-    updateDispatchSourceState(memoryDir, job, {
-      deliveryState: resolvedState,
-      dispatchId: job.id,
-      threadKey: getDispatchThreadKey(job),
-      attempt,
-      maxRetries,
-      nextRetryAt: resolvedNextRetryAt,
-      sessionId: result.sessionId || "",
-      lastError,
-      worktree: result.worktree || null
-    });
-    const responseMessage = appendDispatchResponseMessage(memoryDir, job, { ...result, relayState: resolvedState });
-    const statusMessage = appendDispatchStatusMessage(memoryDir, job, { ...result, relayState: resolvedState, oscillating });
-    const enrichedResult = {
-      ...result,
-      relayState: resolvedState,
-      oscillating,
-      attempt,
-      maxRetries,
-      nextRetryAt: resolvedNextRetryAt,
-      responseRadioId: responseMessage?.id || "",
-      statusRadioId: statusMessage?.id || ""
-    };
-    appendDispatchLog(memoryDir, enrichedResult);
-    applyDispatchOutcome(memoryDir, job, enrichedResult, resolvedState, {
-      responseMessage,
-      statusMessage
-    });
-    results.push(enrichedResult);
   }
   return results;
 }
@@ -5933,6 +6327,121 @@ async function runDispatchJobAsync(memoryDir, job, runner, options = {}) {
   return finalizeDispatchJob(memoryDir, job, runner, completed, ctx);
 }
 
+// ── feature ④: concurrent dispatch pool with live status ──────────────────
+// Module-level singleton tracking active pool execution for dashboard visibility.
+const dispatchPoolState = {
+  active: false,
+  concurrency: 1,
+  total: 0,
+  completed: 0,
+  failed: 0,
+  running: [],
+  finished: [],
+  startedAt: null,
+  finishedAt: null,
+  lastError: null
+};
+
+function resetDispatchPoolState(concurrency, total) {
+  dispatchPoolState.active = true;
+  dispatchPoolState.concurrency = concurrency;
+  dispatchPoolState.total = total;
+  dispatchPoolState.completed = 0;
+  dispatchPoolState.failed = 0;
+  dispatchPoolState.running = [];
+  dispatchPoolState.finished = [];
+  dispatchPoolState.startedAt = new Date().toISOString();
+  dispatchPoolState.finishedAt = null;
+  dispatchPoolState.lastError = null;
+}
+
+function markDispatchPoolJobStart(jobInfo) {
+  dispatchPoolState.running.push(jobInfo);
+}
+
+function markDispatchPoolJobDone(runId, status, durationMs) {
+  dispatchPoolState.running = dispatchPoolState.running.filter((j) => j.runId !== runId);
+  dispatchPoolState.finished.push({ runId, status, durationMs, finishedAt: new Date().toISOString() });
+  dispatchPoolState.completed++;
+  if (status !== "completed") dispatchPoolState.failed++;
+}
+
+function markDispatchPoolFinished(lastError = null) {
+  dispatchPoolState.active = false;
+  dispatchPoolState.running = [];
+  dispatchPoolState.finishedAt = new Date().toISOString();
+  dispatchPoolState.lastError = lastError;
+}
+
+function getDispatchPoolSnapshot() {
+  return {
+    active: dispatchPoolState.active,
+    concurrency: dispatchPoolState.concurrency,
+    total: dispatchPoolState.total,
+    completed: dispatchPoolState.completed,
+    failed: dispatchPoolState.failed,
+    pending: Math.max(0, dispatchPoolState.total - dispatchPoolState.completed),
+    running: dispatchPoolState.running.slice(),
+    finished: dispatchPoolState.finished.slice(-20),
+    startedAt: dispatchPoolState.startedAt,
+    finishedAt: dispatchPoolState.finishedAt,
+    lastError: dispatchPoolState.lastError
+  };
+}
+
+/**
+ * Run an array of prepared dispatch jobs through a bounded-concurrency pool.
+ * Each entry in `preparedJobs` is { job, runner, options }.
+ * Returns results in the same order as input (order-preserving).
+ */
+async function runDispatchPool(memoryDir, preparedJobs, { concurrency = DISPATCH_MAX_CONCURRENCY } = {}) {
+  const limit = Math.max(1, Math.min(concurrency || 1, preparedJobs.length || 1));
+  resetDispatchPoolState(limit, preparedJobs.length);
+  const results = new Array(preparedJobs.length);
+  let cursor = 0;
+  let poolError = null;
+
+  async function worker() {
+    while (cursor < preparedJobs.length) {
+      const idx = cursor++;
+      const { job, runner, options } = preparedJobs[idx];
+      const runId = createDispatchRunId(job);
+      const jobInfo = {
+        runId,
+        dispatchId: job.id,
+        tool: job.tool || "",
+        project: job.project || "",
+        startedAt: new Date().toISOString()
+      };
+      markDispatchPoolJobStart(jobInfo);
+      try {
+        // eslint-disable-next-line no-await-in-loop -- pool worker loop
+        const result = await runDispatchJobAsync(memoryDir, job, runner, options);
+        markDispatchPoolJobDone(runId, result.runStatus || (result.exitCode === 0 ? "completed" : "failed"), result.runDurationMs || 0);
+        results[idx] = result;
+      } catch (error) {
+        markDispatchPoolJobDone(runId, "failed", 0);
+        poolError = poolError || error;
+        results[idx] = {
+          ...job,
+          runnable: true,
+          exitCode: -1,
+          runId,
+          runStatus: "failed",
+          error: error.message,
+          runStartedAt: jobInfo.startedAt,
+          runFinishedAt: new Date().toISOString()
+        };
+      }
+    }
+  }
+
+  const workers = Array.from({ length: limit }, () => worker());
+  await Promise.all(workers);
+  markDispatchPoolFinished(poolError?.message || null);
+  return results;
+}
+
 function buildRunnerInvocation(runner, args = []) {
   const useCmdLauncher = process.platform === "win32" && runner.usesShell;
   const command = useCmdLauncher ? buildWindowsCmdLine(runner.command, args) : runner.command;
@@ -6675,6 +7184,50 @@ function findDispatchOrigin(memoryDir, job) {
     };
   }
   return null;
+}
+
+function sqliteCommand(argv) {
+  const action = String(argv[0] || "status");
+  const config = loadConfig();
+  const dbPath = path.join(path.resolve(config.memoryDir), "amh.db");
+  const db = openStore(dbPath);
+  if (!db) {
+    console.error("node:sqlite unavailable. Start node with --experimental-sqlite to use SQLite features.");
+    return 1;
+  }
+  try {
+    if (action === "migrate") {
+      if (isMigrated(db)) {
+        console.log("Already migrated. Row counts:");
+      } else {
+        const result = migrateFromJsonl(db, config.memoryDir);
+        console.log(`Migration done in ${result.durationMs}ms: tasks=${result.tasks} projects=${result.projects} workflows=${result.workflows}`);
+      }
+    }
+    if (action === "migrate" || action === "status") {
+      const tasks = listTasks(db, { limit: 1000000 });
+      const projects = listProjects(db);
+      const workflows = listWorkflows(db);
+      console.log(`SQLite (${dbPath})`);
+      console.log(`  migrated: ${isMigrated(db) ? "yes" : "no"}`);
+      console.log(`  tasks=${tasks.length} projects=${projects.length} workflows=${workflows.length}`);
+      console.log(`  dual-write mirror: ${process.env.AMH_SQLITE_DUALWRITE === "1" ? "ON" : "off"} (env AMH_SQLITE_DUALWRITE=1 + node --experimental-sqlite to enable)`);
+      return 0;
+    }
+    if (action === "resync") {
+      db.exec("DELETE FROM tasks");
+      db.exec("DELETE FROM projects");
+      db.exec("DELETE FROM workflows");
+      db.exec("DELETE FROM _meta WHERE key = 'migrated_at'");
+      const result = migrateFromJsonl(db, config.memoryDir);
+      console.log(`Resync done in ${result.durationMs}ms: tasks=${result.tasks} projects=${result.projects} workflows=${result.workflows}`);
+      return 0;
+    }
+    console.error(`Unknown sqlite action: ${action}. Usage: ai-memory-hub sqlite <status|migrate|resync>`);
+    return 1;
+  } finally {
+    closeStore();
+  }
 }
 
 function syncCommand(argv) {
@@ -7632,7 +8185,7 @@ function daemonCommand(argv) {
   let iteration = checkpointStats.cycle;
   let timer = null;
   let stopping = false;
-  const runCycle = () => {
+  const runCycle = async () => {
     if (stopping) {
       return;
     }
@@ -7701,7 +8254,7 @@ function daemonCommand(argv) {
               console.log(`  -> Retried ${retriedResults.length} relay job(s) for ${tool}${project ? ` (project: ${project})` : ""}`);
             }
 
-            const results = executeDispatch(config.memoryDir, {
+            const results = await executeDispatch(config.memoryDir, {
               run: true,
               to: tool,
               project,
@@ -9275,9 +9828,27 @@ function appCommand(argv) {
       }
       if (req.method === "POST" && url.pathname === "/api/dispatch/run") {
         const body = await readRequestJson(req);
-        const result = dashboardActions.runDashboardDispatch(config, body);
+        const concurrency = Math.max(1, Math.min(Number(body.concurrency || 1), 6));
+        if (url.searchParams.get("background") === "1" && concurrency > 1) {
+          const enqueued = backgroundQueue.enqueue({
+            type: "dispatch-run",
+            label: `并发 Dispatch (concurrency=${concurrency})`,
+            run: async (ctx) => {
+              ctx.report(0.05, "dispatching jobs");
+              const result = await dashboardActions.runDashboardDispatch(config, body);
+              ctx.report(0.95, "dispatch completed");
+              return result;
+            }
+          });
+          broadcastDashboardUpdate("dispatch:run");
+          return sendJson(res, { ok: true, background: true, task: enqueued });
+        }
+        const result = await dashboardActions.runDashboardDispatch(config, body);
         broadcastDashboardUpdate("dispatch:run");
         return sendJson(res, result);
+      }
+      if (req.method === "GET" && url.pathname === "/api/dispatch/pool") {
+        return sendJson(res, getDispatchPoolSnapshot());
       }
       if (req.method === "POST" && url.pathname === "/api/dispatch/marvis") {
         const body = await readRequestJson(req);
@@ -9416,8 +9987,10 @@ Commands:
   prompt     Manage prompt templates with Nunjucks rendering for AI tools.
   project    Manage project metadata, aliases, resources, and archive state.
   session    Manage session handoff for context transfer between tools.
-  agent      Inspect projected agent execution sessions.
+  agent      Manage agent registry (persona/bio/status) and role bindings.
   review     Request or list linked reviews.
+  role       Manage first-class role entities (permissions, agent bindings).
+  team       Manage first-class team entities (agent memberships via member-of).
   worktree   Inspect projected execution worktrees.
   rpc        Synchronous request-response RPC calls between tools.
   notify     Send cross-platform notifications with severity-based routing.
@@ -12203,6 +12776,7 @@ function writeEntityRecords(memoryDir, definition, records, options = {}) {
     });
   }
   materializeEntityProjection(memoryDir, definition);
+  mirrorSync(memoryDir, definition.entity, normalized);
 }
 
 function appendEntityRecord(memoryDir, definition, record, options = {}) {
@@ -12216,6 +12790,7 @@ function appendEntityRecord(memoryDir, definition, record, options = {}) {
     reason: options.reason || `${definition.entity}:upsert`
   });
   materializeEntityProjection(memoryDir, definition);
+  mirrorUpsert(memoryDir, definition.entity, [normalized]);
   return normalized;
 }
 
@@ -12230,6 +12805,7 @@ function deleteEntityRecord(memoryDir, definition, id, options = {}) {
     reason: options.reason || `${definition.entity}:delete`
   });
   materializeEntityProjection(memoryDir, definition);
+  mirrorDelete(memoryDir, definition.entity, entityId);
 }
 
 function appendEntityEvents(memoryDir, definition, records, { action = "upsert", source = "ai-memory-hub", reason = "" } = {}) {
@@ -12876,6 +13452,9 @@ function normalizeTask(task) {
     completedAt: task.completedAt || "",
     createdBy: task.createdBy || task.created_by || task.source || "unknown",
     assignee: task.assignee || "",
+    claimedAt: task.claimedAt || "",
+    claimExpiresAt: task.claimExpiresAt || "",
+    lastAssignee: task.lastAssignee || "",
     status,
     priority: normalizePriority(task.priority || "normal"),
     project: task.project || "",

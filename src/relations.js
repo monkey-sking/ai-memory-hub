@@ -12,7 +12,15 @@ const RELATION_TYPES = new Set(["uses", "supports", "belongs-to", "depends-on", 
 export function readRelations(memoryDir) {
   const file = path.join(path.resolve(memoryDir), "relations", "events.jsonl");
   if (!fs.existsSync(file)) return [];
-  return fs.readFileSync(file, "utf8").split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
+  return fs.readFileSync(file, "utf8").split(/\r?\n/).filter(Boolean).map((line) => {
+    // Defensive decode: historical bulk migrations left some lines multi-encoded
+    // (JSON.stringify applied more than once). Decode until we get an object.
+    let parsed = JSON.parse(line);
+    while (typeof parsed === "string") {
+      parsed = JSON.parse(parsed);
+    }
+    return parsed;
+  });
 }
 
 export function recordRelation(memoryDir, input) {

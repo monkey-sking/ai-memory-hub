@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useOutletContext } from 'react-router-dom'
-import { Bot, Brain, HeartPulse, ListTodo, RefreshCw, Wrench } from 'lucide-react'
+import { Bot, Brain, HeartPulse, ListTodo, RefreshCw, Shield, Users, Wrench } from 'lucide-react'
 import { apiGet, asArray, asRecord, numberOf, textOf, type AnyRecord } from '../lib/api'
 import { dashboardLabels, dashboardSubtitles, dashboardTitles } from '../lib/dashboardCopy'
 import type { AppLanguage, AppOutletContext } from '../lib/i18n'
@@ -104,9 +105,11 @@ function buildHourLabels(): string[] {
 
 export default function Overview() {
   const { language } = useOutletContext<AppOutletContext>()
+  const navigate = useNavigate()
   const copy = dashboardLabels[language]
 
   const [data, setData] = useState<AnyRecord | null>(null)
+  const [roleTeam, setRoleTeam] = useState<{ roles: number; teams: number }>({ roles: 0, teams: 0 })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [bannerDismissed, setBannerDismissed] = useState(false)
@@ -115,8 +118,13 @@ export default function Overview() {
     setLoading(true)
     setBannerDismissed(false)
     try {
-      const snapshot = await apiGet<OverviewSnapshot>('/api/dashboard/overview')
+      const [snapshot, rolesRes, teamsRes] = await Promise.all([
+        apiGet<OverviewSnapshot>('/api/dashboard/overview'),
+        apiGet<{ roles?: AnyRecord[] }>('/api/roles'),
+        apiGet<{ teams?: AnyRecord[] }>('/api/teams')
+      ])
       setData(snapshot as AnyRecord)
+      setRoleTeam({ roles: rolesRes.roles?.length ?? 0, teams: teamsRes.teams?.length ?? 0 })
       setError('')
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught))
@@ -255,6 +263,8 @@ export default function Overview() {
         tools: '工具在线',
         agents: '智能体在线',
         health: '健康分',
+        roles: '角色',
+        teams: '团队',
         activity: '实时事件流',
         distribution: '工具状态分布',
         events: '事件',
@@ -274,6 +284,8 @@ export default function Overview() {
         tools: 'Tools online',
         agents: 'Agents online',
         health: 'Health score',
+        roles: 'Roles',
+        teams: 'Teams',
         activity: 'Live activity',
         distribution: 'Tool status',
         events: 'Events',
@@ -359,7 +371,7 @@ export default function Overview() {
             )
           ) : null}
 
-          <MetricGrid>
+          <MetricGrid className="xl:grid-cols-7">
             <MetricCard
               label={labels.tools}
               value={metrics.toolsOnline}
@@ -376,6 +388,23 @@ export default function Overview() {
             />
             <MetricCard label={labels.agents} value={metrics.agentsOnline} icon={Bot} note={language === 'zh' ? '当前活动智能体' : 'active agents'} />
             <MetricCard label={labels.health} value={metrics.healthScore} unit="/ 100" icon={HeartPulse} note={healthTier} />
+            <MetricCard
+              label={labels.roles}
+              value={roleTeam.roles}
+              icon={Shield}
+              note={language === 'zh' ? '已定义角色' : 'defined roles'}
+              className="cursor-pointer hover:border-accent-base"
+              // not a real <a>, but behaves like one via navigate
+              {...({ onClick: () => navigate('/roles') } as AnyRecord)}
+            />
+            <MetricCard
+              label={labels.teams}
+              value={roleTeam.teams}
+              icon={Users}
+              note={roleTeam.teams ? (language === 'zh' ? '活跃团队' : 'active teams') : (language === 'zh' ? '未创建' : 'none yet')}
+              className="cursor-pointer hover:border-accent-base"
+              {...({ onClick: () => navigate('/roles') } as AnyRecord)}
+            />
           </MetricGrid>
 
           <ChartRow

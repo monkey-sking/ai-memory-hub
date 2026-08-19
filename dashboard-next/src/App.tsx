@@ -25,6 +25,7 @@ const Settings = lazy(() => import('./pages/Settings'))
 const Runners = lazy(() => import('./pages/Runners'))
 const Sessions = lazy(() => import('./pages/Sessions'))
 const Reviews = lazy(() => import('./pages/Reviews'))
+const Roles = lazy(() => import('./pages/Roles'))
 const TasksCenter = lazy(() => import('./pages/TasksCenter'))
 const Observability = lazy(() => import('./pages/Observability'))
 const DataPort = lazy(() => import('./pages/DataPort'))
@@ -62,6 +63,7 @@ function App() {
             <Route path="runners" element={<Runners />} />
             <Route path="sessions" element={<Sessions />} />
             <Route path="reviews" element={<Reviews />} />
+            <Route path="roles" element={<Roles />} />
             <Route path="tasks-center" element={<TasksCenter />} />
             <Route path="observability" element={<Observability />} />
             <Route path="data-migration" element={<DataPort />} />

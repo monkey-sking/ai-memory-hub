@@ -22,6 +22,7 @@ import {
   Search,
   Server,
   Settings,
+  Shield,
   Sun,
   Users,
   Workflow,
@@ -78,6 +79,7 @@ const navGroups: NavGroup[] = [
       { to: '/workflows', icon: Workflow, label: { zh: '工作流', en: 'Workflows' } },
       { to: '/memory', icon: Brain, label: { zh: '记忆', en: 'Memory' } },
       { to: '/sessions', icon: Users, label: { zh: '会话', en: 'Sessions' } },
+      { to: '/roles', icon: Shield, label: { zh: '团队与角色', en: 'Teams & Roles' } },
       { to: '/reviews', icon: GitPullRequest, label: { zh: '评审', en: 'Reviews' } }
     ]
   },

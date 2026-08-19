@@ -44,6 +44,19 @@
 - **Session 切换** - 跨工具上下文传递
 - **Connect** - 跨工具连接管理，发送 request/review/handoff 消息
 
+#### 2.5. 角色与团队系统
+- **角色定义** - 6 个岗位角色（产品经理/程序员/UI设计师/测试QA/运营/数据），每个角色带权限标签
+- **Agent 注册表** - 7 个 agent（codex/claude/gemini/antigravity/opencode/mimocode/workbuddy）注册身份，支持 persona（提示词）和 bio（简介）
+- **团队** - 通过 `member-of` 关系将 agent 归入团队，支持动态加入/移出
+- **关系图** - `relations/events.jsonl` 记录 belongs-to（memory→project 归属）、member-of（agent→team 归属）、related-to 等关系
+- **Dashboard CRUD** - 角色和团队可在 dashboard `/roles` 页面直接新建/编辑/删除，agent 提示词可在线编辑
+
+#### 2.6. SQLite 双写（影子写）
+- **影子写** - JSONL 写入时同步写 SQLite，JSONL 仍是唯一真相源
+- **开关** - `AMH_SQLITE_DUALWRITE=1 node --experimental-sqlite src/index.js app` 启动，默认完全 no-op
+- **CLI** - `ai-memory-hub sqlite status` 查看影子写状态、`sqlite migrate` 全量迁移、`sqlite resync` 全量重建
+- **读取层加固** - `relations.js` 对多层 JSON 编码自动解码，防止静默丢数据
+
 #### 3. 权限策略与审批门禁
 - **Permission Policy Layer** - 三阶段实现：数据层+解析器+CLI → Dashboard 集成 → 调度预检执行
 - **Approval Gates** - 机器可读的审批门禁，自动执行调度前检查
@@ -102,6 +115,14 @@
   │   └── projects.jsonl     # 兼容投影
   ├── sessions/              # 会话管理
   │   └── sessions.jsonl
+  ├── agents/                # Agent 注册表
+  │   └── agents.jsonl       # agent persona/bio/status
+  ├── roles/                 # 角色定义
+  │   └── roles.jsonl        # 6 岗位角色 + 权限
+  ├── teams/                 # 团队
+  │   └── teams.jsonl        # 团队定义
+  ├── relations/             # 关系图
+  │   └── events.jsonl       # belongs-to / member-of / related-to
   ├── rpc/                   # RPC 调用
   │   └── requests.jsonl
   ├── notifications/         # 通知
@@ -119,6 +140,8 @@
   │   └── hub.lock
   ├── state/                 # 运行状态
   │   └── daemon.pid         # 守护进程 PID
+  ├── sqlite/                # SQLite 影子库（双写模式）
+  │   └── amh.sqlite         # JSONL 的只读加速镜像
   ├── tools/                 # 工具适配器
   └── extensions/            # 扩展（VS Code等）
   └── extension-registry.json # MCP/Skill registry
@@ -334,6 +357,33 @@ ai-memory-hub session list
 ai-memory-hub session update --id <id> --context <text>
 ```
 
+#### 角色/团队/Agent 管理
+
+```bash
+ai-memory-hub agent list                    # 列出所有 agent（含 persona/bio）
+ai-memory-hub agent role list                # 查看 agent 角色绑定
+
+ai-memory-hub role list                      # 列出角色定义
+ai-memory-hub role create --id <id> --name <name> --description <desc>  # 创建角色
+ai-memory-hub role delete --id <id>          # 删除角色
+
+ai-memory-hub team list                      # 列出团队（含成员数）
+ai-memory-hub team create --id <id> --name <name>  # 创建团队
+ai-memory-hub team delete --id <id>         # 删除团队
+```
+
+Dashboard `http://127.0.0.1:38787/roles` 页面支持以上全部操作的可视化 CRUD。
+
+#### SQLite 双写
+
+```bash
+ai-memory-hub sqlite status                 # 查看影子写状态
+ai-memory-hub sqlite migrate                # JSONL → SQLite 全量迁移
+ai-memory-hub sqlite resync                 # 全量重建影子库
+```
+
+启动 hub 时加 `AMH_SQLITE_DUALWRITE=1` 开启影子写（默认关闭，完全 no-op）。
+
 #### RPC 调用
 
 ```bash
@@ -460,6 +510,13 @@ ai-memory-hub app --port 38787                    # 启动本地仪表盘
 ai-memory-hub app --host 0.0.0.0 --port 38787    # 监听所有接口
 ```
 
+Dashboard 包含 19 个页面：概览、任务、工作流、记忆、会话、评审、团队与角色（`/roles`）、Radio、调度、工具、Skills、扩展、对话、分析、搜索、备份、项目、健康、设置。
+
+开发模式（dashboard-next，Vite + React）：
+```bash
+cd dashboard-next && npm run dev    # http://localhost:5173
+```
+
 #### CDP Bridge
 
 ```bash
@@ -513,6 +570,9 @@ ai-memory-hub task-spec run <name>                # 运行任务命令
         │  • 消息总线              │
         │  • 任务管理              │
         │  • 工作流引擎 + 节点系统  │
+        │  • 角色/团队/Agent       │
+        │  • 关系图               │
+        │  • SQLite 影子写        │
         │  • RPC 通信              │
         │  • 权限策略层            │
         │  • 审批门禁              │
@@ -542,8 +602,10 @@ ai-memory-hub task-spec run <name>                # 运行任务命令
 9. **Dispatch Scheduler** - 工作派发和 Worktree 隔离
 10. **Daemon** - 事件驱动守护进程，心跳监控
 11. **CDP Bridge** - Chrome DevTools Protocol 桥接
-12. **Dashboard** - React + shadcn/ui Web UI 可视化管理
-13. **Backup System** - 备份、自动剪枝、保留策略、恢复
+12. **Dashboard** - React + shadcn/ui Web UI 可视化管理（含团队与角色 CRUD）
+13. **Roles & Teams** - 角色定义、团队管理、Agent 提示词编辑、关系图
+14. **SQLite Dual-Write** - JSONL 影子写，读取层加固防静默丢数据
+15. **Backup System** - 备份、自动剪枝、保留策略、恢复
 
 ### 📖 更多文档
 

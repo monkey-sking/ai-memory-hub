@@ -9,11 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **SQLite 双写（影子写）** - 新增 `sqlite-store.js` 和 `sqlite-dualwrite.js`，JSONL 写入时同步写 SQLite 影子库。开关 `AMH_SQLITE_DUALWRITE=1 node --experimental-sqlite src/index.js app`，默认完全 no-op，失败只记 stderr 不打断 JSONL 主路径。新增 `sqlite` CLI 子命令（`status|migrate|resync`）。
+- **角色系统** - 6 个岗位角色（产品经理/程序员/UI设计师/测试QA/运营/数据），`roles/roles.jsonl` 持久化，`role list / role create / role delete` CLI 命令。
+- **团队系统** - `teams/teams.jsonl` + `member-of` 关系（agent 归属团队），`team list / team create / team delete` CLI 命令。
+- **Agent persona/bio** - agent 注册表支持 `persona`（提示词）和 `bio`（简介）字段，`agent list` 返回。
+- **Dashboard "团队与角色" 页面** - 新增 `Roles.tsx` 页面（`/roles` 路由，侧边栏协作组），支持角色/团队/agent 完整 CRUD（新建/编辑/删除/成员管理/提示词编辑）。
+- **Overview 指标卡** - 概览页新增"角色"和"团队"两个指标卡，可点击跳转。
+- **Agent/Role/Team API 端点** - GET `/api/agents` `/api/roles` `/api/teams` + POST/DELETE 增删改路由。
+- **relations.js 读取层加固** - 多层 JSON 编码自动解到对象为止，防止静默丢数据。
 - **CodeBuddy Code runner** - Registered `codebuddy` in `RUNNER_PROFILES` so `doctor` and `dispatch --run` treat it as a verified CLI runner. Uses `-p --permission-mode bypassPermissions` with stdin prompts and text output; resolves `codebuddy` or `codebuddy-code` from PATH. No model is pinned, so each machine keeps its own default from `~/.codebuddy/settings.json`; `dispatch --model` overrides per job.
 - **CodeBuddy install targets** - `ai-memory-hub install` now writes `~/.codebuddy/CODEBUDDY.md` and `<memoryDir>/tools/codebuddy-shared-memory.md`.
 
 ### Fixed
 
+- **P0: relations 三重编码** - `relations/events.jsonl` 中 390/396 行被三重 JSON 编码（08-05 memory-migration 回填遗留），导致 372 条 belongs-to + 10 条 related-to 等关系静默失效。修复：逐行解码重写 + 读取层加固。
+- **memberCount bug** - `GET /api/teams` 的 memberCount 始终为 0（对象字符串比较错误），已修复。
 - `doctor --tool codebuddy` no longer reports "has shared instructions but no verified CLI runner on this machine". Runner resolution reads only the built-in `RUNNER_PROFILES` table, so the `tools.codebuddy.runner` / `runnerProfile` keys in `config.json` were inert and never consulted.
 
 ### Changed

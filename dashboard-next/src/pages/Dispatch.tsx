@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { Play, RefreshCw, AlertTriangle } from 'lucide-react'
 import {
@@ -93,7 +93,10 @@ export default function Dispatch() {
   const [force, setForce] = useState(false)
   const [limit, setLimit] = useState(10)
   const [modelName, setModelName] = useState('')
+  const [concurrency, setConcurrency] = useState(1)
+  const [poolState, setPoolState] = useState<AnyRecord | null>(null)
   const [statusFilter, setStatusFilter] = useState('all')
+  const poolTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const load = async () => {
     setBusy(true)
@@ -119,11 +122,50 @@ export default function Dispatch() {
   // eslint-disable-next-line react-hooks/set-state-in-effect -- initial data load on mount
   useEffect(() => { void load() }, [])
 
+  // Pool status polling — only active when concurrency > 1
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- polling pool status
+  useEffect(() => {
+    if (concurrency <= 1) { setPoolState(null); return }
+    let active = true
+    const poll = async () => {
+      if (!active) return
+      try {
+        const data = await apiGet<AnyRecord>('/api/dispatch/pool')
+        if (active) setPoolState(asRecord(data))
+      } catch { /* ignore poll errors */ }
+      if (active && poolState?.active) {
+        poolTimer.current = setTimeout(poll, 2000)
+      }
+    }
+    void poll()
+    return () => {
+      active = false
+      if (poolTimer.current) { clearTimeout(poolTimer.current); poolTimer.current = null }
+    }
+  }, [concurrency, poolState?.active])
+
   const runDispatch = async () => {
     setBusy(true)
     setTriggerError('')
     try {
-      await apiPost<AnyRecord>('/api/dispatch/run', { force, limit, model: modelName.trim() })
+      if (concurrency > 1) {
+        // Background mode for concurrent dispatch
+        const res = await apiPost<AnyRecord>('/api/dispatch/run?background=1', { force, limit, model: modelName.trim(), concurrency })
+        const task = asRecord(res).task
+        const taskId = textOf(asRecord(task).id)
+        if (taskId) {
+          // Poll background task until done
+          for (let i = 0; i < 120; i++) {
+            await new Promise(r => setTimeout(r, 1500))
+            const taskData = await apiGet<AnyRecord>(`/api/background-tasks/${taskId}`)
+            const taskState = asRecord(taskData)
+            const status = textOf(taskState.status)
+            if (status === 'done' || status === 'failed' || status === 'cancelled') break
+          }
+        }
+      } else {
+        await apiPost<AnyRecord>('/api/dispatch/run', { force, limit, model: modelName.trim() })
+      }
       await load()
     } catch (caught) {
       setTriggerError(caught instanceof Error ? caught.message : String(caught))
@@ -300,6 +342,30 @@ export default function Dispatch() {
           >
             <div className="flex flex-col gap-4 p-4">
               <p className="text-xs text-ink-3">{copy.dispatchSummaryNote}</p>
+              {poolState?.active ? (
+                <div className="rounded-lg border border-accent-border bg-accent-surface p-3">
+                  <div className="flex items-center gap-2 text-sm font-medium text-accent-text">
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    {language === 'zh' ? `并发池运行中 (${numberOf(poolState.completed)}/${numberOf(poolState.total)})` : `Pool active (${numberOf(poolState.completed)}/${numberOf(poolState.total)})`}
+                  </div>
+                  <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-surface-sunk">
+                    <span className="block h-full rounded-full bg-accent-base transition-all" style={{ width: `${numberOf(poolState.total) > 0 ? (numberOf(poolState.completed) / numberOf(poolState.total)) * 100 : 0}%` }} />
+                  </div>
+                  {poolState.running && Array.isArray(poolState.running) && (poolState.running as AnyRecord[]).length > 0 ? (
+                    <ul className="mt-2 space-y-1">
+                      {(poolState.running as AnyRecord[]).map((r, i) => (
+                        <li key={i} className="text-xs text-ink-3">
+                          <span className="font-mono">{textOf(r.tool)}</span>
+                          {textOf(r.project) ? <span className="ml-2 text-ink-4">{textOf(r.project)}</span> : null}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  {poolState.lastError ? (
+                    <p className="mt-1 text-xs text-danger-text">{textOf(poolState.lastError)}</p>
+                  ) : null}
+                </div>
+              ) : null}
               <div className="flex flex-wrap items-end gap-3">
                 <label className="flex w-28 flex-col gap-1">
                   <span className="text-xs font-medium text-ink-2">{copy.limit}</span>
@@ -318,6 +384,16 @@ export default function Dispatch() {
                     value={modelName}
                     onChange={event => setModelName(event.target.value)}
                     placeholder={copy.modelPlaceholder}
+                  />
+                </label>
+                <label className="flex w-28 flex-col gap-1">
+                  <span className="text-xs font-medium text-ink-2">{language === 'zh' ? '并发' : 'Concurrency'}</span>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={6}
+                    value={concurrency}
+                    onChange={event => setConcurrency(Math.max(1, Math.min(6, Number(event.target.value) || 1)))}
                   />
                 </label>
                 <label className="flex items-center gap-2 self-center">

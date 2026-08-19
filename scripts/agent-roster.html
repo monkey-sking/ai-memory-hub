@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AMH 团队 / Agent / 角色 关系仪表盘</title>
+<style>
+  :root{--bg:#f7f8fa;--card:#fff;--bd:#e6e8eb;--tx:#1a1a1a;--mut:#8b8f96}
+  *{box-sizing:border-box} body{margin:0;font-family:-apple-system,Segoe UI,Roboto,system-ui,sans-serif;background:var(--bg);color:var(--tx);padding:24px}
+  h1{font-size:20px;margin:0 0 4px} .sub{color:var(--mut);font-size:13px;margin-bottom:20px}
+  h2{font-size:15px;margin:24px 0 12px;border-left:3px solid #4f7cff;padding-left:8px}
+  .grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}
+  .card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:12px}
+  .card-head{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+  .dot{width:9px;height:9px;border-radius:50%}
+  .name{font-weight:600}
+  .badge{margin-left:auto;font-size:11px;background:#eef1f5;color:var(--mut);padding:2px 8px;border-radius:20px}
+  .roles,.perms{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+  .tag{font-size:11px;background:#eaf0ff;color:#3a5bd9;padding:2px 8px;border-radius:6px}
+  .tag.perm{background:#eafaf0;color:#1c8a4f}
+  .desc{font-size:12px;color:var(--mut);margin:4px 0}
+  .members{font-size:12px;margin-top:6px}
+  .muted{color:var(--mut)} .empty{color:var(--mut);font-size:13px;background:var(--card);border:1px dashed var(--bd);border-radius:10px;padding:14px}
+  code{background:#eef1f5;padding:1px 5px;border-radius:4px;font-size:12px}
+</style></head>
+<body>
+  <h1>AMH 团队 / Agent / 角色 关系仪表盘</h1>
+  <div class="sub">P0 协调层 + P1 agent/role 实体 + P2 team 实体 · 数据来自生产库 CLI 快照 · 生成于 2026/8/18 17:53:00</div>
+
+  <h2>Agents（6）</h2>
+  <div class="grid">
+  <div class="card">
+    <div class="card-head">
+      <span class="dot" style="background:#e5484d"></span>
+      <span class="name">codex</span>
+      <span class="badge">busy</span>
+    </div>
+    <div class="roles"><span class='muted'>通用 runner · 角色按需分配</span></div>
+  </div>
+  <div class="card">
+    <div class="card-head">
+      <span class="dot" style="background:#30a46c"></span>
+      <span class="name">claude</span>
+      <span class="badge">idle</span>
+    </div>
+    <div class="roles"><span class='muted'>通用 runner · 角色按需分配</span></div>
+  </div>
+  <div class="card">
+    <div class="card-head">
+      <span class="dot" style="background:#30a46c"></span>
+      <span class="name">gemini</span>
+      <span class="badge">idle</span>
+    </div>
+    <div class="roles"><span class='muted'>通用 runner · 角色按需分配</span></div>
+  </div>
+  <div class="card">
+    <div class="card-head">
+      <span class="dot" style="background:#30a46c"></span>
+      <span class="name">antigravity</span>
+      <span class="badge">idle</span>
+    </div>
+    <div class="roles"><span class='muted'>通用 runner · 角色按需分配</span></div>
+  </div>
+  <div class="card">
+    <div class="card-head">
+      <span class="dot" style="background:#30a46c"></span>
+      <span class="name">opencode</span>
+      <span class="badge">idle</span>
+    </div>
+    <div class="roles"><span class='muted'>通用 runner · 角色按需分配</span></div>
+  </div>
+  <div class="card">
+    <div class="card-head">
+      <span class="dot" style="background:#30a46c"></span>
+      <span class="name">mimocode</span>
+      <span class="badge">idle</span>
+    </div>
+    <div class="roles"><span class='muted'>通用 runner · 角色按需分配</span></div>
+  </div></div>
+
+  <h2>Roles（6）</h2>
+  <div class="grid">
+  <div class="card">
+    <div class="card-head"><span class="name">产品经理</span><span class="badge">0 人</span></div>
+    <div class="desc">拆解目标、写需求/方案、排任务与多 agent 工作流</div>
+    <div class="perms"><span class="tag perm">task.create</span><span class="tag perm">task.plan</span><span class="tag perm">workflow.create</span><span class="tag perm">spec.write</span></div>
+    <div class="members">成员: <span class='muted'>按需分配（agent role add）</span></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><span class="name">程序员</span><span class="badge">0 人</span></div>
+    <div class="desc">实际写代码、出文档、交付任务</div>
+    <div class="perms"><span class="tag perm">task.claim</span><span class="tag perm">task.done</span><span class="tag perm">code.write</span><span class="tag perm">doc.write</span></div>
+    <div class="members">成员: <span class='muted'>按需分配（agent role add）</span></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><span class="name">UI设计师</span><span class="badge">0 人</span></div>
+    <div class="desc">线框/原型/视觉规范与界面评审</div>
+    <div class="perms"><span class="tag perm">ui.mockup</span><span class="tag perm">ui.review</span><span class="tag perm">asset.write</span><span class="tag perm">doc.write</span></div>
+    <div class="members">成员: <span class='muted'>按需分配（agent role add）</span></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><span class="name">测试QA</span><span class="badge">0 人</span></div>
+    <div class="desc">评审质量、跑测试、报 bug</div>
+    <div class="perms"><span class="tag perm">task.review</span><span class="tag perm">test.run</span><span class="tag perm">bug.report</span></div>
+    <div class="members">成员: <span class='muted'>按需分配（agent role add）</span></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><span class="name">运营</span><span class="badge">0 人</span></div>
+    <div class="desc">协同广播、发布通告与文档运营</div>
+    <div class="perms"><span class="tag perm">radio.write</span><span class="tag perm">doc.write</span><span class="tag perm">release.announce</span></div>
+    <div class="members">成员: <span class='muted'>按需分配（agent role add）</span></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><span class="name">数据</span><span class="badge">0 人</span></div>
+    <div class="desc">数据查询、报表与跨 agent 状态观察</div>
+    <div class="perms"><span class="tag perm">data.query</span><span class="tag perm">report.write</span><span class="tag perm">radio.read</span></div>
+    <div class="members">成员: <span class='muted'>按需分配（agent role add）</span></div>
+  </div></div>
+
+  <h2>Teams（0）</h2>
+  <div class="grid"><div class="empty">P2 team 实体已就绪（relations 加 <code>team</code> + <code>member-of</code>），生产库尚未建具体团队。用 <code>ai-memory-hub team create --id &lt;team&gt;</code> 即可。</div></div>
+</body></html>

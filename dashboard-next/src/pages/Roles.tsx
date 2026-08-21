@@ -80,7 +80,7 @@ function RoleFormDialog({
         id: finalId,
         name: name.trim() || finalId,
         description: description.trim(),
-        permissions: permissions.split(',').map(s => s.trim()).filter(Boolean),
+        permissions: permissions.trim(),
       })
       onOpenChange(false)
     } catch (e) {
@@ -115,7 +115,7 @@ function RoleFormDialog({
               <label className="text-sm font-medium text-ink">{zh ? '权限（逗号分隔）' : 'Permissions (comma-separated)'}</label>
               <Input value={permissions} onChange={e => setPermissions(e.target.value)} placeholder="task.create, spec.write" />
             </div>
-            {err ? <AlertBanner title={err} variant="danger" /> : null}
+            {err ? <AlertBanner title={err} tone="error" /> : null}
           </div>
         </DialogBody>
         <DialogFooter>
@@ -196,7 +196,7 @@ function TeamFormDialog({
               <label className="text-sm font-medium text-ink">{zh ? '描述' : 'Description'}</label>
               <Textarea value={description} onChange={e => setDescription(e.target.value)} rows={2} placeholder={zh ? '团队说明' : 'Team description'} />
             </div>
-            {err ? <AlertBanner title={err} variant="danger" /> : null}
+            {err ? <AlertBanner title={err} tone="error" /> : null}
           </div>
         </DialogBody>
         <DialogFooter>
@@ -289,7 +289,7 @@ function AgentEditDialog({
                 placeholder={zh ? '一句话介绍' : 'One-line description'}
               />
             </div>
-            {err ? <AlertBanner title={err} variant="danger" /> : null}
+            {err ? <AlertBanner title={err} tone="error" /> : null}
           </div>
         </DialogBody>
         <DialogFooter>
@@ -617,7 +617,7 @@ export default function Roles() {
                 })}
               </div>
             ) : (
-              <EmptyState className="p-4" />
+              <EmptyState title={labels.noBindings} className="p-4" />
             )}
           </Card>
         </>

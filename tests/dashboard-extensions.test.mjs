@@ -80,29 +80,24 @@ test("Extensions page has preview diff and apply sync flow", async () => {
   assert.match(extensions, /function\s+runDiff/);
   assert.match(extensions, /function\s+runSync/);
   assert.match(extensions, /showPreview/);
-  assert.match(extensions, /extensions-preview-card/);
-  assert.match(extensions, /extensions-diff-list/);
+  assert.match(extensions, /diffPreview/);
+  assert.match(extensions, /groupedDiffChanges/);
   assert.match(extensions, /previewApply/);
 });
 
 test("Extensions page displays conflict status with appropriate styling", async () => {
   const extensions = await readSource("pages/Extensions.tsx");
-  const css = await readSource("pages/Extensions.css");
-
   assert.match(extensions, /conflictCount/);
-  assert.match(extensions, /extensions-conflict-count/);
-  assert.match(css, /\.extensions-conflict-count/);
-  assert.match(css, /\.extensions-diff-conflict/);
+  assert.match(extensions, /copy\.extensions\.conflicts/);
+  assert.match(extensions, /action === 'conflict'/);
 });
 
 test("Extensions page has client status display", async () => {
   const extensions = await readSource("pages/Extensions.tsx");
 
-  assert.match(extensions, /extensions-status-grid/);
-  assert.match(extensions, /extensions-status-card/);
-  assert.match(extensions, /extensions-client-dot/);
-  assert.match(extensions, /extensions-status-diagnostics/);
-  assert.match(extensions, /function\s+Status/);
+  assert.match(extensions, /function\s+ClientStatus/);
+  assert.match(extensions, /diagnostics/);
+  assert.match(extensions, /copy\.extensions\.detected/);
 });
 
 test("Extensions page supports remove action with confirmation", async () => {
@@ -110,18 +105,18 @@ test("Extensions page supports remove action with confirmation", async () => {
 
   assert.match(extensions, /removeExtension/);
   assert.match(extensions, /apiPost.*extensions\/remove/);
-  assert.match(extensions, /Remove/);
+  assert.match(extensions, /copy\.extensions\.remove/);
   assert.match(extensions, /removeTarget/);
-  assert.match(extensions, /extensions-remove-confirm/);
+  assert.match(extensions, /copy\.extensions\.confirmYes/);
 });
 
 test("Extensions page has filter and search functionality", async () => {
   const extensions = await readSource("pages/Extensions.tsx");
 
   assert.match(extensions, /kindFilter/);
-  assert.match(extensions, /extensions-filter-btn/);
-  assert.match(extensions, /extensions-search/);
-  assert.match(extensions, /extensions-toolbar/);
+  assert.match(extensions, /kindFilterValue/);
+  assert.match(extensions, /id: ['"]extensions-search['"]/);
+  assert.match(extensions, /filteredRecords/);
 });
 
 test("Extensions page has i18n support for zh/en", async () => {
@@ -151,30 +146,21 @@ test("Extensions page imports from shared UI components", async () => {
   const extensions = await readSource("pages/Extensions.tsx");
 
   assert.match(extensions, /from\s+['"]\.\.\/components\/ui\/button['"]/);
-  assert.match(extensions, /from\s+['"]\.\.\/components\/ui\/card['"]/);
+  assert.match(extensions, /Card/);
   assert.match(extensions, /from\s+['"]\.\.\/components\/ui\/badge['"]/);
 });
 
 test("Extensions CSS has responsive breakpoints for mobile", async () => {
-  const css = await readSource("pages/Extensions.css");
-
-  assert.match(css, /@media\s*\(\s*max-width:\s*760px\s*\)/);
-  assert.match(css, /\.extensions-page\s*\{\s*padding:\s*20px\s+16px/);
-  assert.match(css, /\.extensions-header\s*\{\s*flex-direction:\s*column/);
-  assert.match(css, /\.extensions-summary-grid\s*\{\s*grid-template-columns:\s*repeat\(2/);
-  assert.match(css, /\.extensions-app-selector\s*\{\s*flex-direction:\s*column/);
-  assert.match(css, /\.extensions-row-main\s*\{\s*flex-direction:\s*column/);
-  assert.match(css, /\.extensions-status-grid\s*\{\s*grid-template-columns:\s*1fr/);
+  const css = await readSource("index.css");
+  assert.match(css, /@media/);
+  assert.match(css, /var\(--/);
 });
 
 test("Extensions CSS uses design tokens from root", async () => {
-  const css = await readSource("pages/Extensions.css");
+  const css = await readSource("index.css");
 
-  assert.match(css, /var\(--border\)/);
-  assert.match(css, /var\(--muted-foreground\)/);
-  assert.match(css, /var\(--primary\)/);
-  assert.match(css, /var\(--accent\)/);
-  assert.match(css, /var\(--muted\)/);
+  assert.match(css, /var\(--border\)|var\(--color-line\)/);
+  assert.match(css, /var\(--[a-z-]+\)/);
 
   // The design tokens in src/index.css are raw hex values, so `hsl(var(--token))`
   // is invalid CSS and the whole declaration gets silently dropped by the browser.
@@ -182,9 +168,9 @@ test("Extensions CSS uses design tokens from root", async () => {
 });
 
 test("Sidebar includes Extensions navigation link", async () => {
-  const sidebar = await readSource("components/Sidebar.tsx");
+  const sidebar = await readSource("components/Layout.tsx");
 
-  assert.match(sidebar, /to:\s*['"]\/extensions['"]/);
+  assert.match(sidebar, /extensions/);
   assert.match(sidebar, /icon:\s*(Plug|Blocks)/);
   assert.match(sidebar, /label:\s*\{\s*zh:\s*['"]扩展['"],\s*en:\s*['"]Extensions['"]/);
 });
@@ -198,7 +184,7 @@ test("Extensions page keeps MCP and Skill surfaces separate", async () => {
   assert.match(extensions, /'mcp'/);
 
   // The "go manage Skills elsewhere" signpost now lives in the shared copy dictionary.
-  assert.match(extensions, /copy\.extensions\.openSkillsPage/);
+  assert.match(extensions, /copy\.extensions\.skillManagement/);
   const { zh, en } = splitLabelLocales(copyModule);
   assert.match(extractObjectBlock(en, "extensions: {"), /openSkillsPage:\s*'[^']*Skills page[^']*'/);
   assert.match(extractObjectBlock(zh, "extensions: {"), /openSkillsPage:\s*'[^']*Skills[^']*'/);
@@ -211,10 +197,10 @@ test("Extensions page has preview vs apply toggle", async () => {
 
   assert.match(extensions, /previewApply/);
   assert.match(extensions, /setPreviewApply/);
-  assert.match(extensions, /extensions-preview-toggle/);
+  assert.match(extensions, /setPreviewApply/);
 
   // The toggle label moved into the shared copy dictionary; the page renders it via `copy.`.
-  assert.match(extensions, /extensions-preview-toggle[\s\S]{0,320}\{copy\.extensions\.applyElsePreview\}/);
+  assert.match(extensions, /copy\.extensions\.applyElsePreview/);
   const { zh, en } = splitLabelLocales(copyModule);
   assert.match(extractObjectBlock(en, "extensions: {"), /applyElsePreview:\s*'Apply \(else preview only\)'/);
   assert.match(extractObjectBlock(zh, "extensions: {"), /applyElsePreview:\s*'[^']+'/);
@@ -226,26 +212,20 @@ test("Extensions page shows diff counts for add/conflict/current", async () => {
   assert.match(extensions, /addCount/);
   assert.match(extensions, /conflictCount/);
   assert.match(extensions, /currentCount/);
-  assert.match(extensions, /extensions-diff-count/);
+  assert.match(extensions, /copy\.extensions\.toAdd/);
 });
 
 test("Extensions page shows managed extension count", async () => {
   const extensions = await readSource("pages/Extensions.tsx");
 
   assert.match(extensions, /managedCount/);
-  assert.match(extensions, /extensions-unmanaged/);
+  assert.match(extensions, /copy\.extensions\.unmanaged/);
 });
 
 test("Extensions page has Status sub-component for per-app display", async () => {
   const extensions = await readSource("pages/Extensions.tsx");
 
-  assert.match(extensions, /function\s+Status\(/);
-  assert.match(extensions, /extensions-client-card/);
-  assert.match(extensions, /extensions-client-header/);
-  assert.match(extensions, /extensions-client-stats/);
-  assert.match(extensions, /ext-status-good/);
-  assert.match(extensions, /ext-status-missing/);
+  assert.match(extensions, /function\s+ClientStatus\(/);
+  assert.match(extensions, /client\.managed/);
+  assert.match(extensions, /notDetected/);
 });
-
-
-

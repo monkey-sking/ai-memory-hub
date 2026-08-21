@@ -12047,6 +12047,14 @@ function sendHtml(res, html) {
   res.end(html);
 }
 
+function sendPlain(res, text, status = 200) {
+  res.writeHead(status, {
+    "Content-Type": "text/plain; charset=utf-8",
+    "Cache-Control": "no-store"
+  });
+  res.end(text);
+}
+
 function sendJson(res, value, status = 200) {
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
@@ -18734,6 +18742,22 @@ function resolveCommandPaths(commandName) {
       .map((line) => line.trim())
       .filter(Boolean);
   }
+  // Test harnesses and cross-platform launchers may provide a Windows-style
+  // PATH while running under Node on macOS/Linux. Resolve those shims without
+  // requiring the host shell to understand the foreign separator.
+  const foreignPath = String(process.env.PATH || "")
+    .split(/[;:]/)
+    .filter(Boolean);
+  const foreignMatches = [];
+  for (const directory of foreignPath) {
+    for (const suffix of ["", ".cmd", ".exe"]) {
+      const candidate = path.join(directory, `${name}${suffix}`);
+      if (fs.existsSync(candidate) && !foreignMatches.includes(candidate)) {
+        foreignMatches.push(candidate);
+      }
+    }
+  }
+  if (foreignMatches.length) return foreignMatches;
   const result = spawnSync("sh", ["-c", `command -v ${shellQuote(name)}`], {
     encoding: "utf8",
     windowsHide: true
@@ -18807,6 +18831,4 @@ if (typeof module !== "undefined" && module.exports) {
     POLICY_OPERATIONS
   };
 }
-
-
 

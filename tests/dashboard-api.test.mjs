@@ -378,8 +378,8 @@ test("dashboard serves externalized virtual-scroll assets", async () => {
   assert.match(tasksPanelSource, /'\/api\/task\/review'/);
   assert.match(dashboardSource, /apiGet<AnyRecord>\('\/api\/health'\)/);
   assert.match(dashboardSource, /toolIconFiles/);
-  assert.match(dashboardCss, /\.kanban-grid/);
-  assert.match(dashboardCss, /\.kanban-grid-4/);
+  assert.match(dashboardCss, /\.command-center/);
+  assert.match(dashboardCss, /\.task-action-menu/);
   assert.match(dashboardCss, /\.toast-stack/);
   assert.match(dashboardCss, /\.workflow-card/);
   assert.match(dashboardCss, /\.tool-card/);

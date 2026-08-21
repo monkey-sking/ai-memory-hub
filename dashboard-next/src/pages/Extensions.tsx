@@ -260,12 +260,13 @@ export default function Extensions() {
             {APPS.map(app => (
               <Button
                 key={app}
+                className="extensions-app-btn"
                 size="sm"
                 variant={selectedApps[app] ? 'primary' : 'secondary'}
                 aria-pressed={selectedApps[app]}
                 onClick={() => toggleApp(app)}
               >
-                {toolIconFiles[app] ? <img className="h-3.5 w-3.5 rounded-xs object-contain" src={toolIconFiles[app]} alt="" /> : null}
+                {toolIconFiles[app] ? <img className="extensions-app-icon h-3.5 w-3.5 rounded-xs object-contain" src={toolIconFiles[app]} alt="" /> : null}
                 {toolDisplayNames[language][app] || app}
               </Button>
             ))}

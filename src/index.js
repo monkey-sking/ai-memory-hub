@@ -1703,8 +1703,8 @@ function recordCommand(argv) {
     const content = tokenizeChinese(text);
     const tags = Array.isArray(metadata.tags) ? metadata.tags.join(" ") : "";
     const project = metadata.project || "";
-    db.exec(`INSERT INTO search_index (entity_type, entity_id, title, content, kind, project, tags, ts)
-      VALUES ('memory', '${event.id.replace(/'/g, "''")}', '', '${content.replace(/'/g, "''")}', '${kind}', '${project.replace(/'/g, "''")}', '${tokenizeChinese(tags).replace(/'/g, "''")}', '${event.ts}')`);
+    db.prepare(`INSERT INTO search_index (entity_type, entity_id, title, content, kind, project, tags, ts)
+      VALUES ('memory', ?, '', ?, ?, ?, ?, ?)`).run(event.id, content, kind, project, tokenizeChinese(tags), event.ts);
   } catch { /* index not yet built or unavailable */ }
   finally { if (db) try { db.close(); } catch {} }
 

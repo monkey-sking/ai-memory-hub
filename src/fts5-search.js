@@ -69,9 +69,7 @@ function getMeta(db, key) {
 }
 
 function setMeta(db, key, value) {
-  const safeKey = String(key || "").replace(/'/g, "''");
-  const safeValue = String(value || "").replace(/'/g, "''");
-  db.exec(`INSERT OR REPLACE INTO meta (key, value) VALUES ('${safeKey}', '${safeValue}')`);
+  db.prepare(`INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)`).run(String(key || ""), String(value || ""));
 }
 
 /**

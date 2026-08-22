@@ -103,10 +103,10 @@ ai-memory-hub task purge --id abc123 --confirm "Sensitive data cleanup"
   "taskId": "d599e0e5db8b3ed0",
   "taskTitle": "Test task for purge feature",
   "backups": {
-    "events": "<user-home>\\.ai-memory\\tasks\\events.jsonl.backup.2026-06-15T04-45-55-810Z",
-    "projection": "<user-home>\\.ai-memory\\tasks\\tasks.jsonl.backup.2026-06-15T04-45-55-810Z"
+    "events": "<user-home>/.ai-memory/tasks/events.jsonl.backup.<timestamp>",
+    "projection": "<user-home>/.ai-memory/tasks/tasks.jsonl.backup.<timestamp>"
   },
-  "purgeLog": "<user-home>\\.ai-memory\\tasks\\purge.log"
+  "purgeLog": "<user-home>/.ai-memory/tasks/purge.log"
 }
 ```
 

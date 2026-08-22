@@ -25,7 +25,7 @@ When another AI tool is added later, the existing task, radio, workflow, context
 ## Minimum Setup
 
 1. Install the shared skill layer for the tool.
-2. Read `C:\Users\<user>\.ai-memory\MEMORY.md` at session start.
+2. Read `<user-home>/.ai-memory/MEMORY.md` at session start.
 3. Use `ai-memory-hub task`, `workflow`, `context`, and `search` for durable work state.
 4. Run `ai-memory-hub health` and `ai-memory-hub heartbeat check` when state looks inconsistent.
 

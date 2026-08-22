@@ -35,7 +35,7 @@ This blocks **P0-#1 (permission matrix)** and **P0-#2 (approval gates)** because
 
 #### 1.1 Node Event Schema
 
-Append-only event log: `C:\Users\<user>\.ai-memory\workflows\nodes.jsonl`
+Append-only event log: `<user-home>/.ai-memory/workflows/nodes.jsonl`
 
 Each node event has this shape:
 
@@ -93,13 +93,13 @@ Each node event has this shape:
 
 ### 2. Storage
 
-**File:** `C:\Users\<user>\.ai-memory\workflows\nodes.jsonl`
+**File:** `<user-home>/.ai-memory/workflows/nodes.jsonl`
 
 **Write pattern:** append-only. Each node lifecycle generates multiple events (one per status transition).
 
 **Read pattern:** replay events, group by `nodeId`, take the most recent event per node. The most recent event's `status` is the current node status.
 
-**Projection:** `C:\Users\<user>\.ai-memory\workflows\nodes-projection.jsonl` (optional; can rebuild from events).
+**Projection:** `<user-home>/.ai-memory/workflows/nodes-projection.jsonl` (optional; can rebuild from events).
 
 ### 3. CLI Surface
 

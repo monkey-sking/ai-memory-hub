@@ -12,7 +12,7 @@ ai-memory-hub status
 ```
 
 **结果:**
-- Memory Dir: `C:\Users\<user>\.ai-memory`
+- Memory Dir: `<user-home>/.ai-memory`
 - 待处理事件: 1
 - 记忆事件: 274
 - 任务总数: 295 (完成: 274, 活动: 3)
@@ -142,7 +142,7 @@ npm run cdp-bridge
 
 - **操作系统:** Windows 11 Pro
 - **Node.js:** v24.15.0
-- **Memory Dir:** `C:\Users\<user>\.ai-memory`
+- **Memory Dir:** `<user-home>/.ai-memory`
 - **项目目录:** `<repo-root>`
 
 ## 结论

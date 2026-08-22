@@ -22,6 +22,7 @@
     "review:overengineering": "node scripts/review-overengineering.js",
     "cdp-bridge": "node src/cdp-bridge.js",
     "demo": "node scripts/demo.js"
+    ,"check:public": "node scripts/check-public-repo-boundary.js"
   },
   "keywords": [
     "ai",

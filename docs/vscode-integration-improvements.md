@@ -157,7 +157,7 @@ function detectVSCode() {
   "name": "vscode",
   "kind": "editor-state",
   "installed": true,
-  "dir": "<user-home>\\AppData\\Roaming\\Code"
+  "dir": "<user-home>/AppData/Roaming/Code"
 }
 ```
 
@@ -168,10 +168,10 @@ function detectVSCode() {
   "kind": "editor-state",
   "installed": true,
   "verified": true,
-  "executablePath": "<user-home>\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe",
+  "executablePath": "<user-home>/AppData/Local/Programs/Microsoft VS Code/Code.exe",
   "version": "1.95.3",
-  "configDir": "<user-home>\\AppData\\Roaming\\Code",
-  "extensionsDir": "<user-home>\\.vscode\\extensions",
+  "configDir": "<user-home>/AppData/Roaming/Code",
+  "extensionsDir": "<user-home>/.vscode/extensions",
   "extensions": [
     {
       "id": "saoudrizwan.claude-dev",

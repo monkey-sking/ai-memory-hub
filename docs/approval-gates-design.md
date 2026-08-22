@@ -44,7 +44,7 @@ This blocks:
 
 #### 1.1 Approval Gate Event Schema
 
-Append-only event log: `C:\Users\<user>\.ai-memory\gates\approvals.jsonl`
+Append-only event log: `<user-home>/.ai-memory/gates/approvals.jsonl`
 
 Each gate event:
 
@@ -94,7 +94,7 @@ Each gate event:
 
 ### 2. Storage
 
-**File:** `C:\Users\<user>\.ai-memory\gates\approvals.jsonl`
+**File:** `<user-home>/.ai-memory/gates/approvals.jsonl`
 
 **Write pattern:** append-only. Each gate lifecycle = 1 requested event + 1 terminal event (approved/rejected/waived).
 
@@ -193,7 +193,7 @@ Shows:
 
 #### Phase 1: Data Layer + CLI
 
-- [ ] Add `C:\Users\<user>\.ai-memory\gates\approvals.jsonl` event log
+- [ ] Add `<user-home>/.ai-memory/gates/approvals.jsonl` event log
 - [ ] Add `readApprovalGates(memoryDir, filters)` — replay events, return gate array
 - [ ] Add `appendApprovalGateEvent(memoryDir, event)` — append to `approvals.jsonl`
 - [ ] CLI: `gate request|approve|reject|needs-changes|waive|list|show|queue`

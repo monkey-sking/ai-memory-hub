@@ -5,7 +5,7 @@ setlocal
 
 set "VITE_PORT=5174"
 set "HUB_PORT=38787"
-set "NODE22=C:\Users\<user>\.workbuddy\binaries\node\versions\22.22.2\node.exe"
+set "NODE22=%USERPROFILE%\.workbuddy\binaries\node\versions\22.22.2\node.exe"
 set "NODE24=D:\nodejs\node-v24.15.0-win-x64\node.exe"
 set "ROOT=%~dp0"
 

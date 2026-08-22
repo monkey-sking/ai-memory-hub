@@ -23,7 +23,7 @@
 ✅ .windsurfrules              # Windsurf 规则
 ✅ .clinerules                 # Cline 规则
 ✅ .aider.instructions.md      # Aider 指令
-✅ C:Users<user>...     # 临时文件
+✅ <user-home>/.ai-memory/... # 临时文件
 ```
 
 **原因:** 这些文件包含个人工作流、API 密钥引用、本地路径等敏感信息

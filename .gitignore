@@ -18,8 +18,6 @@ tmp/
 **/.ai-memory/
 .ai-worktrees/
 **/.ai-worktrees/
-C*Users<user>.ai-memoryinboxevents.jsonl
-**/C*Users<user>.ai-memoryinboxevents.jsonl
 
 # Local runtime config (machine-specific paths; use config.example.json as template)
 config.json

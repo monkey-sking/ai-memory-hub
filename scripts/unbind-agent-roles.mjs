@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 
-const MEM = "<user-home>/.ai-memory";
+const MEM = process.env.AI_MEMORY_HOME || `${homedir()}/.ai-memory`;
 const now = new Date().toISOString();
 
 // 1) agents: 清空写死的角色绑定——角色是按需分配的职能，不是钉死在 agent 上的静态属性

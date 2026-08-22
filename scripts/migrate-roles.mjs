@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 
-const MEM = "<user-home>/.ai-memory";
+const MEM = process.env.AI_MEMORY_HOME || `${homedir()}/.ai-memory`;
 const now = new Date().toISOString();
 
 // 新角色目录：岗位/职能（id 英文 slug，name 中文）

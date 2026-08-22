@@ -19,7 +19,7 @@ if "%ERRORLEVEL%"=="1" (
   echo [skip] 后端 hub 已在 :%HUB_PORT% 监听
 ) else (
   echo [start] 启动后端 hub ...
-  start "AMH-hub" /min cmd /c "cd /d %ROOT% && %NODE24% src\index.js app --host 127.0.0.1 --port %HUB_PORT%"
+  start "AMH-hub" /min cmd /c "cd /d %ROOT% && set AMH_SQLITE_DUALWRITE=1 && %NODE22% --experimental-sqlite src\index.js app --host 127.0.0.1 --port %HUB_PORT%"
 )
 
 REM --- 前端 Vite（Node 22）---

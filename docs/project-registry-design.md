@@ -4,7 +4,7 @@
 
 ### 当前痛点
 1. **无项目元数据** - 无法记录项目状态、描述、关系
-2. **无法表达项目关系** - sample-media 是 sample-backend 的换皮，但系统不知道
+2. **无法表达项目关系** - 示例项目之间的派生关系无法表达
 3. **无状态管理** - 无法标记项目已暂停/归档/活跃
 4. **无别名支持** - 项目改名后历史数据难以追溯
 5. **无外部关联** - 无法链接飞书文件夹、代码仓库、文档
@@ -16,7 +16,7 @@
 - workspace: 18 条
 - base-project: 16 条
 - test-*系列: 16 条
-- sample-media: 待整理（目前在飞书但未在系统中）
+- derived-project: 待整理（目前在外部资料中但未在系统中）
 
 ## 二、设计方案
 
@@ -34,19 +34,19 @@
 
 ```jsonl
 {
-  "id": "sample-media",
-  "name": "sample-project",
-  "displayName": "sample-project",
+  "id": "derived-project",
+  "name": "示例派生项目",
+  "displayName": "示例派生项目",
   "status": "active",
   "type": "game",
-  "description": "《sample-project》的西游主题换皮版本，麻将堆叠二消玩法",
+  "description": "示例派生项目描述",
   "metadata": {
-    "basedOn": "sample-backend",
+    "basedOn": "base-project",
     "relation": "reskin",
-    "target": "55+ 银发用户",
+    "target": "示例用户群",
     "tech": ["Unity", "Luban", "YooAsset", "HybridCLR"]
   },
-  "aliases": ["sample-media", "sample-project"],
+  "aliases": ["derived-project"],
   "resources": {
     "feishu": "<feishu-folder-url>",
     "repo": "<local-repo-path>",
@@ -144,10 +144,8 @@ ai-memory-hub project relate <id> --based-on <parent-id> --relation reskin
 ## 四、初始数据迁移
 
 ```jsonl
-{"id":"base-project","name":"base-project","displayName":"base-project","status":"active","type":"game","description":"sample-project主题游戏","aliases":["sample-project","base-project(sample-project)"],"createdAt":"2026-05-01T00:00:00Z","updatedAt":"2026-06-11T12:00:00Z"}
-{"id":"sample-backend","name":"sample-project","displayName":"sample-project","status":"active","type":"game","description":"面向55+银发用户的麻将堆叠二消游戏","metadata":{"target":"55+ 银发用户","tech":["Unity","Luban","YooAsset","HybridCLR"]},"resources":{"feishu":"<feishu-folder-url>"},"createdAt":"2026-05-18T00:00:00Z","updatedAt":"2026-06-11T12:00:00Z"}
-{"id":"sample-media","name":"sample-project","displayName":"sample-project","status":"active","type":"game","description":"《sample-project》的西游主题换皮版本","metadata":{"basedOn":"sample-backend","relation":"reskin"},"aliases":["sample-project"],"resources":{"feishu":"<feishu-folder-url>","repo":"<local-repo-path>"},"createdAt":"2026-06-03T00:00:00Z","updatedAt":"2026-06-11T12:00:00Z"}
-{"id":"sample-game","name":"sample-game：九九归一","displayName":"sample-game","status":"paused","type":"game","description":"81关线性卷轴地图，6种核心玩法综合游戏","aliases":["sample-game","xy_puzzle_collection"],"createdAt":"2026-04-01T00:00:00Z","updatedAt":"2026-06-11T12:00:00Z"}
+{"id":"base-project","name":"示例基础项目","displayName":"示例基础项目","status":"active","type":"game","description":"示例项目描述","aliases":["base-project"],"createdAt":"2026-05-01T00:00:00Z","updatedAt":"2026-06-11T12:00:00Z"}
+{"id":"derived-project","name":"示例派生项目","displayName":"示例派生项目","status":"active","type":"game","description":"示例派生项目描述","metadata":{"basedOn":"base-project","relation":"derived"},"createdAt":"2026-06-03T00:00:00Z","updatedAt":"2026-06-11T12:00:00Z"}
 {"id":"ai-memory-hub","name":"AI Memory Hub","displayName":"AI Memory Hub","status":"active","type":"tool","description":"本地优先的多AI工具共享记忆中心","resources":{"repo":"https://github.com/<owner>/<repo>"},"createdAt":"2026-06-01T00:00:00Z","updatedAt":"2026-06-11T12:00:00Z"}
 ```
 

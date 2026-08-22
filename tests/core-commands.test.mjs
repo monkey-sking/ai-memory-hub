@@ -137,7 +137,7 @@ test("project registry CLI manages metadata, aliases, relations, and archive sta
   await withHub(async (memoryDir) => {
     const visibleSeeds = parseJson(runCli(memoryDir, ["project", "list", "--status", "visible"]));
     assert.ok(visibleSeeds.some((project) => project.id === "ai-memory-hub"));
-    assert.ok(visibleSeeds.some((project) => project.id === "sample-media"));
+    assert.ok(!visibleSeeds.some((project) => project.id === "sample-private-project"));
     assert.ok(visibleSeeds.every((project) => project.status !== "archived"));
 
     const project = parseJson(runCli(memoryDir, [
@@ -227,7 +227,7 @@ test("project registry CLI manages metadata, aliases, relations, and archive sta
   });
 });
 
-test("project migrate skips seed projects when existing aliases already identify them", async () => {
+test("project migrate skips the generic seed when an existing alias identifies it", async () => {
   await withHub(async (memoryDir) => {
     const project = {
       id: "local-memory-hub",
@@ -259,12 +259,12 @@ test("project migrate skips seed projects when existing aliases already identify
     await fs.writeFile(path.join(memoryDir, "projects", "projects.jsonl"), `${JSON.stringify(project)}\n`, "utf8");
 
     const migrated = parseJson(runCli(memoryDir, ["project", "migrate", "--apply"]));
-    assert.equal(migrated.added, 4);
+    assert.equal(migrated.added, 0);
 
     const projects = parseJson(runCli(memoryDir, ["project", "list", "--status", "all"]));
     assert.equal(projects.some((item) => item.id === "ai-memory-hub"), false);
     assert.equal(projects.filter((item) => item.id === "local-memory-hub").length, 1);
-    assert.equal(projects.length, 5);
+    assert.equal(projects.length, 1);
   });
 });
 

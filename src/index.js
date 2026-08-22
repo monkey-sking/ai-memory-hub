@@ -10166,7 +10166,7 @@ Examples:
   ${APP_NAME} prompt create "飞书 PRD" --type prd --file template.njk --description "飞书文档 PRD 模板"
   ${APP_NAME} prompt list --type prd
   ${APP_NAME} prompt get prd-feishu
-  ${APP_NAME} prompt render prd-feishu --vars '{"game_name":"sample-project","version":"V0.1"}'
+  ${APP_NAME} prompt render prd-feishu --vars '{"game_name":"示例项目","version":"V0.1"}'
   ${APP_NAME} prompt update prd-feishu --file new-template.njk
   ${APP_NAME} prompt versions prd-feishu
   ${APP_NAME} prompt delete prd-feishu
@@ -13208,69 +13208,6 @@ function mergeSeedProjects(projects) {
 
 function getSeedProjects() {
   return [
-    {
-      id: "base-project",
-      name: "base-project",
-      displayName: "base-project",
-      status: "active",
-      type: "game",
-      description: "sample-project主题游戏",
-      metadata: {},
-      aliases: ["sample-project", "base-project(sample-project)"],
-      resources: {},
-      createdAt: "2026-05-01T00:00:00Z",
-      updatedAt: "2026-06-11T12:00:00Z"
-    },
-    {
-      id: "sample-backend",
-      name: "sample-project",
-      displayName: "sample-project",
-      status: "active",
-      type: "game",
-      description: "面向55+银发用户的麻将堆叠二消游戏",
-      metadata: {
-        target: "55+ 银发用户",
-        tech: ["Unity", "Luban", "YooAsset", "HybridCLR"]
-      },
-      aliases: ["sample-project"],
-      resources: {
-        feishu: "<feishu-folder-url>"
-      },
-      createdAt: "2026-05-18T00:00:00Z",
-      updatedAt: "2026-06-11T12:00:00Z"
-    },
-    {
-      id: "sample-media",
-      name: "sample-project",
-      displayName: "sample-project",
-      status: "active",
-      type: "game",
-      description: "《sample-project》的西游主题换皮版本",
-      metadata: {
-        basedOn: "sample-backend",
-        relation: "reskin"
-      },
-      aliases: ["sample-project"],
-      resources: {
-        feishu: "<feishu-folder-url>",
-        repo: "<local-repo-path>"
-      },
-      createdAt: "2026-06-03T00:00:00Z",
-      updatedAt: "2026-06-11T12:00:00Z"
-    },
-    {
-      id: "sample-game",
-      name: "sample-game：九九归一",
-      displayName: "sample-game",
-      status: "paused",
-      type: "game",
-      description: "81关线性卷轴地图，6种核心玩法综合游戏",
-      metadata: {},
-      aliases: ["sample-game", "xy_puzzle_collection"],
-      resources: {},
-      createdAt: "2026-04-01T00:00:00Z",
-      updatedAt: "2026-06-11T12:00:00Z"
-    },
     {
       id: "ai-memory-hub",
       name: "AI Memory Hub",
@@ -18831,4 +18768,3 @@ if (typeof module !== "undefined" && module.exports) {
     POLICY_OPERATIONS
   };
 }
-

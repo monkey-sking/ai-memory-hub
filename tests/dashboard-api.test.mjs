@@ -803,7 +803,7 @@ test("dashboard projects API exposes registry data and UI hooks", async () => {
       assert.equal(initialRes.status, 200);
       const initial = await initialRes.json();
       assert.ok(initial.projects.some((project) => project.id === "ai-memory-hub"));
-      assert.ok(initial.visibleProjects.some((project) => project.id === "sample-media"));
+      assert.ok(!initial.visibleProjects.some((project) => project.id === "sample-private-project"));
       assert.ok(initial.visibleProjects.every((project) => project.status !== "archived"));
       assert.deepEqual(initial.statuses, ["active", "paused", "archived", "planning"]);
 

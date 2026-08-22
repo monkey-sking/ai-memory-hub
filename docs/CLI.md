@@ -445,7 +445,7 @@ ai-memory-hub project add <id> --name <name> [--status active] [--type tool] [--
 Useful resource options:
 
 ```bash
-ai-memory-hub project add sample-media --name "sample-project" --type game --feishu <url> --repo <local-repo-path>
+ai-memory-hub project add sample-game --name "示例项目" --type game --feishu <url> --repo <local-repo-path>
 ```
 
 ### `project update`
@@ -1588,4 +1588,3 @@ AMH-owned dispatch lifecycle leases are persisted under `state/session-leases.js
 ## Skill Registry GC
 
 skill gc lists packages not selected by the project manifest and is preview-only by default. Apply cleanup with ai-memory-hub skill gc --project <path> --apply --confirm GC. Selected packages are protected and removed packages are backed up under skill-store/gc-backups/<operation-id>. Restore with ai-memory-hub skill gc-rollback <operation-id>.
-

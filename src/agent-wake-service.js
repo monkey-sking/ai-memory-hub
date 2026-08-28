@@ -2,8 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { createWakeEnvelope, selectWakeAction, transitionWakeState } from "./agent-wake.js";
 import { normalizeRunnerCapabilities, selectRunnerWakeAction } from "./runner-capabilities.js";
+import { appendJsonl as sharedAppendJsonl } from "./event-writer.js";
 
-export function createAgentWakeService({ memoryDir, appendJsonl = appendJsonLine, now = () => new Date().toISOString() } = {}) {
+export function createAgentWakeService({ memoryDir, appendJsonl = sharedAppendJsonl, now = () => new Date().toISOString() } = {}) {
   if (!memoryDir) throw new Error("memoryDir is required");
   const wakeDir = path.join(memoryDir, "wake");
   const inboxFile = path.join(wakeDir, "inbox.jsonl");
@@ -38,7 +39,3 @@ export function createAgentWakeService({ memoryDir, appendJsonl = appendJsonLine
   return { enqueue, plan, planForRunner, files: { inboxFile, stateFile } };
 }
 
-function appendJsonLine(file, value) {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.appendFileSync(file, `${JSON.stringify(value)}\n`, "utf8");
-}

@@ -22,24 +22,30 @@ try {
   Database = null;
 }
 
-let db = null;
+// Per-path handle cache. A single global handle broke multi-directory use
+// (e.g. tests, or tools operating on several hubs) — each path keeps its own.
+const dbCache = new Map();
 
 /**
  * Open (or create) the SQLite database at the given path.
  * Returns the Database handle or null if node:sqlite is unavailable.
  */
 export function openStore(dbPath) {
-  if (db) return db;
+  const resolved = path.resolve(dbPath);
+  const cached = dbCache.get(resolved);
+  if (cached) return cached;
   if (!Database) {
     console.warn("[sqlite-store] node:sqlite not available — falling back to JSONL");
     return null;
   }
-  db = new Database(dbPath);
-  db.exec("PRAGMA journal_mode = WAL");
-  db.exec("PRAGMA synchronous = NORMAL");
-  db.exec("PRAGMA foreign_keys = ON");
-  initSchema(db);
-  return db;
+  fs.mkdirSync(path.dirname(resolved), { recursive: true });
+  const handle = new Database(resolved);
+  handle.exec("PRAGMA journal_mode = WAL");
+  handle.exec("PRAGMA synchronous = NORMAL");
+  handle.exec("PRAGMA foreign_keys = ON");
+  initSchema(handle);
+  dbCache.set(resolved, handle);
+  return handle;
 }
 
 function initSchema(database) {
@@ -97,6 +103,41 @@ function initSchema(database) {
       key   TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
+
+    -- ── memory_events: SOURCE OF TRUTH for the durable memory domain ──
+    -- Append-only event log (replaces inbox/events.jsonl as the authority).
+    -- JSONL remains only as a write-through export for backward compat.
+    CREATE TABLE IF NOT EXISTS memory_events (
+      rowid  INTEGER PRIMARY KEY AUTOINCREMENT,
+      id      TEXT UNIQUE NOT NULL,
+      ts      TEXT NOT NULL DEFAULT '',
+      source  TEXT NOT NULL DEFAULT '',
+      kind    TEXT NOT NULL DEFAULT '',
+      project TEXT NOT NULL DEFAULT '',
+      text    TEXT NOT NULL DEFAULT '',
+      data    TEXT NOT NULL DEFAULT '{}'
+    );
+    CREATE INDEX IF NOT EXISTS idx_memory_events_ts      ON memory_events(ts DESC);
+    CREATE INDEX IF NOT EXISTS idx_memory_events_source  ON memory_events(source);
+    CREATE INDEX IF NOT EXISTS idx_memory_events_kind    ON memory_events(kind);
+    CREATE INDEX IF NOT EXISTS idx_memory_events_project ON memory_events(project);
+
+    -- FTS5 over memory text (external-content, kept in sync by triggers).
+    -- trigram tokenizer: indexes 3-char substrings, so CJK substring search
+    -- (e.g. "红包版") works without a dedicated CJK segmenter.
+    CREATE VIRTUAL TABLE IF NOT EXISTS memory_events_fts USING fts5(
+      text, content='memory_events', content_rowid='rowid', tokenize='trigram'
+    );
+    CREATE TRIGGER IF NOT EXISTS memory_events_ai AFTER INSERT ON memory_events BEGIN
+      INSERT INTO memory_events_fts(rowid, text) VALUES (new.rowid, new.text);
+    END;
+    CREATE TRIGGER IF NOT EXISTS memory_events_ad AFTER DELETE ON memory_events BEGIN
+      INSERT INTO memory_events_fts(memory_events_fts, rowid, text) VALUES ('delete', old.rowid, old.text);
+    END;
+    CREATE TRIGGER IF NOT EXISTS memory_events_au AFTER UPDATE ON memory_events BEGIN
+      INSERT INTO memory_events_fts(memory_events_fts, rowid, text) VALUES ('delete', old.rowid, old.text);
+      INSERT INTO memory_events_fts(rowid, text) VALUES (new.rowid, new.text);
+    END;
   `);
 }
 
@@ -323,9 +364,242 @@ export function isMigrated(database) {
   return !!row;
 }
 
-export function closeStore() {
-  if (db) {
-    db.close();
-    db = null;
+/**
+ * One-time auto-migration guard: seed SQLite from existing JSONL when the
+ * store was never migrated. Makes the mirror complete (not partial) so a
+ * later read-path switch can trust it.
+ * @returns {object|null} migration result, or null when already migrated
+ */
+export function ensureMigrated(database, memoryDir) {
+  if (isMigrated(database)) return null;
+  return migrateFromJsonl(database, memoryDir);
+}
+
+/**
+ * Reconcile the SQLite mirror against the JSONL truth for tasks / projects /
+ * workflows. Uses the same projection method as migrateFromJsonl so both
+ * sides are compared on an equal footing.
+ * @returns {{tasks:object,projects:object,workflows:object,consistent:boolean}}
+ */
+export function verifyMirror(database, memoryDir) {
+  const tasksJsonl = replayLatestFromEvents(path.join(memoryDir, "tasks", "events.jsonl"));
+  const projectsJsonl = readSimpleJsonl(path.join(memoryDir, "projects", "projects.jsonl"));
+  const workflowsJsonl = readSimpleJsonl(path.join(memoryDir, "workflows", "workflows.jsonl"));
+
+  const results = {
+    tasks: compareSets(tasksJsonl, listTasks(database, { limit: 1000000 })),
+    projects: compareSets(projectsJsonl, listProjects(database)),
+    workflows: compareSets(workflowsJsonl, listWorkflows(database))
+  };
+  results.consistent = Object.values(results).every((item) => item.drift === 0);
+  return results;
+}
+
+function compareSets(jsonlRecords, sqliteRecords) {
+  const jsonl = new Map(jsonlRecords.map((record) => [String(record.id || ""), JSON.stringify(record)]));
+  const sqlite = new Map(sqliteRecords.map((record) => [String(record.id || ""), JSON.stringify(record)]));
+  const missing = [...jsonl.keys()].filter((id) => !sqlite.has(id));
+  const extra = [...sqlite.keys()].filter((id) => !jsonl.has(id));
+  const mismatched = [...jsonl.keys()].filter((id) => jsonl.has(id) && sqlite.has(id) && jsonl.get(id) !== sqlite.get(id));
+  return {
+    jsonl: jsonl.size,
+    sqlite: sqlite.size,
+    missing,
+    extra,
+    mismatched,
+    drift: missing.length + extra.length + mismatched.length
+  };
+}
+
+function replayLatestFromEvents(file) {
+  if (!fs.existsSync(file)) return [];
+  const byId = new Map();
+  for (const line of fs.readFileSync(file, "utf8").split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      const event = JSON.parse(line);
+      if (event.entityId && event.record) byId.set(event.entityId, event.record);
+    } catch { /* skip malformed lines */ }
   }
+  return [...byId.values()];
+}
+
+function readSimpleJsonl(file) {
+  if (!fs.existsSync(file)) return [];
+  const records = [];
+  for (const line of fs.readFileSync(file, "utf8").split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      const record = JSON.parse(line);
+      if (record && record.id) records.push(record);
+    } catch { /* skip */ }
+  }
+  return records;
+}
+
+export function closeStore() {
+  for (const handle of dbCache.values()) {
+    try { handle.close(); } catch { /* ignore */ }
+  }
+  dbCache.clear();
+}
+
+// ── Memory domain: SOURCE OF TRUTH ──────────────────────────
+// These replace direct JSONL appends to inbox/events.jsonl. The JSONL file
+// is now only a write-through export; SQLite is the authority.
+
+function normalizeMemoryEvent(event) {
+  const e = event && typeof event === "object" ? event : {};
+  const text = String(
+    e.text ?? e.content ?? e.summary ?? (typeof e.data === "string" ? e.data : "")
+  );
+  return {
+    id: String(e.id || createMemoryEventId(e)),
+    ts: String(e.ts || new Date().toISOString()),
+    source: String(e.source || e.from || "unknown"),
+    kind: String(e.kind || e.type || "event"),
+    project: String(e.project || ""),
+    text,
+    data: JSON.stringify(e)
+  };
+}
+
+function createMemoryEventId(event) {
+  const base = `${event?.source || event?.from || "evt"}:${event?.kind || event?.type || "event"}:${Date.now()}`;
+  let hash = 5381;
+  for (let i = 0; i < base.length; i++) hash = ((hash << 5) + hash + base.charCodeAt(i)) >>> 0;
+  return `mem_${hash.toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/**
+ * Append a durable memory event to SQLite (source of truth).
+ * Returns the normalized event. Caller is responsible for the JSONL export.
+ */
+export function appendMemoryEvent(database, event) {
+  const e = normalizeMemoryEvent(event);
+  database.prepare(`
+    INSERT OR IGNORE INTO memory_events (id, ts, source, kind, project, text, data)
+    VALUES (@id, @ts, @source, @kind, @project, @text, @data)
+  `).run({
+    id: e.id, ts: e.ts, source: e.source, kind: e.kind,
+    project: e.project, text: e.text, data: e.data
+  });
+  return e;
+}
+
+export function readMemoryEventsDb(database, { limit = 1000, source = null, kind = null, project = null } = {}) {
+  let sql = "SELECT id, ts, source, kind, project, text, data FROM memory_events";
+  const conditions = [];
+  const params = [];
+  if (source) { conditions.push("source = ?"); params.push(source); }
+  if (kind) { conditions.push("kind = ?"); params.push(kind); }
+  if (project) { conditions.push("project = ?"); params.push(project); }
+  if (conditions.length) sql += " WHERE " + conditions.join(" AND ");
+  sql += " ORDER BY ts DESC LIMIT ?";
+  params.push(limit);
+  return database.prepare(sql).all(...params).map(rowToMemoryEvent);
+}
+
+export function countMemoryEventsDb(database) {
+  const row = database.prepare("SELECT COUNT(*) AS n FROM memory_events").get();
+  return row ? row.n : 0;
+}
+
+export function searchMemoryEventsDb(database, query, { limit = 50 } = {}) {
+  const q = String(query || "").trim();
+  if (!q) return [];
+  // trigram: join terms with AND so multi-term queries require all substrings.
+  const ftsQuery = q.split(/\s+/).filter(Boolean).map((t) => `"${t.replace(/"/g, "")}"`).join(" AND ");
+  const rows = database.prepare(`
+    SELECT m.id, m.ts, m.source, m.kind, m.project, m.text, m.data
+    FROM memory_events_fts f
+    JOIN memory_events m ON m.rowid = f.rowid
+    WHERE memory_events_fts MATCH ?
+    ORDER BY rank
+    LIMIT ?
+  `).all(ftsQuery, limit);
+  return rows.map(rowToMemoryEvent);
+}
+
+function rowToMemoryEvent(row) {
+  let parsed = {};
+  try { parsed = JSON.parse(row.data); } catch { /* keep raw */ }
+  return {
+    id: row.id,
+    ts: row.ts,
+    source: row.source,
+    kind: row.kind,
+    project: row.project,
+    text: row.text,
+    ...parsed
+  };
+}
+
+/**
+ * Import existing inbox/events.jsonl into SQLite (one-time, idempotent via
+ * INSERT OR IGNORE). Returns the number imported.
+ */
+export function migrateMemoryEvents(database, memoryDir) {
+  // Import the full legacy JSONL stream: inbox staging queue + synced ledger.
+  // Mirrors verifyMemory's reconciliation scope. Idempotent (INSERT OR IGNORE by id).
+  const files = [
+    path.join(memoryDir, "inbox", "events.jsonl"),
+    path.join(memoryDir, "memories", "ledger.jsonl")
+  ];
+  const events = [];
+  for (const file of files) {
+    if (!fs.existsSync(file)) continue;
+    for (const line of fs.readFileSync(file, "utf8").split("\n")) {
+      if (!line.trim()) continue;
+      try { events.push(JSON.parse(line)); } catch { /* skip malformed */ }
+    }
+  }
+  if (events.length === 0) return 0;
+  database.exec("BEGIN");
+  let imported = 0;
+  try {
+    for (const event of events) {
+      const e = normalizeMemoryEvent(event);
+      const res = database.prepare(`
+        INSERT OR IGNORE INTO memory_events (id, ts, source, kind, project, text, data)
+        VALUES (@id, @ts, @source, @kind, @project, @text, @data)
+      `).run({
+        id: e.id, ts: e.ts, source: e.source, kind: e.kind,
+        project: e.project, text: e.text, data: e.data
+      });
+      if (res.changes > 0) imported++;
+    }
+    database.exec("COMMIT");
+  } catch (txErr) {
+    database.exec("ROLLBACK");
+    throw txErr;
+  }
+  return imported;
+}
+
+/**
+ * Reconcile SQLite (truth) against the legacy JSONL stream for the memory
+ * domain. The JSONL stream is split across two files: the inbox staging
+ * queue (inbox/events.jsonl) and the synced ledger (memories/ledger.jsonl).
+ * sync moves events from inbox → ledger, so the TOTAL JSONL count should
+ * equal the SQLite count. Count-based reconciliation flags any drift.
+ */
+export function verifyMemory(database, memoryDir) {
+  const sqliteCount = countMemoryEventsDb(database);
+  const files = [
+    path.join(memoryDir, "inbox", "events.jsonl"),
+    path.join(memoryDir, "memories", "ledger.jsonl")
+  ];
+  let jsonlCount = 0;
+  const filesSeen = [];
+  for (const file of files) {
+    if (!fs.existsSync(file)) continue;
+    filesSeen.push(path.basename(file));
+    for (const line of fs.readFileSync(file, "utf8").split("\n")) {
+      if (!line.trim()) continue;
+      try { JSON.parse(line); jsonlCount++; } catch { /* skip malformed */ }
+    }
+  }
+  const drift = Math.abs(sqliteCount - jsonlCount);
+  return { sqlite: sqliteCount, jsonl: jsonlCount, files: filesSeen, drift, consistent: drift === 0 };
 }

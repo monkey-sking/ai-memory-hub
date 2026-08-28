@@ -6,12 +6,13 @@ import {
   finishSessionLease,
   updateSessionHeartbeat
 } from "./session-supervisor.js";
+import { appendJsonl as sharedAppendJsonl } from "./event-writer.js";
 
 export function createSessionSupervisor({
   memoryDir,
   now = () => new Date().toISOString(),
   staleMs = 30_000,
-  appendJsonl = appendJsonLine,
+  appendJsonl = sharedAppendJsonl,
   processAlive = defaultProcessAlive
 } = {}) {
   if (!memoryDir) throw new Error("memoryDir is required");
@@ -94,11 +95,6 @@ function readLatestFromFile(file) {
     if (entry.lease?.sessionId) latest.set(entry.lease.sessionId, entry.lease);
   }
   return latest;
-}
-
-function appendJsonLine(file, value) {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.appendFileSync(file, `${JSON.stringify(value)}\n`, "utf8");
 }
 
 function defaultProcessAlive(pid) {

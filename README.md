@@ -51,11 +51,16 @@
 - **关系图** - `relations/events.jsonl` 记录 belongs-to（memory→project 归属）、member-of（agent→team 归属）、related-to 等关系
 - **Dashboard CRUD** - 角色和团队可在 dashboard `/roles` 页面直接新建/编辑/删除，agent 提示词可在线编辑
 
-#### 2.6. SQLite 双写（影子写）
-- **影子写** - JSONL 写入时同步写 SQLite，JSONL 仍是唯一真相源
-- **开关** - `AMH_SQLITE_DUALWRITE=1 node --experimental-sqlite src/index.js app` 启动，默认完全 no-op
-- **CLI** - `ai-memory-hub sqlite status` 查看影子写状态、`sqlite migrate` 全量迁移、`sqlite resync` 全量重建
-- **读取层加固** - `relations.js` 对多层 JSON 编码自动解码，防止静默丢数据
+#### 2.6. SQLite 存储层（单写者真相源）
+记忆事件流（inbox/events.jsonl 域）已翻转为**单写者架构**：
+- **记忆事件 = SQLite 真相源** - 所有记忆写入经 `appendJsonl` 单一收口点落 SQLite（`memory_events` 表 + FTS5 `trigram` 中文全文索引）。JSONL 流（inbox 暂存队列 + ledger 精炼记忆）作为可读导出/兼容层保留，`sync` 流程照常工作。
+- **单写者效应** - 多个 agent 不再各自直接 append JSONL，写路径唯一化消除了文件锁竞争与多层 JSON 解码补丁的需求。
+- **镜像写（task/project/workflow）** - 变更同步写 SQLite，`AMH_SQLITE_DUALWRITE=0` 可关闭（默认开）。
+- **默认开启 + 自动迁移** - 无需环境变量即启用；首次打开自动把现有 JSONL 导入。
+- **对账** - `ai-memory-hub sqlite verify` 同时校验 task/project/workflow 镜像与 memory 事件流（SQLite 总量 vs inbox+ledger JSONL 总量），漂移退出码 2；`sqlite resync` 从 JSONL 全量重建（含 memory_events），`sqlite migrate` 增量导入记忆事件。
+- **失败语义** - SQLite 写入失败只记 stderr，绝不打断 JSONL 主路径。
+- **CLI** - `ai-memory-hub sqlite status|verify|migrate|resync`
+- **读取层加固** - `relations.js` 对多层 JSON 编码自动解码，防止静默丢数据（单写者生效后此类补丁将逐步退役）。
 
 #### 3. 权限策略与审批门禁
 - **Permission Policy Layer** - 三阶段实现：数据层+解析器+CLI → Dashboard 集成 → 调度预检执行
@@ -140,8 +145,7 @@
   │   └── hub.lock
   ├── state/                 # 运行状态
   │   └── daemon.pid         # 守护进程 PID
-  ├── sqlite/                # SQLite 影子库（双写模式）
-  │   └── amh.sqlite         # JSONL 的只读加速镜像
+  ├── amh.db                  # SQLite 镜像库（默认开启的双写，WAL 模式）
   ├── tools/                 # 工具适配器
   └── extensions/            # 扩展（VS Code等）
   └── extension-registry.json # MCP/Skill registry
@@ -374,15 +378,16 @@ ai-memory-hub team delete --id <id>         # 删除团队
 
 Dashboard `http://127.0.0.1:38787/roles` 页面支持以上全部操作的可视化 CRUD。
 
-#### SQLite 双写
+#### SQLite 镜像写
 
 ```bash
-ai-memory-hub sqlite status                 # 查看影子写状态
-ai-memory-hub sqlite migrate                # JSONL → SQLite 全量迁移
-ai-memory-hub sqlite resync                 # 全量重建影子库
+ai-memory-hub sqlite status                 # 查看镜像状态 + 一致性 verdict
+ai-memory-hub sqlite verify                 # JSONL ↔ SQLite 逐条对账（漂移时退出码 2）
+ai-memory-hub sqlite migrate                # JSONL → SQLite 全量迁移（首次打开自动执行）
+ai-memory-hub sqlite resync                 # 从 JSONL 全量重建镜像
 ```
 
-启动 hub 时加 `AMH_SQLITE_DUALWRITE=1` 开启影子写（默认关闭，完全 no-op）。
+镜像写默认开启（v1 起无需环境变量）；`AMH_SQLITE_DUALWRITE=0` 关闭。SQLite 失败只记 stderr，绝不打断 JSONL 主路径。
 
 #### RPC 调用
 
@@ -589,6 +594,88 @@ ai-memory-hub task-spec run <name>                # 运行任务命令
         └─────────────────────────┘
 ```
 
+#### 目标架构（按功能重做）
+
+按功能拆分的演进方向：接入层经统一 API 服务访问四个独立功能域（记忆域 / 协作域 / 派发域 / 同步域），存储层以 SQLite 为主库、JSONL 仅作导出。
+
+<svg viewBox="0 0 680 440" width="100%" role="img">
+  <title>AI Memory Hub 按功能重做的目标架构</title>
+  <desc>接入层经统一 API 服务访问四个独立功能域，存储层以 SQLite 为主库、JSONL 仅作导出。</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+
+  <text x="40" y="28" font-family="sans-serif" font-size="13" font-weight="500" fill="#2C2C2A">接入层 — 谁在用</text>
+
+  <g>
+    <rect x="40" y="40" width="135" height="56" rx="8" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.5"/>
+    <text x="107" y="62" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="500" fill="#2C2C2A">各 AI Agent</text>
+    <text x="107" y="82" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#5F5E5A">codex/claude/gemini…</text>
+  </g>
+  <g>
+    <rect x="195" y="40" width="135" height="56" rx="8" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.5"/>
+    <text x="262" y="62" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="500" fill="#2C2C2A">Dashboard Web</text>
+    <text x="262" y="82" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#5F5E5A">只读可视化</text>
+  </g>
+  <g>
+    <rect x="350" y="40" width="135" height="56" rx="8" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.5"/>
+    <text x="417" y="62" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="500" fill="#2C2C2A">MCP 网关</text>
+    <text x="417" y="82" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#5F5E5A">对外暴露能力</text>
+  </g>
+  <g>
+    <rect x="505" y="40" width="135" height="56" rx="8" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.5"/>
+    <text x="572" y="62" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="500" fill="#2C2C2A">外部工具</text>
+    <text x="572" y="82" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#5F5E5A">CI / 飞书 / GitHub</text>
+  </g>
+
+  <line x1="107" y1="96" x2="107" y2="140" stroke="#888780" stroke-width="1" stroke-dasharray="3 3" marker-end="url(#arrow)"/>
+  <line x1="262" y1="96" x2="262" y2="140" stroke="#888780" stroke-width="1" stroke-dasharray="3 3" marker-end="url(#arrow)"/>
+  <line x1="417" y1="96" x2="417" y2="140" stroke="#888780" stroke-width="1" stroke-dasharray="3 3" marker-end="url(#arrow)"/>
+  <line x1="572" y1="96" x2="572" y2="140" stroke="#888780" stroke-width="1" stroke-dasharray="3 3" marker-end="url(#arrow)"/>
+
+  <rect x="40" y="140" width="600" height="48" rx="10" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.5"/>
+  <text x="340" y="160" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="500" fill="#26215C">统一 API 服务</text>
+  <text x="340" y="178" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#3C3489">库 + 少量命令 + HTTP/MCP，所有消费者共用一套读/写/订阅接口</text>
+
+  <text x="40" y="212" font-family="sans-serif" font-size="13" font-weight="500" fill="#2C2C2A">功能域 — 按需求强度拆开</text>
+
+  <g>
+    <rect x="40" y="220" width="135" height="64" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+    <text x="107" y="246" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="500" fill="#042C53">记忆域</text>
+    <text x="107" y="266" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#0C447C">核心 · 真卖点</text>
+  </g>
+  <g>
+    <rect x="195" y="220" width="135" height="64" rx="8" fill="#FAEEDA" stroke="#854F0B" stroke-width="0.5"/>
+    <text x="262" y="246" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="500" fill="#412402">协作域</text>
+    <text x="262" y="266" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#633806">可选 · 任务/工作流</text>
+  </g>
+  <g>
+    <rect x="350" y="220" width="135" height="64" rx="8" fill="#FCEBEB" stroke="#A32D2D" stroke-width="0.5"/>
+    <text x="417" y="246" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="500" fill="#501313">派发域</text>
+    <text x="417" y="266" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#791F1F">默认关闭 · 风险隔离</text>
+  </g>
+  <g>
+    <rect x="505" y="220" width="135" height="64" rx="8" fill="#EAF3DE" stroke="#3B6D11" stroke-width="0.5"/>
+    <text x="572" y="246" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="500" fill="#173404">同步域</text>
+    <text x="572" y="266" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#27500A">胶水 · MCP/Skill</text>
+  </g>
+
+  <line x1="107" y1="284" x2="107" y2="360" stroke="#185FA5" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="262" y1="284" x2="262" y2="360" stroke="#854F0B" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="417" y1="284" x2="417" y2="360" stroke="#A32D2D" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="572" y1="284" x2="572" y2="360" stroke="#3B6D11" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <rect x="40" y="360" width="290" height="60" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+  <text x="185" y="386" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="500" fill="#042C53">SQLite 主库</text>
+  <text x="185" y="406" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#0C447C">唯一真相源 · FTS5 搜索</text>
+
+  <rect x="350" y="360" width="290" height="60" rx="8" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.5"/>
+  <text x="495" y="386" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="500" fill="#2C2C2A">JSONL 导出</text>
+  <text x="495" y="406" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#5F5E5A">人类可读 / 可移植 / 审计</text>
+</svg>
+
 #### 核心组件
 
 1. **Memory System** - 记忆持久化和检索（FTS5 全文搜索）
@@ -604,7 +691,7 @@ ai-memory-hub task-spec run <name>                # 运行任务命令
 11. **CDP Bridge** - Chrome DevTools Protocol 桥接
 12. **Dashboard** - React + shadcn/ui Web UI 可视化管理（含团队与角色 CRUD）
 13. **Roles & Teams** - 角色定义、团队管理、Agent 提示词编辑、关系图
-14. **SQLite Dual-Write** - JSONL 影子写，读取层加固防静默丢数据
+14. **SQLite Dual-Write** - 默认开启的 SQLite 镜像写（JSONL 仍为真相源），首次自动迁移 + `sqlite verify` 对账，读取层加固防静默丢数据
 15. **Backup System** - 备份、自动剪枝、保留策略、恢复
 
 ### 📖 更多文档

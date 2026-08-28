@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { getPackTrustStatus } from "./external-integrations.js";
+import { appendJsonl } from "./event-writer.js";
 
 const ID_PATTERN = /^[a-z0-9][a-z0-9._-]{1,63}$/;
 
@@ -167,8 +168,7 @@ function readRegistry(memoryDir) {
 }
 function appendRegistryEvent(memoryDir, event) {
   const file = registryFile(memoryDir);
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.appendFileSync(file, JSON.stringify({ id: crypto.randomUUID(), ts: new Date().toISOString(), ...event }) + "\n", "utf8");
+  appendJsonl(file, { id: crypto.randomUUID(), ts: new Date().toISOString(), ...event });
 }
 function isFile(target) { try { return fs.statSync(target).isFile(); } catch { return false; } }
 function isDirectory(target) { try { return fs.statSync(target).isDirectory(); } catch { return false; } }

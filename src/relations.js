@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { appendJsonl } from "./event-writer.js";
 
 // P1 (borrowed from Cumora participants, taken further): `role` is a first-class entity so we can
 // ask "who plays what role" and "what permissions a role binds" — Cumora only has flat role fields.
@@ -29,8 +30,7 @@ export function recordRelation(memoryDir, input) {
   if (existing) return { ...existing, reused: true };
   const event = { id: crypto.randomUUID(), ts: new Date().toISOString(), ...relation };
   const file = path.join(path.resolve(memoryDir), "relations", "events.jsonl");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.appendFileSync(file, `${JSON.stringify(event)}\n`, "utf8");
+  appendJsonl(file, event);
   return { ...event, reused: false };
 }
 
@@ -87,7 +87,7 @@ export function revokeRelation(memoryDir, relationId, reason = "") {
   if (!current) throw new Error(`Active relation not found: ${relationId}`);
   const file = path.join(path.resolve(memoryDir), "relations", "events.jsonl");
   const event = { id: crypto.randomUUID(), ts: new Date().toISOString(), action: "revoke", target: relationId, reason, status: "revoked" };
-  fs.appendFileSync(file, `${JSON.stringify(event)}\n`, "utf8");
+  appendJsonl(file, event);
   return event;
 }
 

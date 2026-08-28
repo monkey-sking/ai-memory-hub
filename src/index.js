@@ -30,6 +30,12 @@ import { createDashboardCollaborationApi } from "./dashboard/collaboration.js";
 import { buildExecutionAdapters } from "./execution-adapters.js";
 import { buildWorktreeSnapshot } from "./worktree-snapshot.js";
 import { evaluateDaemonHeartbeat } from "./daemon-health.js";
+import { appendJsonl } from "./event-writer.js";
+import { eventsCommand } from "./commands/events.js";
+import { sqliteCommand } from "./commands/sqlite.js";
+import { ensureDir, readJson, readJsonSafe, writeJson, createId, getOption, hasOption, hasFlag, parsePositiveIntegerOption, positionalArgs, countJsonlFiles, isPlainObject } from "./lib/cli.js";
+import { readEvents, parseJsonlLine, countJsonlLines } from "./lib/io.js";
+import { getEntityEventsFile, getEntityProjectionFile, readEntityEvents, bootstrapEntityEventsFromProjection, writeEntityRecords, appendEntityRecord, deleteEntityRecord, appendEntityEvents, createEntityEvent, replayEntityEvents, materializeEntityProjection, isEntityRecordNewerOrSame } from "./lib/entity-store.js";
 import { acquireDaemonLock, releaseDaemonLock } from "./daemon-lock.js";
 import { resolveAgentTarget } from "./agent-wake.js";
 import { createSessionSupervisor } from "./session-supervisor-service.js";
@@ -52,8 +58,9 @@ import { listExtensions, importExtensions, diffExtensions, syncExtensions, remov
 import { writeFileAtomic } from "./atomic-write.js";
 import { exportMemoryBundle, importMemoryBundle } from "./data-port.js";
 import { mirrorUpsert, mirrorDelete, mirrorSync } from "./sqlite-dualwrite.js";
-import { openStore, closeStore, isMigrated, migrateFromJsonl, listTasks, listProjects, listWorkflows } from "./sqlite-store.js";
+import * as memoryStore from "./memory-store.js";
 import { listCredentialProfiles, setCredentialProfile, removeCredentialProfile, resolveCredential } from "./credentials.js";
+
 import { listRelatedEntities, readRelations, recordMemoryRelations, recordRelation, rebuildMemoryRelations, revokeRelation } from "./relations.js";
 import { auditMemories } from "./memory-audit.js";
 import {
@@ -717,9 +724,11 @@ async function main() {
       return syncCommand(rest);
     case "sqlite":
     case "db":
-      return sqliteCommand(rest);
+      return sqliteCommand(rest, { loadConfig });
     case "index":
       return indexCommand(rest);
+    case "events":
+      return eventsCommand(rest, { loadConfig, ensureHub, hasFlag, getOption, positionalArgs, memoryStore, fs });
     case "search":
       return searchCommand(rest);
     case "snapshot":
@@ -2836,6 +2845,13 @@ function contextCommand(argv) {
       throw new Error(`Unknown context action: ${action}\nTry: ai-memory-hub context create|show|list`);
   }
 }
+
+/**
+ * events — UNIFIED READ API for the raw memory-event log (single-writer truth).
+ * Every subcommand reads through memory-store (SQLite memory_events + FTS5),
+ * never the raw JSONL directly. This is the read counterpart to the
+ * appendJsonl write chokepoint: one module owns the event log's read surface.
+ */
 
 function contextCreateCommand(argv) {
   const taskId = getOption(argv, "--task") || "";
@@ -7184,50 +7200,6 @@ function findDispatchOrigin(memoryDir, job) {
     };
   }
   return null;
-}
-
-function sqliteCommand(argv) {
-  const action = String(argv[0] || "status");
-  const config = loadConfig();
-  const dbPath = path.join(path.resolve(config.memoryDir), "amh.db");
-  const db = openStore(dbPath);
-  if (!db) {
-    console.error("node:sqlite unavailable. Start node with --experimental-sqlite to use SQLite features.");
-    return 1;
-  }
-  try {
-    if (action === "migrate") {
-      if (isMigrated(db)) {
-        console.log("Already migrated. Row counts:");
-      } else {
-        const result = migrateFromJsonl(db, config.memoryDir);
-        console.log(`Migration done in ${result.durationMs}ms: tasks=${result.tasks} projects=${result.projects} workflows=${result.workflows}`);
-      }
-    }
-    if (action === "migrate" || action === "status") {
-      const tasks = listTasks(db, { limit: 1000000 });
-      const projects = listProjects(db);
-      const workflows = listWorkflows(db);
-      console.log(`SQLite (${dbPath})`);
-      console.log(`  migrated: ${isMigrated(db) ? "yes" : "no"}`);
-      console.log(`  tasks=${tasks.length} projects=${projects.length} workflows=${workflows.length}`);
-      console.log(`  dual-write mirror: ${process.env.AMH_SQLITE_DUALWRITE === "1" ? "ON" : "off"} (env AMH_SQLITE_DUALWRITE=1 + node --experimental-sqlite to enable)`);
-      return 0;
-    }
-    if (action === "resync") {
-      db.exec("DELETE FROM tasks");
-      db.exec("DELETE FROM projects");
-      db.exec("DELETE FROM workflows");
-      db.exec("DELETE FROM _meta WHERE key = 'migrated_at'");
-      const result = migrateFromJsonl(db, config.memoryDir);
-      console.log(`Resync done in ${result.durationMs}ms: tasks=${result.tasks} projects=${result.projects} workflows=${result.workflows}`);
-      return 0;
-    }
-    console.error(`Unknown sqlite action: ${action}. Usage: ai-memory-hub sqlite <status|migrate|resync>`);
-    return 1;
-  } finally {
-    closeStore();
-  }
 }
 
 function syncCommand(argv) {
@@ -12836,149 +12808,6 @@ function resolvePermission(memoryDir, { actor = "*", actorRoles = [], project = 
   return { decision: "allow", reason: "No policy restricts this operation", matchedRule: null };
 }
 
-function getEntityProjectionFile(memoryDir, definition) {
-  return path.join(memoryDir, definition.dirName, definition.projectionName);
-}
-
-function getEntityEventsFile(memoryDir, definition) {
-  return path.join(memoryDir, definition.dirName, "events.jsonl");
-}
-
-function readEntityEvents(memoryDir, definition) {
-  return readEvents(getEntityEventsFile(memoryDir, definition))
-    .filter((event) => event.entity === definition.entity || String(event.type || "").startsWith(`${definition.entity}.`));
-}
-
-function bootstrapEntityEventsFromProjection(memoryDir, definition) {
-  const eventsFile = getEntityEventsFile(memoryDir, definition);
-  if (countJsonlLines(eventsFile) > 0) {
-    return;
-  }
-  const records = readEvents(getEntityProjectionFile(memoryDir, definition))
-    .map(definition.normalize)
-    .filter(definition.isValid);
-  if (records.length === 0) {
-    return;
-  }
-  appendEntityEvents(memoryDir, definition, records, {
-    action: "upsert",
-    source: "migration",
-    reason: `${definition.projectionName}:import`
-  });
-  materializeEntityProjection(memoryDir, definition);
-}
-
-function writeEntityRecords(memoryDir, definition, records, options = {}) {
-  const normalized = records
-    .map(definition.normalize)
-    .filter(definition.isValid);
-  const current = new Map(replayEntityEvents(readEntityEvents(memoryDir, definition), definition).map((record) => [record.id, record]));
-  const upserts = normalized.filter((record) => {
-    const existing = current.get(record.id);
-    if (!existing) {
-      return true;
-    }
-    if (!isEntityRecordNewerOrSame(record, existing)) {
-      return false;
-    }
-    return JSON.stringify(record) !== JSON.stringify(existing);
-  });
-  if (upserts.length > 0) {
-    appendEntityEvents(memoryDir, definition, upserts, {
-      action: "upsert",
-      source: options.source || "ai-memory-hub",
-      reason: options.reason || `${definition.entity}:write`
-    });
-  }
-  materializeEntityProjection(memoryDir, definition);
-  mirrorSync(memoryDir, definition.entity, normalized);
-}
-
-function appendEntityRecord(memoryDir, definition, record, options = {}) {
-  const normalized = definition.normalize(record);
-  if (!definition.isValid(normalized)) {
-    throw new Error(`Invalid ${definition.entity} record: ${normalized.id || "missing id"}`);
-  }
-  appendEntityEvents(memoryDir, definition, [normalized], {
-    action: "upsert",
-    source: options.source || "ai-memory-hub",
-    reason: options.reason || `${definition.entity}:upsert`
-  });
-  materializeEntityProjection(memoryDir, definition);
-  mirrorUpsert(memoryDir, definition.entity, [normalized]);
-  return normalized;
-}
-
-function deleteEntityRecord(memoryDir, definition, id, options = {}) {
-  const entityId = String(id || "").trim();
-  if (!entityId) {
-    throw new Error(`Invalid ${definition.entity} id`);
-  }
-  appendEntityEvents(memoryDir, definition, [{ id: entityId }], {
-    action: "delete",
-    source: options.source || "ai-memory-hub",
-    reason: options.reason || `${definition.entity}:delete`
-  });
-  materializeEntityProjection(memoryDir, definition);
-  mirrorDelete(memoryDir, definition.entity, entityId);
-}
-
-function appendEntityEvents(memoryDir, definition, records, { action = "upsert", source = "ai-memory-hub", reason = "" } = {}) {
-  const file = getEntityEventsFile(memoryDir, definition);
-  for (const record of records) {
-    appendJsonl(file, createEntityEvent(definition, action, record, { source, reason }));
-  }
-}
-
-function createEntityEvent(definition, action, record, { source = "ai-memory-hub", reason = "" } = {}) {
-  const ts = new Date().toISOString();
-  const entityId = record.id || record.entityId || "";
-  return {
-    id: createId(`${definition.entity}:${action}:${entityId}:${JSON.stringify(record)}:${ts}`),
-    schemaVersion: 1,
-    ts,
-    source,
-    entity: definition.entity,
-    action,
-    type: `${definition.entity}.${action}`,
-    entityId,
-    reason,
-    record: action === "delete" ? undefined : record
-  };
-}
-
-function replayEntityEvents(events, definition) {
-  const byId = new Map();
-  for (const event of events) {
-    const action = String(event.action || String(event.type || "").split(".").pop() || "").toLowerCase();
-    const record = event.record || event[definition.entity] || event.payload;
-    const entityId = String(event.entityId || record?.id || "").trim();
-    if (!entityId) {
-      continue;
-    }
-    if (["delete", "remove", "tombstone"].includes(action)) {
-      byId.delete(entityId);
-      continue;
-    }
-    if (!["upsert", "create", "update", "snapshot"].includes(action) || !isPlainObject(record)) {
-      continue;
-    }
-    const normalized = definition.normalize(record);
-    if (definition.isValid(normalized)) {
-      byId.set(normalized.id, normalized);
-    }
-  }
-  return [...byId.values()];
-}
-
-function materializeEntityProjection(memoryDir, definition) {
-  const records = replayEntityEvents(readEntityEvents(memoryDir, definition), definition);
-  const file = getEntityProjectionFile(memoryDir, definition);
-  ensureDir(path.dirname(file));
-  writeFileAtomic(file, records.map((record) => JSON.stringify(record)).join("\n") + (records.length ? "\n" : ""), "utf8");
-  return records;
-}
-
 function rebuildEventSourcedProjections(memoryDir) {
   bootstrapEntityEventsFromProjection(memoryDir, getTaskEventStoreDefinition());
   bootstrapEntityEventsFromProjection(memoryDir, getProjectEventStoreDefinition());
@@ -12991,15 +12820,6 @@ function rebuildEventSourcedProjections(memoryDir) {
     projects: projects.length,
     workflows: workflows.length
   };
-}
-
-function isEntityRecordNewerOrSame(record, existing) {
-  const recordTime = Date.parse(record.updatedAt || record.createdAt || "");
-  const existingTime = Date.parse(existing.updatedAt || existing.createdAt || "");
-  if (Number.isNaN(recordTime) || Number.isNaN(existingTime)) {
-    return true;
-  }
-  return recordTime >= existingTime;
 }
 
 function createProject({ id, name, displayName, status, type, description, metadata, aliases, resources }) {
@@ -14993,9 +14813,6 @@ function normalizeMemoryRefs(refs = {}, fallback = {}) {
   return normalized;
 }
 
-function isPlainObject(value) {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
 
 function firstDefinedRef(source, fallback, keys) {
   for (const key of keys) {
@@ -16461,14 +16278,6 @@ function getPathSize(target) {
   return total;
 }
 
-function countJsonlLines(file) {
-  if (!fs.existsSync(file)) {
-    return 0;
-  }
-  return fs.readFileSync(file, "utf8")
-    .split(/\r?\n/)
-    .filter((line) => line.trim()).length;
-}
 
 function formatTopCounts(items = [], limit = 8) {
   const selected = items.slice(0, limit);
@@ -18263,35 +18072,11 @@ function readEventsWithLocations(file) {
     }));
 }
 
-function parseJsonlLine(line, _file = "", _lineNumber = 0) {
-  const raw = String(line || "").trim();
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return {
-      id: createId(raw),
-      ts: new Date().toISOString(),
-      source: "raw",
-      text: raw,
-      metadata: { kind: "raw" }
-    };
-  }
-}
 
 function formatEventLocation(entry) {
   return `${entry.file}:${entry.lineNumber}`;
 }
 
-function readEvents(file) {
-  if (!fs.existsSync(file)) {
-    return [];
-  }
-  return fs.readFileSync(file, "utf8")
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => parseJsonlLine(line, file));
-}
 
 function createRadioMessage({ from, to, type, text, thread, replyTo, project }) {
   const cleanText = String(text || "").trim();
@@ -18393,10 +18178,6 @@ function updateRadioMessage(memoryDir, id, patch) {
   writeFileAtomic(file, messages.map((message) => JSON.stringify(message)).join("\n") + (messages.length ? "\n" : ""), "utf8");
 }
 
-function appendJsonl(file, value) {
-  ensureDir(path.dirname(file));
-  fs.appendFileSync(file, `${JSON.stringify(value)}\n`, "utf8");
-}
 
 function syncSharedSkillLayer(file, snippet, { apply = false } = {}) {
   const existing = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
@@ -18557,84 +18338,6 @@ function projectRoot() {
   return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 }
 
-function ensureDir(dir) {
-  fs.mkdirSync(dir, { recursive: true });
-}
-
-function readJson(file) {
-  return JSON.parse(fs.readFileSync(file, "utf8"));
-}
-
-function readJsonSafe(file, fallback = {}) {
-  try {
-    return readJson(file);
-  } catch {
-    return fallback;
-  }
-}
-
-function writeJson(file, value) {
-  ensureDir(path.dirname(file));
-  writeFileAtomic(file, JSON.stringify(value, null, 2) + "\n", "utf8");
-}
-
-function createId(input) {
-  return crypto.createHash("sha256")
-    .update(`${Date.now()}:${input}`)
-    .digest("hex")
-    .slice(0, 16);
-}
-
-function getOption(argv, name) {
-  const index = argv.indexOf(name);
-  if (index === -1) {
-    return "";
-  }
-  const value = argv[index + 1] || "";
-  return value.startsWith("--") ? "" : value;
-}
-
-function hasOption(argv, name) {
-  return argv.indexOf(name) !== -1;
-}
-
-function hasFlag(argv, name) {
-  return argv.includes(name);
-}
-
-function parsePositiveIntegerOption(rawValue, name, { allowEmpty = false, defaultValue = 0 } = {}) {
-  if (rawValue === undefined || rawValue === null || rawValue === "") {
-    if (allowEmpty) {
-      return defaultValue;
-    }
-    throw new Error(`${name} requires a positive integer.`);
-  }
-  const value = Number(rawValue);
-  if (!Number.isInteger(value) || value <= 0) {
-    throw new Error(`${name} must be a positive integer.`);
-  }
-  return value;
-}
-
-function positionalArgs(argv) {
-  const positional = [];
-  for (let index = 0; index < argv.length; index++) {
-    const arg = argv[index];
-    if (arg.startsWith("--")) {
-      index++;
-      continue;
-    }
-    positional.push(arg);
-  }
-  return positional;
-}
-
-function countJsonlFiles(dir) {
-  if (!fs.existsSync(dir)) {
-    return 0;
-  }
-  return fs.readdirSync(dir).filter((file) => file.endsWith(".jsonl")).length;
-}
 
 function countBackupDirs(memoryDir) {
   const dir = path.join(memoryDir, "backups");

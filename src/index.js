@@ -6812,10 +6812,10 @@ function appCommand(argv) {
     try {
       const url = new URL(req.url || "/", `http://${host}:${port}`);
       const rawPathname = String(req.url || "/").split(/[?#]/, 1)[0] || "/";
-      if (req.method === "GET" && rawPathname.startsWith("/assets/")) {
+      if ((req.method === "GET" || req.method === "HEAD") && rawPathname.startsWith("/assets/")) {
         return sendStaticAsset(res, rawPathname);
       }
-      if (req.method === "GET" && (rawPathname.startsWith("/css/") || rawPathname.startsWith("/js/") || rawPathname.startsWith("/assets/") || rawPathname.endsWith(".svg"))) {
+      if ((req.method === "GET" || req.method === "HEAD") && (rawPathname.startsWith("/css/") || rawPathname.startsWith("/js/") || rawPathname.startsWith("/assets/") || /\.(svg|png|jpg|jpeg|gif|ico|webp|woff2?)$/i.test(rawPathname))) {
         return sendStaticFile(res, rawPathname);
       }
       if (req.method === "GET" && url.pathname === "/api/dashboard") {
@@ -9062,6 +9062,8 @@ function sendStaticFile(res, pathname) {
     ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
     ".gif": "image/gif",
+    ".ico": "image/x-icon",
+    ".webp": "image/webp",
     ".woff": "font/woff",
     ".woff2": "font/woff2"
   };

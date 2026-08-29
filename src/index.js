@@ -27,6 +27,7 @@ import { createDashboardWorkflowsApi } from "./dashboard/workflows.js";
 import { createDashboardAgentSessionsApi } from "./dashboard/agent-sessions-api.js";
 import { createDashboardWorktreesApi } from "./dashboard/worktrees-api.js";
 import { createDashboardCollaborationApi } from "./dashboard/collaboration.js";
+import { createDashboardCostSessionsApi } from "./dashboard/cost-sessions.js";
 import { buildExecutionAdapters } from "./execution-adapters.js";
 import { buildWorktreeSnapshot } from "./worktree-snapshot.js";
 import { evaluateDaemonHeartbeat } from "./daemon-health.js";
@@ -303,6 +304,8 @@ const dashboardCollaboration = createDashboardCollaborationApi({
   createTaskNote,
   withHubLock
 });
+
+const dashboardCostSessions = createDashboardCostSessionsApi({ homeDir: os.homedir() });
 
 const dashboardTools = createDashboardToolsApi({
   capabilityRegistryVersion: TOOL_CAPABILITY_REGISTRY_VERSION,
@@ -9056,6 +9059,9 @@ function appCommand(argv) {
       }
       if (req.method === "GET" && url.pathname === "/api/dashboard/overview") {
         return sendJson(res, dashboardRealtime.getDashboardOverview(config.memoryDir));
+      }
+      if (req.method === "GET" && url.pathname === "/api/cost-sessions") {
+        return sendJson(res, dashboardCostSessions.getCostSessions());
       }
       if (req.method === "GET" && url.pathname === "/api/credentials") {
         return sendJson(res, { profiles: listCredentialProfiles(config.memoryDir) });

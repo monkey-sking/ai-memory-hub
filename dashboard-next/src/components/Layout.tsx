@@ -6,6 +6,7 @@ import {
   Blocks,
   Brain,
   ChevronRight,
+  Coins,
   Database,
   FileJson,
   FolderKanban,
@@ -107,6 +108,7 @@ const navGroups: NavGroup[] = [
       { to: '/runners', icon: Server, label: { zh: '调度器', en: 'Runners' } },
       { to: '/tasks-center', icon: Loader2, label: { zh: '任务中心', en: 'Task Center' } },
       { to: '/observability', icon: Gauge, label: { zh: '可观测', en: 'Observability' } },
+      { to: '/cost-sessions', icon: Coins, label: { zh: '成本会话', en: 'Cost & Sessions' } },
       { to: '/data-migration', icon: FileJson, label: { zh: '数据迁移', en: 'Data Migration' } },
       { to: '/settings', icon: Settings, label: { zh: '设置', en: 'Settings' } }
     ]

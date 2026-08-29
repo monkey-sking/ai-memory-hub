@@ -24,6 +24,7 @@ const Health = lazy(() => import('./pages/Health'))
 const Settings = lazy(() => import('./pages/Settings'))
 const Runners = lazy(() => import('./pages/Runners'))
 const Sessions = lazy(() => import('./pages/Sessions'))
+const CostSessions = lazy(() => import('./pages/CostSessions'))
 const Reviews = lazy(() => import('./pages/Reviews'))
 const Roles = lazy(() => import('./pages/Roles'))
 const TasksCenter = lazy(() => import('./pages/TasksCenter'))
@@ -62,6 +63,7 @@ function App() {
             <Route path="settings" element={<Settings />} />
             <Route path="runners" element={<Runners />} />
             <Route path="sessions" element={<Sessions />} />
+            <Route path="cost-sessions" element={<CostSessions />} />
             <Route path="reviews" element={<Reviews />} />
             <Route path="roles" element={<Roles />} />
             <Route path="tasks-center" element={<TasksCenter />} />

@@ -4,7 +4,7 @@ node_modules/
 *.log
 coverage/
 dist/
-public/
+/public/
 logs/
 dashboard-next/dist/
 dashboard-next/node_modules/

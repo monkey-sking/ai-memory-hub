@@ -1,0 +1,159 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0b0f19"/>
+      <stop offset="50%" stop-color="#111827"/>
+      <stop offset="100%" stop-color="#070a12"/>
+    </linearGradient>
+
+    <!-- Core Cube Gradients -->
+    <linearGradient id="topFace" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#c084fc"/>
+      <stop offset="100%" stop-color="#9333ea"/>
+    </linearGradient>
+    <linearGradient id="leftFace" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#1d4ed8"/>
+    </linearGradient>
+    <linearGradient id="rightFace" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#818cf8"/>
+      <stop offset="100%" stop-color="#4f46e5"/>
+    </linearGradient>
+
+    <!-- Inner Core Glow -->
+    <radialGradient id="coreGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.9"/>
+      <stop offset="40%" stop-color="#818cf8" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#c084fc" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Ambient Glow behind core -->
+    <radialGradient id="ambientGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#818cf8" stop-opacity="0.35"/>
+      <stop offset="60%" stop-color="#c084fc" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Orbit Line Gradients -->
+    <linearGradient id="orbit1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.8"/>
+      <stop offset="50%" stop-color="#818cf8" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#c084fc" stop-opacity="0.8"/>
+    </linearGradient>
+
+    <linearGradient id="orbit2" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#34d399" stop-opacity="0.8"/>
+      <stop offset="50%" stop-color="#38bdf8" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#a78bfa" stop-opacity="0.8"/>
+    </linearGradient>
+
+    <!-- Node Glow Filters -->
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+    <filter id="strongGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="16" result="blur1"/>
+      <feGaussianBlur stdDeviation="8" result="blur2"/>
+      <feMerge>
+        <feMergeNode in="blur1"/>
+        <feMergeNode in="blur2"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- App Icon Background Container -->
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)" stroke="#1e293b" stroke-width="4"/>
+
+  <!-- Outer Ambient Glow -->
+  <circle cx="256" cy="256" r="200" fill="url(#ambientGlow)"/>
+
+  <!-- Network Connection Mesh Lines -->
+  <g stroke="#334155" stroke-width="1.5" opacity="0.4">
+    <line x1="256" y1="256" x2="120" y2="140"/>
+    <line x1="256" y1="256" x2="392" y2="140"/>
+    <line x1="256" y1="256" x2="392" y2="372"/>
+    <line x1="256" y1="256" x2="120" y2="372"/>
+    <line x1="256" y1="256" x2="256" y2="100"/>
+    <line x1="256" y1="256" x2="256" y2="412"/>
+  </g>
+
+  <!-- Orbital Rings (Multi-Agent Synapses) -->
+  <g opacity="0.85">
+    <!-- Orbit 1 (Tilted Left) -->
+    <ellipse cx="256" cy="256" rx="170" ry="65" fill="none" stroke="url(#orbit1)" stroke-width="3" transform="rotate(-30 256 256)"/>
+    <!-- Orbit 2 (Tilted Right) -->
+    <ellipse cx="256" cy="256" rx="170" ry="65" fill="none" stroke="url(#orbit2)" stroke-width="3" transform="rotate(30 256 256)"/>
+    <!-- Orbit 3 (Horizontal/Subtle) -->
+    <ellipse cx="256" cy="256" rx="180" ry="50" fill="none" stroke="#6366f1" stroke-width="1.5" opacity="0.3"/>
+  </g>
+
+  <!-- Inner Core Radial Glow -->
+  <circle cx="256" cy="256" r="90" fill="url(#coreGlow)" filter="url(#glow)"/>
+
+  <!-- 3D Geometric Isometric Memory Cube / Core -->
+  <g id="memory-core" transform="translate(0,0)">
+    <!-- Top Face -->
+    <polygon points="256,166 334,211 256,256 178,211" fill="url(#topFace)"/>
+    <!-- Left Face -->
+    <polygon points="178,211 256,256 256,346 178,301" fill="url(#leftFace)"/>
+    <!-- Right Face -->
+    <polygon points="256,256 334,211 334,301 256,346" fill="url(#rightFace)"/>
+
+    <!-- Inner Cube Facet Lines -->
+    <g stroke="#ffffff" stroke-width="1.5" opacity="0.6">
+      <line x1="256" y1="166" x2="256" y2="256"/>
+      <line x1="256" y1="256" x2="178" y2="211"/>
+      <line x1="256" y1="256" x2="334" y2="211"/>
+      <line x1="256" y1="256" x2="256" y2="346"/>
+    </g>
+
+    <!-- Glowing Core Center Spark -->
+    <circle cx="256" cy="256" r="8" fill="#ffffff" filter="url(#strongGlow)"/>
+  </g>
+
+  <!-- AI Agent Peripheral Nodes (Representing Claude, Codex, Gemini, Antigravity, etc.) -->
+  <!-- Top Node (Purple / Antigravity) -->
+  <g transform="translate(256, 100)" filter="url(#glow)">
+    <circle cx="0" cy="0" r="12" fill="#c084fc"/>
+    <circle cx="0" cy="0" r="6" fill="#ffffff"/>
+  </g>
+
+  <!-- Top Right Node (Blue / Codex) -->
+  <g transform="translate(392, 140)" filter="url(#glow)">
+    <circle cx="0" cy="0" r="10" fill="#38bdf8"/>
+    <circle cx="0" cy="0" r="5" fill="#ffffff"/>
+  </g>
+
+  <!-- Bottom Right Node (Cyan / Claude) -->
+  <g transform="translate(392, 372)" filter="url(#glow)">
+    <circle cx="0" cy="0" r="11" fill="#22d3ee"/>
+    <circle cx="0" cy="0" r="5" fill="#ffffff"/>
+  </g>
+
+  <!-- Bottom Node (Indigo / OpenCode) -->
+  <g transform="translate(256, 412)" filter="url(#glow)">
+    <circle cx="0" cy="0" r="9" fill="#818cf8"/>
+    <circle cx="0" cy="0" r="4.5" fill="#ffffff"/>
+  </g>
+
+  <!-- Bottom Left Node (Emerald / QClaw) -->
+  <g transform="translate(120, 372)" filter="url(#glow)">
+    <circle cx="0" cy="0" r="11" fill="#34d399"/>
+    <circle cx="0" cy="0" r="5" fill="#ffffff"/>
+  </g>
+
+  <!-- Top Left Node (Amber/Orange / Gemini) -->
+  <g transform="translate(120, 140)" filter="url(#glow)">
+    <circle cx="0" cy="0" r="10" fill="#fbbf24"/>
+    <circle cx="0" cy="0" r="5" fill="#ffffff"/>
+  </g>
+
+  <!-- Data Pulse Sparkles along orbits -->
+  <circle cx="340" cy="180" r="3.5" fill="#38bdf8" filter="url(#glow)"/>
+  <circle cx="170" cy="330" r="3.5" fill="#34d399" filter="url(#glow)"/>
+  <circle cx="330" cy="330" r="3.5" fill="#c084fc" filter="url(#glow)"/>
+  <circle cx="180" cy="180" r="3.5" fill="#fbbf24" filter="url(#glow)"/>
+</svg>

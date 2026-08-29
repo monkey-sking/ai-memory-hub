@@ -95,12 +95,12 @@ function SidebarBody({
           collapsed ? 'justify-center px-2' : 'px-3'
         )}
       >
-        <span
-          className="grid size-[22px] shrink-0 place-items-center rounded-sm bg-accent-base text-[11px] font-bold text-white"
+        <img
+          src="/favicon.png"
+          alt="AI Memory Hub Logo"
+          className="size-[24px] shrink-0 rounded-sm object-cover"
           aria-hidden="true"
-        >
-          AI
-        </span>
+        />
         {!collapsed && (
           <span className="grid min-w-0">
             <strong className="truncate text-[13px] font-semibold leading-[1.15] text-ink-1">AI Memory Hub</strong>

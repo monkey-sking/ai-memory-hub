@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 64" width="100%" height="100%">
+  <defs>
+    <linearGradient id="logoTop" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#c084fc"/>
+      <stop offset="100%" stop-color="#9333ea"/>
+    </linearGradient>
+    <linearGradient id="logoLeft" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#1d4ed8"/>
+    </linearGradient>
+    <linearGradient id="logoRight" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#818cf8"/>
+      <stop offset="100%" stop-color="#4f46e5"/>
+    </linearGradient>
+    <linearGradient id="logoOrb1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#c084fc"/>
+    </linearGradient>
+    <linearGradient id="logoOrb2" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#34d399"/>
+      <stop offset="100%" stop-color="#818cf8"/>
+    </linearGradient>
+    <linearGradient id="textGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#f8fafc"/>
+      <stop offset="100%" stop-color="#cbd5e1"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Icon Emblem -->
+  <g transform="translate(0, 0)">
+    <rect width="64" height="64" rx="14" fill="#0f172a"/>
+    
+    <g opacity="0.85">
+      <ellipse cx="32" cy="32" rx="23" ry="9" fill="none" stroke="url(#logoOrb1)" stroke-width="1.8" transform="rotate(-30 32 32)"/>
+      <ellipse cx="32" cy="32" rx="23" ry="9" fill="none" stroke="url(#logoOrb2)" stroke-width="1.8" transform="rotate(30 32 32)"/>
+    </g>
+
+    <g id="logo-cube">
+      <polygon points="32,18 43,24 32,30 21,24" fill="url(#logoTop)"/>
+      <polygon points="21,24 32,30 32,44 21,38" fill="url(#logoLeft)"/>
+      <polygon points="32,30 43,24 43,38 32,44" fill="url(#logoRight)"/>
+      <g stroke="#ffffff" stroke-width="0.8" opacity="0.7">
+        <line x1="32" y1="18" x2="32" y2="30"/>
+        <line x1="32" y1="30" x2="21" y2="24"/>
+        <line x1="32" y1="30" x2="43" y2="24"/>
+        <line x1="32" y1="30" x2="32" y2="44"/>
+      </g>
+    </g>
+
+    <circle cx="32" cy="11" r="2.2" fill="#c084fc"/>
+    <circle cx="50" cy="16" r="2" fill="#38bdf8"/>
+    <circle cx="50" cy="48" r="2" fill="#22d3ee"/>
+    <circle cx="14" cy="48" r="2" fill="#34d399"/>
+    <circle cx="14" cy="16" r="2" fill="#fbbf24"/>
+    <circle cx="32" cy="32" r="1.5" fill="#ffffff"/>
+  </g>
+
+  <!-- Typography -->
+  <text x="80" y="34" font-family="system-ui, -apple-system, sans-serif" font-size="22" font-weight="700" fill="url(#textGrad)" letter-spacing="-0.5">AI Memory Hub</text>
+  <text x="80.5" y="49" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="600" fill="#94a3b8" letter-spacing="1.5">MULTI-AGENT COLLABORATION LAYER</text>
+</svg>

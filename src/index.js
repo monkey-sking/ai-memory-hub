@@ -25,9 +25,9 @@ import { createDashboardTasksApi } from "./dashboard/tasks.js";
 import { createDashboardToolsApi } from "./dashboard/tools.js";
 import { createDashboardWorkflowsApi } from "./dashboard/workflows.js";
 import { createDashboardAgentSessionsApi } from "./dashboard/agent-sessions-api.js";
+import { createDashboardCostSessionsApi } from "./dashboard/cost-sessions.js";
 import { createDashboardWorktreesApi } from "./dashboard/worktrees-api.js";
 import { createDashboardCollaborationApi } from "./dashboard/collaboration.js";
-import { createDashboardCostSessionsApi } from "./dashboard/cost-sessions.js";
 import { buildExecutionAdapters } from "./execution-adapters.js";
 import { buildWorktreeSnapshot } from "./worktree-snapshot.js";
 import { evaluateDaemonHeartbeat } from "./daemon-health.js";
@@ -38,6 +38,14 @@ import { ensureDir, readJson, readJsonSafe, writeJson, createId, getOption, hasO
 import { readEvents, parseJsonlLine, countJsonlLines } from "./lib/io.js";
 import { getEntityEventsFile, getEntityProjectionFile, readEntityEvents, bootstrapEntityEventsFromProjection, writeEntityRecords, appendEntityRecord, deleteEntityRecord, appendEntityEvents, createEntityEvent, replayEntityEvents, materializeEntityProjection, isEntityRecordNewerOrSame } from "./lib/entity-store.js";
 import { PROJECT_STATUSES, RECIPE_GATE_STRING_ARRAY_FIELDS, RECIPE_GATE_FIELDS, extractQualityGate, normalizeQualityGate, normalizeVerifyCommand, normalizeNonNegativeInteger, normalizeMinimalImplementation, normalizeDependencyBudget, normalizePriority, normalizeDispatchWorktreeMetadata, normalizeWorkflowRole, parseProjectListOption, uniqueStringList, isTaskStatus, isWorkflowStatus, normalizeRecipeMetadata, normalizeRecipeStepMetadata, normalizeProjectStatus, normalizeProjectResources, normalizeProject, normalizeWorkflow, normalizeTask, normalizePrompt, getTaskEventStoreDefinition, getProjectEventStoreDefinition, getWorkflowEventStoreDefinition, getPromptEventStoreDefinition } from "./lib/entity-models.js";
+import { promptCommand } from "./commands/prompt.js";
+import { workflowNodeCommand } from "./commands/workflow-node.js";
+import {
+  readTasks, writeTasks, readWorkflows, writeWorkflows, readProjects, writeProjects,
+  getTasksFile, getWorkflowsFile, getProjectsFile,
+  readWorkflowNodes, readWorkflowNodesByWorkflow, appendWorkflowNodeEvent,
+  deriveWorkflowStatusFromNodes
+} from "./lib/entity-repo.js";
 import { acquireDaemonLock, releaseDaemonLock } from "./daemon-lock.js";
 import { resolveAgentTarget } from "./agent-wake.js";
 import { createSessionSupervisor } from "./session-supervisor-service.js";
@@ -279,6 +287,8 @@ const dashboardAgentSessions = createDashboardAgentSessionsApi({
   readDispatchRuns
 });
 
+const dashboardCostSessions = createDashboardCostSessionsApi({ homeDir: os.homedir() });
+
 const dashboardWorktrees = createDashboardWorktreesApi({
   readTasks,
   readWorkflows,
@@ -304,8 +314,6 @@ const dashboardCollaboration = createDashboardCollaborationApi({
   createTaskNote,
   withHubLock
 });
-
-const dashboardCostSessions = createDashboardCostSessionsApi({ homeDir: os.homedir() });
 
 const dashboardTools = createDashboardToolsApi({
   capabilityRegistryVersion: TOOL_CAPABILITY_REGISTRY_VERSION,
@@ -658,7 +666,7 @@ async function main() {
     case "flow":
       return workflowCommand(rest);
     case "prompt":
-      return promptCommand(rest);
+      return promptCommand(rest, { loadConfig, ensureHub, withHubLock });
     case "gate":
       return gateCommand(rest);
     case "session":
@@ -3462,187 +3470,6 @@ function taskCommand(argv) {
   }
 }
 
-function promptCommand(argv) {
-  const action = argv[0] || "list";
-  const actionArgs = argv.slice(1);
-  switch (action) {
-    case "create":
-      return promptCreateCommand(actionArgs);
-    case "list":
-      return promptListCommand(actionArgs);
-    case "get":
-      return promptGetCommand(actionArgs);
-    case "update":
-      return promptUpdateCommand(actionArgs);
-    case "delete":
-    case "rm":
-      return promptDeleteCommand(actionArgs);
-    case "render":
-      return promptRenderCommand(actionArgs);
-    case "versions":
-      return promptVersionsCommand(actionArgs);
-    default:
-      throw new Error("Usage: ai-memory-hub prompt <create|list|get|update|delete|render|versions> ...");
-  }
-}
-
-function promptCreateCommand(argv) {
-  const name = positionalArgs(argv).join(" ").trim();
-  if (!name) {
-    throw new Error('Usage: ai-memory-hub prompt create <name> --type prd --file template.njk [--description text]');
-  }
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  const type = getOption(argv, "--type") || "general";
-  const filePath = getOption(argv, "--file") || "";
-  const description = getOption(argv, "--description") || "";
-  const createdBy = getOption(argv, "--from") || getOption(argv, "--by") || "manual";
-
-  let content = "";
-  if (filePath) {
-    const resolved = path.resolve(filePath);
-    if (!fs.existsSync(resolved)) {
-      throw new Error(`Template file not found: ${resolved}`);
-    }
-    content = fs.readFileSync(resolved, "utf8");
-  } else {
-    content = getOption(argv, "--content") || "";
-  }
-
-  if (!content) {
-    throw new Error("Template content is required. Use --file <path> or --content <text>.");
-  }
-
-  const variables = extractVariables(content);
-
-  return withHubLock(config.memoryDir, "prompt-create", () => {
-    const prompts = readPrompts(config.memoryDir);
-    const prompt = createPrompt({ name, type, content, variables, description, createdBy });
-    prompts.push(prompt);
-    writePrompts(config.memoryDir, prompts);
-    console.log(JSON.stringify(prompt, null, 2));
-  }, config.sync.lockStaleMs);
-}
-
-function promptListCommand(argv) {
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  const type = getOption(argv, "--type") || "";
-  const limit = Number(getOption(argv, "--limit") || 50);
-  let prompts = readPrompts(config.memoryDir);
-  if (type) {
-    prompts = prompts.filter((p) => p.type === type);
-  }
-  prompts = prompts
-    .sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")))
-    .slice(0, limit);
-  console.log(JSON.stringify(prompts, null, 2));
-}
-
-function promptGetCommand(argv) {
-  const id = positionalArgs(argv)[0] || getOption(argv, "--id") || "";
-  if (!id) {
-    throw new Error("Usage: ai-memory-hub prompt get <id-or-name>");
-  }
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  const prompts = readPrompts(config.memoryDir);
-  const index = findPromptIndex(prompts, id);
-  if (index === -1) {
-    throw new Error(`Prompt not found: ${id}`);
-  }
-  console.log(JSON.stringify(prompts[index], null, 2));
-}
-
-function promptUpdateCommand(argv) {
-  const id = positionalArgs(argv)[0] || getOption(argv, "--id") || "";
-  if (!id) {
-    throw new Error("Usage: ai-memory-hub prompt update <id> --file template.njk");
-  }
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  const filePath = getOption(argv, "--file") || "";
-  const name = getOption(argv, "--name") || "";
-  const type = getOption(argv, "--type") || "";
-  const description = getOption(argv, "--description");
-
-  return withHubLock(config.memoryDir, "prompt-update", () => {
-    const updated = updatePrompt(config.memoryDir, id, (prompt) => {
-      const result = { ...prompt };
-      if (name) result.name = name;
-      if (type) result.type = type;
-      if (description !== null && description !== undefined) result.description = description;
-      if (filePath) {
-        const resolved = path.resolve(filePath);
-        if (!fs.existsSync(resolved)) {
-          throw new Error(`Template file not found: ${resolved}`);
-        }
-        result.content = fs.readFileSync(resolved, "utf8");
-      } else {
-        const content = getOption(argv, "--content");
-        if (content) result.content = content;
-      }
-      result.variables = extractVariables(result.content);
-      return result;
-    });
-    console.log(JSON.stringify(updated, null, 2));
-  }, config.sync.lockStaleMs);
-}
-
-function promptDeleteCommand(argv) {
-  const id = positionalArgs(argv)[0] || getOption(argv, "--id") || "";
-  if (!id) {
-    throw new Error("Usage: ai-memory-hub prompt delete <id>");
-  }
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  return withHubLock(config.memoryDir, "prompt-delete", () => {
-    const removed = deletePrompt(config.memoryDir, id);
-    console.log(JSON.stringify({ ok: true, deleted: removed }, null, 2));
-  }, config.sync.lockStaleMs);
-}
-
-function promptRenderCommand(argv) {
-  const id = positionalArgs(argv)[0] || getOption(argv, "--id") || "";
-  if (!id) {
-    throw new Error("Usage: ai-memory-hub prompt render <id> --vars '{\"key\":\"value\"}'");
-  }
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  const prompts = readPrompts(config.memoryDir);
-  const index = findPromptIndex(prompts, id);
-  if (index === -1) {
-    throw new Error(`Prompt not found: ${id}`);
-  }
-  const prompt = prompts[index];
-  let variables = {};
-  const varsJson = getOption(argv, "--vars") || "";
-  if (varsJson) {
-    try {
-      variables = JSON.parse(varsJson);
-    } catch (err) {
-      throw new Error(`Invalid --vars JSON: ${err.message}`);
-    }
-  }
-  const rendered = renderPrompt(prompt.content, variables);
-  console.log(rendered);
-}
-
-function promptVersionsCommand(argv) {
-  const id = positionalArgs(argv)[0] || getOption(argv, "--id") || "";
-  if (!id) {
-    throw new Error("Usage: ai-memory-hub prompt versions <id>");
-  }
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  const prompts = readPrompts(config.memoryDir);
-  const index = findPromptIndex(prompts, id);
-  if (index === -1) {
-    throw new Error(`Prompt not found: ${id}`);
-  }
-  const versions = getPromptVersions(config.memoryDir, prompts[index].id);
-  console.log(JSON.stringify(versions, null, 2));
-}
 
 function taskAddCommand(argv) {
   const title = positionalArgs(argv).join(" ").trim();
@@ -9060,9 +8887,6 @@ function appCommand(argv) {
       if (req.method === "GET" && url.pathname === "/api/dashboard/overview") {
         return sendJson(res, dashboardRealtime.getDashboardOverview(config.memoryDir));
       }
-      if (req.method === "GET" && url.pathname === "/api/cost-sessions") {
-        return sendJson(res, dashboardCostSessions.getCostSessions());
-      }
       if (req.method === "GET" && url.pathname === "/api/credentials") {
         return sendJson(res, { profiles: listCredentialProfiles(config.memoryDir) });
       }
@@ -9530,6 +9354,9 @@ function appCommand(argv) {
       }
       if (req.method === "GET" && url.pathname === "/api/agent-sessions") {
         return sendJson(res, dashboardAgentSessions.getDashboardAgentSessions(config.memoryDir));
+      }
+      if (req.method === "GET" && url.pathname === "/api/cost-sessions") {
+        return sendJson(res, dashboardCostSessions.getCostSessions());
       }
       if (req.method === "GET" && url.pathname === "/api/worktrees") {
         return sendJson(res, dashboardWorktrees.getDashboardWorktrees(config.memoryDir));
@@ -10747,7 +10574,7 @@ function workflowCommand(argv) {
     case "done":
       return workflowStatusCommand(["--status", "done", ...actionArgs]);
     case "node":
-      return workflowNodeCommand(actionArgs);
+      return workflowNodeCommand(actionArgs, { loadConfig, ensureHub });
     case "graph":
       return workflowGraphCommand(actionArgs);
     default:
@@ -11227,149 +11054,10 @@ function workflowSignalCommand(argv) {
   console.log(JSON.stringify(message, null, 2));
 }
 
-function workflowNodeCommand(argv) {
-  const action = argv[0] || "list";
-  const actionArgs = argv.slice(1);
-  switch (action) {
-    case "add":
-    case "create":
-      return workflowNodeAddCommand(actionArgs);
-    case "start":
-      return workflowNodeTransitionCommand(actionArgs, "running");
-    case "wait":
-      return workflowNodeTransitionCommand(actionArgs, "waiting");
-    case "done":
-    case "complete":
-      return workflowNodeTransitionCommand(actionArgs, "completed");
-    case "fail":
-      return workflowNodeTransitionCommand(actionArgs, "failed");
-    case "error":
-      return workflowNodeTransitionCommand(actionArgs, "error");
-    case "cancel":
-      return workflowNodeTransitionCommand(actionArgs, "cancelled");
-    case "reject":
-      return workflowNodeTransitionCommand(actionArgs, "rejected");
-    case "list":
-      return workflowNodeListCommand(actionArgs);
-    case "show":
-      return workflowNodeShowCommand(actionArgs);
-    default:
-      throw new Error("Usage: ai-memory-hub workflow node <add|start|wait|done|fail|error|cancel|reject|list|show> ...");
-  }
-}
 
-function workflowNodeAddCommand(argv) {
-  const workflowId = getOption(argv, "--workflow") || getOption(argv, "--id");
-  const slug = getOption(argv, "--slug");
-  const label = getOption(argv, "--label") || slug;
-  const role = getOption(argv, "--role") || "";
-  const actor = getOption(argv, "--actor") || "";
-  const isRequired = !hasOption(argv, "--optional");
-  if (!workflowId || !slug) {
-    throw new Error("Usage: ai-memory-hub workflow node add --workflow <id> --slug <slug> [--label <label>] [--role <role>] [--actor <actor>] [--optional]");
-  }
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  const workflows = readWorkflows(config.memoryDir);
-  const workflow = workflows.find((w) => w.id === workflowId || w.id.startsWith(workflowId));
-  if (!workflow) {
-    throw new Error(`Workflow not found: ${workflowId}`);
-  }
-  const nodeId = `${workflow.id}:${slug}`;
-  const now = new Date().toISOString();
-  const event = {
-    workflowId: workflow.id,
-    nodeId,
-    slug,
-    label,
-    role,
-    actor,
-    status: "queued",
-    ts: now,
-    createdAt: now,
-    isRequired
-  };
-  const result = appendWorkflowNodeEvent(config.memoryDir, event);
-  console.log(JSON.stringify(result, null, 2));
-}
 
-function workflowNodeTransitionCommand(argv, targetStatus) {
-  const workflowId = getOption(argv, "--workflow") || getOption(argv, "--id");
-  const nodeSlugOrId = getOption(argv, "--node") || positionalArgs(argv)[0];
-  const note = getOption(argv, "--note") || "";
-  const error = getOption(argv, "--error") || "";
-  const outputRaw = getOption(argv, "--output");
-  const output = outputRaw ? JSON.parse(outputRaw) : {};
-  if (!workflowId || !nodeSlugOrId) {
-    throw new Error(`Usage: ai-memory-hub workflow node ${targetStatus} --workflow <id> --node <nodeId|slug> [--note <text>] [--error <text>] [--output <json>]`);
-  }
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  const workflows = readWorkflows(config.memoryDir);
-  const workflow = workflows.find((w) => w.id === workflowId || w.id.startsWith(workflowId));
-  if (!workflow) {
-    throw new Error(`Workflow not found: ${workflowId}`);
-  }
-  const nodes = readWorkflowNodes(config.memoryDir, workflow.id);
-  const node = nodes.find((n) => n.nodeId === nodeSlugOrId || n.slug === nodeSlugOrId || n.nodeId.endsWith(`:${nodeSlugOrId}`));
-  if (!node) {
-    throw new Error(`Node not found: ${nodeSlugOrId} in workflow ${workflow.id}`);
-  }
-  const now = new Date().toISOString();
-  const event = {
-    ...node,
-    status: targetStatus,
-    ts: now,
-    note: note || node.note,
-    error: error || node.error,
-    output: Object.keys(output).length > 0 ? output : node.output
-  };
-  if (targetStatus === "running" && !node.startedAt) {
-    event.startedAt = now;
-  }
-  if (["completed", "failed", "error", "cancelled", "rejected"].includes(targetStatus) && !node.completedAt) {
-    event.completedAt = now;
-  }
-  const result = appendWorkflowNodeEvent(config.memoryDir, event);
-  console.log(JSON.stringify(result, null, 2));
-}
 
-function workflowNodeListCommand(argv) {
-  const workflowId = getOption(argv, "--workflow") || getOption(argv, "--id") || positionalArgs(argv)[0];
-  if (!workflowId) {
-    throw new Error("Usage: ai-memory-hub workflow node list --workflow <id>");
-  }
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  const workflows = readWorkflows(config.memoryDir);
-  const workflow = workflows.find((w) => w.id === workflowId || w.id.startsWith(workflowId));
-  if (!workflow) {
-    throw new Error(`Workflow not found: ${workflowId}`);
-  }
-  const nodes = readWorkflowNodes(config.memoryDir, workflow.id);
-  console.log(JSON.stringify(nodes, null, 2));
-}
 
-function workflowNodeShowCommand(argv) {
-  const workflowId = getOption(argv, "--workflow") || getOption(argv, "--id");
-  const nodeSlugOrId = getOption(argv, "--node") || positionalArgs(argv)[0];
-  if (!workflowId || !nodeSlugOrId) {
-    throw new Error("Usage: ai-memory-hub workflow node show --workflow <id> --node <nodeId|slug>");
-  }
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  const workflows = readWorkflows(config.memoryDir);
-  const workflow = workflows.find((w) => w.id === workflowId || w.id.startsWith(workflowId));
-  if (!workflow) {
-    throw new Error(`Workflow not found: ${workflowId}`);
-  }
-  const nodes = readWorkflowNodes(config.memoryDir, workflow.id);
-  const node = nodes.find((n) => n.nodeId === nodeSlugOrId || n.slug === nodeSlugOrId || n.nodeId.endsWith(`:${nodeSlugOrId}`));
-  if (!node) {
-    throw new Error(`Node not found: ${nodeSlugOrId}`);
-  }
-  console.log(JSON.stringify(node, null, 2));
-}
 
 function workflowGraphCommand(argv) {
   const workflowId = getOption(argv, "--id") || getOption(argv, "--workflow") || positionalArgs(argv)[0];
@@ -12220,287 +11908,26 @@ function writeLedger(memoryDir, ledger) {
   writeFileAtomic(file, ledger.map((item) => JSON.stringify(item)).join("\n") + (ledger.length ? "\n" : ""), "utf8");
 }
 
-function readTasks(memoryDir) {
-  bootstrapEntityEventsFromProjection(memoryDir, getTaskEventStoreDefinition());
-  const events = readEntityEvents(memoryDir, getTaskEventStoreDefinition());
-  if (events.length > 0) {
-    return replayEntityEvents(events, getTaskEventStoreDefinition());
-  }
-  return readEvents(getTasksFile(memoryDir))
-    .map(normalizeTask)
-    .filter((task) => task.id && task.title);
-}
-
-function writeTasks(memoryDir, tasks) {
-  writeEntityRecords(memoryDir, getTaskEventStoreDefinition(), tasks);
-}
-
-function readWorkflows(memoryDir) {
-  bootstrapEntityEventsFromProjection(memoryDir, getWorkflowEventStoreDefinition());
-  const events = readEntityEvents(memoryDir, getWorkflowEventStoreDefinition());
-  let workflows = [];
-  if (events.length > 0) {
-    workflows = replayEntityEvents(events, getWorkflowEventStoreDefinition());
-  } else {
-    workflows = readEvents(getWorkflowsFile(memoryDir))
-      .map(normalizeWorkflow)
-      .filter((workflow) => workflow.id && workflow.title);
-  }
-
-  // Phase 5: Apply derived status for workflows that opted in.
-  // Read the nodes file at most once and only when needed.
-  const derivedWorkflows = workflows.filter((workflow) => workflow.usesDerivedStatus);
-  if (derivedWorkflows.length === 0) {
-    return workflows;
-  }
-  const nodesByWorkflow = readWorkflowNodesByWorkflow(memoryDir);
-  return workflows.map((workflow) => {
-    if (!workflow.usesDerivedStatus) {
-      return workflow;
-    }
-    const nodeList = nodesByWorkflow.get(workflow.id) || [];
-    const derivedStatus = deriveWorkflowStatusFromNodes(nodeList);
-    if (derivedStatus) {
-      return {
-        ...workflow,
-        status: derivedStatus,
-        derivedStatus // store the derived value for debugging/inspection
-      };
-    }
-    return workflow;
-  });
-}
-
-function writeWorkflows(memoryDir, workflows) {
-  writeEntityRecords(memoryDir, getWorkflowEventStoreDefinition(), workflows);
-}
-
-function readProjects(memoryDir) {
-  bootstrapEntityEventsFromProjection(memoryDir, getProjectEventStoreDefinition());
-  const events = readEntityEvents(memoryDir, getProjectEventStoreDefinition());
-  if (events.length > 0) {
-    return replayEntityEvents(events, getProjectEventStoreDefinition());
-  }
-  return readEvents(getProjectsFile(memoryDir))
-    .map(normalizeProject)
-    .filter((project) => project.id && project.name);
-}
-
-function writeProjects(memoryDir, projects) {
-  writeEntityRecords(memoryDir, getProjectEventStoreDefinition(), projects);
-}
-
-function getTasksFile(memoryDir) {
-  return path.join(memoryDir, "tasks", "tasks.jsonl");
-}
-
-function getWorkflowsFile(memoryDir) {
-  return path.join(memoryDir, "workflows", "workflows.jsonl");
-}
-
-function getProjectsFile(memoryDir) {
-  return path.join(memoryDir, "projects", "projects.jsonl");
-}
 
 
 
 
-// Prompt template system
 
 
-function getPromptsFile(memoryDir) {
-  return path.join(memoryDir, "prompts", "templates.jsonl");
-}
-
-function getPromptVersionsFile(memoryDir) {
-  return path.join(memoryDir, "prompts", "versions.jsonl");
-}
-
-function readPrompts(memoryDir) {
-  const file = getPromptsFile(memoryDir);
-  if (!fs.existsSync(file)) return [];
-  return readEvents(file).map(normalizePrompt).filter((p) => p.id);
-}
-
-function createPrompt({ name, type, content, variables, description, createdBy }) {
-  const now = new Date().toISOString();
-  const cleanName = String(name || "").trim();
-  const cleanType = String(type || "general").trim();
-  const id = createId(`prompt:${cleanName}:${cleanType}`);
-  return {
-    id,
-    createdAt: now,
-    updatedAt: now,
-    createdBy: String(createdBy || "manual"),
-    name: cleanName,
-    type: cleanType,
-    description: String(description || ""),
-    content: String(content || ""),
-    variables: Array.isArray(variables) ? variables : [],
-    version: 1
-  };
-}
 
 
-function findPromptIndex(prompts, id) {
-  const lower = id.toLowerCase();
-  return prompts.findIndex((p) =>
-    p.id === id || p.id.toLowerCase() === lower || p.id.toLowerCase().startsWith(lower)
-  );
-}
 
-function updatePrompt(memoryDir, id, updater) {
-  const prompts = readPrompts(memoryDir);
-  const index = findPromptIndex(prompts, id);
-  if (index === -1) {
-    throw new Error(`Prompt not found: ${id}`);
-  }
-  const old = prompts[index];
-  const updated = normalizePrompt(updater(old));
-  if (updated.version === old.version) {
-    updated.version = old.version + 1;
-  }
-  updated.updatedAt = new Date().toISOString();
-  prompts[index] = updated;
-  writePrompts(memoryDir, prompts);
 
-  // Save version history
-  const versionsFile = getPromptVersionsFile(memoryDir);
-  appendJsonl(versionsFile, {
-    promptId: old.id,
-    version: old.version,
-    content: old.content,
-    variables: old.variables,
-    snapshotAt: new Date().toISOString(),
-    updatedBy: updated.createdBy
-  });
 
-  return updated;
-}
 
-function writePrompts(memoryDir, prompts) {
-  const file = getPromptsFile(memoryDir);
-  ensureDir(path.dirname(file));
-  const lines = prompts.map((p) => JSON.stringify(normalizePrompt(p))).join("\n") + "\n";
-  writeFileAtomic(file, lines, "utf8");
-}
-
-function deletePrompt(memoryDir, id) {
-  const prompts = readPrompts(memoryDir);
-  const index = findPromptIndex(prompts, id);
-  if (index === -1) {
-    throw new Error(`Prompt not found: ${id}`);
-  }
-  const removed = prompts.splice(index, 1)[0];
-  writePrompts(memoryDir, prompts);
-
-  // Record deletion in versions
-  const versionsFile = getPromptVersionsFile(memoryDir);
-  appendJsonl(versionsFile, {
-    promptId: removed.id,
-    version: removed.version,
-    action: "deleted",
-    snapshotAt: new Date().toISOString()
-  });
-
-  return removed;
-}
-
-function renderPrompt(template, variables) {
-  const env = new nunjucks.Environment();
-  try {
-    return env.renderString(template, variables || {});
-  } catch (err) {
-    throw new Error(`Template render error: ${err.message}`);
-  }
-}
-
-function extractVariables(content) {
-  const regex = /\{\{\s*(\w+)\s*\}\}/g;
-  const vars = new Set();
-  let match;
-  while ((match = regex.exec(content)) !== null) {
-    vars.add(match[1]);
-  }
-  return [...vars];
-}
-
-function getPromptVersions(memoryDir, promptId) {
-  const versionsFile = getPromptVersionsFile(memoryDir);
-  if (!fs.existsSync(versionsFile)) return [];
-  return readEvents(versionsFile).filter((v) => v.promptId === promptId);
-}
 
 // Workflow node history (P0: workflow execution history with node states)
 
-function readWorkflowNodes(memoryDir, workflowId) {
-  const nodesFile = path.join(memoryDir, "workflows", "nodes.jsonl");
-  const events = readEvents(nodesFile).filter((event) => event.workflowId === workflowId);
-  const nodeMap = new Map();
-  for (const event of events) {
-    const existing = nodeMap.get(event.nodeId);
-    if (!existing || new Date(event.ts) > new Date(existing.ts)) {
-      nodeMap.set(event.nodeId, event);
-    }
-  }
-  return Array.from(nodeMap.values()).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-}
 
 // Read every workflow's current nodes in a single pass over nodes.jsonl.
 // Returns a Map of workflowId -> sorted node array. Used by readWorkflows to
 // avoid re-reading the file once per derived-status workflow.
-function readWorkflowNodesByWorkflow(memoryDir) {
-  const nodesFile = path.join(memoryDir, "workflows", "nodes.jsonl");
-  const events = readEvents(nodesFile);
-  const latestByNode = new Map();
-  for (const event of events) {
-    if (!event.workflowId || !event.nodeId) {
-      continue;
-    }
-    const existing = latestByNode.get(event.nodeId);
-    if (!existing || new Date(event.ts) > new Date(existing.ts)) {
-      latestByNode.set(event.nodeId, event);
-    }
-  }
-  const byWorkflow = new Map();
-  for (const node of latestByNode.values()) {
-    if (!byWorkflow.has(node.workflowId)) {
-      byWorkflow.set(node.workflowId, []);
-    }
-    byWorkflow.get(node.workflowId).push(node);
-  }
-  for (const list of byWorkflow.values()) {
-    list.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-  }
-  return byWorkflow;
-}
 
-function appendWorkflowNodeEvent(memoryDir, event) {
-  const nodesFile = path.join(memoryDir, "workflows", "nodes.jsonl");
-  ensureDir(path.dirname(nodesFile));
-  const normalized = {
-    type: "workflow.node",
-    workflowId: event.workflowId,
-    nodeId: event.nodeId,
-    slug: event.slug,
-    label: event.label || event.slug,
-    role: event.role || "",
-    actor: event.actor || "",
-    status: event.status,
-    ts: event.ts || new Date().toISOString(),
-    createdAt: event.createdAt || event.ts || new Date().toISOString(),
-    startedAt: event.startedAt || "",
-    completedAt: event.completedAt || "",
-    input: event.input || {},
-    output: event.output || {},
-    error: event.error || "",
-    note: event.note || "",
-    isRequired: event.isRequired !== false,
-    isFinal: ["completed", "failed", "error", "cancelled", "rejected"].includes(event.status)
-  };
-  appendJsonl(nodesFile, normalized);
-  return normalized;
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Approval Gates
@@ -12556,26 +11983,6 @@ function appendApprovalGateEvent(memoryDir, event) {
   return normalized;
 }
 
-function deriveWorkflowStatusFromNodes(nodes) {
-  if (!nodes || nodes.length === 0) return null;
-  const required = nodes.filter((n) => n.isRequired);
-  const hasRunning = nodes.some((n) => n.status === "running");
-  const hasWaiting = nodes.some((n) => n.status === "waiting");
-  const allRequiredCompleted = required.every((n) => n.status === "completed");
-  const hasBlocker = required.some((n) => ["failed", "error", "rejected"].includes(n.status));
-  const allCancelled = nodes.every((n) => n.status === "cancelled");
-  if (allCancelled) return "cancelled";
-  if (allRequiredCompleted) return "done";
-  if (hasBlocker && !hasRunning && !hasWaiting) return "blocked";
-  if (hasWaiting && !hasRunning) return "waiting";
-  if (hasRunning) return "in_progress";
-  const reviewNodes = nodes.filter((n) => n.role === "reviewer");
-  const execNodes = required.filter((n) => n.role === "executor");
-  if (execNodes.every((n) => n.status === "completed") && reviewNodes.some((n) => !["completed", "rejected"].includes(n.status))) {
-    return "review";
-  }
-  return "open";
-}
 
 // Permission policy layer (P0: capability permission matrix)
 

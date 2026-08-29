@@ -96,3 +96,7 @@ export function countJsonlFiles(dir) {
 export function isPlainObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
+
+export function hasOwnField(source, field) {
+  return Object.prototype.hasOwnProperty.call(source, field);
+}

@@ -1,3 +1,28 @@
+## Git 操作边界（多个 AI 并行改同一个仓库时必读）
+
+同一个仓库可能同时有多个 AI 工具在改（codex / claude / gemini / antigravity / opencode / mimocode / workbuddy 等）。
+以下命令会直接毁掉别人正在做的工作，**任何情况下都不要执行**：
+
+- `git reset`（尤其是 `--hard`）、`git checkout -- .`
+- `git stash`
+- `git clean -fd`
+- `git rebase`、`git commit --amend`、`git push --force`
+- `git gc` / `git prune`
+- 重新 `git clone` 覆盖 `.git` 目录
+
+可以正常用：`git add` / `commit` / `fetch` / `status` / `diff` / `log` / `merge`。
+
+`git push` 之前必须先问用户。
+
+提交时注意两点：
+
+1. 只 add 自己改动的文件，不要用 `git add .` 或 `git add -A`，否则会把别人没写完的改动一起提交。
+2. 新增文件要确认确实被 add 进去了。2026-08-29 出过事故：代码里 import 了新模块、但模块文件没入库，
+   别人一拉代码就直接启动不了。
+
+如果发现仓库状态异常（提交莫名消失、`.git` 被替换、出现 `.git.broken/` 目录），
+**停下来告诉用户**，不要自行修复。
+
 # Shared AI Memory
 
 Use the local shared memory directory as the durable cross-assistant memory hub:

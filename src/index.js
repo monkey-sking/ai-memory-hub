@@ -33,6 +33,14 @@ import { buildWorktreeSnapshot } from "./worktree-snapshot.js";
 import { evaluateDaemonHeartbeat } from "./daemon-health.js";
 import { appendJsonl } from "./event-writer.js";
 import { eventsCommand } from "./commands/events.js";
+import { gateCommand } from "./commands/gate.js";
+const gateCommandDeps = { appendApprovalGateEvent, ensureHub, loadConfig, readApprovalGates };
+import { radioCommand, radioPromoteCommand } from "./commands/radio.js";
+const radioCommandDeps = { createRadioMessage, ensureHub, getUnreadRadioMessages, isCorruptedRadioMessage, loadConfig, readRadioMessages, updateRadioMessage, writeRadioCursor };
+import { projectCommand } from "./commands/project.js";
+const projectCommandDeps = { createProject, ensureHub, filterProjects, findProject, findProjectIndex, loadConfig, mergeSeedProjects, parseProjectResourceOptions, updateProject, withHubLock };
+import { daemonCommand } from "./commands/daemon.js";
+const daemonCommandDeps = { buildDaemonStatus, clearDaemonPid, ensureHub, executeDispatch, executeDispatchRetry, getCheckpointStats, getToolRunner, loadConfig, readLoopCheckpoint, refreshModelsIfStale, writeDaemonHeartbeat, writeDaemonPid, writeDaemonStatus, writeLoopCheckpoint };
 import { dispatchCommand } from "./commands/dispatch.js";
 const dispatchCommandDeps = { appendRelayStatus, buildRecentRelayStatusView, buildTaskDispatchText, buildWorkflowDispatchText, ensureHub, executeDispatch, executeDispatchRetry, findLatestRelayStatusEntry, getDispatchThreadKey, loadConfig, normalizeDispatchRetryLimit, normalizeToolName, parseProgressPercent, readDispatchLog, readDispatchRuns, readRelayStatus, rebuildDispatchJobFromRelay, resolveRelayRelatedObjects, resolveRelaySourceObject, resolveRelayThreadKeys, updateDispatchSourceState, withHubLock };
 import { workflowCommand } from "./commands/workflow.js";
@@ -428,7 +436,7 @@ const dashboardActions = createDashboardActionsApi({
   invalidateToolDetectionCache,
   materializeEntityProjection,
   pullCommand,
-  radioPromoteCommand,
+  radioPromoteCommand: (...args) => radioPromoteCommand(...args, radioCommandDeps),
   readEntityEvents,
   readTasks,
   readWorkflows,
@@ -663,10 +671,10 @@ async function main() {
     case "memory":
       return memoryCommand(rest, memoryCommandDeps);
     case "radio":
-      return radioCommand(rest);
+      return radioCommand(rest, radioCommandDeps);
     case "project":
     case "projects":
-      return projectCommand(rest);
+      return projectCommand(rest, projectCommandDeps);
     case "task":
     case "todo":
       return taskCommand(rest, taskCommandDeps);
@@ -676,7 +684,7 @@ async function main() {
     case "prompt":
       return promptCommand(rest, { loadConfig, ensureHub, withHubLock });
     case "gate":
-      return gateCommand(rest);
+      return gateCommand(rest, gateCommandDeps);
     case "session":
       return sessionCommand(rest);
     case "agent":
@@ -766,7 +774,7 @@ async function main() {
     case "watch":
       return watchCommand(rest);
     case "daemon":
-      return daemonCommand(rest);
+      return daemonCommand(rest, daemonCommandDeps);
     case "app":
       return appCommand(rest);
     case "install":
@@ -1738,45 +1746,6 @@ function recordCommand(argv) {
   return { event, relations };
 }
 
-async function radioCommand(argv) {
-  const action = argv[0] || "list";
-  const actionArgs = argv.slice(1);
-  switch (action) {
-    case "send":
-      return radioSendCommand(actionArgs);
-    case "list":
-      return radioListCommand(actionArgs);
-    case "promote":
-      return radioPromoteCommand(actionArgs);
-    case "archive":
-      return radioArchiveCommand(actionArgs);
-    default:
-      throw new Error("Usage: ai-memory-hub radio <send|list|promote|archive> ...");
-  }
-}
-
-function radioSendCommand(argv) {
-  const text = positionalArgs(argv).join(" ").trim();
-  if (!text) {
-    throw new Error("Usage: ai-memory-hub radio send <text> [--from codex] [--to claude] [--type handoff]");
-  }
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  const message = createRadioMessage({
-    from: getOption(argv, "--from") || "manual",
-    to: getOption(argv, "--to") || "all",
-    type: getOption(argv, "--type") || "note",
-    text,
-    thread: getOption(argv, "--thread") || "",
-    replyTo: getOption(argv, "--reply-to") || "",
-    project: getOption(argv, "--project") || path.basename(process.cwd())
-  });
-  appendJsonl(path.join(config.memoryDir, "radio", "messages.jsonl"), message);
-  console.log(JSON.stringify(message, null, 2));
-}
-
-// P0.2 (borrowed from Cumora's unread cursor): each runner keeps its own read cursor so
-// parallel runners consume radio incrementally and never re-process the same message.
 function getRadioCursorFile(memoryDir, consumer) {
   const safe = String(consumer || "all").replace(/[^a-zA-Z0-9_-]/g, "_");
   return path.join(memoryDir, "radio", "cursors", `${safe}.json`);
@@ -1821,268 +1790,6 @@ function getUnreadRadioMessages(memoryDir, consumer) {
   const after = startIdx === -1 ? messages : messages.slice(startIdx + 1);
   const processed = new Set(cursor.processedIds);
   return after.filter((m) => !processed.has(m.id));
-}
-
-function radioListCommand(argv) {
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  const limit = Number(getOption(argv, "--limit") || 20);
-  const consumer = getOption(argv, "--consumer");
-  const ack = hasFlag(argv, "--ack");
-  if (consumer) {
-    const unread = getUnreadRadioMessages(config.memoryDir, consumer);
-    const window = unread.slice(-limit);
-    if (ack && window.length > 0) {
-      const lastId = window[window.length - 1].id;
-      writeRadioCursor(config.memoryDir, consumer, lastId, unread.map((m) => m.id));
-    }
-    console.log(JSON.stringify(window, null, 2));
-    return;
-  }
-  const messages = readRadioMessages(config.memoryDir).slice(-limit);
-  console.log(JSON.stringify(messages, null, 2));
-}
-
-function radioPromoteCommand(argv) {
-  const id = getOption(argv, "--id") || positionalArgs(argv)[0] || "";
-  if (!id) {
-    throw new Error("Usage: ai-memory-hub radio promote --id <message-id>");
-  }
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  const message = readRadioMessages(config.memoryDir).find((item) => item.id === id);
-  if (!message) {
-    throw new Error(`Radio message not found: ${id}`);
-  }
-  if (message.promoted) {
-    console.log(`Radio message already promoted: ${message.id}`);
-    return;
-  }
-  if (isCorruptedRadioMessage(message)) {
-    throw new Error(`Refusing to promote corrupted radio message: ${message.id}`);
-  }
-  appendJsonl(path.join(config.memoryDir, "inbox", "events.jsonl"), {
-    id: createId(`radio:${message.id}`),
-    ts: new Date().toISOString(),
-    source: `radio:${message.from}`,
-    text: message.text,
-    metadata: {
-      kind: "radio",
-      radio_id: message.id,
-      radio_type: message.type,
-      radio_to: message.to,
-      thread: message.thread,
-      project: message.project
-    }
-  });
-  updateRadioMessage(config.memoryDir, message.id, {
-    promoted: true,
-    promotedAt: new Date().toISOString()
-  });
-  console.log(`Promoted radio message to memory inbox: ${message.id}`);
-}
-
-function projectCommand(argv) {
-  const action = argv[0] || "list";
-  const actionArgs = argv.slice(1);
-  switch (action) {
-    case "list":
-      return projectListCommand(actionArgs);
-    case "add":
-    case "create":
-      return projectAddCommand(actionArgs);
-    case "update":
-      return projectUpdateCommand(actionArgs);
-    case "show":
-      return projectShowCommand(actionArgs);
-    case "alias":
-      return projectAliasCommand(actionArgs);
-    case "relate":
-      return projectRelateCommand(actionArgs);
-    case "delete":
-    case "archive":
-      return projectArchiveCommand(actionArgs);
-    case "migrate":
-      return projectMigrateCommand(actionArgs);
-    default:
-      throw new Error("Usage: ai-memory-hub project <list|add|update|show|alias|relate|archive|migrate> ...");
-  }
-}
-
-function projectListCommand(argv) {
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  const status = getOption(argv, "--status") || "all";
-  const includeHidden = hasFlag(argv, "--include-hidden");
-  const projects = filterProjects(readProjects(config.memoryDir), { status, includeHidden });
-  console.log(JSON.stringify(projects, null, 2));
-}
-
-function projectAddCommand(argv) {
-  const id = positionalArgs(argv)[0] || getOption(argv, "--id") || "";
-  const name = getOption(argv, "--name") || positionalArgs(argv).slice(1).join(" ").trim();
-  if (!id || !name) {
-    throw new Error("Usage: ai-memory-hub project add <id> --name <name> [--status active] [--type game] [--description text]");
-  }
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  return withHubLock(config.memoryDir, "project-add", () => {
-    const projects = readProjects(config.memoryDir);
-    if (findProjectIndex(projects, id) !== -1) {
-      throw new Error(`Project already exists: ${id}`);
-    }
-    const project = createProject({
-      id,
-      name,
-      displayName: getOption(argv, "--display-name") || name,
-      status: getOption(argv, "--status") || "active",
-      type: getOption(argv, "--type") || "",
-      description: getOption(argv, "--description") || "",
-      aliases: parseProjectListOption(getOption(argv, "--aliases") || getOption(argv, "--alias")),
-      resources: parseProjectResourceOptions(argv)
-    });
-    projects.push(project);
-    writeProjects(config.memoryDir, projects);
-    console.log(JSON.stringify(project, null, 2));
-  }, config.sync.lockStaleMs);
-}
-
-function projectUpdateCommand(argv) {
-  const id = getOption(argv, "--id") || positionalArgs(argv)[0] || "";
-  if (!id) {
-    throw new Error("Usage: ai-memory-hub project update <id> [--name text] [--display-name text] [--status active] [--type game] [--description text]");
-  }
-  const patch = {};
-  for (const [flag, key] of [
-    ["--name", "name"],
-    ["--display-name", "displayName"],
-    ["--status", "status"],
-    ["--type", "type"],
-    ["--description", "description"]
-  ]) {
-    const value = getOption(argv, flag);
-    if (value !== "") {
-      patch[key] = value;
-    }
-  }
-  const resources = parseProjectResourceOptions(argv);
-  if (Object.keys(resources).length > 0) {
-    patch.resources = resources;
-  }
-  if (Object.keys(patch).length === 0) {
-    throw new Error("project update requires at least one editable field");
-  }
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  return withHubLock(config.memoryDir, "project-update", () => {
-    const project = updateProject(config.memoryDir, id, (current) => ({
-      ...current,
-      ...patch,
-      resources: patch.resources ? { ...(current.resources || {}), ...patch.resources } : current.resources
-    }));
-    console.log(JSON.stringify(project, null, 2));
-  }, config.sync.lockStaleMs);
-}
-
-function projectShowCommand(argv) {
-  const id = getOption(argv, "--id") || positionalArgs(argv)[0] || "";
-  if (!id) {
-    throw new Error("Usage: ai-memory-hub project show <id-or-alias>");
-  }
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  const project = findProject(readProjects(config.memoryDir), id);
-  if (!project) {
-    throw new Error(`Project not found: ${id}`);
-  }
-  console.log(JSON.stringify(project, null, 2));
-}
-
-function projectAliasCommand(argv) {
-  const [id, alias] = positionalArgs(argv);
-  if (!id || !alias) {
-    throw new Error("Usage: ai-memory-hub project alias <id-or-alias> <alias>");
-  }
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  return withHubLock(config.memoryDir, "project-alias", () => {
-    const project = updateProject(config.memoryDir, id, (current) => ({
-      ...current,
-      aliases: uniqueStringList([...(current.aliases || []), alias])
-    }));
-    console.log(JSON.stringify(project, null, 2));
-  }, config.sync.lockStaleMs);
-}
-
-function projectRelateCommand(argv) {
-  const id = getOption(argv, "--id") || positionalArgs(argv)[0] || "";
-  const basedOn = getOption(argv, "--based-on") || getOption(argv, "--parent") || "";
-  const relation = getOption(argv, "--relation") || "";
-  if (!id || !basedOn || !relation) {
-    throw new Error("Usage: ai-memory-hub project relate <id-or-alias> --based-on <parent-id> --relation <type>");
-  }
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  return withHubLock(config.memoryDir, "project-relate", () => {
-    const parent = findProject(readProjects(config.memoryDir), basedOn);
-    const project = updateProject(config.memoryDir, id, (current) => ({
-      ...current,
-      metadata: {
-        ...(current.metadata || {}),
-        basedOn: parent?.id || basedOn,
-        relation
-      }
-    }));
-    console.log(JSON.stringify(project, null, 2));
-  }, config.sync.lockStaleMs);
-}
-
-function projectArchiveCommand(argv) {
-  const id = getOption(argv, "--id") || positionalArgs(argv)[0] || "";
-  if (!id) {
-    throw new Error("Usage: ai-memory-hub project archive <id-or-alias> [--by tool]");
-  }
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  return withHubLock(config.memoryDir, "project-archive", () => {
-    const now = new Date().toISOString();
-    const project = updateProject(config.memoryDir, id, (current) => ({
-      ...current,
-      status: "archived",
-      archivedAt: now,
-      archivedBy: getOption(argv, "--by") || getOption(argv, "--from") || "manual"
-    }));
-    console.log(JSON.stringify(project, null, 2));
-  }, config.sync.lockStaleMs);
-}
-
-function projectMigrateCommand(argv) {
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  const apply = hasFlag(argv, "--apply");
-  const before = readProjects(config.memoryDir);
-  const migrated = mergeSeedProjects(before);
-  if (!apply) {
-    console.log(JSON.stringify({
-      apply,
-      existing: before.length,
-      after: migrated.length,
-      added: migrated.length - before.length,
-      hint: "Pass --apply to write missing seed projects."
-    }, null, 2));
-    return;
-  }
-  return withHubLock(config.memoryDir, "project-migrate", () => {
-    const current = readProjects(config.memoryDir);
-    const currentMigrated = mergeSeedProjects(current);
-    writeProjects(config.memoryDir, currentMigrated);
-    console.log(JSON.stringify({
-      apply,
-      existing: current.length,
-      after: currentMigrated.length,
-      added: currentMigrated.length - current.length
-    }, null, 2));
-  }, config.sync.lockStaleMs);
 }
 
 function sessionCommand(argv) {
@@ -3392,57 +3099,6 @@ function releaseStaleClaim(task, nowIso) {
     ]
   };
 }
-
-function radioArchiveCommand(argv) {
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  
-  const daysOption = getOption(argv, "--days") || "30";
-  const days = parseInt(daysOption, 10);
-  if (isNaN(days) || days < 0) {
-    throw new Error("Usage: ai-memory-hub radio archive [--days <number>]");
-  }
-  
-  const cutoffTime = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-  console.log(`Archiving radio messages older than ${cutoffTime.toISOString()} (${days} days)...`);
-  
-  const radioFile = path.join(config.memoryDir, "radio", "messages.jsonl");
-  const archiveRadioFile = path.join(config.memoryDir, "radio", "messages-archive.jsonl");
-  
-  const allMessages = readRadioMessages(config.memoryDir);
-  const keepMessages = [];
-  const archiveMessages = [];
-  
-  for (const message of allMessages) {
-    const dateStr = message.ts || "";
-    if (!dateStr) {
-      keepMessages.push(message);
-      continue;
-    }
-    const date = new Date(dateStr);
-    if (date < cutoffTime) {
-      archiveMessages.push(message);
-    } else {
-      keepMessages.push(message);
-    }
-  }
-  
-  if (archiveMessages.length === 0) {
-    console.log("No radio messages found matching the archiving criteria.");
-    return;
-  }
-  
-  console.log(`Moving ${archiveMessages.length} message(s) to archive...`);
-  
-  // Write files
-  ensureDir(path.dirname(archiveRadioFile));
-  fs.appendFileSync(archiveRadioFile, archiveMessages.map(m => JSON.stringify(m)).join("\n") + "\n", "utf8");
-  writeFileAtomic(radioFile, keepMessages.map(m => JSON.stringify(m)).join("\n") + "\n", "utf8");
-  
-  console.log(`Successfully archived ${archiveMessages.length} radio message(s).`);
-  console.log(`Active radio messages left: ${keepMessages.length}.`);
-}
-
 
 function buildRecentRelayStatusView(memoryDir, { project = "", tool = "", state = "", limit = 20 }) {
   const filteredEntries = Object.values(readLatestRelayStatusByThread(memoryDir))
@@ -6462,287 +6118,6 @@ function watchCommand(argv) {
   setInterval(tick, intervalMs);
 }
 
-function daemonCommand(argv) {
-  const action = argv[0] && !argv[0].startsWith("--") ? argv[0] : "";
-  if (action === "status") {
-    return daemonStatusCommand(argv.slice(1));
-  }
-  if (action) {
-    throw new Error("Usage: ai-memory-hub daemon [status] [--interval-ms <ms>] [--project <name[,name]>] [--tools <tool1,tool2>] [--limit <n>] [--force] [--isolate-worktree] [--worktree-root <dir>]");
-  }
-
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  const intervalMs = Number(getOption(argv, "--interval-ms") || 5000);
-  const limit = Number(getOption(argv, "--limit") || 10);
-  const projects = getOption(argv, "--project");
-  const projectList = projects ? projects.split(",") : [];
-  const force = hasFlag(argv, "--force");
-  const isolateWorktree = hasFlag(argv, "--isolate-worktree");
-  const worktreeRoot = getOption(argv, "--worktree-root") || "";
-  const toolsOption = getOption(argv, "--tools");
-  const daemonTools = toolsOption
-    ? toolsOption.split(/[,\s]+/).map((t) => t.trim()).filter(Boolean)
-    : [...DAEMON_DEFAULT_TOOLS];
-  const startedAt = new Date().toISOString();
-  const daemonLock = acquireDaemonLock(config.memoryDir, { pid: process.pid });
-  if (!daemonLock.acquired) {
-    throw new Error("Daemon already appears to be running as pid " + daemonLock.pid + ". Stop the active daemon before starting another instance.");
-  }
-  const currentStatus = buildDaemonStatus(config.memoryDir);
-  if (currentStatus.running) {
-    releaseDaemonLock(daemonLock);
-    throw new Error("Daemon already appears to be running as pid " + currentStatus.pid + ". Stop the active daemon before starting another instance.");
-  }
-  process.on("exit", () => releaseDaemonLock(daemonLock));
-  writeDaemonPid(config.memoryDir, process.pid);
-  writeDaemonStatus(config.memoryDir, {
-    state: "starting",
-    pid: process.pid,
-    startedAt,
-    stoppedAt: "",
-    stopSignal: "",
-    intervalMs,
-    limit,
-    projects: projectList,
-    tools: Array.isArray(daemonTools) ? daemonTools : String(daemonTools).split(/[,\s]+/),
-    isolateWorktree,
-    worktreeRoot,
-    cycle: 0,
-    lastCycleStartedAt: "",
-    lastCycleFinishedAt: "",
-    lastError: "",
-    memoryDir: config.memoryDir
-  });
-
-  console.log(`Starting AI Memory Hub Daemon`);
-  console.log(`PID: ${process.pid}`);
-  console.log(`Monitoring: radio messages and tasks`);
-  console.log(`Interval: ${intervalMs}ms`);
-  console.log(`Tools: ${daemonTools.join(", ")}`);
-  console.log(`Limit per tool/project: ${limit}`);
-  if (projectList.length > 0) {
-    console.log(`Projects: ${projectList.join(", ")}`);
-  }
-
-  // Read loop checkpoint for resumable loops
-  let loopCheckpoint = readLoopCheckpoint(config.memoryDir);
-  const checkpointStats = getCheckpointStats(loopCheckpoint);
-  if (checkpointStats.cycle > 0) {
-    console.log(`Resuming from checkpoint: cycle ${checkpointStats.cycle}, ${checkpointStats.completed} completed, ${checkpointStats.failed} failed`);
-  }
-  console.log("Press Ctrl+C to stop.\n");
-
-  let iteration = checkpointStats.cycle;
-  let timer = null;
-  let stopping = false;
-  const runCycle = async () => {
-    if (stopping) {
-      return;
-    }
-    iteration++;
-    const cycleStartedAt = new Date().toISOString();
-    const cycleErrors = [];
-    writeDaemonStatus(config.memoryDir, {
-      state: "running",
-      pid: process.pid,
-      startedAt,
-      intervalMs,
-      limit,
-      projects: projectList,
-      tools: Array.isArray(daemonTools) ? daemonTools : String(daemonTools).split(/[,\s]+/),
-      cycle: iteration,
-      lastCycleStartedAt: cycleStartedAt,
-      lastError: ""
-    });
-    console.log(`[${cycleStartedAt}] Cycle #${iteration}`);
-
-    // Write heartbeat at start of cycle so it's fresh even if dispatch takes long
-    writeDaemonHeartbeat(config.memoryDir, {
-      pid: process.pid,
-      cycle: iteration,
-      toolResults: "running"
-    });
-
-    // Refresh provider model catalogs when they go stale (default: every 24h)
-    try {
-      const modelRefresh = refreshModelsIfStale(config.memoryDir);
-      if (modelRefresh.length > 0) {
-        console.log(`  -> Refreshed model catalog for ${modelRefresh.map((item) => item.tool).join(", ")}`);
-      }
-    } catch (err) {
-      console.error(`  Model catalog refresh error: ${err.message}`);
-    }
-
-    try {
-      const tools = daemonTools;
-
-      for (const tool of tools) {
-        const runner = getToolRunner(tool);
-        if (!runner.available) {
-          continue;
-        }
-
-        const checkProjects = projectList.length > 0 ? projectList : [null];
-
-        for (const project of checkProjects) {
-          try {
-            const retryResults = executeDispatchRetry(config.memoryDir, {
-              run: true,
-              to: tool,
-              project,
-              limit,
-              respectRecipeDependencies: true,
-              isolateWorktree,
-              worktreeRoot
-            });
-            const timeoutResults = retryResults.filter((result) => result.timeout);
-            const retriedResults = retryResults.filter((result) => !result.timeout);
-            if (timeoutResults.length > 0) {
-              console.log(`  -> Marked ${timeoutResults.length} timed-out relay(s) for ${tool}${project ? ` (project: ${project})` : ""}`);
-            }
-            if (retriedResults.length > 0) {
-              console.log(`  -> Retried ${retriedResults.length} relay job(s) for ${tool}${project ? ` (project: ${project})` : ""}`);
-            }
-
-            const results = await executeDispatch(config.memoryDir, {
-              run: true,
-              to: tool,
-              project,
-              limit,
-              respectRecipeDependencies: true,
-              isolateWorktree,
-              worktreeRoot
-            });
-
-            if (results.length > 0) {
-              console.log(`  -> Dispatched ${results.length} job(s) to ${tool}${project ? ` (project: ${project})` : ""}`);
-              for (const result of results) {
-                if (result.exitCode === 0) {
-                  console.log(`    ok ${result.kind}:${String(result.refId || "").substring(0, 8)} completed`);
-                } else {
-                  console.log(`    fail ${result.kind}:${String(result.refId || "").substring(0, 8)} failed (exit ${result.exitCode})`);
-                }
-              }
-            }
-          } catch (err) {
-            cycleErrors.push(`${tool}${project ? `/${project}` : ""}: ${err.message || String(err)}`);
-            console.error(`  Cycle tool error for ${tool}: ${err.message}`);
-          }
-        }
-      }
-    } catch (err) {
-      cycleErrors.push(err.message || String(err));
-      console.error(`Cycle error: ${err.message}`);
-    }
-    const cycleFinishedAt = new Date().toISOString();
-    writeDaemonStatus(config.memoryDir, {
-      state: "running",
-      pid: process.pid,
-      startedAt,
-      intervalMs,
-      limit,
-      projects: projectList,
-      isolateWorktree,
-      worktreeRoot,
-      cycle: iteration,
-      lastCycleStartedAt: cycleStartedAt,
-      lastCycleFinishedAt: cycleFinishedAt,
-      lastError: cycleErrors.join(" | ")
-    });
-
-    // Write loop checkpoint
-    loopCheckpoint.cycle = iteration;
-    loopCheckpoint.lastCompletedAt = cycleFinishedAt;
-    writeLoopCheckpoint(config.memoryDir, loopCheckpoint);
-
-    // Write heartbeat
-    writeDaemonHeartbeat(config.memoryDir, {
-      pid: process.pid,
-      cycle: iteration,
-      toolResults: cycleErrors.length === 0 ? "ok" : cycleErrors.join("; ")
-    });
-
-    console.log("");
-  };
-
-  const stop = (signal) => {
-    if (stopping) {
-      return;
-    }
-    stopping = true;
-    if (timer) {
-      clearInterval(timer);
-    }
-    writeDaemonStatus(config.memoryDir, {
-      state: "stopped",
-      pid: process.pid,
-      startedAt,
-      stoppedAt: new Date().toISOString(),
-      stopSignal: signal || "stop",
-      intervalMs,
-      limit,
-      projects: projectList,
-      cycle: iteration
-    });
-    releaseDaemonLock(daemonLock);
-    clearDaemonPid(config.memoryDir, process.pid);
-    // Clean up file watchers
-    for (const w of watchers) {
-      try { w.close(); } catch {}
-    }
-    if (debounceTimer) clearTimeout(debounceTimer);
-    console.log(`\n${signal || "stop"} received; daemon stopped.`);
-    process.exit(0);
-  };
-  process.on("SIGINT", () => stop("SIGINT"));
-  process.on("SIGTERM", () => stop("SIGTERM"));
-
-  runCycle();
-  timer = setInterval(runCycle, intervalMs);
-
-  // Event-driven push: watch files for changes and trigger immediate cycle
-  const watchDebounceMs = 1000;
-  let debounceTimer = null;
-  const triggerCycle = () => {
-    if (stopping) return;
-    if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => {
-      debounceTimer = null;
-      if (!stopping) runCycle();
-    }, watchDebounceMs);
-  };
-
-  const watchFiles = [
-    path.join(config.memoryDir, "radio", "messages.jsonl"),
-    path.join(config.memoryDir, "tasks", "events.jsonl"),
-    path.join(config.memoryDir, "inbox", "events.jsonl")
-  ];
-
-  const watchers = [];
-  for (const file of watchFiles) {
-    try {
-      ensureDir(path.dirname(file));
-      if (!fs.existsSync(file)) {
-        writeFileAtomic(file, "", "utf8");
-      }
-      const watcher = fs.watch(file, { persistent: false }, (eventType) => {
-        if (eventType === "change" || eventType === "rename") {
-          console.log(`[${new Date().toISOString()}] Change detected in ${path.basename(file)}, scheduling cycle...`);
-          triggerCycle();
-        }
-      });
-      watchers.push(watcher);
-    } catch { /* file watch not available */ }
-  }
-
-  if (watchers.length > 0) {
-    console.log(`Watching ${watchers.length} file(s) for changes (event-driven mode).`);
-  }
-}
-
-// Skill candidate mining and skill delta system (self-improvement)
-
 function getSkillCandidatesFile(memoryDir) {
   return path.join(memoryDir, "prompts", SKILL_CANDIDATE_FILE);
 }
@@ -7214,14 +6589,6 @@ function heartbeatCommand(argv) {
       throw new Error("Usage: ai-memory-hub heartbeat <check|show|watch>");
   }
 }
-
-function daemonStatusCommand() {
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  console.log(JSON.stringify(buildDaemonStatus(config.memoryDir), null, 2));
-}
-
-// Loop checkpoint system
 
 function readLoopCheckpoint(memoryDir) {
   const filePath = path.join(memoryDir, "state", LOOP_CHECKPOINT_FILE);
@@ -9120,174 +8487,6 @@ function detectTools(memoryDir = resolveMemoryDir()) {
   });
 
   return tools;
-}
-
-function gateCommand(argv) {
-  const action = argv[0] || "list";
-  const actionArgs = argv.slice(1);
-  switch (action) {
-    case "request":
-      return gateRequestCommand(actionArgs);
-    case "approve":
-      return gateDecisionCommand(actionArgs, "approved");
-    case "reject":
-      return gateDecisionCommand(actionArgs, "rejected");
-    case "needs-changes":
-      return gateDecisionCommand(actionArgs, "needs_changes");
-    case "waive":
-      return gateDecisionCommand(actionArgs, "waived");
-    case "list":
-      return gateListCommand(actionArgs);
-    case "show":
-      return gateShowCommand(actionArgs);
-    case "queue":
-      return gateQueueCommand(actionArgs);
-    default:
-      throw new Error("Usage: ai-memory-hub gate <request|approve|reject|needs-changes|waive|list|show|queue> ...");
-  }
-}
-
-function gateRequestCommand(argv) {
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  const actor = getOption(argv, "--actor");
-  const scope = getOption(argv, "--scope") || "operation";
-  const operation = getOption(argv, "--operation") || "";
-  const refId = getOption(argv, "--ref");
-  const refType = getOption(argv, "--ref-type") || "";
-  const reason = getOption(argv, "--reason") || "Approval required";
-  const reviewer = getOption(argv, "--reviewer") || "human";
-  const project = getOption(argv, "--project") || "";
-  if (!actor) {
-    throw new Error("Usage: ai-memory-hub gate request --actor <name> --scope <dispatch|workflow|task|operation> [--operation <name>] [--ref <id>] [--ref-type <type>] [--reason <text>]");
-  }
-  const gate = appendApprovalGateEvent(config.memoryDir, {
-    status: "requested",
-    actor,
-    scope,
-    operation,
-    refId,
-    refType,
-    reason,
-    reviewer,
-    project
-  });
-  console.log(JSON.stringify({
-    ok: true,
-    gateId: gate.gateId,
-    status: gate.status,
-    message: `Approval gate created: ${gate.gateId}`
-  }, null, 2));
-}
-
-function gateDecisionCommand(argv, decision) {
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  const gateId = getOption(argv, "--id");
-  const by = getOption(argv, "--by") || "human";
-  const note = getOption(argv, "--note") || "";
-  if (!gateId) {
-    throw new Error(`Usage: ai-memory-hub gate ${decision === "approved" ? "approve" : decision === "rejected" ? "reject" : decision === "needs_changes" ? "needs-changes" : "waive"} --id <gateId> --by <reviewer> [--note <text>]`);
-  }
-  const gates = readApprovalGates(config.memoryDir, { });
-  const existing = gates.find((g) => g.gateId === gateId);
-  if (!existing) {
-    throw new Error(`Gate not found: ${gateId}`);
-  }
-  if (existing.isFinal) {
-    throw new Error(`Gate already decided: ${existing.status}`);
-  }
-  const gate = appendApprovalGateEvent(config.memoryDir, {
-    gateId,
-    status: decision,
-    actor: existing.actor,
-    scope: existing.scope,
-    operation: existing.operation,
-    refId: existing.refId,
-    refType: existing.refType,
-    reason: existing.reason,
-    reviewer: by,
-    project: existing.project,
-    requestedAt: existing.requestedAt,
-    decidedAt: new Date().toISOString(),
-    decisionNote: note
-  });
-  console.log(JSON.stringify({
-    ok: true,
-    gateId: gate.gateId,
-    status: gate.status,
-    decidedAt: gate.decidedAt,
-    message: `Gate ${decision}: ${gate.gateId}`
-  }, null, 2));
-}
-
-function gateListCommand(argv) {
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  const filters = {
-    status: getOption(argv, "--status"),
-    actor: getOption(argv, "--actor"),
-    reviewer: getOption(argv, "--reviewer"),
-    scope: getOption(argv, "--scope"),
-    project: getOption(argv, "--project")
-  };
-  const gates = readApprovalGates(config.memoryDir, filters);
-  console.log(JSON.stringify({
-    ok: true,
-    count: gates.length,
-    gates: gates.map((g) => ({
-      gateId: g.gateId,
-      status: g.status,
-      scope: g.scope,
-      actor: g.actor,
-      reviewer: g.reviewer,
-      project: g.project,
-      operation: g.operation,
-      refId: g.refId,
-      reason: g.reason,
-      requestedAt: g.requestedAt,
-      decidedAt: g.decidedAt
-    }))
-  }, null, 2));
-}
-
-function gateShowCommand(argv) {
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  const gateId = getOption(argv, "--id");
-  if (!gateId) {
-    throw new Error("Usage: ai-memory-hub gate show --id <gateId>");
-  }
-  const gates = readApprovalGates(config.memoryDir, { });
-  const gate = gates.find((g) => g.gateId === gateId);
-  if (!gate) {
-    throw new Error(`Gate not found: ${gateId}`);
-  }
-  console.log(JSON.stringify(gate, null, 2));
-}
-
-function gateQueueCommand(argv) {
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  const reviewer = getOption(argv, "--reviewer") || "human";
-  const gates = readApprovalGates(config.memoryDir, { reviewer })
-    .filter((g) => !g.isFinal);
-  console.log(JSON.stringify({
-    ok: true,
-    reviewer,
-    count: gates.length,
-    pending: gates.map((g) => ({
-      gateId: g.gateId,
-      status: g.status,
-      scope: g.scope,
-      actor: g.actor,
-      project: g.project,
-      operation: g.operation,
-      refId: g.refId,
-      reason: g.reason,
-      requestedAt: g.requestedAt
-    }))
-  }, null, 2));
 }
 
 function enrichToolConnection(tool, memoryDir, installTargets) {
@@ -15444,11 +14643,6 @@ function buildInstallTemplateValues(tool, memoryDir) {
 function renderTemplate(template, values) {
   return template.replace(/\{\{([A-Z0-9_]+)\}\}/g, (_, key) => values[key] || "");
 }
-
-function projectRoot() {
-  return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-}
-
 
 function countBackupDirs(memoryDir) {
   const dir = path.join(memoryDir, "backups");

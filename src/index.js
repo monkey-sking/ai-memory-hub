@@ -33,6 +33,18 @@ import { buildWorktreeSnapshot } from "./worktree-snapshot.js";
 import { evaluateDaemonHeartbeat } from "./daemon-health.js";
 import { appendJsonl } from "./event-writer.js";
 import { eventsCommand } from "./commands/events.js";
+import { teamCommand } from "./commands/team.js";
+const teamCommandDeps = { ensureHub, loadConfig, readAgentById, readTeamById, readTeams, writeTeam };
+import { worktreeCommand } from "./commands/worktree.js";
+const worktreeCommandDeps = { get dashboardWorktrees() { return dashboardWorktrees; }, ensureHub, loadConfig, runGit };
+import { contextCommand } from "./commands/context.js";
+const contextCommandDeps = { createContextPack, ensureHub, loadConfig, readContextPack, writeContextPack };
+import { declareCommand } from "./commands/declare.js";
+const declareCommandDeps = { ensureHub, loadConfig, normalizeToolName, parseDeclaredList, readToolDeclarationByTool, readToolDeclarations, removeToolDeclaration, withHubLock, writeToolDeclaration };
+import { rpcCommand } from "./commands/rpc.js";
+const rpcCommandDeps = { createRpcRequest, ensureHub, loadConfig, readRpcRequest, readRpcResult, waitForRpcResult, writeRpcRequest, writeRpcResult };
+import { policyCommand } from "./commands/policy.js";
+const policyCommandDeps = { appendPolicyRule, ensureHub, loadConfig, policyActorMatches, policyRuleSpecificity, policyScopeMatches, readPolicyRules, removePolicyRule, resolvePermission, seedDefaultPolicyRules, withHubLock };
 import { notifyCommand } from "./commands/notify.js";
 const notifyCommandDeps = { createNotification, get dashboardCollaboration() { return dashboardCollaboration; }, ensureHub, getNotificationChannels, getPendingNotifications, loadConfig, notifyWorkflowRoles, readNotifications, updateNotificationStatus, writeNotification };
 import { sessionCommand } from "./commands/session.js";
@@ -71,6 +83,7 @@ import { readEvents, parseJsonlLine, countJsonlLines } from "./lib/io.js";
 import { getEntityEventsFile, getEntityProjectionFile, readEntityEvents, bootstrapEntityEventsFromProjection, writeEntityRecords, appendEntityRecord, deleteEntityRecord, appendEntityEvents, createEntityEvent, replayEntityEvents, materializeEntityProjection, isEntityRecordNewerOrSame } from "./lib/entity-store.js";
 import { PROJECT_STATUSES, RECIPE_GATE_STRING_ARRAY_FIELDS, RECIPE_GATE_FIELDS, extractQualityGate, normalizeQualityGate, normalizeVerifyCommand, normalizeNonNegativeInteger, normalizeMinimalImplementation, normalizeDependencyBudget, normalizePriority, normalizeDispatchWorktreeMetadata, normalizeWorkflowRole, parseProjectListOption, uniqueStringList, isTaskStatus, isWorkflowStatus, normalizeRecipeMetadata, normalizeRecipeStepMetadata, normalizeProjectStatus, normalizeProjectResources, normalizeProject, normalizeWorkflow, normalizeTask, normalizePrompt, getTaskEventStoreDefinition, getProjectEventStoreDefinition, getWorkflowEventStoreDefinition, getPromptEventStoreDefinition } from "./lib/entity-models.js";
 import { projectRoot } from "./lib/paths.js";
+import { POLICY_OPERATIONS } from "./lib/constants.js";
 import { promptCommand } from "./commands/prompt.js";
 import { workflowNodeCommand } from "./commands/workflow-node.js";
 import { taskCommand, taskSpecCommand } from "./commands/task.js";
@@ -117,11 +130,6 @@ import {
 
 // Permission policy layer (P0: capability permission matrix) — defined at the
 // top so they are initialized before dashboard module initialization.
-const POLICY_OPERATIONS = [
-  "read-memory", "write-memory", "send-radio", "claim-task", "dispatch",
-  "modify-files", "run-tests", "install-dependencies", "push", "delete",
-  "purge", "archive"
-];
 const POLICY_DECISIONS = ["allow", "ask", "deny"];
 const POLICY_SCOPES = ["all", "project", "own"];
 const POLICY_SCOPE_BREADTH = { all: 3, project: 2, own: 1 };
@@ -677,11 +685,11 @@ async function main() {
       return capabilitiesCommand(rest);
     case "declare":
     case "declaration":
-      return declareCommand(rest);
+      return declareCommand(rest, declareCommandDeps);
     case "models":
       return modelsCommand(rest);
     case "policy":
-      return policyCommand(rest);
+      return policyCommand(rest, policyCommandDeps);
     case "status":
       return statusCommand();
     case "record":
@@ -712,17 +720,17 @@ async function main() {
       return roleCommand(rest);
     case "team":
     case "teams":
-      return teamCommand(rest);
+      return teamCommand(rest, teamCommandDeps);
     case "review":
       return reviewCommand(rest);
     case "worktree":
-      return worktreeCommand(rest);
+      return worktreeCommand(rest, worktreeCommandDeps);
     case "rpc":
-      return rpcCommand(rest);
+      return rpcCommand(rest, rpcCommandDeps);
     case "notify":
       return notifyCommand(rest, notifyCommandDeps);
     case "context":
-      return contextCommand(rest);
+      return contextCommand(rest, contextCommandDeps);
     case "queue":
       return queueCommand(rest, queueCommandDeps);
     case "recipe":
@@ -969,92 +977,10 @@ function parseDeclaredList(raw) {
     .filter(Boolean))];
 }
 
-function declareCommand(argv) {
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  const action = argv[0] || "set";
-  const actionArgs = argv.slice(1);
-  switch (action) {
-    case "set":
-    case "upsert":
-    case "add":
-      return declareSetCommand(config, actionArgs);
-    case "list":
-    case "ls":
-      return declareListCommand(config, actionArgs);
-    case "show":
-    case "get":
-      return declareShowCommand(config, actionArgs);
-    case "remove":
-    case "rm":
-    case "delete":
-      return declareRemoveCommand(config, actionArgs);
-    default:
-      throw new Error("Usage: ai-memory-hub declare <set|list|show|remove> [--tool <tool>] [--models a,b] [--strengths 'x,y'] [--note '...'] [--by <tool>]");
-  }
-}
 
-function declareSetCommand(config, actionArgs) {
-  const tool = getOption(actionArgs, "--tool") || "";
-  const by = getOption(actionArgs, "--by") || tool;
-  if (!tool) {
-    throw new Error("declare set requires --tool <tool>");
-  }
-  return withHubLock(config.memoryDir, "tool-declaration", () => {
-    const previous = readToolDeclarationByTool(config.memoryDir, tool);
-    const models = parseDeclaredList(getOption(actionArgs, "--models"));
-    const strengths = parseDeclaredList(getOption(actionArgs, "--strengths"));
-    const note = getOption(actionArgs, "--note");
-    if (models.length === 0 && strengths.length === 0 && !note) {
-      throw new Error("declare set needs at least one of --models, --strengths, or --note.");
-    }
-    const declaration = {
-      tool: normalizeToolName(tool),
-      by: normalizeToolName(by || tool) || "unknown",
-      models,
-      strengths,
-      note: note || "",
-      updatedAt: new Date().toISOString(),
-      previous: previous ? previous.updatedAt : ""
-    };
-    const saved = writeToolDeclaration(config.memoryDir, declaration);
-    console.log(JSON.stringify({
-      ok: true,
-      declaration: saved,
-      message: `Declared ${saved.models.length} model(s) and ${saved.strengths.length} strength area(s) for ${saved.tool}.`
-    }, null, 2));
-  }, config.sync.lockStaleMs);
-}
 
-function declareListCommand(config, actionArgs) {
-  const entries = readToolDeclarations(config.memoryDir)
-    .sort((a, b) => String(a.updatedAt || "").localeCompare(String(b.updatedAt || "")));
-  console.log(JSON.stringify({ ok: true, declarations: entries }, null, 2));
-}
 
-function declareShowCommand(config, actionArgs) {
-  const tool = getOption(actionArgs, "--tool") || positionalArgs(actionArgs)[0] || "";
-  if (!tool) {
-    throw new Error("declare show requires --tool <tool>");
-  }
-  const declaration = readToolDeclarationByTool(config.memoryDir, tool);
-  console.log(JSON.stringify({
-    ok: true,
-    tool: normalizeToolName(tool),
-    declaration
-  }, null, 2));
-}
 
-function declareRemoveCommand(config, actionArgs) {
-  const tool = getOption(actionArgs, "--tool") || positionalArgs(actionArgs)[0] || "";
-  if (!tool) {
-    throw new Error("declare remove requires --tool <tool>");
-  }
-  return withHubLock(config.memoryDir, "tool-declaration", () => {
-    const removed = removeToolDeclaration(config.memoryDir, tool);
-    console.log(JSON.stringify({ ok: true, removed, tool: normalizeToolName(tool) }, null, 2));
-  }, config.sync.lockStaleMs);
-}
 
 function fetchToolModels(memoryDir, tool) {
   const runner = getToolRunner(tool);
@@ -1205,115 +1131,12 @@ function modelsCommand(argv) {
   }, null, 2));
 }
 
-function policyCommand(argv) {
-  const action = argv[0] || "list";
-  const actionArgs = argv.slice(1);
-  switch (action) {
-    case "init":
-      return policyInitCommand(actionArgs);
-    case "add":
-      return policyAddCommand(actionArgs);
-    case "list":
-      return policyListCommand(actionArgs);
-    case "remove":
-    case "rm":
-      return policyRemoveCommand(actionArgs);
-    case "show":
-      return policyShowCommand(actionArgs);
-    case "check":
-      return policyCheckCommand(actionArgs);
-    default:
-      throw new Error("Usage: ai-memory-hub policy <init|add|list|remove|show|check> ...");
-  }
-}
 
-function policyInitCommand() {
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  return withHubLock(config.memoryDir, "policy-init", () => {
-    const added = seedDefaultPolicyRules(config.memoryDir);
-    console.log(JSON.stringify({ ok: true, seeded: added, message: added > 0 ? `Seeded ${added} default policy rule(s).` : "Defaults already present." }, null, 2));
-  }, config.sync.lockStaleMs);
-}
 
-function policyAddCommand(argv) {
-  const actor = getOption(argv, "--actor") || "*";
-  const project = getOption(argv, "--project") || "*";
-  const operation = getOption(argv, "--operation") || "";
-  const scope = getOption(argv, "--scope") || "all";
-  const decision = getOption(argv, "--decision") || "";
-  const reason = getOption(argv, "--reason") || "";
-  const priority = getOption(argv, "--priority");
-  const by = getOption(argv, "--by") || getOption(argv, "--from") || "human";
-  if (!operation || !decision) {
-    throw new Error("Usage: ai-memory-hub policy add --operation <op> --decision <allow|ask|deny> [--actor <actor>] [--project <project>] [--scope all|project|own] [--reason <text>] [--priority N] [--by human]");
-  }
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  return withHubLock(config.memoryDir, "policy-add", () => {
-    const rule = appendPolicyRule(config.memoryDir, {
-      actor, project, operation, scope, decision, reason,
-      priority: priority !== "" ? Number(priority) : 100,
-      createdBy: by
-    });
-    console.log(JSON.stringify(rule, null, 2));
-  }, config.sync.lockStaleMs);
-}
 
-function policyListCommand(argv) {
-  const actorFilter = getOption(argv, "--actor") || "";
-  const operationFilter = getOption(argv, "--operation") || "";
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  let rules = readPolicyRules(config.memoryDir);
-  if (actorFilter) rules = rules.filter((rule) => rule.actor === actorFilter);
-  if (operationFilter) rules = rules.filter((rule) => rule.operation === operationFilter);
-  console.log(JSON.stringify({ count: rules.length, rules }, null, 2));
-}
 
-function policyRemoveCommand(argv) {
-  const id = getOption(argv, "--id") || positionalArgs(argv)[0] || "";
-  const by = getOption(argv, "--by") || getOption(argv, "--from") || "human";
-  if (!id) {
-    throw new Error("Usage: ai-memory-hub policy remove --id <rule-id> [--by human]");
-  }
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  return withHubLock(config.memoryDir, "policy-remove", () => {
-    const removed = removePolicyRule(config.memoryDir, id, by);
-    console.log(JSON.stringify({ ok: true, removed }, null, 2));
-  }, config.sync.lockStaleMs);
-}
 
-function policyShowCommand(argv) {
-  const actor = getOption(argv, "--actor") || "*";
-  const actorRoles = (getOption(argv, "--roles") || "").split(",").map((r) => r.trim()).filter(Boolean);
-  const project = getOption(argv, "--project") || "*";
-  const scope = getOption(argv, "--scope") || "all";
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  const byOperation = {};
-  for (const operation of POLICY_OPERATIONS) {
-    const result = resolvePermission(config.memoryDir, { actor, actorRoles, project, operation, scope });
-    byOperation[operation] = { decision: result.decision, reason: result.reason };
-  }
-  console.log(JSON.stringify({ actor, project, scope, byOperation }, null, 2));
-}
 
-function policyCheckCommand(argv) {
-  const actor = getOption(argv, "--actor") || "*";
-  const actorRoles = (getOption(argv, "--roles") || "").split(",").map((r) => r.trim()).filter(Boolean);
-  const project = getOption(argv, "--project") || "*";
-  const operation = getOption(argv, "--operation") || "";
-  const scope = getOption(argv, "--scope") || "all";
-  if (!operation) {
-    throw new Error("Usage: ai-memory-hub policy check --operation <op> [--actor <actor>] [--roles role:executor,...] [--project <project>] [--scope all|project|own]");
-  }
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  const result = resolvePermission(config.memoryDir, { actor, actorRoles, project, operation, scope });
-  console.log(JSON.stringify(result, null, 2));
-}
 
 function doctorCommand(argv) {
   const config = loadConfig();
@@ -1779,80 +1602,6 @@ function roleCommand(argv) {
   throw new Error("Usage: ai-memory-hub role <create|show|list> ...");
 }
 
-function teamCommand(argv) {
-  const action = argv[0] || "list";
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  if (action === "create" || action === "update") {
-    const id = (getOption(argv, "--id") || positionalArgs(argv)[0] || "").trim();
-    if (!id) throw new Error("Usage: ai-memory-hub team create --id <team> [--name '...'] [--description '...']");
-    const existing = readTeamById(config.memoryDir, id) || {};
-    const team = writeTeam(config.memoryDir, {
-      ...existing,
-      id: existing.id || id,
-      name: getOption(argv, "--name") || existing.name || id,
-      description: getOption(argv, "--description") || existing.description || "",
-      createdAt: existing.createdAt || new Date().toISOString()
-    });
-    console.log(JSON.stringify(team, null, 2));
-    return;
-  }
-  if (action === "member") {
-    const sub = argv[1] || "list";
-    const teamId = getOption(argv, "--team") || "";
-    const agentId = getOption(argv, "--agent") || "";
-    if (!teamId || !agentId) throw new Error("Usage: ai-memory-hub team member <add|remove|list> --team <team> --agent <agent>");
-    const team = readTeamById(config.memoryDir, teamId);
-    if (!team) throw new Error(`Team not found: ${teamId}`);
-    if (sub === "add") {
-      const rel = recordRelation(config.memoryDir, {
-        from: { type: "agent", id: agentId },
-        to: { type: "team", id: teamId },
-        relation: "member-of",
-        source: "cli",
-        evidence: { note: `agent ${agentId} joined team ${teamId}` }
-      });
-      console.log(JSON.stringify(rel, null, 2));
-      return;
-    }
-    if (sub === "remove") {
-      const rel = readRelations(config.memoryDir).find((r) => r.status === "active" && r.relation === "member-of" && r.from.type === "agent" && String(r.from.id).toLowerCase() === agentId.toLowerCase() && r.to.type === "team" && String(r.to.id).toLowerCase() === teamId.toLowerCase());
-      if (!rel) throw new Error(`No active member-of relation: ${agentId} -> ${teamId}`);
-      const ev = revokeRelation(config.memoryDir, rel.id, "removed via cli");
-      console.log(JSON.stringify(ev, null, 2));
-      return;
-    }
-    if (sub === "list") {
-      const members = readRelations(config.memoryDir)
-        .filter((r) => r.status === "active" && r.relation === "member-of" && r.to.type === "team" && String(r.to.id).toLowerCase() === teamId.toLowerCase())
-        .map((r) => r.from.id);
-      console.log(JSON.stringify(members, null, 2));
-      return;
-    }
-    throw new Error("Usage: ai-memory-hub team member <add|remove|list> --team <team> --agent <agent>");
-  }
-  if (action === "show") {
-    const id = (getOption(argv, "--id") || positionalArgs(argv)[0] || "").trim();
-    if (!id) throw new Error("Usage: ai-memory-hub team show --id <team>");
-    const team = readTeamById(config.memoryDir, id);
-    if (!team) throw new Error(`Team not found: ${id}`);
-    // P2 (M:N symmetry, like role.show): expand which agents belong to this team.
-    const key = id.toLowerCase();
-    const members = readRelations(config.memoryDir)
-      .filter((r) => r.status === "active" && r.relation === "member-of" && r.to.type === "team" && String(r.to.id).toLowerCase() === key)
-      .map((r) => {
-        const a = readAgentById(config.memoryDir, r.from.id);
-        return { id: r.from.id, name: a ? a.name : r.from.id, status: a ? a.status || "idle" : "idle" };
-      });
-    console.log(JSON.stringify({ ...team, members }, null, 2));
-    return;
-  }
-  if (action === "list") {
-    console.log(JSON.stringify(readTeams(config.memoryDir), null, 2));
-    return;
-  }
-  throw new Error("Usage: ai-memory-hub team <create|show|list|member> ...");
-}
 
 function reviewCommand(argv) {
   const action = argv[0] || "list";
@@ -1881,17 +1630,6 @@ function reviewCommand(argv) {
   console.log(JSON.stringify(result, null, 2));
 }
 
-function worktreeCommand(argv) {
-  const action = argv[0] || "list";
-  if (action === "add") return worktreeAddCommand(argv.slice(1));
-  if (action === "rm" || action === "remove") return worktreeRemoveCommand(argv.slice(1));
-  if (!["list", "inspect", "snapshot"].includes(action)) throw new Error("Usage: ai-memory-hub worktree list|inspect|snapshot [--id <path-or-id>] | add <repo> [--name <n>] [--branch <b>] | rm <worktree-path> [--force]");
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  const worktrees = dashboardWorktrees.getDashboardWorktrees(config.memoryDir).worktrees;
-  const id = getOption(argv.slice(1), "--id") || argv[1] || "";
-  console.log(JSON.stringify(id ? worktrees.filter((item) => item.id === id || item.path === id || item.branch === id) : worktrees, null, 2));
-}
 
 function runGit(repoDir, args) {
   const r = spawnSync("git", args, { cwd: repoDir, encoding: "utf8" });
@@ -1900,64 +1638,8 @@ function runGit(repoDir, args) {
 }
 
 /** 创建隔离 worktree：git worktree add <repo>/.ai-worktrees/<name> [-b <branch>]，并归档一条 memory 事件。 */
-function worktreeAddCommand(argv) {
-  const repo = (argv[0] || "").trim();
-  if (!repo) throw new Error("Usage: ai-memory-hub worktree add <repo-path> [--name <worktree-name>] [--branch <branch>]");
-  const name = (getOption(argv, "--name") || "").trim() || `agent-${Date.now().toString(36)}`;
-  const branch = (getOption(argv, "--branch") || "").trim();
-  const repoAbs = path.resolve(repo);
-  if (!fs.existsSync(repoAbs)) throw new Error(`Repo path not found: ${repoAbs}`);
-  runGit(repoAbs, ["rev-parse", "--git-dir"]); // 校验是 git 仓库
-  const wtDir = path.join(repoAbs, ".ai-worktrees", name);
-  if (fs.existsSync(wtDir)) throw new Error(`Worktree already exists: ${wtDir}`);
-  fs.mkdirSync(path.dirname(wtDir), { recursive: true });
-  const args = ["worktree", "add", wtDir];
-  if (branch) args.push("-b", branch);
-  runGit(repoAbs, args);
-  const result = { ok: true, name, path: wtDir, branch: branch || "(detached)", repo: repoAbs, createdAt: new Date().toISOString() };
-  try {
-    const config = loadConfig();
-    ensureHub(config.memoryDir);
-    appendJsonl(path.join(config.memoryDir, "inbox", "events.jsonl"), {
-      source: "amh-cli",
-      text: `Created isolated worktree ${name} at ${wtDir} (branch ${branch || "detached"}) for repo ${repoAbs}`,
-      metadata: { kind: "workflow", project: path.basename(repoAbs), scope: "worktree", confidence: "high" }
-    });
-  } catch (_) { /* 归档失败不影响 worktree 创建 */ }
-  console.log(JSON.stringify(result, null, 2));
-}
 
 /** 移除隔离 worktree：从 worktree 的 .git 文件反查主仓库后执行 git worktree remove。 */
-function worktreeRemoveCommand(argv) {
-  const target = (argv[0] || "").trim();
-  const force = hasFlag(argv, "--force");
-  if (!target) throw new Error("Usage: ai-memory-hub worktree rm <worktree-path> [--force]");
-  const abs = path.resolve(target);
-  if (!fs.existsSync(abs)) throw new Error(`Worktree path not found: ${abs}`);
-  const dotGitFile = path.join(abs, ".git");
-  let repo = "";
-  if (fs.existsSync(dotGitFile) && fs.statSync(dotGitFile).isFile()) {
-    const content = fs.readFileSync(dotGitFile, "utf8");
-    const m = content.match(/gitdir:\s*(.+)/);
-    if (m) repo = path.resolve(path.dirname(m[1].trim()), "..", ".."); // <repo>/.git/worktrees/<name> → <repo>
-  }
-  if (!repo) {
-    // 直接在主仓库里找：尝试把 target 当作 <repo>/.ai-worktrees/<name> 解析
-    const candidates = [path.join(abs, ".."), abs];
-    for (const c of candidates) {
-      try {
-        runGit(c, ["rev-parse", "--git-dir"]);
-        repo = c;
-        break;
-      } catch (_) { /* 继续 */ }
-    }
-  }
-  if (!repo) throw new Error(`Cannot locate parent repo for worktree: ${abs}`);
-  const args = ["worktree", "remove", abs];
-  if (force) args.push("--force");
-  runGit(repo, args);
-  console.log(JSON.stringify({ ok: true, removed: abs }, null, 2));
-}
 
 
 
@@ -1965,113 +1647,9 @@ function worktreeRemoveCommand(argv) {
 
 
 
-function rpcCommand(argv) {
-  const action = argv[0] || "call";
-  switch (action) {
-    case "call":
-      return rpcCallCommand(argv.slice(1));
-    case "respond":
-      return rpcRespondCommand(argv.slice(1));
-    case "pending":
-      return rpcPendingCommand(argv.slice(1));
-    default:
-      throw new Error(`Unknown rpc action: ${action}\nTry: ai-memory-hub rpc call|respond|pending`);
-  }
-}
 
-function rpcCallCommand(argv) {
-  const to = getOption(argv, "--to") || "";
-  const method = getOption(argv, "--method") || "";
-  const paramsJson = getOption(argv, "--params") || "{}";
-  const timeout = Number(getOption(argv, "--timeout") || 30000);
-  const from = getOption(argv, "--from") || "unknown";
 
-  if (!to || !method) {
-    throw new Error("Usage: ai-memory-hub rpc call --to <tool> --method <method> [--params '{\"key\":\"value\"}'] [--timeout 30000] [--from <tool>]");
-  }
 
-  let params;
-  try {
-    params = JSON.parse(paramsJson);
-  } catch (error) {
-    throw new Error(`Invalid JSON params: ${error.message}`);
-  }
-
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-
-  const request = createRpcRequest({ from, to, method, params, timeout });
-  writeRpcRequest(config.memoryDir, request);
-
-  console.log(JSON.stringify({ request, status: "waiting" }, null, 2));
-
-  const result = waitForRpcResult(config.memoryDir, request.id, timeout);
-
-  if (!result) {
-    console.log(JSON.stringify({ request, status: "timeout", error: "No response within timeout" }, null, 2));
-    process.exit(1);
-  }
-
-  console.log(JSON.stringify({ request, result }, null, 2));
-  process.exit(result.success ? 0 : 1);
-}
-
-function rpcRespondCommand(argv) {
-  const requestId = getOption(argv, "--id") || "";
-  const dataJson = getOption(argv, "--data") || "null";
-  const error = getOption(argv, "--error") || "";
-  const success = !error && !hasFlag(argv, "--error");
-
-  if (!requestId) {
-    throw new Error("Usage: ai-memory-hub rpc respond --id <request-id> [--data '{\"result\":\"value\"}'] [--error <message>]");
-  }
-
-  let data;
-  try {
-    data = JSON.parse(dataJson);
-  } catch (err) {
-    throw new Error(`Invalid JSON data: ${err.message}`);
-  }
-
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-
-  const request = readRpcRequest(config.memoryDir, requestId);
-  if (!request) {
-    throw new Error(`RPC request not found: ${requestId}`);
-  }
-
-  const result = writeRpcResult(config.memoryDir, requestId, { success, data, error });
-  console.log(JSON.stringify(result, null, 2));
-}
-
-function rpcPendingCommand(argv) {
-  const to = getOption(argv, "--to") || "";
-
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-
-  const requestsDir = path.join(config.memoryDir, "rpc", "requests");
-  if (!fs.existsSync(requestsDir)) {
-    console.log(JSON.stringify([], null, 2));
-    return;
-  }
-
-  const files = fs.readdirSync(requestsDir).filter((f) => f.endsWith(".json"));
-  const pending = files
-    .map((file) => {
-      try {
-        return readJson(path.join(requestsDir, file));
-      } catch {
-        return null;
-      }
-    })
-    .filter(Boolean)
-    .filter((req) => to ? req.to === to : true)
-    .filter((req) => !readRpcResult(config.memoryDir, req.id));
-
-  console.log(JSON.stringify(pending, null, 2));
-}
 
 
 function sshCommand(argv) {
@@ -2090,19 +1668,6 @@ function sshCommand(argv) {
 
 
 
-function contextCommand(argv) {
-  const action = argv[0] || "create";
-  switch (action) {
-    case "create":
-      return contextCreateCommand(argv.slice(1));
-    case "show":
-      return contextShowCommand(argv.slice(1));
-    case "list":
-      return contextListCommand(argv.slice(1));
-    default:
-      throw new Error(`Unknown context action: ${action}\nTry: ai-memory-hub context create|show|list`);
-  }
-}
 
 /**
  * events — UNIFIED READ API for the raw memory-event log (single-writer truth).
@@ -2111,69 +1676,8 @@ function contextCommand(argv) {
  * appendJsonl write chokepoint: one module owns the event log's read surface.
  */
 
-function contextCreateCommand(argv) {
-  const taskId = getOption(argv, "--task") || "";
-  const workflowId = getOption(argv, "--workflow") || "";
-  const project = getOption(argv, "--project") || "";
-  const query = getOption(argv, "--query") || "";
 
-  if (!taskId && !workflowId && !query) {
-    throw new Error("Usage: ai-memory-hub context create [--task <task-id>] [--workflow <workflow-id>] [--project <project>] [--query <search-query>]");
-  }
 
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-
-  const pack = createContextPack({ taskId, workflowId, project, query });
-  const file = writeContextPack(config.memoryDir, pack);
-
-  console.log(JSON.stringify({ ...pack, file }, null, 2));
-}
-
-function contextShowCommand(argv) {
-  const packId = getOption(argv, "--id") || argv[0] || "";
-
-  if (!packId) {
-    throw new Error("Usage: ai-memory-hub context show <pack-id>");
-  }
-
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-
-  const pack = readContextPack(config.memoryDir, packId);
-
-  if (!pack) {
-    throw new Error(`Context pack not found: ${packId}`);
-  }
-
-  console.log(JSON.stringify(pack, null, 2));
-}
-
-function contextListCommand(argv) {
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-
-  const packsDir = path.join(config.memoryDir, "context", "packs");
-
-  if (!fs.existsSync(packsDir)) {
-    console.log(JSON.stringify([], null, 2));
-    return;
-  }
-
-  const files = fs.readdirSync(packsDir).filter((f) => f.endsWith(".json"));
-  const packs = files
-    .map((file) => {
-      try {
-        return readJson(path.join(packsDir, file));
-      } catch {
-        return null;
-      }
-    })
-    .filter(Boolean)
-    .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
-
-  console.log(JSON.stringify(packs, null, 2));
-}
 
 
 

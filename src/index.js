@@ -33,6 +33,14 @@ import { buildWorktreeSnapshot } from "./worktree-snapshot.js";
 import { evaluateDaemonHeartbeat } from "./daemon-health.js";
 import { appendJsonl } from "./event-writer.js";
 import { eventsCommand } from "./commands/events.js";
+import { notifyCommand } from "./commands/notify.js";
+const notifyCommandDeps = { createNotification, get dashboardCollaboration() { return dashboardCollaboration; }, ensureHub, getNotificationChannels, getPendingNotifications, loadConfig, notifyWorkflowRoles, readNotifications, updateNotificationStatus, writeNotification };
+import { sessionCommand } from "./commands/session.js";
+const sessionCommandDeps = { createSession, get dashboardAgentSessions() { return dashboardAgentSessions; }, get dashboardCollaboration() { return dashboardCollaboration; }, ensureHub, getActiveSessions, loadConfig, readSessions, updateSession, withHubLock, writeSessions };
+import { recipeCommand } from "./commands/recipe.js";
+const recipeCommandDeps = { createWorkflowFromRecipe, ensureHub, listRecipes, loadConfig, readRecipe, recipeListLocations, recipeReadLocations, validateRecipe };
+import { agentCommand } from "./commands/agent.js";
+const agentCommandDeps = { get dashboardAgentSessions() { return dashboardAgentSessions; }, ensureHub, loadConfig, readAgentById, readAgents, readRoleById, touchAgentStatus, writeAgent };
 import { connectCommand } from "./commands/connect.js";
 const connectCommandDeps = { createRadioMessage, createTask, get dashboardTools() { return dashboardTools; }, detectTools, ensureHub, executeDispatch, getInstallTargetForTool, loadConfig, renderInstallSnippet, syncSharedSkillLayer, withHubLock };
 import { searchCommand } from "./commands/search.js";
@@ -696,9 +704,9 @@ async function main() {
     case "gate":
       return gateCommand(rest, gateCommandDeps);
     case "session":
-      return sessionCommand(rest);
+      return sessionCommand(rest, sessionCommandDeps);
     case "agent":
-      return agentCommand(rest);
+      return agentCommand(rest, agentCommandDeps);
     case "role":
     case "roles":
       return roleCommand(rest);
@@ -712,13 +720,13 @@ async function main() {
     case "rpc":
       return rpcCommand(rest);
     case "notify":
-      return notifyCommand(rest);
+      return notifyCommand(rest, notifyCommandDeps);
     case "context":
       return contextCommand(rest);
     case "queue":
       return queueCommand(rest, queueCommandDeps);
     case "recipe":
-      return recipeCommand(rest);
+      return recipeCommand(rest, recipeCommandDeps);
     case "task-spec":
     case "taskspec":
       return taskSpecCommand(rest, taskCommandDeps);
@@ -1630,47 +1638,7 @@ function getUnreadRadioMessages(memoryDir, consumer) {
   return after.filter((m) => !processed.has(m.id));
 }
 
-function sessionCommand(argv) {
-  const action = argv[0] || "list";
-  switch (action) {
-    case "list":
-      return sessionListCommand(argv.slice(1));
-    case "add":
-    case "create":
-      return sessionAddCommand(argv.slice(1));
-    case "update":
-      return sessionUpdateCommand(argv.slice(1));
-    case "active":
-      return sessionActiveCommand(argv.slice(1));
-    case "inspect":
-      return sessionInspectCommand(argv.slice(1));
-    case "follow-up":
-    case "followup":
-      return sessionFollowUpCommand(argv.slice(1));
-    default:
-      throw new Error(`Unknown session action: ${action}\nTry: ai-memory-hub session list|add|update|active|inspect|follow-up`);
-  }
-}
 
-function agentCommand(argv) {
-  const action = argv[0] || "list";
-  if (action === "register") return agentRegisterCommand(argv.slice(1));
-  if (action === "show") return agentShowCommand(argv.slice(1));
-  if (action === "role") return agentRoleCommand(argv.slice(1));
-  if (action === "status") {
-    const sub = argv[1];
-    if (sub === "set") return agentSetStatusCommand(argv.slice(2));
-    // default: existing session projection (kept for backward-compat)
-    const config = loadConfig();
-    ensureHub(config.memoryDir);
-    const state = getOption(argv.slice(1), "--state") || "";
-    const sessions = dashboardAgentSessions.getDashboardAgentSessions(config.memoryDir).agentSessions;
-    console.log(JSON.stringify(state ? sessions.filter((item) => item.state === state) : sessions, null, 2));
-    return;
-  }
-  if (action === "list") return agentListCommand(argv.slice(1));
-  throw new Error("Usage: ai-memory-hub agent <list|register|show|status|role> ...");
-}
 
 // ---- P1: agent + role registries (borrowed from Cumora participants; role is a first-class entity here) ----
 
@@ -1765,105 +1733,10 @@ function writeTeam(memoryDir, team) {
   return next;
 }
 
-function agentRegisterCommand(argv) {
-  const id = (getOption(argv, "--id") || positionalArgs(argv)[0] || "").trim();
-  if (!id) throw new Error("Usage: ai-memory-hub agent register --id <agent> [--name '...'] [--persona '...'] [--bio '...']");
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  const existing = readAgentById(config.memoryDir, id) || {};
-  const agent = writeAgent(config.memoryDir, {
-    ...existing,
-    id: existing.id || id,
-    name: getOption(argv, "--name") || existing.name || id,
-    persona: getOption(argv, "--persona") || existing.persona || "",
-    bio: getOption(argv, "--bio") || existing.bio || "",
-    roles: Array.isArray(existing.roles) ? existing.roles : [],
-    status: existing.status || "idle",
-    createdAt: existing.createdAt || new Date().toISOString()
-  });
-  console.log(JSON.stringify(agent, null, 2));
-}
 
-function agentShowCommand(argv) {
-  const id = (getOption(argv, "--id") || positionalArgs(argv)[0] || "").trim();
-  if (!id) throw new Error("Usage: ai-memory-hub agent show --id <agent>");
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  const agent = readAgentById(config.memoryDir, id);
-  if (!agent) throw new Error(`Agent not registered: ${id}`);
-  const roles = (agent.roles || []).map((rid) => readRoleById(config.memoryDir, rid)).filter(Boolean);
-  console.log(JSON.stringify({ ...agent, expandedRoles: roles }, null, 2));
-}
 
-function agentSetStatusCommand(argv) {
-  const id = (getOption(argv, "--id") || "").trim();
-  const state = (getOption(argv, "--state") || "").trim();
-  const by = getOption(argv, "--by") || getOption(argv, "--from") || "manual";
-  if (!id || !["idle", "busy", "done"].includes(state)) throw new Error("Usage: ai-memory-hub agent status set --id <agent> --state <idle|busy|done> [--by codex]");
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  const agent = touchAgentStatus(config.memoryDir, id, state, by);
-  console.log(JSON.stringify(agent, null, 2));
-}
 
-function agentListCommand(argv) {
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  const registry = readAgents(config.memoryDir);
-  const sessions = dashboardAgentSessions.getDashboardAgentSessions(config.memoryDir).agentSessions;
-  const byId = new Map();
-  for (const a of registry) byId.set(String(a.id).toLowerCase(), { ...a, _source: "registry" });
-  for (const s of sessions) {
-    const sid = String(s.id || s.sessionId || "").toLowerCase();
-    if (!sid) continue;
-    const prev = byId.get(sid) || { id: s.id };
-    byId.set(sid, { ...prev, id: prev.id || s.id, liveState: s.state, lastSeen: s.updatedAt || prev.lastSeen, _source: prev._source || "session" });
-  }
-  const state = getOption(argv, "--state") || "";
-  let rows = [...byId.values()];
-  if (state) rows = rows.filter((r) => (r.status || r.liveState) === state);
-  console.log(JSON.stringify(rows, null, 2));
-}
 
-function agentRoleCommand(argv) {
-  const action = argv[0] || "list";
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  if (action === "add" || action === "remove") {
-    const agentId = (getOption(argv, "--agent") || "").trim();
-    const roleId = (getOption(argv, "--role") || "").trim();
-    if (!agentId || !roleId) throw new Error("Usage: ai-memory-hub agent role add|remove --agent <agent> --role <role>");
-    const agent = readAgentById(config.memoryDir, agentId);
-    if (!agent) throw new Error(`Agent not registered: ${agentId} (run 'agent register' first)`);
-    if (!readRoleById(config.memoryDir, roleId)) throw new Error(`Role not found: ${roleId} (run 'role create' first)`);
-    const roles = new Set(agent.roles || []);
-    if (action === "add") {
-      roles.add(roleId);
-      try {
-        recordRelation(config.memoryDir, { from: { type: "agent", id: agentId }, to: { type: "role", id: roleId }, relation: "plays-role", source: "agent-cli", evidence: { kind: "explicit" } });
-      } catch (_) { /* duplicate relation is fine */ }
-    } else {
-      roles.delete(roleId);
-      const rel = readRelations(config.memoryDir).find((r) => r.status === "active" && r.relation === "plays-role" && r.from.type === "agent" && String(r.from.id).toLowerCase() === agentId.toLowerCase() && r.to.type === "role" && String(r.to.id).toLowerCase() === roleId.toLowerCase());
-      if (rel) try { revokeRelation(config.memoryDir, rel.id, "agent role remove"); } catch (_) { /* ignore */ }
-    }
-    const updated = writeAgent(config.memoryDir, { ...agent, roles: [...roles] });
-    console.log(JSON.stringify(updated, null, 2));
-    return;
-  }
-  if (action === "list") {
-    const agentId = (getOption(argv, "--agent") || "").trim();
-    const agents = agentId ? [readAgentById(config.memoryDir, agentId)].filter(Boolean) : readAgents(config.memoryDir);
-    const rows = agents.map((a) => ({
-      id: a.id,
-      name: a.name,
-      roles: (a.roles || []).map((rid) => { const r = readRoleById(config.memoryDir, rid); return r ? { id: r.id, name: r.name } : { id: rid, name: "(missing)" }; })
-    }));
-    console.log(JSON.stringify(rows, null, 2));
-    return;
-  }
-  throw new Error("Usage: ai-memory-hub agent role <add|remove|list> --agent <agent> --role <role>");
-}
 
 function roleCommand(argv) {
   const action = argv[0] || "list";
@@ -2086,101 +1959,11 @@ function worktreeRemoveCommand(argv) {
   console.log(JSON.stringify({ ok: true, removed: abs }, null, 2));
 }
 
-function sessionInspectCommand(argv) {
-  const id = getOption(argv, "--id") || argv[0] || "";
-  if (!id) throw new Error("Usage: ai-memory-hub session inspect --id <session-id>");
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  const session = dashboardAgentSessions.getDashboardAgentSessions(config.memoryDir).agentSessions.find((item) => item.sessionId === id || item.id === id);
-  if (!session) throw new Error(`Session not found: ${id}`);
-  console.log(JSON.stringify(session, null, 2));
-}
 
-function sessionFollowUpCommand(argv) {
-  const sessionId = getOption(argv, "--id") || argv[0] || "";
-  const text = getOption(argv, "--text") || positionalArgs(argv.slice(1)).join(" ").trim();
-  if (!sessionId || !text) throw new Error("Usage: ai-memory-hub session follow-up --id <session-id> --text <message> [--to <agent>]");
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  const result = withHubLock(config.memoryDir, "agent-follow-up", () => dashboardCollaboration.sendFollowUp(config.memoryDir, { sessionId, text, by: getOption(argv, "--by") || "manual", to: getOption(argv, "--to") || "all" }), config.sync.lockStaleMs);
-  console.log(JSON.stringify(result, null, 2));
-}
 
-function sessionListCommand(argv) {
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  const sessions = readSessions(config.memoryDir);
-  console.log(JSON.stringify(sessions, null, 2));
-}
 
-function sessionAddCommand(argv) {
-  const title = getOption(argv, "--title") || argv[0] || "";
-  const createdBy = getOption(argv, "--from") || getOption(argv, "--by") || "unknown";
-  const project = getOption(argv, "--project") || "";
-  const context = getOption(argv, "--context") || "";
 
-  if (!title) {
-    throw new Error("Usage: ai-memory-hub session add <title> --from <tool> [--project <project>] [--context <text>]");
-  }
 
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-
-  const session = createSession({
-    title,
-    createdBy,
-    project,
-    participants: [createdBy],
-    context,
-    artifacts: []
-  });
-
-  const sessions = readSessions(config.memoryDir);
-  sessions.push(session);
-  writeSessions(config.memoryDir, sessions);
-
-  console.log(JSON.stringify(session, null, 2));
-}
-
-function sessionUpdateCommand(argv) {
-  const sessionId = getOption(argv, "--id") || argv[0] || "";
-  const context = getOption(argv, "--context");
-  const addParticipant = getOption(argv, "--add-participant");
-
-  if (!sessionId) {
-    throw new Error("Usage: ai-memory-hub session update --id <session-id> [--context <text>] [--add-participant <tool>]");
-  }
-
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-
-  const updates = {};
-  if (context !== null && context !== undefined) {
-    updates.context = context;
-  }
-
-  if (addParticipant) {
-    const sessions = readSessions(config.memoryDir);
-    const session = sessions.find((s) => s.id === sessionId);
-    if (session) {
-      updates.participants = [...new Set([...(session.participants || []), addParticipant])];
-    }
-  }
-
-  const updated = updateSession(config.memoryDir, sessionId, updates);
-  console.log(JSON.stringify(updated, null, 2));
-}
-
-function sessionActiveCommand(argv) {
-  const maxAgeHours = Number(getOption(argv, "--max-age") || 1);
-  const maxAgeMs = maxAgeHours * 3600000;
-
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-
-  const activeSessions = getActiveSessions(config.memoryDir, maxAgeMs);
-  console.log(JSON.stringify(activeSessions, null, 2));
-}
 
 function rpcCommand(argv) {
   const action = argv[0] || "call";
@@ -2290,25 +2073,6 @@ function rpcPendingCommand(argv) {
   console.log(JSON.stringify(pending, null, 2));
 }
 
-function notifyCommand(argv) {
-  const action = argv[0] || "send";
-  switch (action) {
-    case "send":
-      return notifySendCommand(argv.slice(1));
-    case "list":
-      return notifyListCommand(argv.slice(1));
-    case "pending":
-      return notifyPendingCommand(argv.slice(1));
-    case "deliver":
-      return notifyDeliverCommand(argv.slice(1));
-    case "execution":
-      return notifyExecutionCommand(argv.slice(1));
-    case "payload":
-      return notifyPayloadCommand(argv.slice(1));
-    default:
-      throw new Error(`Unknown notify action: ${action}\nTry: ai-memory-hub notify send|list|pending|deliver|execution|payload`);
-  }
-}
 
 function sshCommand(argv) {
   const action = argv[0] || "plan";
@@ -2321,78 +2085,10 @@ function sshCommand(argv) {
   console.log(JSON.stringify(buildSshPlan({ host, user, worktree, command, approved: hasFlag(argv, "--approved"), policy: getOption(argv, "--policy") || "ask" }), null, 2));
 }
 
-function notifyPayloadCommand(argv) {
-  const title = getOption(argv, "--title") || "AMH";
-  const message = getOption(argv, "--message") || positionalArgs(argv).join(" ");
-  if (!message) throw new Error("Usage: ai-memory-hub notify payload --title <title> --message <message> [--url <url>]");
-  console.log(JSON.stringify(buildNotificationPayload({ title, message, actionUrl: getOption(argv, "--url") || "" }), null, 2));
-}
 
-function notifySendCommand(argv) {
-  const severity = getOption(argv, "--severity") || "info";
-  const title = getOption(argv, "--title") || "";
-  const message = argv.find((arg) => !arg.startsWith("--")) || getOption(argv, "--message") || "";
-  const actionUrl = getOption(argv, "--url") || "";
-  const channelsStr = getOption(argv, "--channels") || "";
-  const from = getOption(argv, "--from") || "unknown";
-  const project = getOption(argv, "--project") || "";
 
-  if (!message && !title) {
-    throw new Error("Usage: ai-memory-hub notify send <message> [--severity info|warning|error|critical|need_input] [--title <title>] [--url <url>] [--channels telegram,wechat,email] [--from <tool>] [--project <project>]");
-  }
 
-  const userChannels = channelsStr ? channelsStr.split(",").map((c) => c.trim()) : [];
-  const channels = getNotificationChannels(severity, userChannels);
 
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-
-  const notification = createNotification({
-    severity,
-    title,
-    message,
-    actionUrl,
-    channels,
-    from,
-    project
-  });
-
-  writeNotification(config.memoryDir, notification);
-  console.log(JSON.stringify(notification, null, 2));
-}
-
-function notifyListCommand(argv) {
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-
-  const notifications = readNotifications(config.memoryDir);
-  console.log(JSON.stringify(notifications, null, 2));
-}
-
-function notifyPendingCommand(argv) {
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-
-  const pending = getPendingNotifications(config.memoryDir);
-  console.log(JSON.stringify(pending, null, 2));
-}
-
-function notifyDeliverCommand(argv) {
-  const notificationId = getOption(argv, "--id") || "";
-  const channelsStr = getOption(argv, "--channels") || "";
-
-  if (!notificationId || !channelsStr) {
-    throw new Error("Usage: ai-memory-hub notify deliver --id <notification-id> --channels telegram,wechat");
-  }
-
-  const deliveredTo = channelsStr.split(",").map((c) => c.trim());
-
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-
-  updateNotificationStatus(config.memoryDir, notificationId, "delivered", deliveredTo);
-  console.log(JSON.stringify({ id: notificationId, deliveredTo, status: "delivered" }, null, 2));
-}
 
 function contextCommand(argv) {
   const action = argv[0] || "create";
@@ -2487,125 +2183,10 @@ function contextListCommand(argv) {
 
 
 
-function recipeCommand(argv) {
-  const action = argv[0] || "list";
-  switch (action) {
-    case "list":
-      return recipeListCommand(argv.slice(1));
-    case "show":
-      return recipeShowCommand(argv.slice(1));
-    case "create":
-      return recipeCreateCommand(argv.slice(1));
-    case "validate":
-      return recipeValidateCommand(argv.slice(1));
-    default:
-      throw new Error(`Unknown recipe action: ${action}\nTry: ai-memory-hub recipe list|show|create|validate`);
-  }
-}
 
-function recipeListCommand(argv) {
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
 
-  const recipes = listRecipes(config.memoryDir);
-  console.log(JSON.stringify(recipes, null, 2));
-}
 
-function recipeShowCommand(argv) {
-  const recipeName = argv[0] || "";
 
-  if (!recipeName) {
-    throw new Error("Usage: ai-memory-hub recipe show <recipe-name>");
-  }
-
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-
-  const recipe = readRecipe(config.memoryDir, recipeName);
-
-  if (!recipe) {
-    throw new Error(`Recipe not found: ${recipeName}`);
-  }
-
-  console.log(JSON.stringify(recipe, null, 2));
-}
-
-function recipeCreateCommand(argv) {
-  const recipeName = getOption(argv, "--recipe") || "";
-  const project = getOption(argv, "--project") || "";
-  const toolsStr = getOption(argv, "--tools") || "";
-
-  if (!recipeName || !toolsStr) {
-    throw new Error("Usage: ai-memory-hub recipe create --recipe <name> --tools role1:tool1,role2:tool2 [--project <name>] [--var key=value]");
-  }
-
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-
-  // Parse tool mapping: "analyzer:claude,writer:codex,reviewer:gemini"
-  const toolMapping = {};
-  toolsStr.split(",").forEach((pair) => {
-    const [role, tool] = pair.split(":").map((s) => s.trim());
-    if (role && tool) {
-      toolMapping[role] = tool;
-    }
-  });
-
-  // Parse variables: --var priority=high --var scope=docs
-  const variables = { project };
-  argv.forEach((arg, idx) => {
-    if (arg === "--var" && argv[idx + 1]) {
-      const [key, value] = argv[idx + 1].split("=").map((s) => s.trim());
-      if (key && value) {
-        variables[key] = value;
-      }
-    }
-  });
-
-  const result = createWorkflowFromRecipe(config.memoryDir, recipeName, toolMapping, variables);
-
-  console.log(JSON.stringify({
-    workflow: result.workflow,
-    tasks: result.tasks.map((t) => ({
-      id: t.id,
-      title: t.title,
-      assignee: t.assignee,
-      recipeStep: t.recipeStep || null,
-      qualityGate: t.qualityGate || null
-    })),
-    recipe: {
-      name: result.recipe.name,
-      steps: result.recipe.steps.length,
-      qualityGate: normalizeQualityGate(extractQualityGate(result.recipe))
-    }
-  }, null, 2));
-}
-
-function recipeValidateCommand(argv) {
-  const recipeName = argv[0] || "";
-
-  if (!recipeName) {
-    throw new Error("Usage: ai-memory-hub recipe validate <recipe-name>");
-  }
-
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-
-  const recipe = readRecipe(config.memoryDir, recipeName);
-
-  if (!recipe) {
-    throw new Error(`Recipe not found: ${recipeName}`);
-  }
-
-  const validation = validateRecipe(recipe);
-
-  if (validation.valid) {
-    console.log(JSON.stringify({ valid: true, message: "Recipe is valid" }, null, 2));
-  } else {
-    console.log(JSON.stringify({ valid: false, error: validation.error }, null, 2));
-    process.exit(1);
-  }
-}
 
 function metricsCommand(argv) {
   const config = loadConfig();
@@ -9283,22 +8864,6 @@ function readSessions(memoryDir) {
   return readEvents(file);
 }
 
-function notifyExecutionCommand(argv) {
-  const actor = getOption(argv, "--actor") || "all";
-  const channels = getNotificationChannels("warning", (getOption(argv, "--channels") || "").split(",").map((item) => item.trim()).filter(Boolean));
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  const unread = dashboardCollaboration.getDashboardCollaboration(config.memoryDir, actor).unread;
-  const existing = new Set(readNotifications(config.memoryDir).map((item) => item.sourceItemId).filter(Boolean));
-  const created = [];
-  for (const item of unread) {
-    if (existing.has(item.id)) continue;
-    const notification = { ...createNotification({ severity: ["failed", "blocked"].includes(item.state) ? "error" : "warning", title: `AMH execution: ${item.title}`, message: item.text, actionUrl: item.kind === "agent" ? `/sessions/${item.targetId}` : `/radio/${item.targetId}`, channels, from: "ai-memory-hub", project: "" }), sourceItemId: item.id };
-    writeNotification(config.memoryDir, notification);
-    created.push(notification);
-  }
-  console.log(JSON.stringify({ actor, created, pending: getPendingNotifications(config.memoryDir).length }, null, 2));
-}
 
 function readUnreadReceipts(memoryDir) {
   return readEvents(path.join(memoryDir, "state", "unread.jsonl"));

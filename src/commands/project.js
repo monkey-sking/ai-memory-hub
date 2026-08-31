@@ -219,8 +219,6 @@ export function projectMigrateCommand(argv, deps) {
 }
 
 
-export function projectRoot(deps) {
-  return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-}
+// projectRoot() 已下沉到 ../lib/paths.js —— 它是通用路径工具，不属于 project 族群。
 
 

@@ -33,6 +33,16 @@ import { buildWorktreeSnapshot } from "./worktree-snapshot.js";
 import { evaluateDaemonHeartbeat } from "./daemon-health.js";
 import { appendJsonl } from "./event-writer.js";
 import { eventsCommand } from "./commands/events.js";
+import { connectCommand } from "./commands/connect.js";
+const connectCommandDeps = { createRadioMessage, createTask, get dashboardTools() { return dashboardTools; }, detectTools, ensureHub, executeDispatch, getInstallTargetForTool, loadConfig, renderInstallSnippet, syncSharedSkillLayer, withHubLock };
+import { searchCommand } from "./commands/search.js";
+const searchCommandDeps = { buildMemoryIndex, ensureHub, filterMemoryRecords, getMemoryIdentityKeys, hasMemoryFilters, isMemoryLifecycleVisible, loadConfig, normalizeSupersedeToken, parseMemoryFilters, printMemorySearchResults, readLedger, rebuildMemoryOutputs, recordMemoryAccess, searchMemories, searchMemoriesForContext, semanticSearch, withHubLock, writeLedger };
+import { queueCommand } from "./commands/queue.js";
+const queueCommandDeps = { createDispatchQueueEntry, ensureHub, getFailedEntries, getQueuedEntries, getRunningEntries, loadConfig, readDispatchQueue, updateDispatchQueueEntry, writeDispatchQueueEntry };
+import { skillCandidateCommand, skillCommand, skillDeltaCommand } from "./commands/skill.js";
+const skillCommandDeps = { approveSkillDelta, createSkillDelta, ensureHub, loadConfig, mergeSkillDelta, readSkillCandidates, readSkillDeltas, rejectSkillDelta, updateSkillCandidate, updateTask, withHubLock, writeSkillDeltas };
+import { githubCommand } from "./commands/github.js";
+const githubCommandDeps = { createTaskNote, ensureHub, githubBackupScheduleCommand, loadConfig, updateTask, withHubLock };
 import { gateCommand } from "./commands/gate.js";
 const gateCommandDeps = { appendApprovalGateEvent, ensureHub, loadConfig, readApprovalGates };
 import { radioCommand, radioPromoteCommand } from "./commands/radio.js";
@@ -52,6 +62,7 @@ import { ensureDir, readJson, readJsonSafe, writeJson, createId, getOption, hasO
 import { readEvents, parseJsonlLine, countJsonlLines } from "./lib/io.js";
 import { getEntityEventsFile, getEntityProjectionFile, readEntityEvents, bootstrapEntityEventsFromProjection, writeEntityRecords, appendEntityRecord, deleteEntityRecord, appendEntityEvents, createEntityEvent, replayEntityEvents, materializeEntityProjection, isEntityRecordNewerOrSame } from "./lib/entity-store.js";
 import { PROJECT_STATUSES, RECIPE_GATE_STRING_ARRAY_FIELDS, RECIPE_GATE_FIELDS, extractQualityGate, normalizeQualityGate, normalizeVerifyCommand, normalizeNonNegativeInteger, normalizeMinimalImplementation, normalizeDependencyBudget, normalizePriority, normalizeDispatchWorktreeMetadata, normalizeWorkflowRole, parseProjectListOption, uniqueStringList, isTaskStatus, isWorkflowStatus, normalizeRecipeMetadata, normalizeRecipeStepMetadata, normalizeProjectStatus, normalizeProjectResources, normalizeProject, normalizeWorkflow, normalizeTask, normalizePrompt, getTaskEventStoreDefinition, getProjectEventStoreDefinition, getWorkflowEventStoreDefinition, getPromptEventStoreDefinition } from "./lib/entity-models.js";
+import { projectRoot } from "./lib/paths.js";
 import { promptCommand } from "./commands/prompt.js";
 import { workflowNodeCommand } from "./commands/workflow-node.js";
 import { taskCommand, taskSpecCommand } from "./commands/task.js";
@@ -705,7 +716,7 @@ async function main() {
     case "context":
       return contextCommand(rest);
     case "queue":
-      return queueCommand(rest);
+      return queueCommand(rest, queueCommandDeps);
     case "recipe":
       return recipeCommand(rest);
     case "task-spec":
@@ -722,7 +733,7 @@ async function main() {
       return updateCommand(rest);
     case "connect":
     case "contact":
-      return connectCommand(rest);
+      return connectCommand(rest, connectCommandDeps);
     case "doctor":
       return doctorCommand(rest);
     case "dispatch":
@@ -733,12 +744,12 @@ async function main() {
       return heartbeatCommand(rest);
     case "skill-delta":
     case "skilldelta":
-      return skillDeltaCommand(rest);
+      return skillDeltaCommand(rest, skillCommandDeps);
     case "skill-candidate":
     case "skillcandidate":
-      return skillCandidateCommand(rest);
+      return skillCandidateCommand(rest, skillCommandDeps);
     case "skill":
-      return skillCommand(rest);
+      return skillCommand(rest, skillCommandDeps);
     case "mcp":
       return mcpCommand(rest);
     case "pack":
@@ -754,7 +765,7 @@ async function main() {
     case "events":
       return eventsCommand(rest, { loadConfig, ensureHub, hasFlag, getOption, positionalArgs, memoryStore, fs });
     case "search":
-      return searchCommand(rest);
+      return searchCommand(rest, searchCommandDeps);
     case "snapshot":
       return snapshotCommand(rest);
     case "resolve":
@@ -767,7 +778,7 @@ async function main() {
       return backupCommand(rest);
     case "gh":
     case "github":
-      return githubCommand(rest);
+      return githubCommand(rest, githubCommandDeps);
     case "ssh":
       return sshCommand(rest);
     case "watch":
@@ -795,52 +806,6 @@ function parseCliArgs(argv) {
     command,
     rest: args.slice(1)
   };
-}
-
-function githubCommand(argv) {
-  const action = argv[0] || "sync";
-  if (["commit-message", "format-commit", "format"].includes(action)) {
-    const task = getOption(argv.slice(1), "--task") || getOption(argv.slice(1), "--task-id") || "";
-    const message = getOption(argv.slice(1), "--message") || positionalArgs(argv.slice(1)).join(" ");
-    if (!task || !message) throw new Error("Usage: ai-memory-hub gh commit-message --task <task-id> --message <message>");
-    console.log(JSON.stringify({ message: formatGithubCommitMessage(message, task), task, apply: false }, null, 2));
-    return;
-  }
-  if (action === "request") {
-    const owner = getOption(argv.slice(1), "--owner") || "";
-    const repo = getOption(argv.slice(1), "--repo") || "";
-    const pull = getOption(argv.slice(1), "--pull") || "";
-    if (!owner || !repo || !pull) throw new Error("Usage: ai-memory-hub gh request --owner <owner> --repo <repo> --pull <number> [--dry-run]");
-    console.log(JSON.stringify({ request: buildGithubRequest({ owner, repo, pull, token: process.env.GITHUB_TOKEN || "" }), dryRun: true }, null, 2));
-    return;
-  }
-  if (action === "webhook") {
-    const dataFile = getOption(argv.slice(1), "--data") || "";
-    if (!dataFile) throw new Error("Usage: ai-memory-hub gh webhook --data <payload.json> [--apply]");
-    const parsed = parseGithubWebhook(readJson(path.resolve(dataFile)));
-    if (hasFlag(argv, "--apply") && parsed.accepted) {
-      const config = loadConfig(); ensureHub(config.memoryDir);
-      const result = syncGithubLifecycle(readTasks(config.memoryDir), [parsed.pullRequest]);
-      const applied = withHubLock(config.memoryDir, "github-webhook", () => result.changes.map((change) => updateTask(config.memoryDir, change.id, (current) => ({ ...current, ...change.patch, updatedAt: new Date().toISOString() }))), config.sync.lockStaleMs);
-      console.log(JSON.stringify({ ...parsed, result, applied }, null, 2)); return;
-    }
-    console.log(JSON.stringify({ ...parsed, apply: false }, null, 2)); return;
-  }
-  if (action !== "sync") throw new Error("Usage: ai-memory-hub gh sync|request|webhook|commit-message ...");
-  const dataFile = getOption(argv.slice(1), "--data") || "";
-  if (!dataFile) throw new Error("Usage: ai-memory-hub gh sync --data <pull-requests.json> [--apply]");
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  const input = readJson(path.resolve(dataFile));
-  const pullRequests = Array.isArray(input) ? input : (input.pullRequests || input.pulls || []);
-  const tasks = readTasks(config.memoryDir);
-  const result = syncGithubLifecycle(tasks, Array.isArray(input) ? pullRequests : input);
-  if (hasFlag(argv, "--apply")) {
-    const updated = withHubLock(config.memoryDir, "github-sync", () => result.changes.map((change) => updateTask(config.memoryDir, change.id, (current) => ({ ...current, ...change.patch, updatedAt: new Date().toISOString(), notes: [...(current.notes || []), createTaskNote("github-sync", `GitHub PR merged: ${change.pullRequest.url || change.pullRequest.html_url || ""}`)] }))), config.sync.lockStaleMs);
-    console.log(JSON.stringify({ ...result, applied: updated }, null, 2));
-    return;
-  }
-  console.log(JSON.stringify({ ...result, apply: false, hint: "Pass --apply to update linked tasks." }, null, 2));
 }
 
 function resolveMemoryDir(argv = rawArgs) {
@@ -1553,134 +1518,8 @@ function getStatusObject() {
   };
 }
 
-async function connectCommand(argv) {
-  const action = argv[0] && !argv[0].startsWith("--") ? argv[0] : "status";
-  const actionArgs = action === "status" ? argv : argv.slice(1);
-  switch (action) {
-    case "status":
-    case "list":
-      return connectStatusCommand(actionArgs);
-    case "request":
-    case "ask":
-      return connectSendCommand(actionArgs, "request");
-    case "review":
-      return connectSendCommand(actionArgs, "review");
-    case "handoff":
-      return connectSendCommand(actionArgs, "handoff");
-    case "note":
-      return connectSendCommand(actionArgs, "note");
-    default:
-      throw new Error("Usage: ai-memory-hub connect [status|request|review|handoff|note] ...");
-  }
-}
 
-function connectStatusCommand(argv) {
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  const apply = hasFlag(argv, "--apply");
-  const tools = detectTools(config.memoryDir);
-  const installedNeedingUpdate = tools.filter((tool) => tool.installed && (!tool.configured || !tool.skillLayer));
 
-  if (apply) {
-    for (const tool of installedNeedingUpdate) {
-      const target = getInstallTargetForTool(config.memoryDir, tool.name);
-      if (!target) continue;
-      const snippet = renderInstallSnippet(target, config.memoryDir);
-      ensureDir(path.dirname(target.file));
-      syncSharedSkillLayer(target.file, snippet, { apply: true });
-    }
-  }
-
-  const refreshed = apply ? detectTools(config.memoryDir) : tools;
-  const summary = dashboardTools.summarizeToolConnections(refreshed);
-  console.log(JSON.stringify({
-    apply,
-    summary,
-    tools: refreshed.map((tool) => ({
-      name: tool.name,
-      installed: tool.installed,
-      configured: tool.configured,
-      connected: tool.connected,
-      connectionStatus: tool.connectionStatus,
-      skillLayer: tool.skillLayer,
-      skillLayerVersion: tool.skillLayerVersion,
-      skillLayerStatus: tool.skillLayerStatus,
-      runnable: tool.runnable,
-      runnerProfile: tool.runnerProfile,
-      runnerCommandKind: tool.runnerCommandKind,
-      runnerUsesShell: tool.runnerUsesShell,
-      sharedStateOnly: tool.sharedStateOnly,
-      action: tool.action,
-      instructionFile: tool.instructionFile
-    }))
-  }, null, 2));
-}
-
-async function connectSendCommand(argv, defaultType) {
-  const text = getOption(argv, "--text") || positionalArgs(argv).join(" ").trim();
-  if (!text) {
-    throw new Error("Usage: ai-memory-hub connect request --from <tool> --to codex --project <project> --text <message> [--task] [--run]");
-  }
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  const from = getOption(argv, "--from") || getOption(argv, "--by") || "manual";
-  const to = getOption(argv, "--to") || "codex";
-  const type = getOption(argv, "--type") || defaultType || "request";
-  const project = getOption(argv, "--project") || path.basename(process.cwd());
-  const priority = getOption(argv, "--priority") || (type === "review" ? "high" : "normal");
-  const shouldCreateTask = hasFlag(argv, "--task") || hasFlag(argv, "--create-task");
-  let task = null;
-
-  if (shouldCreateTask) {
-    withHubLock(config.memoryDir, "connect-task", () => {
-      const tasks = readTasks(config.memoryDir);
-      task = createTask({
-        title: getOption(argv, "--title") || `[${type}] ${summarizeText(text, 80)}`,
-        description: text,
-        handoff: `Contact request from ${from} to ${to}.`,
-        createdBy: from,
-        project,
-        priority
-      });
-      task.assignee = to;
-      task.status = "claimed";
-      tasks.push(task);
-      writeTasks(config.memoryDir, tasks);
-    }, config.sync.lockStaleMs);
-  }
-
-  const message = createRadioMessage({
-    from,
-    to,
-    type,
-    text,
-    thread: getOption(argv, "--thread") || task?.id || "",
-    replyTo: getOption(argv, "--reply-to") || "",
-    project
-  });
-  appendJsonl(path.join(config.memoryDir, "radio", "messages.jsonl"), message);
-
-  const dispatch = hasFlag(argv, "--run")
-    ? await executeDispatch(config.memoryDir, {
-      run: true,
-      force: hasFlag(argv, "--force"),
-      to,
-      project,
-      limit: Number(getOption(argv, "--limit") || 5),
-      model: getOption(argv, "--model") || "",
-      isolateWorktree: hasFlag(argv, "--isolate-worktree"),
-      worktreeRoot: getOption(argv, "--worktree-root") || ""
-    })
-    : null;
-
-  console.log(JSON.stringify({
-    ok: true,
-    message,
-    task,
-    dispatch,
-    hint: dispatch ? "" : `Run ai-memory-hub dispatch --to ${to} --project ${project} --run to trigger a verified runner.`
-  }, null, 2));
-}
 
 function recordCommand(argv) {
   const text = positionalArgs(argv).join(" ").trim();
@@ -2640,156 +2479,13 @@ function contextListCommand(argv) {
   console.log(JSON.stringify(packs, null, 2));
 }
 
-function queueCommand(argv) {
-  const action = argv[0] || "list";
-  switch (action) {
-    case "add":
-      return queueAddCommand(argv.slice(1));
-    case "list":
-      return queueListCommand(argv.slice(1));
-    case "running":
-      return queueRunningCommand(argv.slice(1));
-    case "failed":
-      return queueFailedCommand(argv.slice(1));
-    case "start":
-      return queueStartCommand(argv.slice(1));
-    case "complete":
-      return queueCompleteCommand(argv.slice(1));
-    case "fail":
-      return queueFailCommand(argv.slice(1));
-    default:
-      throw new Error(`Unknown queue action: ${action}\nTry: ai-memory-hub queue add|list|running|failed|start|complete|fail`);
-  }
-}
 
-function queueAddCommand(argv) {
-  const taskId = getOption(argv, "--task") || "";
-  const workflowId = getOption(argv, "--workflow") || "";
-  const radioId = getOption(argv, "--radio") || "";
-  const tool = getOption(argv, "--tool") || "";
-  const priority = getOption(argv, "--priority") || "normal";
-  const timeout = getOption(argv, "--timeout") || "30000";
-  const maxRetries = getOption(argv, "--max-retries") || "3";
 
-  if (!tool || (!taskId && !workflowId && !radioId)) {
-    throw new Error("Usage: ai-memory-hub queue add --tool <tool> [--task <id>] [--workflow <id>] [--radio <id>] [--priority normal] [--timeout 30000] [--max-retries 3]");
-  }
 
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
 
-  const entry = createDispatchQueueEntry({
-    taskId,
-    workflowId,
-    radioId,
-    tool,
-    priority,
-    timeout,
-    maxRetries
-  });
 
-  writeDispatchQueueEntry(config.memoryDir, entry);
-  console.log(JSON.stringify(entry, null, 2));
-}
 
-function queueListCommand(argv) {
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
 
-  const queued = getQueuedEntries(config.memoryDir);
-  console.log(JSON.stringify(queued, null, 2));
-}
-
-function queueRunningCommand(argv) {
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-
-  const running = getRunningEntries(config.memoryDir);
-  console.log(JSON.stringify(running, null, 2));
-}
-
-function queueFailedCommand(argv) {
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-
-  const failed = getFailedEntries(config.memoryDir);
-  console.log(JSON.stringify(failed, null, 2));
-}
-
-function queueStartCommand(argv) {
-  const entryId = getOption(argv, "--id") || argv[0] || "";
-
-  if (!entryId) {
-    throw new Error("Usage: ai-memory-hub queue start <entry-id>");
-  }
-
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-
-  updateDispatchQueueEntry(config.memoryDir, entryId, {
-    status: "running",
-    startedAt: new Date().toISOString(),
-    attempts: 1,
-    lastAttemptAt: new Date().toISOString()
-  });
-
-  console.log(JSON.stringify({ id: entryId, status: "running" }, null, 2));
-}
-
-function queueCompleteCommand(argv) {
-  const entryId = getOption(argv, "--id") || argv[0] || "";
-
-  if (!entryId) {
-    throw new Error("Usage: ai-memory-hub queue complete <entry-id>");
-  }
-
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-
-  updateDispatchQueueEntry(config.memoryDir, entryId, {
-    status: "completed",
-    completedAt: new Date().toISOString()
-  });
-
-  console.log(JSON.stringify({ id: entryId, status: "completed" }, null, 2));
-}
-
-function queueFailCommand(argv) {
-  const entryId = getOption(argv, "--id") || argv[0] || "";
-  const error = getOption(argv, "--error") || "Unknown error";
-
-  if (!entryId) {
-    throw new Error("Usage: ai-memory-hub queue fail <entry-id> [--error <message>]");
-  }
-
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-
-  const entries = readDispatchQueue(config.memoryDir);
-  const entry = entries.find((e) => e.id === entryId);
-
-  if (!entry) {
-    throw new Error(`Queue entry not found: ${entryId}`);
-  }
-
-  const newAttempts = (entry.attempts || 0) + 1;
-  const shouldRetry = newAttempts < (entry.maxRetries || 3);
-
-  updateDispatchQueueEntry(config.memoryDir, entryId, {
-    status: shouldRetry ? "queued" : "failed",
-    attempts: newAttempts,
-    lastAttemptAt: new Date().toISOString(),
-    lastError: error,
-    completedAt: shouldRetry ? "" : new Date().toISOString()
-  });
-
-  console.log(JSON.stringify({
-    id: entryId,
-    status: shouldRetry ? "queued (will retry)" : "failed",
-    attempts: newAttempts,
-    maxRetries: entry.maxRetries
-  }, null, 2));
-}
 
 function recipeCommand(argv) {
   const action = argv[0] || "list";
@@ -5684,137 +5380,8 @@ function semanticSearch(records, query, limit) {
   return scored.filter(r => r.score > 0).sort((a, b) => b.score - a.score).slice(0, limit);
 }
 
-function searchCommand(argv) {
-  const action = argv[0] || "";
-  // Subcommands: rebuild, status
-  if (action === "rebuild") {
-    return searchRebuildCommand(argv.slice(1));
-  }
-  if (action === "status") {
-    return searchStatusCommand(argv.slice(1));
-  }
 
-  const query = positionalArgs(argv).join(" ").trim();
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  const limit = Number(getOption(argv, "--limit") || 10);
-  const useFts = !hasFlag(argv, "--legacy");
-  const entityType = getOption(argv, "--type") || "";
-  const filters = parseMemoryFilters(argv);
-  const hasFilter = hasMemoryFilters(filters);
-  const trackAccess = !hasFlag(argv, "--no-track") && !hasFlag(argv, "--no-access-track");
-  // OPC v1.1 P1: semantic search mode
-  const mode = getOption(argv, "--mode") || "fts";
-  // Emit a strict JSON array instead of human-readable text (consistent with `task list`).
-  const asJson = hasFlag(argv, "--json");
-  if (!query && !hasFilter) {
-    throw new Error("Usage: ai-memory-hub search [query] [--limit 10] [--type memory|task|radio|workflow|prompt] [--legacy] [--no-track] [--mode fts|semantic]");
-  }
 
-  // Try FTS5 search first
-  if (query && useFts) {
-    try {
-      const db = createSearchDb(config.memoryDir);
-      const stats = getIndexStats(db);
-      if (stats.total > 0) {
-        const rawResults = searchIndex(db, query, { limit, entityType });
-        const visibleMemoryIds = new Set(buildMemoryIndex(readLedger(config.memoryDir), config).records
-          .filter(isMemoryLifecycleVisible)
-          .flatMap((record) => getMemoryIdentityKeys(record).map(normalizeSupersedeToken)));
-        const results = rawResults.filter((item) => item.entityType !== "memory" || visibleMemoryIds.has(normalizeSupersedeToken(item.entityId)));
-        db.close();
-        if (asJson) {
-          console.log(JSON.stringify(results, null, 2));
-          return;
-        }
-        for (const item of results) {
-          const preview = item.content ? item.content.slice(0, 120) : "";
-          console.log(`[${item.score.toFixed(2)}] [${item.entityType}] ${item.entityId} ${item.title ? `(${item.title}) ` : ""}${item.project ? `project=${item.project} ` : ""}${preview}`);
-        }
-        return;
-      }
-      db.close();
-    } catch { /* fallback to legacy */ }
-  }
-
-  // OPC v1.1 P1: Semantic search (TF-IDF cosine similarity, no external deps)
-  if (query && mode === "semantic") {
-    try {
-      const ledger = readLedger(config.memoryDir);
-      if (ledger.length > 0) {
-        const visible = buildMemoryIndex(ledger, config).records.filter(isMemoryLifecycleVisible);
-        const visibleIds = new Set(visible.flatMap((record) => getMemoryIdentityKeys(record).map(normalizeSupersedeToken)));
-        const results = semanticSearch(ledger, query, limit).filter((item) => visibleIds.has(normalizeSupersedeToken(item.id)));
-          if (results.length > 0) {
-          if (trackAccess) {
-            const updated = recordMemoryAccess(ledger, results);
-            if (updated.updated > 0) writeLedger(config.memoryDir, updated.ledger);
-          }
-          if (asJson) {
-            console.log(JSON.stringify(results, null, 2));
-            return;
-          }
-          for (const item of results) {
-            const preview = item.text ? item.text.slice(0, 120) : "";
-            console.log("[" + item.score.toFixed(3) + "] [semantic] " + item.id + " " + (item.metadata?.project ? "project=" + item.metadata.project + " " : "") + preview);
-          }
-          return;
-        }
-      }
-    } catch (e) { /* fallback to FTS */ }
-  }
-
-  // Legacy search fallback
-  const runSearch = () => {
-    const ledger = readLedger(config.memoryDir);
-    const index = buildMemoryIndex(ledger, config);
-    const records = filterMemoryRecords(index.records, filters);
-    const results = (query
-      ? searchMemories(records, query)
-      : [...records]
-        .sort((a, b) => String(b.ts || "").localeCompare(String(a.ts || "")))
-        .map((record) => ({ ...record, score: Number(record.importance || 0) / 100 }))
-    ).slice(0, limit);
-
-    if (trackAccess && results.length > 0) {
-      const updated = recordMemoryAccess(ledger, results);
-      if (updated.updated > 0) {
-        writeLedger(config.memoryDir, updated.ledger);
-        rebuildMemoryOutputs(config, updated.ledger);
-      }
-    }
-
-    printMemorySearchResults(results, asJson);
-  };
-
-  if (trackAccess) {
-    return withHubLock(config.memoryDir, "search-access", runSearch, config.sync.lockStaleMs);
-  }
-  return runSearch();
-}
-
-function searchRebuildCommand(argv) {
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  console.log("Rebuilding FTS5 search index...");
-  const db = createSearchDb(config.memoryDir);
-  const indexed = rebuildIndex(db, config.memoryDir);
-  db.close();
-  console.log(`Indexed ${indexed} records.`);
-}
-
-function searchStatusCommand(argv) {
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  try {
-    const db = createSearchDb(config.memoryDir);
-    const stats = getIndexStats(db);
-    db.close();
-    console.log(JSON.stringify(stats, null, 2));
-  } catch {
-    console.log(JSON.stringify({ total: 0, byType: {}, lastRebuilt: "never", schemaVersion: "unknown" }, null, 2));
-  }
-}
 
 function printMemorySearchResults(results, asJson = false) {
   if (asJson) {
@@ -6149,59 +5716,6 @@ function updateSkillCandidate(memoryDir, id, updater) {
   return candidates[index];
 }
 
-function skillCandidateCommand(argv) {
-  const action = argv[0] || "list";
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-
-  switch (action) {
-    case "list": {
-      const status = getOption(argv, "--status") || "";
-      const candidates = readSkillCandidates(config.memoryDir).filter((candidate) => !status || candidate.status === status);
-      console.log(JSON.stringify(candidates, null, 2));
-      break;
-    }
-    case "approve":
-    case "reject": {
-      const id = getOption(argv, "--id") || positionalArgs(argv)[1] || "";
-      const reviewer = getOption(argv, "--by") || "human";
-      const note = getOption(argv, "--reason") || getOption(argv, "--note") || "";
-      if (!id) throw new Error(`Usage: ai-memory-hub skill-candidate ${action} --id <id> [--by reviewer] [--note text]`);
-      const candidate = updateSkillCandidate(config.memoryDir, id, (current) => applyCandidateDecision(
-        current,
-        { status: action === "approve" ? "approved" : "rejected", reviewer, note }
-      ));
-      console.log(JSON.stringify(candidate, null, 2));
-      break;
-    }
-    case "promote": {
-      const id = getOption(argv, "--id") || positionalArgs(argv)[1] || "";
-      const tool = getOption(argv, "--tool") || "";
-      const section = getOption(argv, "--section") || "";
-      const original = getOption(argv, "--original") || "";
-      const proposed = getOption(argv, "--proposed") || "";
-      if (!id || !tool || !original || !proposed) {
-        throw new Error("Usage: ai-memory-hub skill-candidate promote --id <id> --tool <tool> --section <section> --original <text> --proposed <text>");
-      }
-      const candidate = readSkillCandidates(config.memoryDir).find((item) => item.id === id || item.id.startsWith(id));
-      if (!candidate) throw new Error(`Skill candidate not found: ${id}`);
-      if (candidate.status !== "approved") throw new Error(`Skill candidate must be approved before promotion. Current status: ${candidate.status}`);
-      const delta = createSkillDelta({ tool, section, original, proposed, reason: candidate.text, createdBy: candidate.reviewedBy || "reviewer" });
-      const deltas = readSkillDeltas(config.memoryDir);
-      deltas.push(delta);
-      writeSkillDeltas(config.memoryDir, deltas);
-      const updated = updateSkillCandidate(config.memoryDir, candidate.id, (current) => ({
-        ...current,
-        promotedDeltaId: delta.id,
-        promotedAt: new Date().toISOString()
-      }));
-      console.log(JSON.stringify({ candidate: updated, delta }, null, 2));
-      break;
-    }
-    default:
-      throw new Error("Usage: ai-memory-hub skill-candidate list|approve|reject|promote");
-  }
-}
 
 function packCommand(argv) {
   const action = argv[0] || "list";
@@ -6250,123 +5764,6 @@ async function mcpCommand(argv) {
   else throw new Error("Usage: ai-memory-hub mcp list|import|diff|sync|remove|status [--app <client>] [--apply] [--force]");
 }
 
-async function skillCommand(argv) {
-  const action = argv[0] || "list";
-  if (action === "--help" || action === "-h") {
-    console.log("Usage: ai-memory-hub skill list|scan|import|install|show|update|rollback|enable|disable|sync|doctor|diff|remove|gc|gc-rollback|search|attach|render [--app <client>] [--all] [--apply] [--force]");
-    return;
-  }
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  const app = getOption(argv.slice(1), "--app");
-  const allApps = argv.includes("--all");
-  const apps = allApps ? ["claude", "codex", "gemini", "opencode"] : (app ? [app] : ["claude", "codex", "gemini", "opencode"]);
-  if (action === "list") {
-    console.log(JSON.stringify(listSkills(config.memoryDir), null, 2)); return;
-  }
-  if (action === "scan") {
-    const root = getOption(argv.slice(1), "--root");
-    const roots = root ? [{ tool: getOption(argv.slice(1), "--tool") || "custom", path: root }] : defaultSkillRoots();
-    console.log(JSON.stringify(await scanSkillRoots(roots), null, 2)); return;
-  }
-  if (action === "import" || action === "install") {
-    const source = getOption(argv.slice(1), "--path") || argv[1] || "";
-    if (!source) throw new Error("Usage: ai-memory-hub skill import|install --path <skill-directory> [--version <version>] [--project <path>]");
-    const imported = await withPreparedSkillSource(config.memoryDir, source, { ref: getOption(argv.slice(1), "--ref") }, (prepared) => importSharedSkill(config.memoryDir, prepared.path, { id: getOption(argv.slice(1), "--id"), version: getOption(argv.slice(1), "--version") || "1.0.0", source: prepared.source }));
-    const project = getOption(argv.slice(1), "--project");
-    let synced = [];
-    let manifest = null;
-    if (project) {
-      manifest = await setProjectSkill(project, imported.id, getOption(argv.slice(1), "--version") || imported.version);
-      const packages = selectProjectSkills(manifest, await listSharedSkillPackages(config.memoryDir));
-      synced = await syncSkillProjections(project, packages, getOption(argv.slice(1), "--tool") ? [getOption(argv.slice(1), "--tool")] : (manifest.targets.length ? manifest.targets : ["codex", "claude", "gemini", "opencode", "antigravity"]));
-    }
-    console.log(JSON.stringify({ imported, project: project || "", manifest, synced }, null, 2)); return;
-  }
-  if (action === "update") {
-    const source = getOption(argv.slice(1), "--path");
-    if (!source) throw new Error("Usage: ai-memory-hub skill update --path <skill-directory> --version <version> [--project <path>]");
-    const imported = await withPreparedSkillSource(config.memoryDir, source, { ref: getOption(argv.slice(1), "--ref") }, (prepared) => importSharedSkill(config.memoryDir, prepared.path, { id: getOption(argv.slice(1), "--id"), version: getOption(argv.slice(1), "--version"), source: prepared.source }));
-    const project = getOption(argv.slice(1), "--project");
-    const manifest = project ? await setProjectSkill(project, imported.id, imported.version) : null;
-    const packages = project ? selectProjectSkills(manifest, await listSharedSkillPackages(config.memoryDir)) : [];
-    const synced = project ? await syncSkillProjections(project, packages, getOption(argv.slice(1), "--tool") ? [getOption(argv.slice(1), "--tool")] : ["codex", "claude", "gemini", "opencode", "antigravity"]) : [];
-    console.log(JSON.stringify({ imported, manifest, synced }, null, 2)); return;
-  }
-  if (action === "rollback") {
-    const id = getOption(argv.slice(1), "--id") || argv[1] || "";
-    const version = getOption(argv.slice(1), "--version");
-    const project = getOption(argv.slice(1), "--project") || process.cwd();
-    if (!id || !version) throw new Error("Usage: ai-memory-hub skill rollback <id> --version <version> --project <path>");
-    const packageRecord = await findSharedSkillPackage(config.memoryDir, id, version);
-    if (!packageRecord) throw new Error(`Skill package not found: ${id}@${version}`);
-    const manifest = await setProjectSkill(project, id, version);
-    const packages = selectProjectSkills(manifest, await listSharedSkillPackages(config.memoryDir));
-    const synced = await syncSkillProjections(project, packages, getOption(argv.slice(1), "--tool") ? [getOption(argv.slice(1), "--tool")] : ["codex", "claude", "gemini", "opencode", "antigravity"]);
-    console.log(JSON.stringify({ package: packageRecord, manifest, synced }, null, 2)); return;
-  }
-  if (action === "show") {
-    const id = getOption(argv.slice(1), "--id") || argv[1] || "";
-    if (!id) throw new Error("Usage: ai-memory-hub skill show <id> [--version <version>]");
-    console.log(JSON.stringify(await findSharedSkillPackage(config.memoryDir, id, getOption(argv.slice(1), "--version")), null, 2)); return;
-  }
-  if (action === "enable" || action === "disable") {
-    const project = getOption(argv.slice(1), "--project") || process.cwd();
-    const id = getOption(argv.slice(1), "--id") || argv[1] || "";
-    if (!id) throw new Error(`Usage: ai-memory-hub skill ${action} <id> --project <path>`);
-    const manifest = action === "enable" ? await setProjectSkill(project, id, getOption(argv.slice(1), "--version") || "*") : await removeProjectSkill(project, id);
-    console.log(JSON.stringify(manifest, null, 2)); return;
-  }
-  if (action === "sync" || action === "doctor") {
-    const project = getOption(argv.slice(1), "--project") || process.cwd();
-    const apply = argv.includes("--apply");
-    const force = argv.includes("--force");
-    const manifest = await loadProjectSkillManifest(project);
-    const packages = selectProjectSkills(manifest, await listSharedSkillPackages(config.memoryDir));
-    const targets = apps;
-    const result = action === "sync" ? await syncSkillProjections(project, packages, targets) : await doctorSkillProjections(project, packages, targets);
-    console.log(JSON.stringify({ project, packages: packages.map((item) => `${item.id}@${item.version}`), targets, result, applied: apply, force }, null, 2)); return;
-  }
-  if (action === "diff") {
-    const project = getOption(argv.slice(1), "--project") || process.cwd();
-    console.log(JSON.stringify(await diffSkillExtensions(config.memoryDir, { projectRoot: project, apps }), null, 2)); return;
-  }
-  if (action === "gc") {
-    const project = getOption(argv.slice(1), "--project") || process.cwd();
-    const result = argv.includes("--apply")
-      ? await applySkillGarbageCollection(config.memoryDir, project, { confirm: getOption(argv.slice(1), "--confirm") })
-      : await planSkillGarbageCollection(config.memoryDir, project);
-    console.log(JSON.stringify(result, null, 2)); return;
-  }
-  if (action === "gc-rollback") {
-    const operationId = getOption(argv.slice(1), "--id") || argv[1] || "";
-    if (!operationId) throw new Error("Usage: ai-memory-hub skill gc-rollback <operation-id>");
-    console.log(JSON.stringify(await rollbackSkillGarbageCollection(config.memoryDir, operationId), null, 2)); return;
-  }
-  if (action === "remove") {
-    const id = getOption(argv.slice(1), "--id") || argv[1] || "";
-    const project = getOption(argv.slice(1), "--project") || process.cwd();
-    console.log(JSON.stringify(await removeSkillExtension(config.memoryDir, { projectRoot: project, id }), null, 2)); return;
-  }
-  if (action === "search") { console.log(JSON.stringify(searchSkills(config.memoryDir, argv.slice(1).join(" "),), null, 2)); return; }
-  if (action === "attach") {
-    const skillId = getOption(argv.slice(1), "--skill") || argv[1] || "";
-    const taskId = getOption(argv.slice(1), "--task") || "";
-    if (!skillId || !taskId) throw new Error("Usage: ai-memory-hub skill attach --skill <skill-id> --task <task-id>");
-    const skill = listSkills(config.memoryDir).find((item) => item.id === skillId || item.id.startsWith(skillId));
-    if (!skill) throw new Error(`Skill not found: ${skillId}`);
-    const task = withHubLock(config.memoryDir, "skill-attach", () => updateTask(config.memoryDir, taskId, (current) => ({ ...current, skills: [...new Set([...(current.skills || []), skill.id])], updatedAt: new Date().toISOString() })), config.sync.lockStaleMs);
-    console.log(JSON.stringify({ task, skill }, null, 2)); return;
-  }
-  if (action === "render") {
-    const title = getOption(argv.slice(1), "--title") || "Generated skill";
-    const text = getOption(argv.slice(1), "--text") || positionalArgs(argv.slice(1)).join(" ");
-    if (!text) throw new Error("Usage: ai-memory-hub skill render --title <title> --text <rule> [--task <task-id>] [--evidence <item;item>]");
-    console.log(renderSkillMarkdown({ title, text, sourceTaskId: getOption(argv.slice(1), "--task") || "unknown", evidence: (getOption(argv.slice(1), "--evidence") || "").split(";").map((item) => item.trim()).filter(Boolean) }));
-    return;
-  }
-  throw new Error("Usage: ai-memory-hub skill list|scan|import|install|show|update|rollback|enable|disable|sync|doctor|diff|remove|gc|gc-rollback|search|attach|render");
-}
 
 function getSkillDeltasFile(memoryDir) {
   return path.join(memoryDir, "prompts", SKILL_DELTA_FILE);
@@ -6467,66 +5864,6 @@ function writeSkillDeltas(memoryDir, deltas) {
   writeFileAtomic(file, lines, "utf8");
 }
 
-function skillDeltaCommand(argv) {
-  const action = argv[0] || "list";
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-
-  switch (action) {
-    case "create": {
-      const tool = getOption(argv, "--tool") || "";
-      const section = getOption(argv, "--section") || "";
-      const original = getOption(argv, "--original") || "";
-      const proposed = getOption(argv, "--proposed") || "";
-      const reason = getOption(argv, "--reason") || "";
-      const createdBy = getOption(argv, "--from") || "observer";
-      if (!tool || !original || !proposed) {
-        throw new Error('Usage: ai-memory-hub skill-delta create --tool <name> --section <section> --original "old text" --proposed "new text" --reason "why"');
-      }
-      const delta = createSkillDelta({ tool, section, original, proposed, reason, createdBy });
-      const deltas = readSkillDeltas(config.memoryDir);
-      deltas.push(delta);
-      writeSkillDeltas(config.memoryDir, deltas);
-      console.log(JSON.stringify(delta, null, 2));
-      break;
-    }
-    case "list": {
-      const tool = getOption(argv, "--tool") || "";
-      const status = getOption(argv, "--status") || "";
-      let deltas = readSkillDeltas(config.memoryDir);
-      if (tool) deltas = deltas.filter((d) => d.tool === tool);
-      if (status) deltas = deltas.filter((d) => d.status === status);
-      console.log(JSON.stringify(deltas, null, 2));
-      break;
-    }
-    case "approve": {
-      const id = positionalArgs(argv).slice(1)[0] || getOption(argv, "--id") || "";
-      const reviewer = getOption(argv, "--by") || "human";
-      if (!id) throw new Error("Usage: ai-memory-hub skill-delta approve <id> [--by reviewer]");
-      const delta = approveSkillDelta(config.memoryDir, id, reviewer);
-      console.log(JSON.stringify(delta, null, 2));
-      break;
-    }
-    case "reject": {
-      const id = positionalArgs(argv).slice(1)[0] || getOption(argv, "--id") || "";
-      const reviewer = getOption(argv, "--by") || "human";
-      const reason = getOption(argv, "--reason") || "";
-      if (!id) throw new Error("Usage: ai-memory-hub skill-delta reject <id> [--by reviewer] [--reason text]");
-      const delta = rejectSkillDelta(config.memoryDir, id, reviewer, reason);
-      console.log(JSON.stringify(delta, null, 2));
-      break;
-    }
-    case "merge": {
-      const id = positionalArgs(argv).slice(1)[0] || getOption(argv, "--id") || "";
-      if (!id) throw new Error("Usage: ai-memory-hub skill-delta merge <id>");
-      const delta = mergeSkillDelta(config.memoryDir, id);
-      console.log(JSON.stringify(delta, null, 2));
-      break;
-    }
-    default:
-      throw new Error("Usage: ai-memory-hub skill-delta <create|list|approve|reject|merge>");
-  }
-}
 
 function checkpointCommand(argv) {
   const action = argv[0] || "status";

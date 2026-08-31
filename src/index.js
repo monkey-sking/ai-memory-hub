@@ -33,6 +33,8 @@ import { buildWorktreeSnapshot } from "./worktree-snapshot.js";
 import { evaluateDaemonHeartbeat } from "./daemon-health.js";
 import { appendJsonl } from "./event-writer.js";
 import { eventsCommand } from "./commands/events.js";
+import { modelsCommand } from "./commands/models.js";
+const modelsCommandDeps = { get RUNNER_PROFILES() { return RUNNER_PROFILES; }, ensureHub, getToolRunner, loadConfig, normalizeToolName, readModelsCache, readToolDeclarationByTool, refreshModelsIfStale };
 import { sshCommand } from "./commands/ssh.js";
 const sshCommandDeps = {  };
 import { roleCommand } from "./commands/role.js";
@@ -98,6 +100,7 @@ import { getEntityEventsFile, getEntityProjectionFile, readEntityEvents, bootstr
 import { PROJECT_STATUSES, RECIPE_GATE_STRING_ARRAY_FIELDS, RECIPE_GATE_FIELDS, extractQualityGate, normalizeQualityGate, normalizeVerifyCommand, normalizeNonNegativeInteger, normalizeMinimalImplementation, normalizeDependencyBudget, normalizePriority, normalizeDispatchWorktreeMetadata, normalizeWorkflowRole, parseProjectListOption, uniqueStringList, isTaskStatus, isWorkflowStatus, normalizeRecipeMetadata, normalizeRecipeStepMetadata, normalizeProjectStatus, normalizeProjectResources, normalizeProject, normalizeWorkflow, normalizeTask, normalizePrompt, getTaskEventStoreDefinition, getProjectEventStoreDefinition, getWorkflowEventStoreDefinition, getPromptEventStoreDefinition } from "./lib/entity-models.js";
 import { projectRoot } from "./lib/paths.js";
 import { POLICY_OPERATIONS, APP_NAME, DEFAULT_DISPATCH_ACK_TIMEOUT_MS, ASYNC_CALL_STATES } from "./lib/constants.js";
+import { MODEL_CACHE_STALE_MS } from "./lib/constants.js";
 import { promptCommand } from "./commands/prompt.js";
 import { workflowNodeCommand } from "./commands/workflow-node.js";
 import { taskCommand, taskSpecCommand } from "./commands/task.js";
@@ -252,7 +255,6 @@ const DAEMON_HEARTBEAT_STALE_MS = 30000; // 30 seconds without heartbeat = stale
 const SKILL_DELTA_FILE = "skill-deltas.jsonl";
 const SKILL_CANDIDATE_FILE = "skill-candidates.jsonl";
 const TOOL_CAPABILITY_REGISTRY_VERSION = 1;
-const MODEL_CACHE_STALE_MS = 24 * 60 * 60 * 1000;
 let toolDetectionCache = null;
 
 const dashboardMemory = createDashboardMemoryApi({
@@ -689,7 +691,7 @@ async function main() {
     case "declaration":
       return declareCommand(rest, declareCommandDeps);
     case "models":
-      return modelsCommand(rest);
+      return modelsCommand(rest, modelsCommandDeps);
     case "policy":
       return policyCommand(rest, policyCommandDeps);
     case "status":
@@ -1096,42 +1098,6 @@ function refreshModelsIfStale(memoryDir, { tool = "", force = false } = {}) {
   return refreshed;
 }
 
-function modelsCommand(argv) {
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  const tool = getOption(argv, "--tool") || getOption(argv, "--to") || positionalArgs(argv)[0] || "";
-  const refresh = hasFlag(argv, "--refresh") || hasFlag(argv, "--fetch");
-  if (refresh) {
-    refreshModelsIfStale(config.memoryDir, { tool, force: true });
-  }
-  const cache = readModelsCache(config.memoryDir);
-  const targets = tool ? [normalizeToolName(tool)] : Object.keys(RUNNER_PROFILES);
-  const results = [];
-  for (const name of targets) {
-    const runner = getToolRunner(name);
-    const supportsList = Array.isArray(runner.modelsCommand) && runner.modelsCommand.length > 0;
-    const declaration = readToolDeclarationByTool(config.memoryDir, name);
-    const cached = cache[name] || null;
-    const cachedAgeMs = cached?.fetchedAt ? Date.now() - new Date(cached.fetchedAt).getTime() : null;
-    results.push({
-      tool: name,
-      supported: supportsList,
-      declared: declaration?.models || [],
-      discovered: Array.isArray(cached?.models) ? cached.models : [],
-      discoveredAt: cached?.fetchedAt || "",
-      stale: cachedAgeMs !== null && cachedAgeMs > MODEL_CACHE_STALE_MS,
-      fetchError: "",
-      strengths: declaration?.strengths || [],
-      note: declaration?.note || ""
-    });
-  }
-  console.log(JSON.stringify({
-    ok: true,
-    generatedAt: new Date().toISOString(),
-    refreshed: refresh,
-    tools: results
-  }, null, 2));
-}
 
 
 

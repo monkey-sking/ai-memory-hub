@@ -18,3 +18,4 @@ export const ASYNC_CALL_STATES = {
   COMPLETED: "completed",
   ABANDONED: "abandoned"
 };
+export const MODEL_CACHE_STALE_MS = 24 * 60 * 60 * 1000;

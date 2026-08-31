@@ -39,8 +39,8 @@ export function searchCommand(argv, deps) {
       if (stats.total > 0) {
         const rawResults = searchIndex(db, query, { limit, entityType });
         const visibleMemoryIds = new Set(deps.buildMemoryIndex(deps.readLedger(config.memoryDir), config).records
-          .filter(isMemoryLifecycleVisible)
-          .flatMap((record) => deps.getMemoryIdentityKeys(record).map(normalizeSupersedeToken)));
+          .filter(deps.isMemoryLifecycleVisible)
+          .flatMap((record) => deps.getMemoryIdentityKeys(record).map(deps.normalizeSupersedeToken)));
         const results = rawResults.filter((item) => item.entityType !== "memory" || visibleMemoryIds.has(deps.normalizeSupersedeToken(item.entityId)));
         db.close();
         if (asJson) {
@@ -62,8 +62,8 @@ export function searchCommand(argv, deps) {
     try {
       const ledger = deps.readLedger(config.memoryDir);
       if (ledger.length > 0) {
-        const visible = deps.buildMemoryIndex(ledger, config).records.filter(isMemoryLifecycleVisible);
-        const visibleIds = new Set(visible.flatMap((record) => deps.getMemoryIdentityKeys(record).map(normalizeSupersedeToken)));
+        const visible = deps.buildMemoryIndex(ledger, config).records.filter(deps.isMemoryLifecycleVisible);
+        const visibleIds = new Set(visible.flatMap((record) => deps.getMemoryIdentityKeys(record).map(deps.normalizeSupersedeToken)));
         const results = deps.semanticSearch(ledger, query, limit).filter((item) => visibleIds.has(deps.normalizeSupersedeToken(item.id)));
           if (results.length > 0) {
           if (trackAccess) {

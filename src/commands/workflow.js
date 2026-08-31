@@ -37,7 +37,7 @@ export function workflowCommand(argv, deps) {
     case "done":
       return workflowStatusCommand(["--status", "done", ...actionArgs], deps);
     case "node":
-      return workflowNodeCommand(actionArgs, { loadConfig, ensureHub });
+      return workflowNodeCommand(actionArgs, { loadConfig: deps.loadConfig, ensureHub: deps.ensureHub });
     case "graph":
       return workflowGraphCommand(actionArgs, deps);
     default:

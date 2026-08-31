@@ -33,6 +33,20 @@ import { buildWorktreeSnapshot } from "./worktree-snapshot.js";
 import { evaluateDaemonHeartbeat } from "./daemon-health.js";
 import { appendJsonl } from "./event-writer.js";
 import { eventsCommand } from "./commands/events.js";
+import { sshCommand } from "./commands/ssh.js";
+const sshCommandDeps = {  };
+import { roleCommand } from "./commands/role.js";
+const roleCommandDeps = { ensureHub, loadConfig, parseDeclaredList, readAgents, readRoleById, readRoles, writeRole };
+import { mergeCommand } from "./commands/merge.js";
+const mergeCommandDeps = { ensureHub, loadConfig, mergeMemoryAccessMetadata, mergeQualityGates, mergeSeedProjects, mergeSkillDelta, readLedger, rebuildMemoryOutputs, resolveGitConflictsInFile, withHubLock };
+import { backupCommand } from "./commands/backup.js";
+const backupCommandDeps = { backupHub, configureGitHubBackup, ensureHub, getBackupRetentionConfig, getBackupSummary, getGitHubBackupStatus, githubBackupScheduleCommand, loadConfig, pruneBackups, runGitHubBackup, withHubLock };
+import { recordCheckpointJob } from "./commands/record.js";
+const recordCommandDeps = { recordCommand, recordMemoryAccess, recordRequestMetric };
+import { resolveCommand } from "./commands/resolve.js";
+const resolveCommandDeps = { ensureHub, loadConfig, resolveBackupDirectory, resolveCommandPaths, resolveConfiguredPath, resolveCredentialEnvironment, resolveDispatchWorktreeRoot, resolveGitConflictsInFile, resolveGitProcessCommand, resolveGitRepositoryRoot, resolveInside, resolveMemoryDir, resolvePermission, resolvePossiblyHomePath, resolveReference, resolveRelayRelatedObjects, resolveRelaySourceObject, resolveRelayThreadKeys, resolveRunnerCommand, resolveSnapshotLimits, resolveTaskSpecCwd, resolveTaskSpecFile, resolveTaskSpecFromArgs, resolveToolRunnerUncached };
+import { helpCommand } from "./commands/help.js";
+const helpCommandDeps = {  };
 import { teamCommand } from "./commands/team.js";
 const teamCommandDeps = { ensureHub, loadConfig, readAgentById, readTeamById, readTeams, writeTeam };
 import { worktreeCommand } from "./commands/worktree.js";
@@ -54,7 +68,7 @@ const recipeCommandDeps = { createWorkflowFromRecipe, ensureHub, listRecipes, lo
 import { agentCommand } from "./commands/agent.js";
 const agentCommandDeps = { get dashboardAgentSessions() { return dashboardAgentSessions; }, ensureHub, loadConfig, readAgentById, readAgents, readRoleById, touchAgentStatus, writeAgent };
 import { connectCommand } from "./commands/connect.js";
-const connectCommandDeps = { createRadioMessage, createTask, get dashboardTools() { return dashboardTools; }, detectTools, ensureHub, executeDispatch, getInstallTargetForTool, loadConfig, renderInstallSnippet, syncSharedSkillLayer, withHubLock };
+const connectCommandDeps = { createRadioMessage, createTask, summarizeText, get dashboardTools() { return dashboardTools; }, detectTools, ensureHub, executeDispatch, getInstallTargetForTool, loadConfig, renderInstallSnippet, syncSharedSkillLayer, withHubLock };
 import { searchCommand } from "./commands/search.js";
 const searchCommandDeps = { buildMemoryIndex, ensureHub, filterMemoryRecords, getMemoryIdentityKeys, hasMemoryFilters, isMemoryLifecycleVisible, loadConfig, normalizeSupersedeToken, parseMemoryFilters, printMemorySearchResults, readLedger, rebuildMemoryOutputs, recordMemoryAccess, searchMemories, searchMemoriesForContext, semanticSearch, withHubLock, writeLedger };
 import { queueCommand } from "./commands/queue.js";
@@ -83,7 +97,7 @@ import { readEvents, parseJsonlLine, countJsonlLines } from "./lib/io.js";
 import { getEntityEventsFile, getEntityProjectionFile, readEntityEvents, bootstrapEntityEventsFromProjection, writeEntityRecords, appendEntityRecord, deleteEntityRecord, appendEntityEvents, createEntityEvent, replayEntityEvents, materializeEntityProjection, isEntityRecordNewerOrSame } from "./lib/entity-store.js";
 import { PROJECT_STATUSES, RECIPE_GATE_STRING_ARRAY_FIELDS, RECIPE_GATE_FIELDS, extractQualityGate, normalizeQualityGate, normalizeVerifyCommand, normalizeNonNegativeInteger, normalizeMinimalImplementation, normalizeDependencyBudget, normalizePriority, normalizeDispatchWorktreeMetadata, normalizeWorkflowRole, parseProjectListOption, uniqueStringList, isTaskStatus, isWorkflowStatus, normalizeRecipeMetadata, normalizeRecipeStepMetadata, normalizeProjectStatus, normalizeProjectResources, normalizeProject, normalizeWorkflow, normalizeTask, normalizePrompt, getTaskEventStoreDefinition, getProjectEventStoreDefinition, getWorkflowEventStoreDefinition, getPromptEventStoreDefinition } from "./lib/entity-models.js";
 import { projectRoot } from "./lib/paths.js";
-import { POLICY_OPERATIONS } from "./lib/constants.js";
+import { POLICY_OPERATIONS, APP_NAME, DEFAULT_DISPATCH_ACK_TIMEOUT_MS, ASYNC_CALL_STATES } from "./lib/constants.js";
 import { promptCommand } from "./commands/prompt.js";
 import { workflowNodeCommand } from "./commands/workflow-node.js";
 import { taskCommand, taskSpecCommand } from "./commands/task.js";
@@ -154,7 +168,6 @@ const POLICY_DEFAULT_SEED = [
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const APP_NAME = "ai-memory-hub";
 const MEMORY_DIR_ENV = "AI_MEMORY_DIR";
 // P0.1 TTL default: a claim auto-releases after this idle window (borrowed from Cumora markThinking TTL).
 // Declared up here because main() runs as a top-level call before the task section below.
@@ -164,7 +177,6 @@ const DEFAULT_CONFIG_PATH = path.join(DEFAULT_MEMORY_DIR, "config.json");
 const DEFAULT_GITHUB_BACKUP_REMOTE = "";
 const DEFAULT_GITHUB_BACKUP_REPO_DIR = path.join(os.homedir(), ".ai-memory-github-backup");
 const DEFAULT_GITHUB_BACKUP_TASK_NAME = "AI Memory Hub GitHub Backup";
-const DEFAULT_DISPATCH_ACK_TIMEOUT_MS = 5 * 60 * 1000;
 const DEFAULT_DISPATCH_RUN_TIMEOUT_MS = 10 * 60 * 1000;
 const DISPATCH_MAX_CONCURRENCY = 6;
 
@@ -638,16 +650,6 @@ const RUNNER_PROFILES = {
 };
 
 // Unified async call state machine
-const ASYNC_CALL_STATES = {
-  PENDING: "pending",
-  DISPATCHED: "dispatched",
-  ACKED: "acked",
-  PROGRESS: "progress",
-  RETRYING: "retrying",
-  FAILED: "failed",
-  COMPLETED: "completed",
-  ABANDONED: "abandoned"
-};
 
 const ASYNC_CALL_TRANSITIONS = {
   "pending": ["dispatched"],
@@ -717,7 +719,7 @@ async function main() {
       return agentCommand(rest, agentCommandDeps);
     case "role":
     case "roles":
-      return roleCommand(rest);
+      return roleCommand(rest, roleCommandDeps);
     case "team":
     case "teams":
       return teamCommand(rest, teamCommandDeps);
@@ -785,18 +787,18 @@ async function main() {
     case "snapshot":
       return snapshotCommand(rest);
     case "resolve":
-      return resolveCommand(rest);
+      return resolveCommand(rest, resolveCommandDeps);
     case "pull":
       return pullCommand(rest);
     case "merge":
-      return mergeCommand(rest);
+      return mergeCommand(rest, mergeCommandDeps);
     case "backup":
-      return backupCommand(rest);
+      return backupCommand(rest, backupCommandDeps);
     case "gh":
     case "github":
       return githubCommand(rest, githubCommandDeps);
     case "ssh":
-      return sshCommand(rest);
+      return sshCommand(rest, sshCommandDeps);
     case "watch":
       return watchCommand(rest);
     case "daemon":
@@ -1561,46 +1563,6 @@ function writeTeam(memoryDir, team) {
 
 
 
-function roleCommand(argv) {
-  const action = argv[0] || "list";
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  if (action === "create" || action === "update") {
-    const id = (getOption(argv, "--id") || positionalArgs(argv)[0] || "").trim();
-    if (!id) throw new Error("Usage: ai-memory-hub role create --id <role> [--name '...'] [--description '...'] [--permissions 'a,b']");
-    const existing = readRoleById(config.memoryDir, id) || {};
-    const perms = parseDeclaredList(getOption(argv, "--permissions") || "");
-    const mergedPerms = perms.concat(existing.permissions || []).filter((p, i, arr) => arr.indexOf(p) === i);
-    const role = writeRole(config.memoryDir, {
-      ...existing,
-      id: existing.id || id,
-      name: getOption(argv, "--name") || existing.name || id,
-      description: getOption(argv, "--description") || existing.description || "",
-      permissions: mergedPerms,
-      createdAt: existing.createdAt || new Date().toISOString()
-    });
-    console.log(JSON.stringify(role, null, 2));
-    return;
-  }
-  if (action === "show") {
-    const id = (getOption(argv, "--id") || positionalArgs(argv)[0] || "").trim();
-    if (!id) throw new Error("Usage: ai-memory-hub role show --id <role>");
-    const role = readRoleById(config.memoryDir, id);
-    if (!role) throw new Error(`Role not found: ${id}`);
-    // P1 (M:N symmetry): show which agents play this role, derived from agent.roles[].
-    const key = id.toLowerCase();
-    const members = readAgents(config.memoryDir)
-      .filter((a) => (a.roles || []).some((rid) => String(rid).toLowerCase() === key))
-      .map((a) => ({ id: a.id, name: a.name, status: a.status || "idle" }));
-    console.log(JSON.stringify({ ...role, members }, null, 2));
-    return;
-  }
-  if (action === "list") {
-    console.log(JSON.stringify(readRoles(config.memoryDir), null, 2));
-    return;
-  }
-  throw new Error("Usage: ai-memory-hub role <create|show|list> ...");
-}
 
 
 function reviewCommand(argv) {
@@ -1652,16 +1614,6 @@ function runGit(repoDir, args) {
 
 
 
-function sshCommand(argv) {
-  const action = argv[0] || "plan";
-  if (action !== "plan") throw new Error("Usage: ai-memory-hub ssh plan --host <host> --user <user> --worktree <path> --command <command> [--approved] [--policy ask|allow]");
-  const host = getOption(argv.slice(1), "--host") || "";
-  const user = getOption(argv.slice(1), "--user") || "";
-  const worktree = getOption(argv.slice(1), "--worktree") || "";
-  const command = getOption(argv.slice(1), "--command") || positionalArgs(argv.slice(1)).join(" ");
-  if (!host || !user || !worktree || !command) throw new Error("Usage: ai-memory-hub ssh plan --host <host> --user <user> --worktree <path> --command <command> [--approved] [--policy ask|allow]");
-  console.log(JSON.stringify(buildSshPlan({ host, user, worktree, command, approved: hasFlag(argv, "--approved"), policy: getOption(argv, "--policy") || "ask" }), null, 2));
-}
 
 
 
@@ -4498,35 +4450,6 @@ function snapshotCommand(argv) {
   }));
 }
 
-function resolveCommand(argv) {
-  const query = positionalArgs(argv).join(" ").trim();
-  if (!query) {
-    throw new Error("Usage: ai-memory-hub resolve <name|@include|path> [--from <instruction-file>] [--limit N] [--plain]");
-  }
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  const limit = getOption(argv, "--limit")
-    ? parsePositiveIntegerOption(getOption(argv, "--limit"), "--limit")
-    : 10;
-  const fromFile = getOption(argv, "--from") || getOption(argv, "--file") || "";
-  const result = resolveReference(query, config, {
-    fromFile,
-    limit
-  });
-  if (hasFlag(argv, "--plain")) {
-    if (result.best?.path) {
-      console.log(result.best.path);
-    }
-    if (!result.ok) {
-      process.exitCode = 1;
-    }
-    return;
-  }
-  console.log(JSON.stringify(result, null, 2));
-  if (!result.ok) {
-    process.exitCode = 1;
-  }
-}
 
 function pullCommand() {
   const config = loadConfig();
@@ -4545,58 +4468,6 @@ function pullCommand() {
   }, config.sync.lockStaleMs);
 }
 
-function mergeCommand(argv) {
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-
-  const isAutoGit = hasFlag(argv, "--auto-git");
-  const fromOption = getOption(argv, "--from");
-  
-  const defaultRepoDir = path.join(os.homedir(), ".ai-memory-github-backup");
-  const backupRepoDir = config.backup?.repoDir || defaultRepoDir;
-  const backupDataDir = path.join(backupRepoDir, "data");
-  
-  if (isAutoGit) {
-    console.log("Scanning files in backup repository for Git conflict markers...");
-    const targets = [
-      path.join(backupDataDir, "memories", "ledger.jsonl"),
-      path.join(backupDataDir, "tasks", "tasks.jsonl"),
-      path.join(backupDataDir, "radio", "messages.jsonl")
-    ];
-    
-    let resolvedAny = false;
-    for (const target of targets) {
-      if (resolveGitConflictsInFile(target)) {
-        resolvedAny = true;
-      }
-    }
-    
-    if (resolvedAny) {
-      console.log(`\nConflicts resolved in backup repository. Copying resolved files to local memory directory: ${config.memoryDir}`);
-      mergeFolders(config.memoryDir, backupDataDir);
-      const ledger = readLedger(config.memoryDir);
-      rebuildMemoryOutputs(config, ledger);
-      console.log("\nMerge complete! Run 'ai-memory-hub health' to verify.");
-    } else {
-      console.log("No Git conflict markers found to resolve.");
-    }
-    return;
-  }
-
-  const sourceDir = fromOption || backupDataDir;
-  console.log(`Merging local memory (${config.memoryDir}) with source data (${sourceDir})...`);
-  
-  if (!fs.existsSync(sourceDir)) {
-    throw new Error(`Source directory not found: ${sourceDir}`);
-  }
-  
-  return withHubLock(config.memoryDir, "merge", () => {
-    mergeFolders(config.memoryDir, sourceDir);
-    const ledger = readLedger(config.memoryDir);
-    rebuildMemoryOutputs(config, ledger);
-    console.log("\nMerge and index rebuild complete! Run 'ai-memory-hub health' to verify.");
-  }, config.sync.lockStaleMs);
-}
 
 function resolveGitConflictsInFile(filePath) {
   if (!fs.existsSync(filePath)) {
@@ -4629,7 +4500,7 @@ function resolveGitConflictsInFile(filePath) {
   const sortedRecords = Object.values(records).sort((a, b) => {
     const tsA = a.ts || a.createdAt || a.indexedAt || "";
     const tsB = b.ts || b.createdAt || b.indexedAt || "";
-    return tsA.localeCompare(tsB);
+    return String(tsA).localeCompare(String(tsB));
   });
   
   writeFileAtomic(filePath, sortedRecords.map(r => JSON.stringify(r)).join("\n") + "\n", "utf8");
@@ -4637,115 +4508,7 @@ function resolveGitConflictsInFile(filePath) {
   return true;
 }
 
-function mergeFolders(localDir, sourceDir) {
-  const filesToMerge = [
-    "memories/ledger.jsonl",
-    "tasks/tasks.jsonl",
-    "radio/messages.jsonl",
-    "workflows/workflows.jsonl"
-  ];
-  
-  for (const relPath of filesToMerge) {
-    const localFile = path.join(localDir, relPath);
-    const sourceFile = path.join(sourceDir, relPath);
-    
-    if (!fs.existsSync(localFile) && !fs.existsSync(sourceFile)) {
-      continue;
-    }
-    
-    console.log(`Merging ${relPath}...`);
-    const records = {};
-    
-    for (const file of [localFile, sourceFile]) {
-      if (!fs.existsSync(file)) continue;
-      const content = fs.readFileSync(file, "utf8");
-      const lines = content.split(/\r?\n/);
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-        if (trimmed.startsWith("<<<<<<<") || trimmed.startsWith("=======") || trimmed.startsWith(">>>>>>>")) {
-          continue;
-        }
-        try {
-          const data = JSON.parse(trimmed);
-          const id = data.id || data.localEventId || createId(data.text || JSON.stringify(data));
-          records[id] = data;
-        } catch {
-          // Ignore
-        }
-      }
-    }
-    
-    const sortedRecords = Object.values(records).sort((a, b) => {
-      const tsA = a.ts || a.createdAt || a.indexedAt || "";
-      const tsB = b.ts || b.createdAt || b.indexedAt || "";
-      return tsA.localeCompare(tsB);
-    });
-    
-    ensureDir(path.dirname(localFile));
-    writeFileAtomic(localFile, sortedRecords.map(r => JSON.stringify(r)).join("\n") + "\n", "utf8");
-    console.log(`Successfully merged ${relPath}. Total unique records: ${sortedRecords.length}`);
-  }
-}
 
-function backupCommand(argv) {
-  const config = loadConfig();
-  ensureHub(config.memoryDir);
-  const retention = getBackupRetentionConfig(config);
-  const action = argv[0] && !argv[0].startsWith("--") ? argv[0] : "create";
-  if (action === "status") {
-    console.log(JSON.stringify(getGitHubBackupStatus(config), null, 2));
-    return;
-  }
-  if (action === "run") {
-    const result = withHubLock(config.memoryDir, "github-backup", () => runGitHubBackup(config, argv.slice(1)), config.sync.lockStaleMs);
-    console.log(JSON.stringify(result, null, 2));
-    return;
-  }
-  if (action === "configure" || action === "config") {
-    const result = configureGitHubBackup(config, argv.slice(1));
-    console.log(JSON.stringify(result, null, 2));
-    return;
-  }
-  if (action === "schedule") {
-    const result = githubBackupScheduleCommand(config, argv.slice(1));
-    console.log(JSON.stringify(result, null, 2));
-    return;
-  }
-  if (action === "list") {
-    const limit = getOption(argv, "--limit")
-      ? parsePositiveIntegerOption(getOption(argv, "--limit"), "--limit")
-      : 50;
-    console.log(JSON.stringify(getBackupSummary(config.memoryDir, { limit, ...retention }), null, 2));
-    return;
-  }
-  if (action === "prune") {
-    const apply = hasFlag(argv, "--apply");
-    const daily = getOption(argv, "--daily")
-      ? parsePositiveIntegerOption(getOption(argv, "--daily"), "--daily")
-      : retention.daily;
-    const weekly = getOption(argv, "--weekly")
-      ? parsePositiveIntegerOption(getOption(argv, "--weekly"), "--weekly")
-      : retention.weekly;
-    const preSync = getOption(argv, "--pre-sync")
-      ? parsePositiveIntegerOption(getOption(argv, "--pre-sync"), "--pre-sync")
-      : retention.preSync;
-    const prePull = getOption(argv, "--pre-pull")
-      ? parsePositiveIntegerOption(getOption(argv, "--pre-pull"), "--pre-pull")
-      : retention.prePull;
-    const result = apply
-      ? withHubLock(config.memoryDir, "backup-prune", () => pruneBackups(config.memoryDir, { apply, daily, weekly, preSync, prePull }), config.sync.lockStaleMs)
-      : pruneBackups(config.memoryDir, { apply, daily, weekly, preSync, prePull });
-    console.log(JSON.stringify(result, null, 2));
-    return;
-  }
-  if (action !== "create") {
-    throw new Error("Usage: ai-memory-hub backup [--reason manual] | ai-memory-hub backup status | ai-memory-hub backup run [--no-push] | ai-memory-hub backup configure [--enabled] [--remote-url <url>] [--repo-dir <dir>] [--allow-plaintext-sensitive] | ai-memory-hub backup schedule <status|install|uninstall> | ai-memory-hub backup list [--limit N] | ai-memory-hub backup prune [--daily 7] [--weekly 4] [--pre-sync 20] [--pre-pull 20] [--apply]");
-  }
-  const reason = getOption(argv, "--reason") || positionalArgs(argv).join(" ").trim() || "manual";
-  const backup = withHubLock(config.memoryDir, "backup", () => backupHub(config.memoryDir, reason), config.sync.lockStaleMs);
-  console.log(JSON.stringify(backup, null, 2));
-}
 
 function watchCommand(argv) {
   const intervalMs = Number(getOption(argv, "--interval-ms") || 30000);
@@ -5029,15 +4792,6 @@ function writeLoopCheckpoint(memoryDir, checkpoint) {
   writeFileAtomic(filePath, JSON.stringify(checkpoint, null, 2), "utf8");
 }
 
-function recordCheckpointJob(checkpoint, jobId, status, tool, project) {
-  checkpoint.jobs[jobId] = {
-    status,
-    tool,
-    project,
-    recordedAt: new Date().toISOString()
-  };
-  return checkpoint;
-}
 
 function isJobCheckpointed(checkpoint, jobId) {
   const entry = checkpoint.jobs[jobId];
@@ -6213,139 +5967,6 @@ function installCommand(argv) {
   }
 }
 
-function helpCommand() {
-  console.log(`Usage: ${APP_NAME} <command> [options]
-
-Commands:
-  init       Create ~/.ai-memory and config. Use --all to detect installed tools and install their adapters in one step.
-  detect     Detect installed AI tools.
-  capabilities
-             Show the cross-tool capability registry and safety policy.
-  declare    Declare an agent's models and strengths, or list/remove declarations.
-  models     Show or refresh the model catalog for each tool (pulled from the provider where supported).
-  status     Show hub and tool status.
-  record     Append a local memory event.
-  radio      Send, list, and promote cross-agent radio messages.
-  sync       Index pending inbox events into the local memory ledger.
-  index      Rebuild MEMORY.md, INDEX.md, and the structured local index.
-  search     Search indexed local memories (FTS5 with BM25 ranking).
-  snapshot   Print a filtered memory snapshot view without rewriting MEMORY.md.
-  resolve    Resolve an @include or file name from local paths and memory.
-  task       Share task/todo state across AI tools.
-  workflow   Coordinate planner/executor/reviewer/observer work across AI tools.
-  prompt     Manage prompt templates with Nunjucks rendering for AI tools.
-  project    Manage project metadata, aliases, resources, and archive state.
-  session    Manage session handoff for context transfer between tools.
-  agent      Manage agent registry (persona/bio/status) and role bindings.
-  review     Request or list linked reviews.
-  role       Manage first-class role entities (permissions, agent bindings).
-  team       Manage first-class team entities (agent memberships via member-of).
-  worktree   Inspect projected execution worktrees.
-  rpc        Synchronous request-response RPC calls between tools.
-  notify     Send cross-platform notifications with severity-based routing.
-  context    Generate task-specific memory bundles for focused context.
-  queue      Manage dispatch queue with priority and retry controls.
-  recipe     Manage workflow recipes for reusable collaboration templates.
-  task-spec  List, validate, and run project-declared task commands.
-  metrics    Show operational metrics for tasks, workflows, relay, and queue.
-  health     Generate a Markdown health report for the local memory hub.
-  update     Check for updates or update to the latest version.
-  connect    Check tool connections or send a request/review/handoff to another tool.
-  doctor     Diagnose AI tool runner paths, shims, probes, and prompt mode.
-  dispatch   Dispatch pending radio/task work to verified CLI runners.
-  checkpoint Show, reset, or inspect loop checkpoint state for resumable daemon loops.
-  heartbeat  Check daemon heartbeat status, or watch for stale/dead daemon.
-  skill-delta Manage skill improvement proposals (observer → reviewer → merge).
-  skill      List/search/attach reusable skills.
-  pack       Register and validate external domain packs.
-  pull       Rebuild MEMORY.md from the local memory ledger.
-  merge      Merge local memory with backup data or resolve Git conflicts.
-  backup     Back up hub files, inspect/prune retention, and manage GitHub data backups.
-  gh         Sync linked task state, build read-only API requests, or parse webhooks.
-  ssh        Build approval-gated remote execution plans (never executes commands).
-  watch      Periodically index pending inbox events.
-  daemon     Run or inspect the local dispatch daemon.
-  app        Start the local dashboard app.
-  install    Show or apply per-tool instruction snippets. Use --local to write rules in the current project directory.
-  help       Show this help.
-
-Examples:
-  ${APP_NAME} init
-  ${APP_NAME} init --all
-  ${APP_NAME} init --all --apply
-  ${APP_NAME} record "User prefers concise answers." --source codex --kind preference
-  ${APP_NAME} record "Project memory with tags." --source codex --kind project --project ai-memory-hub --tags schema,memos --confidence 0.8
-  ${APP_NAME} radio send "Please review the latest implementation." --from codex --to claude --type review
-  ${APP_NAME} radio list --limit 10
-  ${APP_NAME} radio promote --id <message-id>
-  ${APP_NAME} sync --dry-run
-  ${APP_NAME} sync
-  ${APP_NAME} index
-  ${APP_NAME} search "git commit rules" --limit 5 --tag workflow
-  ${APP_NAME} merge
-  ${APP_NAME} merge --auto-git
-  ${APP_NAME} merge --from <path>
-  ${APP_NAME} snapshot --project ai-memory-hub --tags workflow,git --limit 20
-  ${APP_NAME} resolve "@RTK.md" --from ~/.codex/AGENTS.md
-  ${APP_NAME} task add "Review README task-list section" --description "Goal: check task docs. Scope: README only. Acceptance: examples are accurate." --handoff "Next: reviewer verifies wording." --from codex --project ai-memory-hub --priority high
-  ${APP_NAME} task list --status active
-  ${APP_NAME} task claim --id <task-id> --by claude
-  ${APP_NAME} task update --id <task-id> --description "Goal: ... Scope: ... Acceptance: ..." --handoff "Current state and next step." --by codex
-  ${APP_NAME} task note --id <task-id> "Reviewed Chinese docs." --by qclaw
-  ${APP_NAME} task done --id <task-id> --by codex
-  ${APP_NAME} task archive --days 30
-  ${APP_NAME} radio archive --days 30
-  ${APP_NAME} connect
-  ${APP_NAME} connect --apply
-  ${APP_NAME} capabilities --tool claude
-  ${APP_NAME} declare --tool opencode --models "grok-4.5,claude-sonnet-4" --strengths "前端开发,代码审查" --by opencode
-  ${APP_NAME} declare list
-  ${APP_NAME} models --to opencode --refresh
-  ${APP_NAME} connect request --from gemini --to codex --project ai-memory-hub --text "Please inspect the current task list." --task
-  ${APP_NAME} doctor --tool claude
-  ${APP_NAME} workflow create "Review dashboard changes" --from codex --project ai-memory-hub --planner codex --executor opencode --reviewer qclaw --spawn-tasks --notify
-  ${APP_NAME} workflow list --status active
-  ${APP_NAME} prompt create "飞书 PRD" --type prd --file template.njk --description "飞书文档 PRD 模板"
-  ${APP_NAME} prompt list --type prd
-  ${APP_NAME} prompt get prd-feishu
-  ${APP_NAME} prompt render prd-feishu --vars '{"game_name":"示例项目","version":"V0.1"}'
-  ${APP_NAME} prompt update prd-feishu --file new-template.njk
-  ${APP_NAME} prompt versions prd-feishu
-  ${APP_NAME} prompt delete prd-feishu
-  ${APP_NAME} project list --status visible
-  ${APP_NAME} project add my-app --name "My App" --status active --type tool
-  ${APP_NAME} dispatch --project ai-memory-hub
-  ${APP_NAME} dispatch --to codex --run
-  ${APP_NAME} dispatch --to codex --run --model gpt-5.2
-  ${APP_NAME} dispatch --to codex --run --isolate-worktree
-  ${APP_NAME} dispatch status --thread <thread-id> --project ai-memory-hub
-  ${APP_NAME} dispatch status --recent 10 --project ai-memory-hub
-  ${APP_NAME} dispatch status --recent --state failed --to claude
-  ${APP_NAME} dispatch progress --thread-key codex:ai-memory-hub:<ref> --percent 40 --status "working" --by codex
-  ${APP_NAME} dispatch retry --project ai-memory-hub --to qclaw --run --limit 1
-  ${APP_NAME} checkpoint status
-  ${APP_NAME} checkpoint show
-  ${APP_NAME} checkpoint reset
-  ${APP_NAME} task-spec list
-  ${APP_NAME} task-spec validate
-  ${APP_NAME} task-spec run test
-  ${APP_NAME} health
-  ${APP_NAME} pull
-  ${APP_NAME} backup --reason manual
-  ${APP_NAME} backup list --limit 20
-  ${APP_NAME} backup prune --daily 7 --weekly 4 --pre-sync 20 --apply
-  ${APP_NAME} backup status
-  ${APP_NAME} backup run --no-push
-  ${APP_NAME} watch --interval-ms 30000
-  ${APP_NAME} daemon status
-  ${APP_NAME} daemon --project ai-memory-hub --isolate-worktree
-  ${APP_NAME} daemon --project ai-memory-hub --interval-ms 10000
-  ${APP_NAME} app --port 38787
-  ${APP_NAME} install --tool codex
-  ${APP_NAME} install --tool codex --apply
-  ${APP_NAME} install --local --apply
-`);
-}
 
 function defaultConfig(memoryDir) {
   return {

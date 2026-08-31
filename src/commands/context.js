@@ -78,7 +78,7 @@ export function contextListCommand(argv, deps) {
       }
     })
     .filter(Boolean)
-    .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+    .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
 
   console.log(JSON.stringify(packs, null, 2));
 }

@@ -88,7 +88,7 @@ export async function connectSendCommand(argv, defaultType, deps) {
     deps.withHubLock(config.memoryDir, "connect-task", () => {
       const tasks = readTasks(config.memoryDir);
       task = deps.createTask({
-        title: getOption(argv, "--title") || `[${type}] ${summarizeText(text, 80)}`,
+        title: getOption(argv, "--title") || `[${type}] ${deps.summarizeText(text, 80)}`,
         description: text,
         handoff: `Contact request from ${from} to ${to}.`,
         createdBy: from,

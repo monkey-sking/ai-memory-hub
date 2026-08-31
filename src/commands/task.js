@@ -13,6 +13,8 @@ import { readTasks, writeTasks } from "../lib/entity-repo.js";
 import { getEntityEventsFile, getEntityProjectionFile, materializeEntityProjection, readEntityEvents } from "../lib/entity-store.js";
 import { readEvents } from "../lib/io.js";
 import { mineSkillCandidates } from "../skill-mining.js";
+import fs from "node:fs";
+import path from "node:path";
 
 // Task command cluster. Cross-cutting helpers are injected via deps so this
 // module never imports src/index.js (keeps the dependency graph acyclic).
@@ -169,7 +171,7 @@ export function taskListCommand(argv, deps) {
   const limit = Number(getOption(argv, "--limit") || 20);
   const includeCancelled = hasFlag(argv, "--all");
   const tasks = readTasks(config.memoryDir)
-    .filter((task) => taskListStatusMatches(task, status, includeCancelled))
+    .filter((task) => taskListStatusMatches(task, status, includeCancelled, deps))
     .filter((task) => project ? task.project === project : true)
     .filter((task) => assignee ? task.assignee === assignee : true)
     .sort((a, b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")))

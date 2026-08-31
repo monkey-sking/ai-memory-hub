@@ -7,6 +7,8 @@ import {
   hasFlag,
   positionalArgs,
 } from "../lib/cli.js";
+import fs from "node:fs";
+import path from "node:path";
 
 // radio command cluster. Cross-cutting helpers injected via deps so this
 // module never imports src/index.js (keeps the dependency graph acyclic).

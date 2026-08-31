@@ -1,14 +1,18 @@
 import { writeFileAtomic } from "../atomic-write.js";
 import { acquireDaemonLock, releaseDaemonLock } from "../daemon-lock.js";
 import { ensureDir, getOption, hasFlag } from "../lib/cli.js";
+import fs from "node:fs";
+import path from "node:path";
 
 // daemon command cluster. Cross-cutting helpers injected via deps so this
 // module never imports src/index.js (keeps the dependency graph acyclic).
 
+const DAEMON_DEFAULT_TOOLS = ["codex", "gemini", "claude"];
+
 export function daemonCommand(argv, deps) {
   const action = argv[0] && !argv[0].startsWith("--") ? argv[0] : "";
   if (action === "status") {
-    return daemonStatusCommand(argv.slice(1), deps);
+    return daemonStatusCommand(deps);
   }
   if (action) {
     throw new Error("Usage: ai-memory-hub daemon [status] [--interval-ms <ms>] [--project <name[,name]>] [--tools <tool1,tool2>] [--limit <n>] [--force] [--isolate-worktree] [--worktree-root <dir>]");

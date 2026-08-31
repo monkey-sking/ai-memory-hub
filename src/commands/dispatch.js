@@ -225,7 +225,7 @@ export function dispatchProgressCommand(argv, deps) {
       return;
     }
 
-    const job = deps.rebuildDispatchJobFromRelay(config.memoryDir, entry) || dispatchJobFromRelayEntry(entry);
+    const job = deps.rebuildDispatchJobFromRelay(config.memoryDir, entry) || dispatchJobFromRelayEntry(entry, deps);
     const progressAt = new Date().toISOString();
     deps.appendRelayStatus(config.memoryDir, job, {
       state: ASYNC_CALL_STATES.PROGRESS,

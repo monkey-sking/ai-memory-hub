@@ -207,7 +207,6 @@ const DISPATCH_RUNS_DIR = "dispatch-runs";
 const DEFAULT_DISPATCH_WORKTREE_DIR = ".ai-worktrees";
 const DAEMON_PID_FILE = "daemon.pid";
 const DAEMON_STATUS_FILE = "daemon-status.json";
-const DAEMON_DEFAULT_TOOLS = ["codex", "gemini", "claude"];
 const LOOP_CHECKPOINT_FILE = "loop-checkpoint.json";
 const DAEMON_HEARTBEAT_FILE = "daemon-heartbeat.json";
 const DAEMON_HEARTBEAT_STALE_MS = 30000; // 30 seconds without heartbeat = stale

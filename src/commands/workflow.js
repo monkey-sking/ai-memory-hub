@@ -10,6 +10,7 @@ import {
   writeWorkflows,
 } from "../lib/entity-repo.js";
 import { normalizeReviewDimensions } from "../review-config.js";
+import path from "node:path";
 
 // workflow command cluster. Cross-cutting helpers injected via deps so this
 // module never imports src/index.js (keeps the dependency graph acyclic).

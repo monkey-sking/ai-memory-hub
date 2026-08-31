@@ -2,6 +2,7 @@ import { getOption, hasFlag, positionalArgs } from "../lib/cli.js";
 import { parseProjectListOption, uniqueStringList } from "../lib/entity-models.js";
 import { readProjects, writeProjects } from "../lib/entity-repo.js";
 import { fileURLToPath } from "node:url";
+import path from "node:path";
 
 // project command cluster. Cross-cutting helpers injected via deps so this
 // module never imports src/index.js (keeps the dependency graph acyclic).

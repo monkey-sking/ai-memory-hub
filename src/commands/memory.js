@@ -11,6 +11,9 @@ import {
 import { readEvents } from "../lib/io.js";
 import { auditMemories } from "../memory-audit.js";
 import { execSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 // memory command cluster. Cross-cutting helpers injected via deps so this
 // module never imports src/index.js (keeps the dependency graph acyclic).
@@ -18,10 +21,10 @@ import { execSync } from "node:child_process";
 export function memoryVersionCommand(argv, deps) {
   const action = argv[0] || "status";
   const rest = argv.slice(1);
-  if (action === "status") return memoryVersionStatusCommand(rest);
-  if (action === "commit") return memoryVersionCommitCommand(rest);
-  if (action === "rollback") return memoryVersionRollbackCommand(rest);
-  if (action === "log") return memoryVersionLogCommand(rest);
+  if (action === "status") return memoryVersionStatusCommand(rest, deps);
+  if (action === "commit") return memoryVersionCommitCommand(rest, deps);
+  if (action === "rollback") return memoryVersionRollbackCommand(rest, deps);
+  if (action === "log") return memoryVersionLogCommand(rest, deps);
   throw new Error("Usage: ai-memory-hub memory version <status|commit|rollback|log> [options]");
 }
 
@@ -293,10 +296,10 @@ export function memoryArchiveCommand(argv, deps) {
 export function memoryHookCommand(argv, deps) {
   const action = argv[0] || "list";
   const rest = argv.slice(1);
-  if (action === "register") return memoryHookRegisterCommand(rest);
-  if (action === "list") return memoryHookListCommand(rest);
-  if (action === "emit") return memoryHookEmitCommand(rest);
-  if (action === "remove") return memoryHookRemoveCommand(rest);
+  if (action === "register") return memoryHookRegisterCommand(rest, deps);
+  if (action === "list") return memoryHookListCommand(rest, deps);
+  if (action === "emit") return memoryHookEmitCommand(rest, deps);
+  if (action === "remove") return memoryHookRemoveCommand(rest, deps);
   throw new Error("Usage: ai-memory-hub memory hook <register|list|emit|remove> [options]");
 }
 

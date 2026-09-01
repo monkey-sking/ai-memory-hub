@@ -1,8 +1,8 @@
 // 从 src/index.js 下沉的通用工具函数（v3.0 重构 P0-2）。
-// 这些函数不依赖 index.js 内部的任何其他符号，可安全复用。
 
 import fs from "node:fs";
 import path from "node:path";
+
 export function parseRunnerModelList(tool, runner, stdout) {
   const format = runner.modelListFormat || "";
   const text = String(stdout || "");
@@ -247,4 +247,136 @@ export function scanBackupFilesForSecrets(files) {
     ok: issues.length === 0,
     issues
   };
+}
+
+export function getRelayTimeoutBaseMs(entry) {
+  const candidates = [
+    entry.progressAt,
+    entry.dispatchedAt,
+    entry.deliveryUpdatedAt,
+    entry.ts,
+    entry.updatedAt
+  ];
+  for (const candidate of candidates) {
+    const parsed = Date.parse(candidate || "");
+    if (!Number.isNaN(parsed)) {
+      return parsed;
+    }
+  }
+  return Number.NaN;
+}
+
+export function renderDispatchWorktree(worktree) {
+  if (!worktree?.enabled) {
+    return [];
+  }
+  const lines = [
+    `- Worktree path: ${worktree.path || ""}`,
+    `- Branch: ${worktree.branch || ""}`,
+    `- Base commit: ${worktree.base || ""}`,
+    `- Current head: ${worktree.head || ""}`,
+    `- Reused existing worktree: ${worktree.reused ? "yes" : "no"}`
+  ];
+  if (worktree.diffStatus) {
+    lines.push(`- Diff status: ${worktree.diffStatus}`);
+  }
+  if (worktree.diffStat) {
+    lines.push(`- Diff stat: ${worktree.diffStat}`);
+  }
+  lines.push("- Keep this worktree and branch for review; do not delete, merge, or push it unless explicitly authorized.");
+  return lines;
+}
+
+export function createHealthRepairAction({
+  id,
+  label,
+  command = "",
+  detail = "",
+  endpoint = "",
+  method = "POST"
+}) {
+  return {
+    id,
+    label,
+    command,
+    detail,
+    endpoint,
+    method,
+    destructive: false
+  };
+}
+
+export function getPathSize(target) {
+  if (!fs.existsSync(target)) {
+    return 0;
+  }
+  const stat = fs.lstatSync(target);
+  if (stat.isSymbolicLink()) {
+    return 0;
+  }
+  if (stat.isFile()) {
+    return stat.size;
+  }
+  if (!stat.isDirectory()) {
+    return 0;
+  }
+  let total = 0;
+  for (const entry of fs.readdirSync(target, { withFileTypes: true })) {
+    total += getPathSize(path.join(target, entry.name));
+  }
+  return total;
+}
+
+export function extractCjkNgrams(text) {
+  const chunks = String(text || "").match(/[\u4e00-\u9fff]{2,}/g) || [];
+  const grams = [];
+  for (const chunk of chunks) {
+    if (chunk.length <= 4) {
+      grams.push(chunk);
+      continue;
+    }
+    for (let size = 2; size <= 3; size++) {
+      for (let index = 0; index <= chunk.length - size; index++) {
+        grams.push(chunk.slice(index, index + size));
+      }
+    }
+    grams.push(chunk);
+  }
+  return grams;
+}
+
+export function getBackupFileCatalog(memoryDir) {
+  return [
+    { name: "MEMORY.md", target: path.join(memoryDir, "MEMORY.md"), kind: "snapshot" },
+    { name: "BOOTSTRAP.md", target: path.join(memoryDir, "BOOTSTRAP.md"), kind: "snapshot" },
+    { name: "profile.md", target: path.join(memoryDir, "profile.md"), kind: "profile" },
+    { name: "inbox-events.jsonl", target: path.join(memoryDir, "inbox", "events.jsonl"), kind: "inbox" },
+    { name: "memory-ledger.jsonl", target: path.join(memoryDir, "memories", "ledger.jsonl"), kind: "memory" },
+    { name: "radio-messages.jsonl", target: path.join(memoryDir, "radio", "messages.jsonl"), kind: "radio" },
+    { name: "tasks.jsonl", target: path.join(memoryDir, "tasks", "tasks.jsonl"), kind: "tasks" },
+    { name: "tasks-events.jsonl", target: path.join(memoryDir, "tasks", "events.jsonl"), kind: "tasks" },
+    { name: "workflows.jsonl", target: path.join(memoryDir, "workflows", "workflows.jsonl"), kind: "workflows" },
+    { name: "workflows-events.jsonl", target: path.join(memoryDir, "workflows", "events.jsonl"), kind: "workflows" },
+    { name: "projects.jsonl", target: path.join(memoryDir, "projects", "projects.jsonl"), kind: "projects" },
+    { name: "projects-events.jsonl", target: path.join(memoryDir, "projects", "events.jsonl"), kind: "projects" },
+    { name: "config.json", target: path.join(memoryDir, "config.json"), kind: "config" }
+  ];
+}
+
+export function markTieredBackups(backups, { tier, limit, keyForBackup, label }, markKeep) {
+  const seen = new Set();
+  for (const backup of backups) {
+    if (backup.retentionTier !== tier) {
+      continue;
+    }
+    const key = keyForBackup(backup);
+    if (!key || seen.has(key)) {
+      continue;
+    }
+    if (seen.size >= limit) {
+      continue;
+    }
+    seen.add(key);
+    markKeep(backup, `${label}-${seen.size}`);
+  }
 }

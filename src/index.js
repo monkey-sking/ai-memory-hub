@@ -139,6 +139,7 @@ import { listCredentialProfiles, setCredentialProfile, removeCredentialProfile, 
 import { listRelatedEntities, readRelations, recordMemoryRelations, recordRelation, rebuildMemoryRelations, revokeRelation } from "./relations.js";
 import { auditMemories } from "./memory-audit.js";
 import { parseRunnerModelList, semanticSearch, checkProcessLiveness, getContentType, readRequestJson, findProjectIndex, expandSynonyms, scanBackupFilesForSecrets } from "./lib/util.js";
+import { getRelayTimeoutBaseMs, renderDispatchWorktree, createHealthRepairAction, getPathSize, extractCjkNgrams, getBackupFileCatalog, markTieredBackups } from "./lib/util.js";
 import {
   normalizeAdversarialVerifier,
   normalizeReviewDimensions,
@@ -2424,22 +2425,6 @@ function isRelayTimedOut(entry, now = Date.now()) {
   return Number.isFinite(baseMs) && baseMs + timeoutMs <= now;
 }
 
-function getRelayTimeoutBaseMs(entry) {
-  const candidates = [
-    entry.progressAt,
-    entry.dispatchedAt,
-    entry.deliveryUpdatedAt,
-    entry.ts,
-    entry.updatedAt
-  ];
-  for (const candidate of candidates) {
-    const parsed = Date.parse(candidate || "");
-    if (!Number.isNaN(parsed)) {
-      return parsed;
-    }
-  }
-  return Number.NaN;
-}
 
 function applyDispatchOutcome(memoryDir, job, result, relayState, { responseMessage = null, statusMessage = null } = {}) {
   if (job?.kind !== "task" || !job.refId) {
@@ -3642,26 +3627,6 @@ function getDispatchThreadKey(job) {
   return `${job.tool || "unknown"}:${job.project || "default"}:${job.thread || job.refId || job.id || ""}`;
 }
 
-function renderDispatchWorktree(worktree) {
-  if (!worktree?.enabled) {
-    return [];
-  }
-  const lines = [
-    `- Worktree path: ${worktree.path || ""}`,
-    `- Branch: ${worktree.branch || ""}`,
-    `- Base commit: ${worktree.base || ""}`,
-    `- Current head: ${worktree.head || ""}`,
-    `- Reused existing worktree: ${worktree.reused ? "yes" : "no"}`
-  ];
-  if (worktree.diffStatus) {
-    lines.push(`- Diff status: ${worktree.diffStatus}`);
-  }
-  if (worktree.diffStat) {
-    lines.push(`- Diff stat: ${worktree.diffStat}`);
-  }
-  lines.push("- Keep this worktree and branch for review; do not delete, merge, or push it unless explicitly authorized.");
-  return lines;
-}
 
 function renderDispatchQualityGate(job) {
   const gate = normalizeQualityGate(job?.qualityGate || {});
@@ -9937,24 +9902,6 @@ function analyzeMemoryHealth(config, index, options = {}) {
   };
 }
 
-function createHealthRepairAction({
-  id,
-  label,
-  command = "",
-  detail = "",
-  endpoint = "",
-  method = "POST"
-}) {
-  return {
-    id,
-    label,
-    command,
-    detail,
-    endpoint,
-    method,
-    destructive: false
-  };
-}
 
 function isMemoryHealthExcluded(record) {
   const lifecycle = record.metadata?.lifecycle || {};
@@ -10381,26 +10328,6 @@ function getMemoryStorageSummary(memoryDir) {
   };
 }
 
-function getPathSize(target) {
-  if (!fs.existsSync(target)) {
-    return 0;
-  }
-  const stat = fs.lstatSync(target);
-  if (stat.isSymbolicLink()) {
-    return 0;
-  }
-  if (stat.isFile()) {
-    return stat.size;
-  }
-  if (!stat.isDirectory()) {
-    return 0;
-  }
-  let total = 0;
-  for (const entry of fs.readdirSync(target, { withFileTypes: true })) {
-    total += getPathSize(path.join(target, entry.name));
-  }
-  return total;
-}
 
 
 function formatTopCounts(items = [], limit = 8) {
@@ -10659,23 +10586,6 @@ function extractCompactVariants(text) {
   return compact && compact !== normalized ? [compact] : [];
 }
 
-function extractCjkNgrams(text) {
-  const chunks = String(text || "").match(/[\u4e00-\u9fff]{2,}/g) || [];
-  const grams = [];
-  for (const chunk of chunks) {
-    if (chunk.length <= 4) {
-      grams.push(chunk);
-      continue;
-    }
-    for (let size = 2; size <= 3; size++) {
-      for (let index = 0; index <= chunk.length - size; index++) {
-        grams.push(chunk.slice(index, index + size));
-      }
-    }
-    grams.push(chunk);
-  }
-  return grams;
-}
 
 function countBy(values) {
   const counts = new Map();
@@ -10709,23 +10619,6 @@ function writeInboxEvents(inboxPath, events) {
   writeFileAtomic(inboxPath, events.map((event) => JSON.stringify(event)).join("\n") + (events.length ? "\n" : ""), "utf8");
 }
 
-function getBackupFileCatalog(memoryDir) {
-  return [
-    { name: "MEMORY.md", target: path.join(memoryDir, "MEMORY.md"), kind: "snapshot" },
-    { name: "BOOTSTRAP.md", target: path.join(memoryDir, "BOOTSTRAP.md"), kind: "snapshot" },
-    { name: "profile.md", target: path.join(memoryDir, "profile.md"), kind: "profile" },
-    { name: "inbox-events.jsonl", target: path.join(memoryDir, "inbox", "events.jsonl"), kind: "inbox" },
-    { name: "memory-ledger.jsonl", target: path.join(memoryDir, "memories", "ledger.jsonl"), kind: "memory" },
-    { name: "radio-messages.jsonl", target: path.join(memoryDir, "radio", "messages.jsonl"), kind: "radio" },
-    { name: "tasks.jsonl", target: path.join(memoryDir, "tasks", "tasks.jsonl"), kind: "tasks" },
-    { name: "tasks-events.jsonl", target: path.join(memoryDir, "tasks", "events.jsonl"), kind: "tasks" },
-    { name: "workflows.jsonl", target: path.join(memoryDir, "workflows", "workflows.jsonl"), kind: "workflows" },
-    { name: "workflows-events.jsonl", target: path.join(memoryDir, "workflows", "events.jsonl"), kind: "workflows" },
-    { name: "projects.jsonl", target: path.join(memoryDir, "projects", "projects.jsonl"), kind: "projects" },
-    { name: "projects-events.jsonl", target: path.join(memoryDir, "projects", "events.jsonl"), kind: "projects" },
-    { name: "config.json", target: path.join(memoryDir, "config.json"), kind: "config" }
-  ];
-}
 
 function backupHub(memoryDir, reason, options = {}) {
   const createdAt = (options.now instanceof Date ? options.now : new Date()).toISOString();
@@ -11857,23 +11750,6 @@ function markProtectedBackups(backups, markKeep) {
   }
 }
 
-function markTieredBackups(backups, { tier, limit, keyForBackup, label }, markKeep) {
-  const seen = new Set();
-  for (const backup of backups) {
-    if (backup.retentionTier !== tier) {
-      continue;
-    }
-    const key = keyForBackup(backup);
-    if (!key || seen.has(key)) {
-      continue;
-    }
-    if (seen.size >= limit) {
-      continue;
-    }
-    seen.add(key);
-    markKeep(backup, `${label}-${seen.size}`);
-  }
-}
 
 function parseBackupTimestampFromName(name) {
   const match = String(name || "").match(/^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z/);

@@ -74,7 +74,7 @@ if (fs.existsSync(targetPath)) {
   }
   existingBody = content
     .split("\n")
-    .filter((l) => !/^import\s+/.test(l) && !/^\/\/ 从 src\/index\.js 下沉/.test(l))
+    .filter((l) => !/^import\s+/.test(l) && !/^\/\/ (从 src\/index\.js 下沉|这些函数不依赖 index\.js)/.test(l))
     .join("\n")
     .trim();
 }

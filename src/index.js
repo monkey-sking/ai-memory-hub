@@ -141,7 +141,7 @@ import { auditMemories } from "./memory-audit.js";
 import { parseRunnerModelList, semanticSearch, checkProcessLiveness, getContentType, readRequestJson, findProjectIndex, expandSynonyms, scanBackupFilesForSecrets, getRelayTimeoutBaseMs, renderDispatchWorktree, createHealthRepairAction, getPathSize, extractCjkNgrams, getBackupFileCatalog, markTieredBackups } from "./lib/util.js";
 import { extractInstructionIncludes, normalizeSeverity, formatTopCounts, formatPercent, formatBytes, sanitizeDisplayText, getMemoryAgeDays, inferScope, normalizeSearchText, countBy, sortByImportance, titleCase, looksSensitive, formatEventLocation, extractSection, extractSectionBeforeAny, renderTemplate, trimOutput, summarizeText } from "./lib/format.js";
 import { normalizeMemoryKind, normalizeMemoryProject, normalizeMemoryScope, normalizeList, firstDefinedRef, hasMemoryFilters, normalizeRefToken, normalizeConfidence, applyMemoryAccessFields, normalizeMemoryAccessCount, normalizeMemoryAccessTimestamp, firstDefinedValue, getDaysSinceTimestamp, isMemoryLifecycleVisible, normalizeSupersedeToken, hasExplicitSyncKey, readPositiveInteger, isMemoryHealthExcluded, formatMemoryHealthRepairPlan, sanitizeRawJsonCandidate, getMemoryGrowthTrend, chooseMemoryLayer } from "./lib/memory-normalize.js";
-import { createDispatchRecordMutex, isClaimStale, shouldPersistDispatchReport, isDispatchableRadioMessage, isClosedDispatchSourceState, buildTaskDispatchText, buildWorkflowDispatchText, findRecipeStepTask, normalizeToolName, safeGitPathSegment, isKnownGeminiWarning, stripExistingModelArgs, getDispatchThreadKey, formatDispatchVerifyCommand, getDispatchRunStatus, getDispatchRunVerificationResult, getAsyncCallStateMeta, getDispatchSourceKey, getRelaySourceKey } from "./lib/dispatch.js";
+import { createDispatchRecordMutex, isClaimStale, shouldPersistDispatchReport, isDispatchableRadioMessage, isClosedDispatchSourceState, buildTaskDispatchText, buildWorkflowDispatchText, findRecipeStepTask, normalizeToolName, safeGitPathSegment, isKnownGeminiWarning, stripExistingModelArgs, getDispatchThreadKey, formatDispatchVerifyCommand, getDispatchRunStatus, getDispatchRunVerificationResult, getAsyncCallStateMeta, getDispatchSourceKey, getRelaySourceKey, dispatchJobFromTask, dispatchJobFromWorkflow, dispatchJobFromRelayEntry } from "./lib/dispatch.js";
 import {
   normalizeAdversarialVerifier,
   normalizeReviewDimensions,
@@ -7863,12 +7863,18 @@ function createContextPack({ taskId, workflowId, project, query }) {
 
 function searchMemoriesForContext(memoryDir, query, project, limit = 10) {
   try {
-    const indexFile = path.join(memoryDir, "INDEX.md");
-    if (!fs.existsSync(indexFile)) {
+    // 原实现读 INDEX.md 再交给 parseIndexFile —— 但 INDEX.md 只有统计与
+    // top N 主题/项目/标签，不含任何记忆条目，而 parseIndexFile 在代码库里
+    // 从来就不存在（a657fc9 引入的疏漏）。整段被 try/catch 包住，所以只是
+    // 静默返回空数组：context pack 永远搜不到记忆，也不报任何错。
+    // 改成读结构化索引 memories/index.json 的 records，字段与 searchMemories
+    // 期望的 text / kind / source / project / tags 完全对齐。
+    const indexPath = path.join(memoryDir, "memories", "index.json");
+    if (!fs.existsSync(indexPath)) {
       return [];
     }
 
-    const records = parseIndexFile(indexFile);
+    const records = readJson(indexPath).records || [];
     const projectRecords = project ? records.filter((r) => r.project === project) : records;
 
     if (!query) {

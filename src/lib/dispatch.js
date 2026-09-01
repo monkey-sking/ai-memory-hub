@@ -151,3 +151,57 @@ export function getRelaySourceKey(entry) {
   }
   return `${entry.sourceKind}:${entry.sourceId}`;
 }
+
+// 以下三个 job 构造器在 v3.0 迁出 dispatch 命令族群时被误删（commit d6d0edb），
+// 但 index.js 的 buildDispatchJobs / rebuildDispatchJobFromRelay /
+// markTimedOutRelayStatuses 仍在调用 —— 属于跑起来才炸 ReferenceError 的死引用。
+// 由 scripts/refactor/check-undefined.mjs 扫出，按 01746a2 的原实现恢复。
+
+export function dispatchJobFromTask(task) {
+  const roles = [];
+  if (task.recipeStep?.role) {
+    roles.push(`role:${task.recipeStep.role}`);
+  }
+  return {
+    id: `task:${task.id}`,
+    kind: "task",
+    tool: task.assignee,
+    project: task.project || "",
+    text: buildTaskDispatchText(task),
+    refId: task.id,
+    thread: task.id,
+    qualityGate: task.qualityGate || {},
+    recipe: task.recipe || null,
+    recipeStep: task.recipeStep || null,
+    roles
+  };
+}
+
+export function dispatchJobFromWorkflow(workflow, tool = "") {
+  const roles = [];
+  // Workflow level doesn't have a specific role, but we could add workflow roles in the future
+  return {
+    id: `workflow:${workflow.id}`,
+    kind: "workflow",
+    tool: normalizeToolName(tool),
+    project: workflow.project || "",
+    text: buildWorkflowDispatchText(workflow),
+    refId: workflow.id,
+    thread: workflow.id,
+    qualityGate: workflow.qualityGate || {},
+    recipe: workflow.recipe || null,
+    roles
+  };
+}
+
+export function dispatchJobFromRelayEntry(entry) {
+  return {
+    id: entry.dispatchId || `${entry.sourceKind || "relay"}:${entry.sourceId || entry.id || ""}`,
+    kind: entry.sourceKind || "relay",
+    tool: entry.tool || "",
+    project: entry.project || "",
+    text: "",
+    refId: entry.sourceId || "",
+    thread: entry.thread || entry.sourceId || ""
+  };
+}

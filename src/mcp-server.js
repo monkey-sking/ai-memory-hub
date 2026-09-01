@@ -10,11 +10,26 @@
 
 import { execFileSync } from "child_process";
 import readline from "readline";
+import os from "node:os";
+import path from "node:path";
 import { listExtensions, importExtensions, diffExtensions, syncExtensions, removeExtensions, statusExtensions, diffSkillExtensions, syncSkillExtensions } from "./extension-sync.js";
+import { ensureWritableDir } from "./lib/cli.js";
 
 const AMH_BIN = "ai-memory-hub";
-const HOME_DIR = process.env.USERPROFILE || process.env.HOME || process.cwd();
-const MEMORY_DIR = process.env.AMH_MEMORY_DIR || process.env.AI_MEMORY_DIR || `${HOME_DIR}/.ai-memory`;
+// Resolve home robustly. Never fall back to process.cwd(): if the MCP server is
+// launched from a root-owned working directory (common for daemons / IDE
+// extensions), the old `${cwd}/.ai-memory` fallback landed on a non-writable
+// path and produced the "没有权限写入 ~/.ai-memory" EACCES report.
+const HOME_DIR = process.env.USERPROFILE || process.env.HOME || os.homedir();
+const MEMORY_DIR = process.env.AMH_MEMORY_DIR || process.env.AI_MEMORY_DIR || path.join(HOME_DIR, ".ai-memory");
+
+// Surface a clear, actionable error at startup if the shared memory store is
+// missing or not writable, instead of failing opaquely on the first write.
+try {
+  ensureWritableDir(MEMORY_DIR);
+} catch (err) {
+  console.error(`[AMH MCP] ${err.message}`);
+}
 
 function runAmh(args) {
   try {

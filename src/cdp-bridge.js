@@ -6,6 +6,7 @@ import { appendFileSync, existsSync, mkdirSync, watch, writeFileSync } from 'fs'
 import { dirname, join } from 'path';
 import { execSync } from 'child_process';
 import os from 'os';
+import { ensureWritableDir } from "./lib/cli.js";
 
 const CDP_PORT = process.env.AMH_CDP_PORT || 9222;
 const MEMORY_DIR = process.env.AMH_MEMORY_DIR || join(os.homedir(), '.ai-memory');
@@ -23,6 +24,14 @@ class CDPBridge {
   }
 
   start() {
+    // Fail clearly (instead of opaquely on first write) if the shared memory
+    // store is missing or not writable by this process.
+    try {
+      ensureWritableDir(this.memoryDir);
+    } catch (err) {
+      console.error(`[CDP Bridge] ${err.message}`);
+    }
+
     this.wss = new WebSocketServer({ port: this.port });
 
     this.wss.on('connection', (ws, req) => {

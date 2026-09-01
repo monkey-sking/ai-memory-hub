@@ -12,10 +12,46 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import os from "node:os";
 import { writeFileAtomic } from "../atomic-write.js";
 
 export function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
+}
+
+// Resolve the current user's home directory robustly. We deliberately fall back
+// to os.homedir() and never to process.cwd(): a server launched from a
+// root-owned working directory (common for daemons / IDE extensions) would
+// otherwise resolve the shared memory store to a non-writable path and produce
+// the "没有权限写入 ~/.ai-memory" EACCES report that users have hit.
+export function userHome() {
+  return process.env.USERPROFILE || process.env.HOME || os.homedir();
+}
+
+// Ensure a directory exists AND is writable by the current process. Throws a
+// clear, actionable error instead of an opaque EACCES stack trace. This single
+// guard turns "写入共享记忆失败" into a message the user can actually act on.
+export function ensureWritableDir(dir) {
+  try {
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  } catch (err) {
+    throw new Error(
+      `AI Memory Hub 无法创建共享记忆目录：${dir}（${err.code || "错误"}）。` +
+      `请确认上级目录可写，或用环境变量 AI_MEMORY_DIR 指定一个可写目录后重试。`
+    );
+  }
+  try {
+    fs.accessSync(dir, fs.constants.W_OK);
+  } catch (err) {
+    const hint = process.platform === "win32"
+      ? `请右键该目录 → 属性 → 安全，赋予当前用户“完全控制”，或删除后重新运行 ai-memory-hub init。`
+      : `请运行：sudo chown -R $USER "${dir}"，或删除该目录后重新运行 ai-memory-hub init。`;
+    throw new Error(
+      `AI Memory Hub 没有权限写入共享记忆目录：${dir}（${err.code || "EACCES"}）。${hint}` +
+      `也可设置环境变量 AI_MEMORY_DIR 指向一个可写目录。`
+    );
+  }
+  return dir;
 }
 
 export function readJson(file) {
@@ -31,7 +67,7 @@ export function readJsonSafe(file, fallback = {}) {
 }
 
 export function writeJson(file, value) {
-  ensureDir(path.dirname(file));
+  ensureWritableDir(path.dirname(file));
   writeFileAtomic(file, JSON.stringify(value, null, 2) + "\n", "utf8");
 }
 

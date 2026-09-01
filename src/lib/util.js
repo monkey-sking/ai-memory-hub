@@ -1,4 +1,5 @@
 // 从 src/index.js 下沉的通用工具函数（v3.0 重构 P0-2）。
+// 这些函数不依赖 index.js 内部的任何其他符号，可安全复用。
 
 import fs from "node:fs";
 import path from "node:path";
@@ -378,5 +379,105 @@ export function markTieredBackups(backups, { tier, limit, keyForBackup, label },
     }
     seen.add(key);
     markKeep(backup, `${label}-${seen.size}`);
+  }
+}
+
+export function parseCliArgs(argv) {
+  const args = Array.isArray(argv) ? [...argv] : [];
+  const command = args[0] || "help";
+  return {
+    args,
+    command,
+    rest: args.slice(1)
+  };
+}
+
+export function parseDeclaredList(raw) {
+  return [...new Set(String(raw || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean))];
+}
+
+export function parseProgressPercent(value) {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+  const percent = Number(value);
+  if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
+    throw new Error("--percent must be a number from 0 to 100.");
+  }
+  return Math.round(percent);
+}
+
+export function isJobCheckpointed(checkpoint, jobId) {
+  const entry = checkpoint.jobs[jobId];
+  return entry && (entry.status === "completed" || entry.status === "failed");
+}
+
+export function getCheckpointStats(checkpoint) {
+  const jobs = Object.values(checkpoint.jobs);
+  return {
+    cycle: checkpoint.cycle,
+    total: jobs.length,
+    completed: jobs.filter((j) => j.status === "completed").length,
+    failed: jobs.filter((j) => j.status === "failed").length,
+    lastCompletedAt: checkpoint.lastCompletedAt
+  };
+}
+
+export function renderProjectRegistryReadme() {
+  return `# Project Registry
+
+Project metadata is stored in \`projects.jsonl\` as one JSON object per line.
+
+Use \`ai-memory-hub project list\`, \`project add\`, \`project update\`, \`project alias\`, and \`project relate\` to manage records. The dashboard project selectors show only \`active\`, \`paused\`, and \`planning\` projects and hide \`archived\` or \`test-*\` entries by default.
+
+Writes use the shared hub lock, but this registry is currently read-modify-write. Avoid simultaneous manual edits; prefer the CLI or dashboard API.
+`;
+}
+
+export function extractSharedSkillLayerVersion(text) {
+  const match = String(text || "").match(/AI_MEMORY_HUB_SHARED_SKILL_LAYER v([0-9]+)/);
+  return match ? match[1] : "";
+}
+
+export function renderEmptyBootstrapSnapshot(memoryDir) {
+  return [
+    "# AI Memory Hub Bootstrap",
+    "",
+    "Memory directory: configured locally.",
+    "",
+    "No startup-critical memories have been indexed yet.",
+    "",
+    "If an instruction include such as `@RTK.md` is missing, run `ai-memory-hub resolve \"@RTK.md\"` and then use the resolved local path when reading the include.",
+    ""
+  ].join("\n");
+}
+
+export function sleep(ms) {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    // Short synchronous wait keeps the CLI dependency-free.
+  }
+}
+
+export function sharedSkillLayerActionLabel(status) {
+  return status === "updated"
+    ? "Updated"
+    : status === "current"
+      ? "Already current"
+      : status === "malformed"
+        ? "Skipped (malformed)"
+        : "Installed";
+}
+
+export function summarizeDir(dir) {
+  try {
+    return fs.readdirSync(dir, { withFileTypes: true })
+      .slice(0, 12)
+      .map((entry) => entry.isDirectory() ? `${entry.name}/` : entry.name);
+  } catch {
+    return [];
   }
 }

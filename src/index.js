@@ -138,10 +138,17 @@ import { listCredentialProfiles, setCredentialProfile, removeCredentialProfile, 
 
 import { listRelatedEntities, readRelations, recordMemoryRelations, recordRelation, rebuildMemoryRelations, revokeRelation } from "./relations.js";
 import { auditMemories } from "./memory-audit.js";
-import { parseRunnerModelList, semanticSearch, checkProcessLiveness, getContentType, readRequestJson, findProjectIndex, expandSynonyms, scanBackupFilesForSecrets, getRelayTimeoutBaseMs, renderDispatchWorktree, createHealthRepairAction, getPathSize, extractCjkNgrams, getBackupFileCatalog, markTieredBackups } from "./lib/util.js";
+import { parseRunnerModelList, semanticSearch, checkProcessLiveness, getContentType, readRequestJson, findProjectIndex, expandSynonyms, scanBackupFilesForSecrets, getRelayTimeoutBaseMs, renderDispatchWorktree, createHealthRepairAction, getPathSize, extractCjkNgrams, getBackupFileCatalog, markTieredBackups, parseCliArgs, parseDeclaredList, parseProgressPercent, isJobCheckpointed, getCheckpointStats, renderProjectRegistryReadme, extractSharedSkillLayerVersion, renderEmptyBootstrapSnapshot, sleep, sharedSkillLayerActionLabel, summarizeDir } from "./lib/util.js";
 import { extractInstructionIncludes, normalizeSeverity, formatTopCounts, formatPercent, formatBytes, sanitizeDisplayText, getMemoryAgeDays, inferScope, normalizeSearchText, countBy, sortByImportance, titleCase, looksSensitive, formatEventLocation, extractSection, extractSectionBeforeAny, renderTemplate, trimOutput, summarizeText } from "./lib/format.js";
 import { normalizeMemoryKind, normalizeMemoryProject, normalizeMemoryScope, normalizeList, firstDefinedRef, hasMemoryFilters, normalizeRefToken, normalizeConfidence, applyMemoryAccessFields, normalizeMemoryAccessCount, normalizeMemoryAccessTimestamp, firstDefinedValue, getDaysSinceTimestamp, isMemoryLifecycleVisible, normalizeSupersedeToken, hasExplicitSyncKey, readPositiveInteger, isMemoryHealthExcluded, formatMemoryHealthRepairPlan, sanitizeRawJsonCandidate, getMemoryGrowthTrend, chooseMemoryLayer } from "./lib/memory-normalize.js";
 import { createDispatchRecordMutex, isClaimStale, shouldPersistDispatchReport, isDispatchableRadioMessage, isClosedDispatchSourceState, buildTaskDispatchText, buildWorkflowDispatchText, findRecipeStepTask, normalizeToolName, safeGitPathSegment, isKnownGeminiWarning, stripExistingModelArgs, getDispatchThreadKey, formatDispatchVerifyCommand, getDispatchRunStatus, getDispatchRunVerificationResult, getAsyncCallStateMeta, getDispatchSourceKey, getRelaySourceKey, dispatchJobFromTask, dispatchJobFromWorkflow, dispatchJobFromRelayEntry } from "./lib/dispatch.js";
+import { sendHtml, sendPlain, sendJson, sendErrorEnvelope, parsePageParam, getSafeStaticRelativePath, readTextIfExists } from "./lib/http.js";
+import { getToolDeclarationsFile, getModelsCacheFile, getRadioCursorFile, getAgentRegistryFile, getRoleRegistryFile, getTeamRegistryFile, getPolicyRulesFile } from "./lib/registry-paths.js";
+import { quoteWindowsCmdArg, escapeForWindowsCmd, quoteWindowsCommandArg, quoteShellArg, classifyCommandPath, shellQuote } from "./lib/shell.js";
+import { normalizeResolveQuery, extractFilesystemPathCandidates, resolvePossiblyHomePath, pathMatchesResolveQuery } from "./lib/resolve.js";
+import { normalizeTaskSpecEnv, normalizeStringArray, normalizeTaskSpecList, normalizeTaskSpecLogs, selectPlatformCommand, getTaskSpecProcessStatus, resolveInside } from "./lib/task-spec.js";
+import { policyActorMatches, policyRuleSpecificity, isHiddenProjectId, findWorkflowIndex, findTaskIndex, createTaskNote, getNotificationChannels } from "./lib/entity-index.js";
+import { getFileHash, getGitHubBackupUploadWarnings, normalizeBackupPatternList, matchesAnyBackupPattern, normalizeScheduleTime, resolveConfiguredPath, extractListValue, renderGitHubBackupReadme, markProtectedBackups, parseBackupTimestampFromName, inferBackupReasonFromName, inferBackupRetentionTier, createdAtRetentionKey, formatBackupDay, getIsoWeekKey, isPathInsideDirectory, countBackupDirs } from "./lib/backup.js";
 import {
   normalizeAdversarialVerifier,
   normalizeReviewDimensions,
@@ -814,15 +821,6 @@ async function main() {
   }
 }
 
-function parseCliArgs(argv) {
-  const args = Array.isArray(argv) ? [...argv] : [];
-  const command = args[0] || "help";
-  return {
-    args,
-    command,
-    rest: args.slice(1)
-  };
-}
 
 function resolveMemoryDir(argv = rawArgs) {
   const fromArgs = getOption(argv, "--memory-dir");
@@ -908,9 +906,6 @@ function capabilitiesCommand(argv) {
   console.log(JSON.stringify(registry, null, 2));
 }
 
-function getToolDeclarationsFile(memoryDir) {
-  return path.join(memoryDir, "state", "tool-declarations.jsonl");
-}
 
 function readToolDeclarations(memoryDir) {
   const file = getToolDeclarationsFile(memoryDir);
@@ -970,12 +965,6 @@ function removeToolDeclaration(memoryDir, tool) {
   return true;
 }
 
-function parseDeclaredList(raw) {
-  return [...new Set(String(raw || "")
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean))];
-}
 
 
 
@@ -1006,9 +995,6 @@ function fetchToolModels(memoryDir, tool) {
 }
 
 
-function getModelsCacheFile(memoryDir) {
-  return path.join(memoryDir, "state", "tool-models.json");
-}
 
 function readModelsCache(memoryDir) {
   const cacheFile = getModelsCacheFile(memoryDir);
@@ -1336,10 +1322,6 @@ function recordCommand(argv) {
   return { event, relations };
 }
 
-function getRadioCursorFile(memoryDir, consumer) {
-  const safe = String(consumer || "all").replace(/[^a-zA-Z0-9_-]/g, "_");
-  return path.join(memoryDir, "radio", "cursors", `${safe}.json`);
-}
 
 function readRadioCursor(memoryDir, consumer) {
   const file = getRadioCursorFile(memoryDir, consumer);
@@ -1386,9 +1368,6 @@ function getUnreadRadioMessages(memoryDir, consumer) {
 
 // ---- P1: agent + role registries (borrowed from Cumora participants; role is a first-class entity here) ----
 
-function getAgentRegistryFile(memoryDir) {
-  return path.join(path.resolve(memoryDir), "agents", "agents.jsonl");
-}
 function readAgents(memoryDir) {
   const file = getAgentRegistryFile(memoryDir);
   if (!fs.existsSync(file)) return [];
@@ -1420,9 +1399,6 @@ function touchAgentStatus(memoryDir, id, state, by) {
   const existing = readAgentById(memoryDir, id) || { id: String(id).trim(), name: String(id).trim(), createdAt: nowIso };
   return writeAgent(memoryDir, { ...existing, status: state, statusBy: by || existing.statusBy || "system", statusAt: nowIso });
 }
-function getRoleRegistryFile(memoryDir) {
-  return path.join(path.resolve(memoryDir), "roles", "roles.jsonl");
-}
 function readRoles(memoryDir) {
   const file = getRoleRegistryFile(memoryDir);
   if (!fs.existsSync(file)) return [];
@@ -1449,9 +1425,6 @@ function writeRole(memoryDir, role) {
 }
 
 // P2: team registry (first-class org entity, Cumora has none).
-function getTeamRegistryFile(memoryDir) {
-  return path.join(path.resolve(memoryDir), "teams", "teams.jsonl");
-}
 function readTeams(memoryDir) {
   const file = getTeamRegistryFile(memoryDir);
   if (!fs.existsSync(file)) return [];
@@ -1842,16 +1815,6 @@ function findLatestRelayStatusEntry(memoryDir, { threadKey = "", thread = "", re
   return matches.at(-1) || null;
 }
 
-function parseProgressPercent(value) {
-  if (value === undefined || value === null || value === "") {
-    return null;
-  }
-  const percent = Number(value);
-  if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
-    throw new Error("--percent must be a number from 0 to 100.");
-  }
-  return Math.round(percent);
-}
 
 function resolveRelaySourceObject(memoryDir, entry) {
   if (!entry?.sourceKind || !entry?.sourceId) {
@@ -3450,13 +3413,6 @@ function buildWindowsCmdLine(command, args = []) {
   return [command, ...(args || [])].map(quoteWindowsCmdArg).join(" ");
 }
 
-function quoteWindowsCmdArg(value) {
-  const text = String(value ?? "");
-  if (!text) {
-    return "\"\"";
-  }
-  return `"${text.replace(/"/g, "\"\"").replace(/[%^&|<>()]/g, "^$&")}"`;
-}
 
 function normalizeRunnerStderr(tool, stderr) {
   const text = String(stderr || "");
@@ -3596,11 +3552,6 @@ function renderDispatchQualityGate(job) {
 }
 
 
-function escapeForWindowsCmd(value) {
-  return String(value || "")
-    .replace(/"/g, '""')
-    .replace(/%/g, "%%");
-}
 
 function renderDispatchPrompt(memoryDir, job) {
   const qualityGateLines = renderDispatchQualityGate(job);
@@ -4515,21 +4466,7 @@ function writeLoopCheckpoint(memoryDir, checkpoint) {
 }
 
 
-function isJobCheckpointed(checkpoint, jobId) {
-  const entry = checkpoint.jobs[jobId];
-  return entry && (entry.status === "completed" || entry.status === "failed");
-}
 
-function getCheckpointStats(checkpoint) {
-  const jobs = Object.values(checkpoint.jobs);
-  return {
-    cycle: checkpoint.cycle,
-    total: jobs.length,
-    completed: jobs.filter((j) => j.status === "completed").length,
-    failed: jobs.filter((j) => j.status === "failed").length,
-    lastCompletedAt: checkpoint.lastCompletedAt
-  };
-}
 
 function buildDaemonStatus(memoryDir) {
   const paths = getDaemonStatePaths(memoryDir);
@@ -5794,16 +5731,6 @@ function ensureHub(memoryDir) {
   }
 }
 
-function renderProjectRegistryReadme() {
-  return `# Project Registry
-
-Project metadata is stored in \`projects.jsonl\` as one JSON object per line.
-
-Use \`ai-memory-hub project list\`, \`project add\`, \`project update\`, \`project alias\`, and \`project relate\` to manage records. The dashboard project selectors show only \`active\`, \`paused\`, and \`planning\` projects and hide \`archived\` or \`test-*\` entries by default.
-
-Writes use the shared hub lock, but this registry is currently read-modify-write. Avoid simultaneous manual edits; prefer the CLI or dashboard API.
-`;
-}
 
 function loadConfig() {
   const memoryDir = resolveMemoryDir();
@@ -6308,10 +6235,6 @@ function inspectSharedMemoryInstructions(file) {
   };
 }
 
-function extractSharedSkillLayerVersion(text) {
-  const match = String(text || "").match(/AI_MEMORY_HUB_SHARED_SKILL_LAYER v([0-9]+)/);
-  return match ? match[1] : "";
-}
 
 function getInstallTargetForTool(memoryDir, toolName, installTargets) {
   const targets = installTargets || getInstallTargets(memoryDir);
@@ -6639,10 +6562,6 @@ function getDirectResolveCandidates(normalizedQuery, config, fromFile = "") {
   return candidates;
 }
 
-function normalizeResolveQuery(query) {
-  const clean = String(query || "").trim().replace(/^@+/, "");
-  return clean.replace(/^["']|["']$/g, "");
-}
 
 function textMentionsResolveQuery(text, normalizedQuery) {
   const basename = path.basename(normalizedQuery).toLowerCase();
@@ -6651,15 +6570,6 @@ function textMentionsResolveQuery(text, normalizedQuery) {
     (basename && normalizedText.includes(basename));
 }
 
-function extractFilesystemPathCandidates(text) {
-  const source = String(text || "");
-  const matches = [
-    ...(source.match(/[A-Za-z]:\\[^\s`'")\]}，。；;]+/g) || []),
-    ...(source.match(/~[\\/][^\s`'")\]}，。；;]+/g) || []),
-    ...(source.match(/\/[^\s`'")\]}，。；;]+/g) || [])
-  ];
-  return matches.map((item) => item.replace(/[.,，。；;:]+$/g, ""));
-}
 
 function normalizeCandidatePath(candidatePath) {
   const clean = resolvePossiblyHomePath(candidatePath);
@@ -6669,31 +6579,7 @@ function normalizeCandidatePath(candidatePath) {
   return path.isAbsolute(clean) ? path.normalize(clean) : path.resolve(clean);
 }
 
-function resolvePossiblyHomePath(value) {
-  const clean = String(value || "").trim().replace(/^["']|["']$/g, "");
-  if (!clean) {
-    return "";
-  }
-  if (clean === "~") {
-    return os.homedir();
-  }
-  if (clean.startsWith("~/") || clean.startsWith("~\\")) {
-    return path.join(os.homedir(), clean.slice(2));
-  }
-  return clean;
-}
 
-function pathMatchesResolveQuery(candidatePath, normalizedQuery) {
-  if (!normalizedQuery) {
-    return false;
-  }
-  const candidate = path.normalize(candidatePath).toLowerCase();
-  const query = path.normalize(normalizedQuery).toLowerCase();
-  if (candidate === query || candidate.endsWith(`${path.sep}${query}`)) {
-    return true;
-  }
-  return path.basename(candidate).toLowerCase() === path.basename(query).toLowerCase();
-}
 
 function analyzeInstructionIncludes(config, options = {}) {
   const records = Array.isArray(options.records) ? options.records : buildMemoryIndex(readLedger(config.memoryDir), config).records;
@@ -6803,29 +6689,8 @@ function sendStaticFile(res, pathname) {
   fs.createReadStream(normalizedFilePath).pipe(res);
 }
 
-function sendHtml(res, html) {
-  res.writeHead(200, {
-    "Content-Type": "text/html; charset=utf-8",
-    "Cache-Control": "no-store"
-  });
-  res.end(html);
-}
 
-function sendPlain(res, text, status = 200) {
-  res.writeHead(status, {
-    "Content-Type": "text/plain; charset=utf-8",
-    "Cache-Control": "no-store"
-  });
-  res.end(text);
-}
 
-function sendJson(res, value, status = 200) {
-  res.writeHead(status, {
-    "Content-Type": "application/json; charset=utf-8",
-    "Cache-Control": "no-store"
-  });
-  res.end(JSON.stringify(value, null, 2));
-}
 
 // ── Phase 1.0: 可观测性 ───────────────────────────────────────────────
 // 请求级延迟直方图 + 错误计数，供 /api/metrics 复用。
@@ -6865,13 +6730,6 @@ function getRequestMetricsSnapshot() {
 }
 
 // 统一错误信封：仅用于未捕获异常，局部 400/404 保持原样不动（不破坏前端契约）。
-function sendErrorEnvelope(res, status, message, details) {
-  res.writeHead(status, {
-    "Content-Type": "application/json; charset=utf-8",
-    "Cache-Control": "no-store"
-  });
-  res.end(JSON.stringify({ ok: false, error: message, details: details || undefined, ts: new Date().toISOString() }, null, 2));
-}
 
 function getPageOptions(url) {
   return {
@@ -6880,11 +6738,6 @@ function getPageOptions(url) {
   };
 }
 
-function parsePageParam(value, fallback) {
-  if (value === null || value === "") return fallback;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : fallback;
-}
 
 function sendStaticAsset(res, pathname) {
   const publicDir = getDashboardStaticRoot();
@@ -6924,26 +6777,9 @@ function getDashboardStaticRoot() {
   return path.join(projectRoot(), "dashboard-next", "dist");
 }
 
-function getSafeStaticRelativePath(pathname) {
-  let decodedPath;
-  try {
-    decodedPath = decodeURIComponent(pathname);
-  } catch {
-    return "";
-  }
-  const relativePath = decodedPath.replace(/^\/+/, "").replace(/\\/g, "/");
-  const segments = relativePath.split("/").filter(Boolean);
-  if (segments.some((segment) => segment === "..")) {
-    return "";
-  }
-  return segments.join(path.sep);
-}
 
 
 
-function readTextIfExists(file) {
-  return fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
-}
 
 function readLedger(memoryDir) {
   return readEvents(path.join(memoryDir, "memories", "ledger.jsonl"))
@@ -7052,9 +6888,6 @@ function appendApprovalGateEvent(memoryDir, event) {
 
 // Permission policy layer (P0: capability permission matrix)
 
-function getPolicyRulesFile(memoryDir) {
-  return path.join(memoryDir, "policy", "rules.jsonl");
-}
 
 function readPolicyRules(memoryDir) {
   const file = getPolicyRulesFile(memoryDir);
@@ -7160,25 +6993,12 @@ function seedDefaultPolicyRules(memoryDir) {
 }
 
 // Actor query carries the literal actor plus any roles it holds (e.g. ["role:executor"]).
-function policyActorMatches(rule, actor, actorRoles = []) {
-  if (rule.actor === "*") return true;
-  if (rule.actor === actor) return true;
-  if (rule.actor.startsWith("role:") && actorRoles.includes(rule.actor)) return true;
-  return false;
-}
 
 function policyScopeMatches(rule, scope) {
   // A rule applies if its scope is at least as broad as the queried scope.
   return POLICY_SCOPE_BREADTH[rule.scope] >= POLICY_SCOPE_BREADTH[scope];
 }
 
-function policyRuleSpecificity(rule) {
-  let score = 0;
-  if (rule.actor !== "*") score += 4;
-  if (rule.project !== "*") score += 2;
-  if (rule.scope !== "all") score += 1;
-  return score;
-}
 
 function resolvePermission(memoryDir, { actor = "*", actorRoles = [], project = "*", operation, scope = "all" }) {
   if (!POLICY_OPERATIONS.includes(operation)) {
@@ -7281,9 +7101,6 @@ function isProjectVisible(project) {
   return PROJECT_VISIBLE_STATUSES.includes(project.status) && !isHiddenProjectId(project.id);
 }
 
-function isHiddenProjectId(id) {
-  return String(id || "").toLowerCase().startsWith("test-");
-}
 
 function findProject(projects, query) {
   const index = findProjectIndex(projects, query);
@@ -7457,16 +7274,6 @@ function updateWorkflow(memoryDir, id, updater) {
   });
 }
 
-function findWorkflowIndex(workflows, id) {
-  const exact = workflows.findIndex((workflow) => workflow.id === id);
-  if (exact !== -1) {
-    return exact;
-  }
-  const matches = workflows
-    .map((workflow, index) => ({ workflow, index }))
-    .filter((item) => item.workflow.id.startsWith(id));
-  return matches.length === 1 ? matches[0].index : -1;
-}
 
 function spawnWorkflowTasks(memoryDir, workflow) {
   const tasks = readTasks(memoryDir);
@@ -7561,24 +7368,7 @@ function updateTask(memoryDir, id, updater) {
 
 
 
-function findTaskIndex(tasks, id) {
-  const exact = tasks.findIndex((task) => task.id === id);
-  if (exact !== -1) {
-    return exact;
-  }
-  const matches = tasks
-    .map((task, index) => ({ task, index }))
-    .filter((item) => item.task.id.startsWith(id));
-  return matches.length === 1 ? matches[0].index : -1;
-}
 
-function createTaskNote(by, text) {
-  return {
-    ts: new Date().toISOString(),
-    by: String(by || "unknown"),
-    text: String(text || "").trim()
-  };
-}
 
 function assertTaskStatus(status) {
   if (!isTaskStatus(status)) {
@@ -7778,19 +7568,6 @@ function updateNotificationStatus(memoryDir, notificationId, status, deliveredTo
   writeFileAtomic(file, notifications.map((n) => JSON.stringify(n)).join("\n") + "\n", "utf8");
 }
 
-function getNotificationChannels(severity, userChannels = []) {
-  // Default routing based on severity
-  const defaultRouting = {
-    info: ["console"],
-    warning: ["console", "radio"],
-    error: ["console", "radio", "telegram"],
-    critical: ["console", "radio", "telegram", "wechat", "email"],
-    need_input: ["console", "radio", "telegram", "wechat"]
-  };
-
-  const channels = userChannels.length > 0 ? userChannels : (defaultRouting[severity] || ["console"]);
-  return [...new Set(channels)];
-}
 
 // Context Pack Functions
 function createContextPack({ taskId, workflowId, project, query }) {
@@ -7866,7 +7643,7 @@ function searchMemoriesForContext(memoryDir, query, project, limit = 10) {
     // 原实现读 INDEX.md 再交给 parseIndexFile —— 但 INDEX.md 只有统计与
     // top N 主题/项目/标签，不含任何记忆条目，而 parseIndexFile 在代码库里
     // 从来就不存在（a657fc9 引入的疏漏）。整段被 try/catch 包住，所以只是
-    // 静默返回空数组：context pack 永远搜不到记忆，也不报任何错。
+    // 静默返回空数组：context pack 永远搜不到记忆，看不到任何报错。
     // 改成读结构化索引 memories/index.json 的 records，字段与 searchMemories
     // 期望的 text / kind / source / project / tags 完全对齐。
     const indexPath = path.join(memoryDir, "memories", "index.json");
@@ -8506,36 +8283,9 @@ function normalizeTaskSpecVerify(verify) {
     .map((entry) => normalizeTaskSpecCommand(entry));
 }
 
-function normalizeTaskSpecEnv(env) {
-  if (!env || typeof env !== "object" || Array.isArray(env)) {
-    return {};
-  }
-  return Object.fromEntries(Object.entries(env).map(([key, value]) => [key, String(value)]));
-}
 
-function normalizeStringArray(value) {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  return value.map((item) => String(item));
-}
 
-function normalizeTaskSpecList(value) {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  return value.map((item) => item && typeof item === "object" ? item : String(item));
-}
 
-function normalizeTaskSpecLogs(logs) {
-  if (!logs || typeof logs !== "object" || Array.isArray(logs)) {
-    return {};
-  }
-  return {
-    stdout: logs.stdout ? String(logs.stdout) : "",
-    stderr: logs.stderr ? String(logs.stderr) : ""
-  };
-}
 
 function summarizeTaskSpec(task) {
   return {
@@ -8551,12 +8301,6 @@ function summarizeTaskSpec(task) {
   };
 }
 
-function selectPlatformCommand(commandSpec) {
-  if (process.platform === "win32" && commandSpec.windowsCommand) {
-    return commandSpec.windowsCommand;
-  }
-  return commandSpec.command || commandSpec.windowsCommand || "";
-}
 
 function runTaskSpec(task, { projectRoot, runVerify = true, allowOutsideCwd = false } = {}) {
   const startedAt = new Date().toISOString();
@@ -8654,12 +8398,6 @@ function runTaskSpecProcess(commandSpec, { projectRoot, phase, inherit = {}, all
   };
 }
 
-function getTaskSpecProcessStatus(completed) {
-  if (completed?.error?.code === "ETIMEDOUT") {
-    return "timed_out";
-  }
-  return completed?.status === 0 ? "passed" : "failed";
-}
 
 function writeTaskSpecProcessLogs(projectRoot, logs, completed) {
   const written = {};
@@ -8687,15 +8425,6 @@ function resolveTaskSpecCwd(projectRoot, cwd, allowOutsideCwd) {
   return resolved;
 }
 
-function resolveInside(root, target) {
-  const base = path.resolve(root);
-  const resolved = path.resolve(base, target);
-  const relative = path.relative(base, resolved);
-  if (relative.startsWith("..") || path.isAbsolute(relative)) {
-    throw new Error(`Path escapes project root: ${target}`);
-  }
-  return resolved;
-}
 
 
 function normalizeMemoryMetadata(metadata = {}, fallback = {}) {
@@ -9292,18 +9021,6 @@ function renderMemorySnapshot(index, config, options = {}) {
   return lines.join("\n");
 }
 
-function renderEmptyBootstrapSnapshot(memoryDir) {
-  return [
-    "# AI Memory Hub Bootstrap",
-    "",
-    "Memory directory: configured locally.",
-    "",
-    "No startup-critical memories have been indexed yet.",
-    "",
-    "If an instruction include such as `@RTK.md` is missing, run `ai-memory-hub resolve \"@RTK.md\"` and then use the resolved local path when reading the include.",
-    ""
-  ].join("\n");
-}
 
 function renderBootstrapSnapshot(index, config) {
   const startup = selectStartupMemoryRecords(index.records || [], config);
@@ -10434,12 +10151,6 @@ function readBackupManifest(backupDir) {
   return fs.existsSync(manifestPath) ? readJsonSafe(manifestPath, {}) : {};
 }
 
-function getFileHash(file) {
-  if (!fs.existsSync(file) || !fs.statSync(file).isFile()) {
-    return "";
-  }
-  return crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex");
-}
 
 function getBackupFilePreview(file) {
   const ext = path.extname(file).toLowerCase();
@@ -10809,20 +10520,6 @@ function runGitHubBackup(config, argv = []) {
   }
 }
 
-function getGitHubBackupUploadWarnings(github, scan, { wouldPush = false } = {}) {
-  const warnings = [];
-  if (wouldPush) {
-    warnings.push("Data security reminder: this backup upload may send private user data to the configured remote. Verify the remote owner, access controls, retention policy, and recovery need before uploading.");
-    if (scan.issues.length > 0) {
-      warnings.push(github.allowPlaintextSensitive
-        ? "Sensitive-looking content was detected and plaintext upload is explicitly allowed; proceed only if this remote is approved for private backup data."
-        : "Sensitive-looking content was detected; plaintext upload is blocked by default.");
-    }
-  } else if (scan.issues.length > 0) {
-    warnings.push("Local backup contains private user data; protect the backup directory and use remote upload only after confirming data security.");
-  }
-  return warnings;
-}
 
 function githubBackupScheduleCommand(config, argv = []) {
   const github = getGitHubBackupConfig(config);
@@ -11050,45 +10747,9 @@ function updateGitHubBackupScheduleState(config, patch) {
   });
 }
 
-function normalizeBackupPatternList(value, fallback = []) {
-  const list = Array.isArray(value) ? value : String(value || "").split(",");
-  const normalized = list.map((item) => String(item || "").trim()).filter(Boolean);
-  return normalized.length ? normalized : [...fallback];
-}
 
-function matchesAnyBackupPattern(name, patterns = []) {
-  if (!patterns.length) {
-    return false;
-  }
-  return patterns.some((pattern) => {
-    if (pattern === "*" || pattern === name) {
-      return true;
-    }
-    const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
-    return new RegExp(`^${escaped}$`).test(name);
-  });
-}
 
-function normalizeScheduleTime(value) {
-  const raw = String(value || "").trim();
-  if (!/^\d{2}:\d{2}$/.test(raw)) {
-    throw new Error("Schedule time must use HH:mm format.");
-  }
-  const [hours, minutes] = raw.split(":").map(Number);
-  if (hours > 23 || minutes > 59) {
-    throw new Error("Schedule time must be a valid 24-hour time.");
-  }
-  return raw;
-}
 
-function resolveConfiguredPath(value) {
-  const raw = String(value || "").trim();
-  const expanded = raw
-    .replace(/^~(?=$|[\\/])/, os.homedir())
-    .replace(/%USERPROFILE%/gi, os.homedir())
-    .replace(/\$HOME/g, os.homedir());
-  return path.resolve(expanded);
-}
 
 function assertSafeGitHubBackupRepoDir(memoryDir, repoDir) {
   const memoryRoot = path.resolve(memoryDir);
@@ -11160,36 +10821,9 @@ function buildGitHubBackupScheduledTaskCommand(memoryDir) {
   ].join(" ");
 }
 
-function quoteWindowsCommandArg(value) {
-  return `"${String(value).replace(/"/g, '\\"')}"`;
-}
 
-function quoteShellArg(value) {
-  const raw = String(value);
-  return /\s/.test(raw) ? `"${raw.replace(/"/g, '\\"')}"` : raw;
-}
 
-function extractListValue(text, key) {
-  const line = String(text || "").split(/\r?\n/).find((item) => item.toLowerCase().startsWith(key.toLowerCase()));
-  if (!line) {
-    return "";
-  }
-  return line.slice(line.indexOf(":") + 1).trim();
-}
 
-function renderGitHubBackupReadme(manifest) {
-  return `# AI Memory Hub Data Backup
-
-This repository is maintained by \`ai-memory-hub backup run\`.
-
-- Generated at: ${manifest.generatedAt}
-- Files: ${manifest.files.length}
-
-Restore manually by copying files from \`snapshot/\` back into the matching
-AI Memory Hub data files, or use the local AMH restore tools for local backup
-sets in \`.ai-memory/backups\`.
-`;
-}
 
 function getBackupSummary(memoryDir, { limit = 50, daily = 7, weekly = 4, preSync = 20, prePull = 20, pruneAfterSync = true } = {}) {
   const backups = listBackupDirectories(memoryDir);
@@ -11363,35 +10997,10 @@ function planBackupRetention(backups, { daily = 7, weekly = 4, preSync = 20, pre
   };
 }
 
-function markProtectedBackups(backups, markKeep) {
-  for (const backup of backups) {
-    if (backup.retentionTier === "manual" || backup.retentionTier === "protected") {
-      markKeep(backup, `${backup.retentionTier}-protected`);
-    }
-  }
-}
 
 
-function parseBackupTimestampFromName(name) {
-  const match = String(name || "").match(/^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z/);
-  if (!match) {
-    return "";
-  }
-  return `${match[1]}T${match[2]}:${match[3]}:${match[4]}.${match[5]}Z`;
-}
 
-function inferBackupReasonFromName(name) {
-  return String(name || "").replace(/^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z-?/, "") || "manual";
-}
 
-function inferBackupRetentionTier(reason) {
-  const value = String(reason || "").toLowerCase();
-  if (value.startsWith("pre-sync")) return "pre-sync";
-  if (value.startsWith("daily")) return "daily";
-  if (value.startsWith("weekly")) return "weekly";
-  if (value.startsWith("pre-pull")) return "pre-pull";
-  return "manual";
-}
 
 function inferBackupRetentionKey(tier, createdAt) {
   if (tier === "daily") return formatBackupDay(createdAt);
@@ -11400,33 +11009,9 @@ function inferBackupRetentionKey(tier, createdAt) {
   return "";
 }
 
-function createdAtRetentionKey(value) {
-  const date = value instanceof Date ? value : new Date(value);
-  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
-}
 
-function formatBackupDay(value) {
-  const date = value instanceof Date ? value : new Date(value);
-  return Number.isNaN(date.getTime()) ? "" : date.toISOString().slice(0, 10);
-}
 
-function getIsoWeekKey(value) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-  const utc = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-  const day = utc.getUTCDay() || 7;
-  utc.setUTCDate(utc.getUTCDate() + 4 - day);
-  const yearStart = new Date(Date.UTC(utc.getUTCFullYear(), 0, 1));
-  const week = Math.ceil((((utc - yearStart) / 86400000) + 1) / 7);
-  return `${utc.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
-}
 
-function isPathInsideDirectory(target, root) {
-  const relative = path.relative(root, target);
-  return Boolean(relative) && !relative.startsWith("..") && !path.isAbsolute(relative);
-}
 
 function withHubLock(memoryDir, owner, fn, staleMs = 120000) {
   const lockPath = path.join(memoryDir, "locks", "hub.lock");
@@ -11573,12 +11158,6 @@ function appendLockEvent(lockPath, payload) {
   });
 }
 
-function sleep(ms) {
-  const end = Date.now() + ms;
-  while (Date.now() < end) {
-    // Short synchronous wait keeps the CLI dependency-free.
-  }
-}
 
 
 function normalizeMemoryEvent(event) {
@@ -11769,15 +11348,6 @@ function syncSharedSkillLayer(file, snippet, { apply = false } = {}) {
   return { status: existing ? "upgraded" : "installed", changed: true };
 }
 
-function sharedSkillLayerActionLabel(status) {
-  return status === "updated"
-    ? "Updated"
-    : status === "current"
-      ? "Already current"
-      : status === "malformed"
-        ? "Skipped (malformed)"
-        : "Installed";
-}
 
 function appendIfMissing(file, snippet, marker) {
   const existing = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
@@ -11856,23 +11426,7 @@ function buildInstallTemplateValues(tool, memoryDir) {
 }
 
 
-function countBackupDirs(memoryDir) {
-  const dir = path.join(memoryDir, "backups");
-  if (!fs.existsSync(dir)) {
-    return 0;
-  }
-  return fs.readdirSync(dir, { withFileTypes: true }).filter((entry) => entry.isDirectory()).length;
-}
 
-function summarizeDir(dir) {
-  try {
-    return fs.readdirSync(dir, { withFileTypes: true })
-      .slice(0, 12)
-      .map((entry) => entry.isDirectory() ? `${entry.name}/` : entry.name);
-  } catch {
-    return [];
-  }
-}
 
 function commandExists(commandName) {
   return resolveCommandPaths(commandName).length > 0;
@@ -11943,14 +11497,6 @@ function commandPathPriority(file) {
   return 50;
 }
 
-function classifyCommandPath(file) {
-  const ext = path.extname(String(file || "")).toLowerCase();
-  if (ext === ".exe" || ext === ".com") return "executable";
-  if (ext === ".cmd") return "cmd-shim";
-  if (ext === ".bat") return "cmd-script";
-  if (ext === ".ps1") return "powershell-shim";
-  return ext ? "file" : "native";
-}
 
 function shouldUseShellForCommand(file) {
   if (process.platform !== "win32") {
@@ -11960,9 +11506,6 @@ function shouldUseShellForCommand(file) {
   return kind === "cmd-shim" || kind === "cmd-script";
 }
 
-function shellQuote(value) {
-  return `'${String(value || "").replace(/'/g, "'\\''")}'`;
-}
 
 
 

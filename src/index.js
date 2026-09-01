@@ -138,8 +138,10 @@ import { listCredentialProfiles, setCredentialProfile, removeCredentialProfile, 
 
 import { listRelatedEntities, readRelations, recordMemoryRelations, recordRelation, rebuildMemoryRelations, revokeRelation } from "./relations.js";
 import { auditMemories } from "./memory-audit.js";
-import { parseRunnerModelList, semanticSearch, checkProcessLiveness, getContentType, readRequestJson, findProjectIndex, expandSynonyms, scanBackupFilesForSecrets } from "./lib/util.js";
-import { getRelayTimeoutBaseMs, renderDispatchWorktree, createHealthRepairAction, getPathSize, extractCjkNgrams, getBackupFileCatalog, markTieredBackups } from "./lib/util.js";
+import { parseRunnerModelList, semanticSearch, checkProcessLiveness, getContentType, readRequestJson, findProjectIndex, expandSynonyms, scanBackupFilesForSecrets, getRelayTimeoutBaseMs, renderDispatchWorktree, createHealthRepairAction, getPathSize, extractCjkNgrams, getBackupFileCatalog, markTieredBackups } from "./lib/util.js";
+import { extractInstructionIncludes, normalizeSeverity, formatTopCounts, formatPercent, formatBytes, sanitizeDisplayText, getMemoryAgeDays, inferScope, normalizeSearchText, countBy, sortByImportance, titleCase, looksSensitive, formatEventLocation, extractSection, extractSectionBeforeAny, renderTemplate, trimOutput, summarizeText } from "./lib/format.js";
+import { normalizeMemoryKind, normalizeMemoryProject, normalizeMemoryScope, normalizeList, firstDefinedRef, hasMemoryFilters, normalizeRefToken, normalizeConfidence, applyMemoryAccessFields, normalizeMemoryAccessCount, normalizeMemoryAccessTimestamp, firstDefinedValue, getDaysSinceTimestamp, isMemoryLifecycleVisible, normalizeSupersedeToken, hasExplicitSyncKey, readPositiveInteger, isMemoryHealthExcluded, formatMemoryHealthRepairPlan, sanitizeRawJsonCandidate, getMemoryGrowthTrend, chooseMemoryLayer } from "./lib/memory-normalize.js";
+import { createDispatchRecordMutex, isClaimStale, shouldPersistDispatchReport, isDispatchableRadioMessage, isClosedDispatchSourceState, buildTaskDispatchText, buildWorkflowDispatchText, findRecipeStepTask, normalizeToolName, safeGitPathSegment, isKnownGeminiWarning, stripExistingModelArgs, getDispatchThreadKey, formatDispatchVerifyCommand, getDispatchRunStatus, getDispatchRunVerificationResult, getAsyncCallStateMeta, getDispatchSourceKey, getRelaySourceKey } from "./lib/dispatch.js";
 import {
   normalizeAdversarialVerifier,
   normalizeReviewDimensions,
@@ -212,14 +214,6 @@ function resetDispatchRunState(concurrency, total) {
 
 // Serializes shared JSONL record writes across concurrent dispatch jobs so
 // appendDispatchRunRecord / appendRelayStatus / appendDispatchLog don't interleave.
-function createDispatchRecordMutex() {
-  let chain = Promise.resolve();
-  return (fn) => {
-    const run = chain.then(fn);
-    chain = run.catch(() => {});
-    return run;
-  };
-}
 const dispatchRecordMutex = createDispatchRecordMutex();
 const DEFAULT_DISPATCH_MAX_RETRIES = 3;
 // Oscillation: N consecutive failed attempts with an identical (exitCode, error)
@@ -1735,12 +1729,6 @@ function getClaimTtlMs(config) {
   return Number.isFinite(ttl) && ttl > 0 ? ttl : DEFAULT_CLAIM_TTL_MS;
 }
 
-function isClaimStale(task, nowMs, ttlMs) {
-  if (!task || task.status !== "claimed") return false;
-  const expires = task.claimExpiresAt ? Date.parse(task.claimExpiresAt) : NaN;
-  if (!Number.isFinite(expires)) return false; // legacy claim without TTL -> don't auto-release
-  return nowMs > expires;
-}
 
 function releaseStaleClaim(task, nowIso) {
   return {
@@ -2623,10 +2611,6 @@ function writeDispatchReportIfUseful(memoryDir, job, result, relayState) {
   return relativePath.replace(/\\/g, "/");
 }
 
-function shouldPersistDispatchReport(job, stdout) {
-  const text = `${job?.text || ""}\n${stdout || ""}`;
-  return /调研|研究|报告|分析|review|audit|investigat|research|feasibility|评估/i.test(text);
-}
 
 function updateDispatchSourceState(memoryDir, job, patch) {
   if (!job || !job.refId) {
@@ -2671,17 +2655,7 @@ function updateDispatchSourceState(memoryDir, job, patch) {
   }
 }
 
-function isDispatchableRadioMessage(message) {
-  const type = message.type || "note";
-  if (type === "status" || type === "response") {
-    return false;
-  }
-  return true;
-}
 
-function isClosedDispatchSourceState(state) {
-  return ["completed", "delivered", "done", "cancelled", "blocked"].includes(String(state || "").trim().toLowerCase());
-}
 
 function isDirectDispatchRadioMessage(message, to = "") {
   if (!isDispatchableRadioMessage(message)) {
@@ -2784,21 +2758,7 @@ function buildDispatchJobs(memoryDir, { to, project, limit, force, respectRecipe
     .slice(0, limit);
 }
 
-function buildTaskDispatchText(task) {
-  return [
-    task.title || "",
-    task.description ? `Description: ${task.description}` : "",
-    task.handoff ? `Handoff: ${task.handoff}` : ""
-  ].filter(Boolean).join("\n");
-}
 
-function buildWorkflowDispatchText(workflow) {
-  return [
-    workflow.title || "",
-    workflow.plan ? `Plan: ${workflow.plan}` : "",
-    workflow.acceptance ? `Acceptance: ${workflow.acceptance}` : ""
-  ].filter(Boolean).join("\n");
-}
 
 function areTaskRecipeDependenciesSatisfied(task, allTasks = []) {
   const deps = Array.isArray(task?.recipeStep?.dependsOn) ? task.recipeStep.dependsOn : [];
@@ -2811,15 +2771,6 @@ function areTaskRecipeDependenciesSatisfied(task, allTasks = []) {
   });
 }
 
-function findRecipeStepTask(tasks, task, stepId) {
-  const workflowId = task?.recipeStep?.workflowId || "";
-  const recipeName = task?.recipe?.name || "";
-  return tasks.find((candidate) => (
-    candidate?.recipeStep?.id === stepId &&
-    (!workflowId || candidate?.recipeStep?.workflowId === workflowId) &&
-    (!recipeName || candidate?.recipe?.name === recipeName)
-  )) || null;
-}
 
 function isDispatchSourceComplete(source) {
   const status = String(source?.status || "").toLowerCase();
@@ -2919,9 +2870,6 @@ function getKnownRunnerToolNames() {
   return Object.keys(RUNNER_PROFILES);
 }
 
-function normalizeToolName(tool) {
-  return String(tool || "").trim().toLowerCase();
-}
 
 // runnerResolutionCache 声明已上移至本文件 main() 调用之前，避免 TDZ
 
@@ -3116,14 +3064,6 @@ function buildDispatchWorktreeSlug(job) {
   ].join("-");
 }
 
-function safeGitPathSegment(value, fallback) {
-  const safe = String(value || "")
-    .trim()
-    .replace(/[^a-zA-Z0-9._-]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 48);
-  return safe || fallback;
-}
 
 function resolveRunnerCommand(profile) {
   const candidates = profile.commandCandidates || [profile.command].filter(Boolean);
@@ -3539,9 +3479,6 @@ function normalizeRunnerStderr(tool, stderr) {
   };
 }
 
-function isKnownGeminiWarning(line) {
-  return /skill conflict|conflicting skill|duplicate skill|true color|256-color|ripgrep is not available/i.test(String(line || ""));
-}
 
 function buildRunnerArgs(memoryDir, job, runner, prompt) {
   let args = [...(runner.args || [])];
@@ -3562,21 +3499,6 @@ function buildRunnerArgs(memoryDir, job, runner, prompt) {
   return args;
 }
 
-function stripExistingModelArgs(args) {
-  const out = [];
-  for (let i = 0; i < args.length; i += 1) {
-    const arg = String(args[i]);
-    if (arg === "--model" && i + 1 < args.length && !String(args[i + 1]).startsWith("-")) {
-      i += 1;
-      continue;
-    }
-    if (arg.startsWith("--model=")) {
-      continue;
-    }
-    out.push(args[i]);
-  }
-  return out;
-}
 
 function parseRunnerOutput(memoryDir, job, runner, stdout) {
   if (runner.outputMode !== "claude-json") {
@@ -3623,9 +3545,6 @@ function writeClaudeSessionState(memoryDir, job, sessionId) {
   writeJson(path.join(memoryDir, "state", "claude-sessions.json"), state);
 }
 
-function getDispatchThreadKey(job) {
-  return `${job.tool || "unknown"}:${job.project || "default"}:${job.thread || job.refId || job.id || ""}`;
-}
 
 
 function renderDispatchQualityGate(job) {
@@ -3676,15 +3595,6 @@ function renderDispatchQualityGate(job) {
   return lines;
 }
 
-function formatDispatchVerifyCommand(command) {
-  if (command.command) {
-    return [command.command, ...(command.args || [])].join(" ");
-  }
-  if (command.id && command.source) {
-    return `${command.id} (${command.source})`;
-  }
-  return command.id || command.source || command.description || "verify";
-}
 
 function escapeForWindowsCmd(value) {
   return String(value || "")
@@ -3788,25 +3698,7 @@ function appendDispatchRunRecord(memoryDir, record) {
   appendJsonl(path.join(memoryDir, "state", "dispatch-runs.jsonl"), record);
 }
 
-function getDispatchRunStatus(completed) {
-  if (completed?.error?.code === "ETIMEDOUT") {
-    return "timed_out";
-  }
-  if (completed?.status === 0) {
-    return "completed";
-  }
-  return "failed";
-}
 
-function getDispatchRunVerificationResult(runStatus, exitCode) {
-  if (runStatus === "completed" && exitCode === 0) {
-    return "passed";
-  }
-  if (runStatus === "timed_out") {
-    return "timed_out";
-  }
-  return "failed";
-}
 
 function appendDispatchLog(memoryDir, result) {
   appendJsonl(path.join(memoryDir, "state", "dispatch-log.jsonl"), {
@@ -3955,19 +3847,6 @@ function isValidAsyncCallTransition(fromState, toState) {
   return allowedTransitions.includes(toState);
 }
 
-function getAsyncCallStateMeta(state) {
-  const meta = {
-    "pending": { terminal: false, success: false, retriable: false, label: "Pending" },
-    "dispatched": { terminal: false, success: false, retriable: false, label: "Dispatched" },
-    "acked": { terminal: false, success: false, retriable: false, label: "Acknowledged" },
-    "progress": { terminal: false, success: false, retriable: false, label: "In progress" },
-    "retrying": { terminal: false, success: false, retriable: true, label: "Retrying" },
-    "failed": { terminal: false, success: false, retriable: true, label: "Failed" },
-    "completed": { terminal: true, success: true, retriable: false, label: "Completed" },
-    "abandoned": { terminal: true, success: false, retriable: false, label: "Abandoned" }
-  };
-  return meta[state] || { terminal: false, success: false, retriable: false, label: "Unknown" };
-}
 
 function isRelayRetryDue(entry) {
   if (!entry || entry.state !== ASYNC_CALL_STATES.FAILED || !entry.nextRetryAt) {
@@ -4036,16 +3915,7 @@ function appendRelayStatus(memoryDir, job, patch = {}) {
   });
 }
 
-function getDispatchSourceKey(job) {
-  return `${job.kind || "unknown"}:${job.refId || job.id || ""}`;
-}
 
-function getRelaySourceKey(entry) {
-  if (!entry?.sourceKind || !entry?.sourceId) {
-    return "";
-  }
-  return `${entry.sourceKind}:${entry.sourceId}`;
-}
 
 function appendDispatchResponseMessage(memoryDir, job, result) {
   const origin = findDispatchOrigin(memoryDir, job);
@@ -6876,16 +6746,6 @@ function getInstructionIncludeFiles(memoryDir) {
   return [...files].sort();
 }
 
-function extractInstructionIncludes(text) {
-  const includes = [];
-  for (const line of String(text || "").split(/\r?\n/)) {
-    const match = line.match(/^\s*@([A-Za-z0-9_.-][A-Za-z0-9_.\\/-]*)\s*$/);
-    if (match) {
-      includes.push(`@${match[1]}`);
-    }
-  }
-  return [...new Set(includes)];
-}
 
 function renderDashboard() {
   const indexPath = path.join(getDashboardStaticRoot(), "index.html");
@@ -7885,10 +7745,6 @@ function createNotification({ severity, title, message, actionUrl, channels, fro
   };
 }
 
-function normalizeSeverity(severity) {
-  const clean = String(severity || "info").toLowerCase();
-  return ["info", "warning", "error", "critical", "need_input"].includes(clean) ? clean : "info";
-}
 
 function writeNotification(memoryDir, notification) {
   const file = path.join(memoryDir, "notifications", "notifications.jsonl");
@@ -8848,32 +8704,9 @@ function normalizeMemoryMetadata(metadata = {}, fallback = {}) {
   return normalized;
 }
 
-function normalizeMemoryKind(kind) {
-  const clean = String(kind || "note").trim().toLowerCase().replace(/[^a-z0-9_.-]+/g, "-");
-  return clean || "note";
-}
 
-function normalizeMemoryProject(project) {
-  return String(project || "").trim().toLowerCase().replace(/\s+/g, "-");
-}
 
-function normalizeMemoryScope(scope) {
-  const clean = String(scope || "").trim().toLowerCase().replace(/\s+/g, "-");
-  return clean;
-}
 
-function normalizeList(value) {
-  if (Array.isArray(value)) {
-    return [...new Set(value.flatMap((item) => normalizeList(item)))];
-  }
-  if (value === undefined || value === null || value === "") {
-    return [];
-  }
-  return [...new Set(String(value)
-    .split(/[,\n;]/)
-    .map((item) => item.trim().toLowerCase().replace(/\s+/g, "-"))
-    .filter(Boolean))];
-}
 
 function parseListOption(value) {
   return normalizeList(value);
@@ -8903,17 +8736,6 @@ function normalizeMemoryRefs(refs = {}, fallback = {}) {
 }
 
 
-function firstDefinedRef(source, fallback, keys) {
-  for (const key of keys) {
-    if (source[key] !== undefined && source[key] !== null && source[key] !== "") {
-      return source[key];
-    }
-    if (fallback[key] !== undefined && fallback[key] !== null && fallback[key] !== "") {
-      return fallback[key];
-    }
-  }
-  return "";
-}
 
 function normalizeRefValues(value) {
   if (Array.isArray(value)) {
@@ -8967,16 +8789,6 @@ function parseMemoryTagFilters(argv) {
   ]);
 }
 
-function hasMemoryFilters(filters = {}) {
-  return Boolean(
-    filters.project ||
-    (filters.tags && filters.tags.length > 0) ||
-    filters.thread ||
-    filters.taskId ||
-    filters.workflowId ||
-    filters.radioId
-  );
-}
 
 function formatMemoryFilterSummary(filters = {}) {
   const parts = [];
@@ -9036,23 +8848,7 @@ function matchesMemoryRef(memory, key, query) {
   });
 }
 
-function normalizeRefToken(value) {
-  return String(value || "").trim().toLowerCase();
-}
 
-function normalizeConfidence(value) {
-  if (value === undefined || value === null || value === "") {
-    return 1;
-  }
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) {
-    return 1;
-  }
-  if (numeric > 1) {
-    return Math.max(0, Math.min(1, numeric / 100));
-  }
-  return Math.max(0, Math.min(1, numeric));
-}
 
 function recordMemoryAccess(ledger, results, accessedAt = new Date().toISOString()) {
   const resultKeys = new Set(results.flatMap((result) => getMemoryIdentityKeys(result)));
@@ -9149,41 +8945,9 @@ function mergeMemoryAccessMetadata(metadata = {}, access = {}, derived = {}) {
   };
 }
 
-function applyMemoryAccessFields(record, access = {}) {
-  if (!access.hasAccessTelemetry) {
-    return record;
-  }
-  return {
-    ...record,
-    accessCount: access.accessCount,
-    ...(access.firstAccessedAt ? { firstAccessedAt: access.firstAccessedAt } : {}),
-    lastAccessedAt: access.lastAccessedAt || ""
-  };
-}
 
-function normalizeMemoryAccessCount(value) {
-  const count = Number(value || 0);
-  if (!Number.isFinite(count) || count < 0) {
-    return 0;
-  }
-  return Math.floor(count);
-}
 
-function normalizeMemoryAccessTimestamp(value) {
-  const raw = String(value || "").trim();
-  if (!raw) {
-    return "";
-  }
-  const timestamp = Date.parse(raw);
-  if (!Number.isFinite(timestamp)) {
-    return "";
-  }
-  return new Date(timestamp).toISOString();
-}
 
-function firstDefinedValue(...values) {
-  return values.find((value) => value !== undefined && value !== null && value !== "");
-}
 
 function scoreMemoryAccessHeat(access = {}) {
   const count = normalizeMemoryAccessCount(access.accessCount);
@@ -9210,13 +8974,6 @@ function scoreStaleMemoryAccessPenalty(access = {}) {
   );
 }
 
-function getDaysSinceTimestamp(value) {
-  const time = Date.parse(value || "");
-  if (!Number.isFinite(time)) {
-    return 0;
-  }
-  return Math.max(0, (Date.now() - time) / 86400000);
-}
 
 function rebuildMemoryOutputs(config, ledger) {
   const index = buildMemoryIndex(ledger, config);
@@ -9298,12 +9055,6 @@ function applyMemoryLifecycleOperations(records, operations, getIdentityKeys) {
   });
 }
 
-function isMemoryLifecycleVisible(record) {
-  const lifecycle = record.lifecycle || record.metadata?.lifecycle || {};
-  if (["archived", "superseded", "revoked", "stale"].includes(lifecycle.state)) return false;
-  const expiresAt = record.metadata?.expiresAt || lifecycle.expiresAt;
-  return !expiresAt || !Number.isFinite(Date.parse(expiresAt)) || new Date(expiresAt) >= new Date();
-}
 
 function enrichMemory(memory, ordinal, total) {
   const metadata = normalizeMemoryMetadata(memory.metadata || {}, memory);
@@ -9461,9 +9212,6 @@ function normalizeSupersedeRefs(value) {
     .filter(Boolean);
 }
 
-function normalizeSupersedeToken(value) {
-  return String(value || "").trim().toLowerCase();
-}
 
 function renderMemorySnapshot(index, config, options = {}) {
   const snapshotLimits = resolveSnapshotLimits(config);
@@ -9619,21 +9367,7 @@ function resolveSnapshotLimits(config = {}) {
   };
 }
 
-function hasExplicitSyncKey(config, key) {
-  const explicitKeys = config.sync?._explicitKeys;
-  if (explicitKeys instanceof Set) {
-    return explicitKeys.has(key);
-  }
-  return Boolean(config.sync && Object.hasOwn(config.sync, key));
-}
 
-function readPositiveInteger(value, fallback) {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric) || numeric <= 0) {
-    return fallback;
-  }
-  return Math.floor(numeric);
-}
 
 function renderIndexMarkdown(index) {
   const lines = [
@@ -9903,20 +9637,6 @@ function analyzeMemoryHealth(config, index, options = {}) {
 }
 
 
-function isMemoryHealthExcluded(record) {
-  const lifecycle = record.metadata?.lifecycle || {};
-  const repair = lifecycle.healthRepair || record.metadata?.healthRepair || {};
-  return Boolean(
-    record.superseded ||
-    record.metadata?.superseded ||
-    record.healthExcluded ||
-    record.metadata?.healthExcluded ||
-    lifecycle.healthExcluded ||
-    repair.healthExcluded ||
-    repair.status === "archived-corrupted" ||
-    repair.status === "superseded-duplicate"
-  );
-}
 
 function runMemoryHealthRepair(config, { apply = false, issueLimit = 10 } = {}) {
   const beforeDiagnostic = dashboardHealth.buildMemoryHealthDiagnostic(config, { issueLimit });
@@ -9994,22 +9714,6 @@ function buildMemoryHealthRepairPlan(analysis) {
   };
 }
 
-function formatMemoryHealthRepairPlan(plan) {
-  return {
-    totalActions: plan.totalActions,
-    corruptedRecords: plan.corrupted.length,
-    recoverableCorruptedRecords: plan.corrupted.filter((item) => item.recoverable).length,
-    duplicateGroups: plan.duplicateGroups.length,
-    duplicateRecordsToSupersede: plan.duplicateGroups.reduce((sum, group) => sum + group.losers.length, 0),
-    corrupted: plan.corrupted.slice(0, 20),
-    duplicates: plan.duplicateGroups.slice(0, 20).map((group) => ({
-      keeperId: group.keeperId,
-      keeperKey: group.keeperKey,
-      example: group.example,
-      losers: group.losers
-    }))
-  };
-}
 
 function summarizeHealthAnalysisForRepair(analysis) {
   return {
@@ -10178,12 +9882,6 @@ function recoverMemoryEventFromRawText(rawText) {
   return event.text ? event : null;
 }
 
-function sanitizeRawJsonCandidate(value) {
-  return String(value || "")
-    .replace(/\u0000/g, "")
-    .replace(/[\u0001-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "")
-    .trim();
-}
 
 function parseJsonObjectCandidate(text) {
   if (!text.startsWith("{") || !text.endsWith("}")) {
@@ -10288,20 +9986,6 @@ function isCorruptedMemoryRecord(record) {
     containsCorruptionMarker(text);
 }
 
-function getMemoryGrowthTrend(records, limit = 14) {
-  const counts = new Map();
-  for (const record of records) {
-    const date = String(record.ts || record.indexedAt || "").slice(0, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      continue;
-    }
-    counts.set(date, (counts.get(date) || 0) + 1);
-  }
-  return [...counts.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .slice(-limit)
-    .map(([date, count]) => ({ date, count }));
-}
 
 function getMemoryStorageSummary(memoryDir) {
   const items = [
@@ -10330,10 +10014,6 @@ function getMemoryStorageSummary(memoryDir) {
 
 
 
-function formatTopCounts(items = [], limit = 8) {
-  const selected = items.slice(0, limit);
-  return selected.length ? selected.map((item) => `${item.key}(${item.count})`).join(", ") : "none";
-}
 
 function formatMemoryRecordPointer(record) {
   const source = sanitizeInlineText(record.source || "unknown") || "unknown";
@@ -10342,20 +10022,7 @@ function formatMemoryRecordPointer(record) {
   return id ? `${source}/${kind} ${id}:` : `${source}/${kind}:`;
 }
 
-function formatPercent(value) {
-  return `${(Number(value || 0) * 100).toFixed(1)}%`;
-}
 
-function formatBytes(bytes) {
-  const units = ["B", "KB", "MB", "GB"];
-  let value = Number(bytes || 0);
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit++;
-  }
-  return unit === 0 ? `${value} ${units[unit]}` : `${value.toFixed(1)} ${units[unit]}`;
-}
 
 function truncateText(text, limit) {
   const clean = sanitizeInlineText(text);
@@ -10380,12 +10047,6 @@ function containsCorruptionMarker(value) {
   return CORRUPTION_MARKER_PATTERN.test(String(value || ""));
 }
 
-function sanitizeDisplayText(value) {
-  return String(value || "")
-    .replace(/\u0000/g, "\\0")
-    .replace(/\ufffd/g, "?")
-    .replace(/[\u0001-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, " ");
-}
 
 function sanitizeInlineText(value) {
   return sanitizeDisplayText(value).replace(/\s+/g, " ").trim();
@@ -10465,15 +10126,6 @@ function searchMemories(records, query) {
     .sort((a, b) => b.score - a.score);
 }
 
-function chooseMemoryLayer(kind, importance) {
-  if (["preference", "workflow", "correction"].includes(kind) || importance >= 70) {
-    return "core";
-  }
-  if (["project", "lesson", "reference"].includes(kind) || importance >= 45) {
-    return "working";
-  }
-  return "archive";
-}
 
 function scoreImportance(memory, topics, ordinal, total, access = {}) {
   const text = String(memory.text || "");
@@ -10516,22 +10168,7 @@ function isOperationalRadioMemory(memory, text) {
   return /status|progress|dispatch|completed|done|pass|failed|review|heartbeat|状态|进度|完成|已完成|通过|失败|审核/i.test(String(text || ""));
 }
 
-function getMemoryAgeDays(memory) {
-  const time = Date.parse(memory.ts || memory.indexedAt || "");
-  if (!Number.isFinite(time)) {
-    return 0;
-  }
-  return Math.max(0, (Date.now() - time) / 86400000);
-}
 
-function inferScope(kind, topics, project = "") {
-  if (kind === "preference") return "user";
-  if (kind === "workflow" || kind === "correction" || kind === "lesson") return "workflow";
-  if (project) return "project";
-  if (topics.includes("ai-memory-hub")) return "memory-hub";
-  if (topics.includes("game") || topics.includes("wechat-mini-game")) return "project";
-  return "general";
-}
 
 function inferTopics(memory) {
   const tags = normalizeList(memory.tags?.length ? memory.tags : memory.metadata?.tags);
@@ -10571,13 +10208,6 @@ function extractSearchTerms(text) {
   ])];
 }
 
-function normalizeSearchText(text) {
-  return String(text || "")
-    .toLowerCase()
-    .normalize("NFKC")
-    .replace(/[\u3000\s]+/g, " ")
-    .trim();
-}
 
 function extractCompactVariants(text) {
   const normalized = normalizeSearchText(text);
@@ -10587,23 +10217,8 @@ function extractCompactVariants(text) {
 }
 
 
-function countBy(values) {
-  const counts = new Map();
-  for (const value of values.filter(Boolean)) {
-    counts.set(value, (counts.get(value) || 0) + 1);
-  }
-  return [...counts.entries()]
-    .map(([key, count]) => ({ key, count }))
-    .sort((a, b) => b.count - a.count || a.key.localeCompare(b.key));
-}
 
-function sortByImportance(a, b) {
-  return Number(b.importance || 0) - Number(a.importance || 0) || String(b.ts || "").localeCompare(String(a.ts || ""));
-}
 
-function titleCase(value) {
-  return String(value || "").replace(/\b\w/g, (char) => char.toUpperCase());
-}
 
 function archiveInbox(memoryDir, events) {
   if (events.length === 0) {
@@ -11959,17 +11574,6 @@ function sleep(ms) {
   }
 }
 
-function looksSensitive(text) {
-  // 1. Bare keys like sk- openai tokens (at least 16 chars)
-  if (/sk-[A-Za-z0-9_-]{16,}/i.test(text)) {
-    return true;
-  }
-  // 2. Generic secret assignments (e.g. token: "xxx" or password = "yyy")
-  if (/\b(api[_-]?key|password|secret|token)\b\s*[:=]\s*["']?[A-Za-z0-9_\-./+=]{8,}/i.test(text)) {
-    return true;
-  }
-  return false;
-}
 
 function normalizeMemoryEvent(event) {
   const text = event.text ?? event.content ?? event.memory ?? "";
@@ -12016,9 +11620,6 @@ function readEventsWithLocations(file) {
 }
 
 
-function formatEventLocation(entry) {
-  return `${entry.file}:${entry.lineNumber}`;
-}
 
 
 function createRadioMessage({ from, to, type, text, thread, replyTo, project }) {
@@ -12226,32 +11827,7 @@ function appendIfMissing(file, snippet, marker) {
   writeFileAtomic(file, `${prefix}${snippet.trim()}\n`, "utf8");
 }
 
-function extractSection(text, heading, nextHeading = "") {
-  const index = text.indexOf(heading);
-  if (index === -1) {
-    return "";
-  }
-  if (!nextHeading) {
-    return text.slice(index);
-  }
-  const nextIndex = text.indexOf(nextHeading, index + heading.length);
-  return nextIndex === -1 ? text.slice(index) : text.slice(index, nextIndex);
-}
 
-function extractSectionBeforeAny(text, heading, nextHeadings = []) {
-  const index = text.indexOf(heading);
-  if (index === -1) {
-    return "";
-  }
-  let nextIndex = text.length;
-  for (const nextHeading of nextHeadings) {
-    const found = text.indexOf(nextHeading, index + heading.length);
-    if (found !== -1 && found < nextIndex) {
-      nextIndex = found;
-    }
-  }
-  return text.slice(index, nextIndex);
-}
 
 function readTemplate(name) {
   return fs.readFileSync(path.join(projectRoot(), "templates", name), "utf8");
@@ -12273,9 +11849,6 @@ function buildInstallTemplateValues(tool, memoryDir) {
   };
 }
 
-function renderTemplate(template, values) {
-  return template.replace(/\{\{([A-Z0-9_]+)\}\}/g, (_, key) => values[key] || "");
-}
 
 function countBackupDirs(memoryDir) {
   const dir = path.join(memoryDir, "backups");
@@ -12385,22 +11958,7 @@ function shellQuote(value) {
   return `'${String(value || "").replace(/'/g, "'\\''")}'`;
 }
 
-function trimOutput(value, limit = 4000) {
-  const text = String(value || "").trim();
-  if (text.length <= limit) {
-    return text;
-  }
-  return `${text.slice(0, limit)}\n...[truncated]`;
-}
 
-function summarizeText(value, limit = 80) {
-  const text = String(value || "").replace(/\s+/g, " ").trim();
-  if (text.length <= limit) {
-    return text;
-  }
-  const safeLimit = Math.max(0, Number(limit) || 0);
-  return `${text.slice(0, Math.max(0, safeLimit - 3)).trimEnd()}...`;
-}
 
 // Export policy functions for dashboard integration (Phase 2).
 if (typeof module !== "undefined" && module.exports) {

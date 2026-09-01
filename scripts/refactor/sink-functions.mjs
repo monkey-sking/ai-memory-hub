@@ -109,7 +109,7 @@ for (const f of [...found].reverse()) {
   lines.splice(f.start, f.end - f.start + 1);
 }
 
-// 在最后一条 import 之后插入引用
+const modSpec = `"./${targetFile}"`;
 let lastImport = -1;
 for (let i = 0; i < lines.length; i++) {
   if (/^import\s+.*from\s+["']/.test(lines[i])) lastImport = i;
@@ -119,8 +119,20 @@ if (lastImport < 0) {
   fs.writeFileSync(indexPath, src);
   process.exit(1);
 }
-const importLine = `import { ${found.map((f) => f.name).join(", ")} } from "./${targetFile}";`;
-lines.splice(lastImport + 1, 0, importLine);
+
+// 已有同模块的 import 就合并进去，避免重复 import 行（多次下沉会堆叠）。
+const existingIdx = lines.findIndex(
+  (l) => /^import\s+\{/.test(l) && l.includes(`from ${modSpec}`)
+);
+if (existingIdx >= 0) {
+  const inner = lines[existingIdx].match(/^import\s+\{([^}]*)\}/)[1];
+  const names = new Set(inner.split(",").map((s) => s.trim()).filter(Boolean));
+  for (const f of found) names.add(f.name);
+  lines[existingIdx] = `import { ${[...names].join(", ")} } from ${modSpec};`;
+} else {
+  const importLine = `import { ${found.map((f) => f.name).join(", ")} } from ${modSpec};`;
+  lines.splice(lastImport + 1, 0, importLine);
+}
 fs.writeFileSync(indexPath, lines.join("\n"));
 
 console.log(`已下沉 ${found.length} 个函数到 src/${targetFile}:`);

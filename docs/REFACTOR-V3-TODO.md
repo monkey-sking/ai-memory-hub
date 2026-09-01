@@ -4,24 +4,26 @@
 > 横切依赖走 deps 注入，共享常量下沉 `src/lib/constants.js`。
 > 本文档是唯一进度落点，任何 runner（codex / claude / gemini / antigravity / opencode / mimocode）接手前先读这里。
 
-## 当前进度（2026-09-01 实测，HEAD=`b35964e`）
+## 当前进度（2026-09-02 实测，HEAD=`db7cb8c`）
 
 | 指标 | 数值 |
 |---|---|
 | index.js 起始行数 | 14,778 |
-| 当前行数 | **12,412**（已减 2,366 行） |
+| 当前行数 | **11,518**（已减 3,260 行） |
 | 已迁出命令族群 | 25 个 |
 | src/commands 模块数 | 35 个（共 5,675 行） |
-| src/lib/util.js | 15 个下沉函数（P0-2 两批） |
-| index.js 残留 | 37 个 `*Command` 函数、556 个顶层 function |
-| 已推送提交 | 到 `b35964e`（工作区干净） |
+| src/lib 模块数 | 18 个（共 2,637 行） |
+| index.js 残留 | 31 个 `*Command` 函数、417 个顶层 function |
+| 已推送提交 | 到 `db7cb8c`（工作区干净） |
 
 > 上一版写的「~11,600 行 / 已减约 3,200 行」与实测不符，已按 `wc -l` 校准。
-> 按 P0-2 的目标（降到 ~3,000 行）算，整体完成度约 **20%**——
+> 按 P0-2 的目标（降到 ~3,000 行）算，整体完成度约 **28%**——
 > 已迁的 25 个族群多是好摘的果子，真正的大头（appCommand 986 行 + 非叶子共享函数 ~7,000 行）还没动。
 >
 > 好消息：经 AST 扫描，index.js 现有 **201 个叶子函数约 1,989 行**不依赖内部符号，
 > 可半自动化下沉（既不用动 deps 注入，也不会牵连 appCommand）。
+> 注：第三、四批已吃掉其中 79 个，这个数字**未复扫更新**，接手前请重跑
+> `find-leaf-functions.mjs` 拿当前值。
 
 ## 已完成的批次（git log 对照）
 
@@ -38,6 +40,12 @@
 | `0a0e43b` | 工具：deps 注入检查器入库 + 校准本文档进度数字 | ✅ 已推送 |
 | `704ff54` | P0-2 第一批：下沉 8 个叶子函数到 `src/lib/util.js`（减 237 行） | ✅ 已推送 |
 | `b35964e` | P0-2 第二批：下沉 7 个叶子函数（减 124 行），累计 15 个 | ✅ 已推送 |
+| `bca4189` | P0-2 第三批：下沉 60 个叶子函数（减 441 行） | ✅ 已推送 |
+| `8ad6104` | fix：恢复 v3.0 误删的 3 个 dispatch job 构造器 + 修复 context pack 记忆检索 | ✅ 已推送 |
+| `8194787` | P0-2 第四批：按主题拆出 7 个 lib 模块（净减 451 行） | ✅ 已推送 |
+| `47887de` | fix：共享记忆目录不可写时给可操作错误（EACCES） | ✅ 已推送 |
+| `c795bd0` | 工具：check-undefined.mjs 入库 | ✅ 已推送 |
+| `db7cb8c` | docs：清理 runbook 里的真实绝对路径（pre-push 门禁会拦） | ✅ 已推送 |
 
 ## 后续任务（按优先级）
 
@@ -53,10 +61,15 @@
 ### P0-2：剩余共享函数下沉（进行中）
 
 - **现状**：index.js 剩余主体是共享工具函数（format、validate、fs 助手等），不属于任何命令族群。
-  AST 扫描结果：556 个顶层 function 中 **201 个是叶子函数（约 1,989 行）**，不依赖 index.js 内部任何符号。
-- **已下沉**：15 个 / 361 行到 `src/lib/util.js`（`704ff54` 8 个 + `b35964e` 7 个）
-- **剩余**：约 186 个叶子函数（~1,630 行）可继续半自动下沉；
-  非叶子函数（依赖其他内部符号的，如 `analyzeMemoryHealth`、`syncIndexedEvents`）需先拆分依赖或走 deps 注入
+- **已下沉**：79 个函数（第三批 60 个 `bca4189` + 第四批 12 个进 util.js、67 个进 7 个新 lib 模块 `8194787`，
+  加上前两批 15 个，累计 94 个）
+- **剩余**：待复扫。原 AST 扫描为 201 个叶子函数（约 1,989 行），已完成约 94 个，
+  剩下的需重跑 `find-leaf-functions.mjs` 拿准确清单，别照抄本文档的旧数字。
+  非叶子函数（依赖其他内部符号的，如 `analyzeMemoryHealth`、`syncIndexedEvents`、`appCommand`）
+  需先拆分依赖或走 deps 注入
+- **分组原则**（第四批起的约定）：**按主题建模块，别再往 util.js 里堆**。
+  util.js 已经在变成新的杂物抽屉，新函数优先归到 http / shell / backup / resolve /
+  task-spec / entity-index / registry-paths 等主题模块，没有合适主题才进 util.js。
 - **做法**：
   1. 用 AST 找叶子函数（见下方「叶子函数分析」），**不要用正则**
   2. 每批 5-10 个，跑验证四件套后提交（见「接手工作流」）
@@ -85,11 +98,13 @@
 - **背景**：本次仓库事故（refs 目录消失 + pack 丢失）疑似与 git stash 中断有关。后续大改建议用 worktree 隔离，避免单仓库操作风险
 - **待办**：用户确定目录后落地；方案落地前保持「完整冒烟 → commit → pull --rebase → push」节奏
 
-### P2-1：~~check_undefined 剩余 26 处告警 triage~~ → 已换工具
+### P2-1：~~check_undefined 剩余 26 处告警 triage~~ → 已闭环
+
 - 原 `check_undefined.mjs` 位于 `.workbuddy/refactor-tools/`，而 `.workbuddy/` 被 `.gitignore`
-  第 53-54 行排除，**该脚本从未入库**。任何新接手的 runner 都跑不到它（2026-09-01 实测确认）。
-- 已用 `scripts/refactor/check-deps.mjs` 替代（已入库），见下方「验证工具」。
-- 那 26 处告警如果仍要认真 triage，需要原作者把脚本从 `.workbuddy/` 捞出来入库。
+  第 53-54 行排除，**该脚本从未入库**，任何新接手的 runner 都跑不到它（2026-09-01 实测确认）。
+- 现已按同样思路重写并入库：`scripts/refactor/check-undefined.mjs`（`c795bd0`）。
+- 首次运行即扫出 4 个真实死引用（3 个 v3.0 误删的 dispatch job 构造器 + 1 个从未存在的
+  `parseIndexFile`），全部修复于 `8ad6104`。那 26 处告警的 triage 到此闭环，不必再捞旧脚本。
 
 ### P2-2：抽取脚本 extract_group.mjs 已知问题
 - 属性键误判已修（`(?![\\w$(:])`），如再遇误判按同样思路补排除
@@ -128,6 +143,39 @@ NODE_PATH=... node scripts/refactor/sink-functions.mjs <函数名...> --to lib/o
 - 只自动补 node 内置 import（fs / path / os / crypto）；依赖项目内模块的函数需手工补 import
 - 找不到 import 语句时原样回滚 index.js，不留半成品
 
+### check-undefined.mjs — 未声明引用扫描（下沉漏 import 的兜底）
+
+```bash
+# 需要 acorn，同 sink-functions.mjs
+NODE_PATH=<path-to-acorn>/node_modules node scripts/refactor/check-undefined.mjs          # 扫 src/index.js
+NODE_PATH=<path-to-acorn>/node_modules node scripts/refactor/check-undefined.mjs --all     # 扫 src/ 下所有 .js
+```
+
+**为什么必须有它**：`node --check` 只查语法、不查名字解析。把函数沉到 `src/lib/*.js`
+之后忘了把名字加回 import，语法完全合法，只有跑到那一行才 ReferenceError。
+index.js 一万多行、几百个函数，冒烟测试覆盖不全。
+
+判定策略：只报「整份文件里没有任何同名声明」的标识符 —— 牺牲作用域精度换零误报，
+适合当门禁（当前 `src/` 全量扫描结果为 0）。
+
+实现上踩过的三个坑（照抄时注意）：
+
+1. **`acorn-walk` 的 `walk.full` 是后序遍历**，收集声明会晚一步，必须自己写前序。
+2. **形参是声明不是引用**。漏掉这一条，误报从 7 个直接飙到 140 个。
+3. `import.meta` / `new.target`（`MetaProperty`）整体不是引用，要连子节点一起跳过。
+
+## 死引用陷阱（比 deps 注入更隐蔽）
+
+`8ad6104` 修的两个问题都不是本次下沉引入的，但都只有这个工具能扫出来：
+
+- **重构误删**：v3.0 迁出 dispatch 族群（`d6d0edb`）时删了 `dispatchJobFromTask` /
+  `dispatchJobFromWorkflow` / `dispatchJobFromRelayEntry`，但 index.js 里 4 处仍在调用。
+- **从未存在**：`searchMemoriesForContext` 调用的 `parseIndexFile` 在代码库里从未定义过
+  （`a657fc9` 引入的疏漏）。更要命的是整段包在 `try/catch` 里，所以**静默降级**：
+  context pack 的 `relevantMemories` 永远是空数组，不报任何错。
+
+**教训**：`try/catch` + 空返回会把死引用变成静默功能缺失，比崩溃更难发现。
+
 ## deps 注入陷阱（血泪）
 
 抽取时**只搬函数体不搬依赖**是本次重构最容易犯的错，且只在跑到那条命令时才炸：
@@ -159,6 +207,7 @@ node .workbuddy/refactor-tools/extract_group.mjs "xxx:src/commands/xxx.js"
 # 4. 四件套验证（缺一不可）
 node --check src/index.js && node --check src/commands/xxx.js   # 语法
 node scripts/refactor/check-deps.mjs                           # deps 注入完整性
+NODE_PATH=... node scripts/refactor/check-undefined.mjs --all   # 未声明引用（下沉后必跑）
 node src/index.js <该族群的命令>                                # 运行时
 # HTTP 冒烟（动了 appCommand / 任何 dashboard 相关代码时必做）
 node src/index.js app --port 38790 &
@@ -175,6 +224,11 @@ git add <显式路径> && git commit -m "refactor(commands): ..." && git push or
 共享记忆目录可写性守卫）。**只 `git add` 自己的文件**，别用 `-a`，别顺手 checkout 别人的改动。
 
 **铁律**：
+- push 前先跑 `npm run check:public`（pre-push 钩子会自动跑，但提前跑省一次往返）。
+  门禁拦 `/Users`、`/Volumes`、`/private` 开头的绝对路径、私钥、GitHub token 等 ——
+  **文档里写本机路径一律用占位符**（如 `<博客源码目录>`，正则允许 `<` 紧跟其后）。
+  `db7cb8c` 就是因为 `docs/blog-publishing-runbook.md` 里的真实路径把**所有人**的 push 全拦了：
+  门禁扫的是工作区全量 tracked 文件，不是本次 diff，别人的文件也会拦住你。
 - 删除文件用 `mv <文件> .workbuddy/trash/`，**严禁 `rm`**（rm 触发沙箱授权弹窗，mv 不触发）
 - 提交信息沿用 `refactor(commands): 迁出 X 族群，index.js 减 N 行` 风格
 - 每次 push 前确认 `git status` 无意外文件（伪文件、.bak 不入库）

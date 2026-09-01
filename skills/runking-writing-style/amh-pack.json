@@ -1,0 +1,17 @@
+{
+  "id": "runking-writing-style",
+  "version": "1.0.0",
+  "name": "Runking 真人写作风格（非 AI 语料）",
+  "description": "为 runking 的博客代写或生成文章时加载，模仿他本人非 AI 主题文章的真实语气：开门见山、断言式、系统/分层思维、极简箴言体；规避通用 AI 套话。语料来自博客内 92 篇非 AI 文章，重点以 thoughts/ 下的随笔、哲学、思维碎片为准。",
+  "type": "style-pack",
+  "source": "agent",
+  "entry": {
+    "skills": "skills"
+  },
+  "skills": [
+    {
+      "id": "runking-writing-style",
+      "path": "skills/runking-writing-style"
+    }
+  ]
+}

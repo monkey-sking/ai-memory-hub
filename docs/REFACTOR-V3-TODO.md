@@ -4,15 +4,20 @@
 > 横切依赖走 deps 注入，共享常量下沉 `src/lib/constants.js`。
 > 本文档是唯一进度落点，任何 runner（codex / claude / gemini / antigravity / opencode / mimocode）接手前先读这里。
 
-## 当前进度（2026-08-31）
+## 当前进度（2026-09-01 实测，HEAD=`2cb2a80`）
 
 | 指标 | 数值 |
 |---|---|
 | index.js 起始行数 | 14,778 |
-| 当前行数 | ~11,600（已减约 3,200 行） |
+| 当前行数 | **12,772**（已减 2,006 行） |
 | 已迁出命令族群 | 25 个 |
-| 已迁出命令函数 | ~60 个 |
-| 已推送提交 | 到 `eac0e9d`（工作区干净） |
+| src/commands 模块数 | 35 个（共 5,675 行） |
+| index.js 残留 | 37 个 `*Command` 函数、558 个顶层 function |
+| 已推送提交 | 到 `2cb2a80`（工作区干净） |
+
+> 上一版写的「~11,600 行 / 已减约 3,200 行」与实测不符，已按 `wc -l` 校准。
+> 按 P0-2 的目标（降到 ~3,000 行）算，整体完成度约 **17%**——
+> 已迁的 25 个族群多是好摘的果子，真正的大头（appCommand 987 行 + 共享函数 ~9,000 行）一行未动。
 
 ## 已完成的批次（git log 对照）
 
@@ -25,6 +30,7 @@
 | `23de095` | policy / rpc / declare / context / worktree / team 六族群（减 495 行） | ✅ 已推送 |
 | `5f3ac42` | help / resolve / record / backup / merge / role / ssh 七族群（减 423 行）+ 5 处缺陷 + merge 预存 bug | ✅ 已推送 |
 | `eac0e9d` | models 族群（减 34 行）+ 抽取脚本属性键误判修复 | ✅ 已推送 |
+| `2cb2a80` | fix：`memory search` 漏传 deps（命令完全不可用，见下方「deps 注入陷阱」） | ✅ 已推送 |
 
 ## 后续任务（按优先级）
 
@@ -49,14 +55,49 @@
 - **背景**：本次仓库事故（refs 目录消失 + pack 丢失）疑似与 git stash 中断有关。后续大改建议用 worktree 隔离，避免单仓库操作风险
 - **待办**：用户确定目录后落地；方案落地前保持「完整冒烟 → commit → pull --rebase → push」节奏
 
-### P2-1：check_undefined 剩余 26 处告警 triage
-- **现状**：`node .workbuddy/refactor-tools/check_undefined.mjs` 剩余 26 处告警，全在早前已提交批次模块（agent/daemon/events 等）
-- **性质**：多为参数名/字符串字面量误报，但需逐个人工甄别确认无真 bug
-- **做法**：对照告警行看上下文，真 bug 修掉，误报在检查器里加白名单
+### P2-1：~~check_undefined 剩余 26 处告警 triage~~ → 已换工具
+- 原 `check_undefined.mjs` 位于 `.workbuddy/refactor-tools/`，而 `.workbuddy/` 被 `.gitignore`
+  第 53-54 行排除，**该脚本从未入库**。任何新接手的 runner 都跑不到它（2026-09-01 实测确认）。
+- 已用 `scripts/refactor/check-deps.mjs` 替代（已入库），见下方「验证工具」。
+- 那 26 处告警如果仍要认真 triage，需要原作者把脚本从 `.workbuddy/` 捞出来入库。
 
 ### P2-2：抽取脚本 extract_group.mjs 已知问题
 - 属性键误判已修（`(?![\\w$(:])`），如再遇误判按同样思路补排除
 - 传参格式：`node .workbuddy/refactor-tools/extract_group.mjs "<前缀>:<输出文件>"`，前缀为命令名前缀（如 `models:src/commands/models.js`）
+- ⚠️ 同样没入库（`.workbuddy/` 被 gitignore）。要继续用，**先移出 `.workbuddy/` 再提交**。
+
+## 验证工具
+
+```bash
+node scripts/refactor/check-deps.mjs    # deps 注入完整性，有问题的退出码为 1
+```
+
+静态检查三类问题（`src/commands/*.js` 相对 `index.js` 的注入契约）：
+
+| 类别 | 含义 |
+|---|---|
+| `missing` | 模块用到的 `deps.X` 不在 index.js 对应的 `*CommandDeps` 对象里 |
+| `call-missing-deps` | 跨模块调用命令函数时压根没传第二个 deps 参数 |
+| `call-insufficient` | 传了 deps，但被调方需要的字段没给全 |
+
+按调用图求**传递闭包**：dispatcher 自己不用 `deps.xxx`、只把 deps 转给子函数的情况也能覆盖。
+已用两个注入 bug 做过反向验证（漏传第二参数、内联对象少一个字段），均能精确定位到行。
+
+## deps 注入陷阱（血泪）
+
+抽取时**只搬函数体不搬依赖**是本次重构最容易犯的错，且只在跑到那条命令时才炸：
+
+- 典型症状：`Cannot read properties of undefined (reading 'loadConfig')`
+- 典型案例：`memoryCommand` 的 search 分支写成 `deps.searchCommand(rest)`，
+  漏了第二个参数，而 `searchCommand(argv, deps)` 需要它 → `amh memory search` 完全不可用（`2cb2a80` 修复）
+- 预防：抽完一个族群立刻跑 `check-deps.mjs`，不要等到测试
+
+## 装配方式备忘
+
+- 大部分族群：index.js `import { xCommand } from "./commands/x.js"` + `const xCommandDeps = { ... }`
+- `workflow-node.js` 是**例外**：index.js 里零引用，由 `workflow.js:40` 用内联对象
+  `{ loadConfig, ensureHub }` 装配。别误判成死模块。
+- `snapshotCommand` 仍未迁出，签名是单参数 `snapshotCommand(argv)`，调用时不要多加 deps。
 
 ## 接手工作流（给任何 runner 的说明书）
 
@@ -66,12 +107,14 @@
 git pull --rebase origin main
 
 # 3. 抽取新族群（如适用）
+#    注意：extract_group.mjs 没入库（.workbuddy/ 被 gitignore），
+#    新版 runner 大概率跑不到，需先找原作者要或自己重写
 node .workbuddy/refactor-tools/extract_group.mjs "xxx:src/commands/xxx.js"
 
 # 4. 三件套验证（缺一不可）
 node --check src/index.js && node --check src/commands/xxx.js   # 语法
 node src/index.js xxx                                          # 运行时
-node .workbuddy/refactor-tools/check_undefined.mjs             # 未定义标识符
+node scripts/refactor/check-deps.mjs                           # deps 注入完整性
 
 # 5. 提交 + 推送（产出后立即 push 防丢失）
 git add <显式路径> && git commit -m "refactor(commands): ..." && git push origin main

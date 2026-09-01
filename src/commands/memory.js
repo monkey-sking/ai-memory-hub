@@ -109,7 +109,7 @@ export function memoryCommand(argv, deps) {
   const subcommand = argv[0] || "help";
   const rest = argv.slice(1);
   if (subcommand === "search") {
-    return deps.searchCommand(rest);
+    return deps.searchCommand(rest, deps.searchCommandDeps);
   }
   if (subcommand === "snapshot") {
     return deps.snapshotCommand(rest);

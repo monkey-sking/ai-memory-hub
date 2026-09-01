@@ -92,7 +92,7 @@ const dispatchCommandDeps = { appendRelayStatus, buildRecentRelayStatusView, bui
 import { workflowCommand } from "./commands/workflow.js";
 const workflowCommandDeps = { assertWorkflowStatus, autoCreateWorkflowNodes, createRadioMessage, createTaskNote, createWorkflow, ensureHub, loadConfig, notifyWorkflowRoles, spawnWorkflowTasks, updateWorkflow, withHubLock };
 import { memoryCommand } from "./commands/memory.js";
-const memoryCommandDeps = { buildMemoryIndex, ensureHub, isMemoryLifecycleVisible, loadConfig, normalizeMemoryMetadata, normalizeSupersedeToken, readLedger, rebuildMemoryOutputs, runAutomaticBackupStrategy, searchCommand, snapshotCommand, withHubLock };
+const memoryCommandDeps = { buildMemoryIndex, ensureHub, isMemoryLifecycleVisible, loadConfig, normalizeMemoryMetadata, normalizeSupersedeToken, readLedger, rebuildMemoryOutputs, runAutomaticBackupStrategy, searchCommand, searchCommandDeps, snapshotCommand, withHubLock };
 import { sqliteCommand } from "./commands/sqlite.js";
 import { ensureDir, readJson, readJsonSafe, writeJson, createId, getOption, hasOption, hasFlag, parsePositiveIntegerOption, positionalArgs, countJsonlFiles, isPlainObject, hasOwnField } from "./lib/cli.js";
 import { readEvents, parseJsonlLine, countJsonlLines } from "./lib/io.js";

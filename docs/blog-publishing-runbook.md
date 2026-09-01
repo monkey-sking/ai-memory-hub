@@ -14,7 +14,7 @@
 
 ## 1. 前置条件
 
-- 博客源码在本机：`/Volumes/SSD/Projects/blog`
+- 博客源码在本机：`<博客源码目录>`（示例 `~/Projects/blog`，按自己的实际位置替换）
 - 本机已配置 GitHub SSH 密钥，且能认证为 `monkey-sking`：
   ```bash
   ssh -T -o BatchMode=yes git@github.com
@@ -72,7 +72,7 @@ tags:
 ## 3. 本地构建与自检
 
 ```bash
-cd /Volumes/SSD/Projects/blog
+cd <博客源码目录>
 ./node_modules/.bin/hexo generate
 # 期望：末尾 "NNN files generated in X s"，退出码 0
 ```
@@ -95,7 +95,7 @@ cd /Volumes/SSD/Projects/blog
 全程走 git 二进制（不受 Node 层拦截影响）：
 
 ```bash
-cd /Volumes/SSD/Projects/blog
+cd <博客源码目录>
 
 # 1) 清掉损坏/残留的部署缓存（deploy 缓存，可整体删除；shell rm 不受 Node 拦截）
 rm -rf .deploy_git
@@ -141,7 +141,7 @@ curl -s -o /dev/null -w "%{http_code}\n" -L --max-time 20 "$url"
 
 - 用户已授权：协助者可直接执行上述「手动 git 部署」把文章发布到 GitHub Pages（即 push `master`）。
 - 每次发布前先确认 SSH 能认证为 `monkey-sking`（第 1 节），再 push。
-- 博客源码本身（`/Volumes/SSD/Projects/blog/source`）是否纳入 git 版本库由用户另行决定，本手册只覆盖「发布」动作。
+- 博客源码本身（`<博客源码目录>/source`）是否纳入 git 版本库由用户另行决定，本手册只覆盖「发布」动作。
 
 ---
 
@@ -197,7 +197,7 @@ intro 引用块之后，直接用普通 Markdown 二级标题，不要加 `[CN]`
 ### 8.3 验证
 
 ```bash
-f=$(ls -1t /Volumes/SSD/Projects/blog/public/2026/08/*.html | head -1)
+f=$(ls -1t <博客源码目录>/public/2026/08/*.html | head -1)
 grep -o 'lang-switch' "$f"          # 期望：0（不应有自定义条）
 grep -oE 'nav-text">[^<]*(中文版|English Version)' "$f"   # 期望出现「中文版」「English Version」两条 TOC 条目
 grep -oE '<h2 id="[^"]*">(中文版|English Version)<' "$f"  # 期望干净的 h2 id

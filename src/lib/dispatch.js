@@ -240,3 +240,24 @@ export function nextRelayAttempt(relayState, job) {
   const sourceKey = getDispatchSourceKey(job);
   return Number(relayState[sourceKey]?.attempt || 0) + 1;
 }
+
+export function normalizeRunnerStderr(tool, stderr) {
+  const text = String(stderr || "");
+  if (!text.trim()) {
+    return { stderr: "", warnings: [] };
+  }
+  const lines = text.split(/\r?\n/);
+  const warnings = [];
+  const kept = [];
+  for (const line of lines) {
+    if (tool === "gemini" && isKnownGeminiWarning(line)) {
+      warnings.push(line.trim());
+      continue;
+    }
+    kept.push(line);
+  }
+  return {
+    stderr: kept.join("\n").trim(),
+    warnings: warnings.filter(Boolean)
+  };
+}

@@ -402,3 +402,17 @@ export function renderDashboard() {
   }
   return readTemplate("dashboard-v2.html");
 }
+
+export function getInstructionIncludeFiles(memoryDir) {
+  const targets = [
+    ...getInstallTargets(memoryDir),
+    ...getLocalInstallTargets(process.cwd(), memoryDir)
+  ];
+  const files = new Set();
+  for (const target of targets) {
+    if (target.file) {
+      files.add(path.resolve(target.file));
+    }
+  }
+  return [...files].sort();
+}

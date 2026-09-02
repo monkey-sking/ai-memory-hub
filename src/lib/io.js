@@ -8,7 +8,7 @@ import path from "node:path";
 import { appendJsonl } from "../event-writer.js";
 import { createId, ensureDir, readJson, readJsonSafe, writeJson } from "./cli.js";
 import { getAgentRegistryFile, getModelsCacheFile, getPolicyRulesFile, getRadioCursorFile, getRoleRegistryFile, getTeamRegistryFile, getToolDeclarationsFile } from "./registry-paths.js";
-import { getRelaySourceKey, getDispatchSourceKey, getDispatchThreadKey, stripExistingModelArgs } from "./dispatch.js";
+import { getRelaySourceKey, getDispatchSourceKey, getDispatchThreadKey, stripExistingModelArgs, normalizeToolName } from "./dispatch.js";
 import { sleep } from "./util.js";
 import { writeFileAtomic } from "../atomic-write.js";
 
@@ -812,4 +812,54 @@ export function waitForRpcResult(memoryDir, requestId, timeoutMs = 30000) {
     sleep(500);
   }
   return null;
+}
+
+export function touchAgentStatus(memoryDir, id, state, by) {
+  const nowIso = new Date().toISOString();
+  const existing = readAgentById(memoryDir, id) || { id: String(id).trim(), name: String(id).trim(), createdAt: nowIso };
+  return writeAgent(memoryDir, { ...existing, status: state, statusBy: by || existing.statusBy || "system", statusAt: nowIso });
+}
+
+export function parseRunnerOutput(memoryDir, job, runner, stdout) {
+  if (runner.outputMode !== "claude-json") {
+    return { stdout, sessionId: "" };
+  }
+  const text = String(stdout || "").trim();
+  if (!text) {
+    return { stdout: "", sessionId: "" };
+  }
+  try {
+    const payload = JSON.parse(text);
+    const sessionId = payload.session_id || "";
+    if (sessionId && job.thread) {
+      writeClaudeSessionState(memoryDir, job, sessionId);
+    }
+    return {
+      stdout: payload.result || text,
+      sessionId
+    };
+  } catch {
+    return { stdout: text, sessionId: "" };
+  }
+}
+
+export function isLockStale(lockPath, staleMs) {
+  try {
+    const status = describeLock(lockPath, staleMs);
+    return Boolean(status.stale);
+  } catch {
+    return false;
+  }
+}
+
+export function removeToolDeclaration(memoryDir, tool) {
+  const file = getToolDeclarationsFile(memoryDir);
+  const name = normalizeToolName(tool);
+  const existing = readToolDeclarations(memoryDir);
+  const remaining = existing.filter((entry) => normalizeToolName(entry.tool) !== name);
+  if (remaining.length === existing.length) {
+    return false;
+  }
+  writeFileAtomic(file, remaining.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+  return true;
 }

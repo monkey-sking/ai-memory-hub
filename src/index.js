@@ -95,11 +95,11 @@ import { memoryCommand } from "./commands/memory.js";
 const memoryCommandDeps = { buildMemoryIndex, ensureHub, isMemoryLifecycleVisible, loadConfig, normalizeMemoryMetadata, normalizeSupersedeToken, readLedger, rebuildMemoryOutputs, runAutomaticBackupStrategy, searchCommand, searchCommandDeps, snapshotCommand, withHubLock };
 import { sqliteCommand } from "./commands/sqlite.js";
 import { ensureDir, readJson, readJsonSafe, writeJson, createId, getOption, hasOption, hasFlag, parsePositiveIntegerOption, positionalArgs, countJsonlFiles, isPlainObject, hasOwnField } from "./lib/cli.js";
-import { readEvents, parseJsonlLine, countJsonlLines, readToolDeclarations, readModelsCache, writeModelsCache, readRadioCursor, writeRadioCursor, readAgents, readRoles, readTeams, readClaudeSessionState, readDispatchLog, readDispatchRuns, appendDispatchRunRecord, appendDispatchLog, readRelayStatus, resolveGitConflictsInFile, writeLedger, readApprovalGates, appendApprovalGateEvent, readPolicyRules, readSessions, readUnreadReceipts, appendUnreadReceipt, writeSessions, writeRpcRequest, readRpcRequest, writeRpcResult, readRpcResult, writeNotification, readNotifications, writeContextPack, readContextPack, readDispatchQueue, writeDispatchQueueEntry, readMemoryLifecycleOperations, archiveInbox, writeInboxEvents, readBackupManifest, readLockFile, readLockEvents, appendLockEvent, readEventsWithLocations, readAgentById, readRoleById, readTeamById, resolveRelayThreadKeys, findLatestRelayStatusEntry, readLatestDispatchRunByThread, readLatestRelayStatusByThread, readLatestRelayStatusBySource, updateSession, getActiveSessions, getPendingNotifications, getQueuedEntries, getRunningEntries, getFailedEntries, buildRunnerArgs, writeClaudeSessionState, countRecentRelayOscillation, writeAgent, writeRole, writeTeam, createDispatchRunId, removePolicyRule, updateNotificationStatus, updateDispatchQueueEntry, releaseLock, describeLock, waitForRpcResult } from "./lib/io.js";
+import { readEvents, parseJsonlLine, countJsonlLines, readToolDeclarations, readModelsCache, writeModelsCache, readRadioCursor, writeRadioCursor, readAgents, readRoles, readTeams, readClaudeSessionState, readDispatchLog, readDispatchRuns, appendDispatchRunRecord, appendDispatchLog, readRelayStatus, resolveGitConflictsInFile, writeLedger, readApprovalGates, appendApprovalGateEvent, readPolicyRules, readSessions, readUnreadReceipts, appendUnreadReceipt, writeSessions, writeRpcRequest, readRpcRequest, writeRpcResult, readRpcResult, writeNotification, readNotifications, writeContextPack, readContextPack, readDispatchQueue, writeDispatchQueueEntry, readMemoryLifecycleOperations, archiveInbox, writeInboxEvents, readBackupManifest, readLockFile, readLockEvents, appendLockEvent, readEventsWithLocations, readAgentById, readRoleById, readTeamById, resolveRelayThreadKeys, findLatestRelayStatusEntry, readLatestDispatchRunByThread, readLatestRelayStatusByThread, readLatestRelayStatusBySource, updateSession, getActiveSessions, getPendingNotifications, getQueuedEntries, getRunningEntries, getFailedEntries, buildRunnerArgs, writeClaudeSessionState, countRecentRelayOscillation, writeAgent, writeRole, writeTeam, createDispatchRunId, removePolicyRule, updateNotificationStatus, updateDispatchQueueEntry, releaseLock, describeLock, waitForRpcResult, touchAgentStatus, parseRunnerOutput, isLockStale, removeToolDeclaration } from "./lib/io.js";
 import { getEntityEventsFile, getEntityProjectionFile, readEntityEvents, bootstrapEntityEventsFromProjection, writeEntityRecords, appendEntityRecord, deleteEntityRecord, appendEntityEvents, createEntityEvent, replayEntityEvents, materializeEntityProjection, isEntityRecordNewerOrSame } from "./lib/entity-store.js";
 import { PROJECT_STATUSES, RECIPE_GATE_STRING_ARRAY_FIELDS, RECIPE_GATE_FIELDS, extractQualityGate, normalizeQualityGate, normalizeVerifyCommand, normalizeNonNegativeInteger, normalizeMinimalImplementation, normalizeDependencyBudget, normalizePriority, normalizeDispatchWorktreeMetadata, normalizeWorkflowRole, parseProjectListOption, uniqueStringList, isTaskStatus, isWorkflowStatus, normalizeRecipeMetadata, normalizeRecipeStepMetadata, normalizeProjectStatus, normalizeProjectResources, normalizeProject, normalizeWorkflow, normalizeTask, normalizePrompt, getTaskEventStoreDefinition, getProjectEventStoreDefinition, getWorkflowEventStoreDefinition, getPromptEventStoreDefinition, rebuildEventSourcedProjections, updateProject, updateWorkflow, updateTask, assertTaskStatus, assertWorkflowStatus, mergeQualityGates } from "./lib/entity-models.js";
 import { projectRoot } from "./lib/paths.js";
-import { POLICY_OPERATIONS, APP_NAME, DEFAULT_DISPATCH_ACK_TIMEOUT_MS, ASYNC_CALL_STATES } from "./lib/constants.js";
+import { POLICY_OPERATIONS, APP_NAME, DEFAULT_DISPATCH_ACK_TIMEOUT_MS, ASYNC_CALL_STATES, summarizeWorkflowLinkedTaskDelivery, isDispatchSourceComplete, isValidAsyncCallState } from "./lib/constants.js";
 import { MODEL_CACHE_STALE_MS } from "./lib/constants.js";
 import { promptCommand } from "./commands/prompt.js";
 import { workflowNodeCommand } from "./commands/workflow-node.js";
@@ -139,18 +139,18 @@ import { listCredentialProfiles, setCredentialProfile, removeCredentialProfile, 
 import { listRelatedEntities, readRelations, recordMemoryRelations, recordRelation, rebuildMemoryRelations, revokeRelation } from "./relations.js";
 import { auditMemories } from "./memory-audit.js";
 import { parseRunnerModelList, semanticSearch, checkProcessLiveness, getContentType, readRequestJson, findProjectIndex, expandSynonyms, scanBackupFilesForSecrets, getRelayTimeoutBaseMs, renderDispatchWorktree, createHealthRepairAction, getPathSize, extractCjkNgrams, getBackupFileCatalog, markTieredBackups, parseCliArgs, parseDeclaredList, parseProgressPercent, isJobCheckpointed, getCheckpointStats, renderProjectRegistryReadme, extractSharedSkillLayerVersion, renderEmptyBootstrapSnapshot, sleep, sharedSkillLayerActionLabel, summarizeDir, releaseStaleClaim, inspectSharedMemoryInstructions, getDirectResolveCandidates, normalizeCandidatePath, getPageOptions, findProject, autoCreateWorkflowNodes, summarizeTaskSpec, writeTaskSpecProcessLogs, resolveTaskSpecCwd, getMemoryStorageSummary } from "./lib/util.js";
-import { extractInstructionIncludes, normalizeSeverity, formatTopCounts, formatPercent, formatBytes, sanitizeDisplayText, getMemoryAgeDays, inferScope, normalizeSearchText, countBy, sortByImportance, titleCase, looksSensitive, formatEventLocation, extractSection, extractSectionBeforeAny, renderTemplate, trimOutput, summarizeText, textMentionsResolveQuery, summarizeHealthAnalysisForRepair, sanitizeLedgerText, normalizeDuplicateMemoryText, sanitizeInlineText, extractKeywords, extractCompactVariants, getMemoryEventSkipReason, extractLooseJsonStringField, formatMemoryRecordPointer, truncateText, extractSearchTerms } from "./lib/format.js";
-import { normalizeMemoryKind, normalizeMemoryProject, normalizeMemoryScope, normalizeList, firstDefinedRef, hasMemoryFilters, normalizeRefToken, normalizeConfidence, applyMemoryAccessFields, normalizeMemoryAccessCount, normalizeMemoryAccessTimestamp, firstDefinedValue, getDaysSinceTimestamp, isMemoryLifecycleVisible, normalizeSupersedeToken, hasExplicitSyncKey, readPositiveInteger, isMemoryHealthExcluded, formatMemoryHealthRepairPlan, sanitizeRawJsonCandidate, getMemoryGrowthTrend, chooseMemoryLayer, parseListOption, parseMemoryTagFilters, formatMemoryFilterSummary, matchesMemoryTags, getMemoryAccessStats, applyMemoryLifecycleOperations, normalizeSupersedeRefs, isStartupMemoryRecord, resolveSnapshotLimits, inferTopics, normalizeMemoryRefs, flattenMemoryRefs, formatMemoryRefs, matchesMemoryRef, touchMemoryAccess, getMemorySupersedesRefs, isOperationalRadioMemory } from "./lib/memory-normalize.js";
-import { createDispatchRecordMutex, isClaimStale, shouldPersistDispatchReport, isDispatchableRadioMessage, isClosedDispatchSourceState, buildTaskDispatchText, buildWorkflowDispatchText, findRecipeStepTask, normalizeToolName, safeGitPathSegment, isKnownGeminiWarning, stripExistingModelArgs, getDispatchThreadKey, formatDispatchVerifyCommand, getDispatchRunStatus, getDispatchRunVerificationResult, getAsyncCallStateMeta, getDispatchSourceKey, getRelaySourceKey, dispatchJobFromTask, dispatchJobFromWorkflow, dispatchJobFromRelayEntry, shouldDispatchJob, buildDispatchWorktreeBranch, buildDispatchWorktreeSlug, nextRelayAttempt } from "./lib/dispatch.js";
+import { extractInstructionIncludes, normalizeSeverity, formatTopCounts, formatPercent, formatBytes, sanitizeDisplayText, getMemoryAgeDays, inferScope, normalizeSearchText, countBy, sortByImportance, titleCase, looksSensitive, formatEventLocation, extractSection, extractSectionBeforeAny, renderTemplate, trimOutput, summarizeText, textMentionsResolveQuery, summarizeHealthAnalysisForRepair, sanitizeLedgerText, normalizeDuplicateMemoryText, sanitizeInlineText, extractKeywords, extractCompactVariants, getMemoryEventSkipReason, extractLooseJsonStringField, formatMemoryRecordPointer, truncateText, extractSearchTerms, parseLooseJsonMemoryEvent, findDuplicateMemoryGroups } from "./lib/format.js";
+import { normalizeMemoryKind, normalizeMemoryProject, normalizeMemoryScope, normalizeList, firstDefinedRef, hasMemoryFilters, normalizeRefToken, normalizeConfidence, applyMemoryAccessFields, normalizeMemoryAccessCount, normalizeMemoryAccessTimestamp, firstDefinedValue, getDaysSinceTimestamp, isMemoryLifecycleVisible, normalizeSupersedeToken, hasExplicitSyncKey, readPositiveInteger, isMemoryHealthExcluded, formatMemoryHealthRepairPlan, sanitizeRawJsonCandidate, getMemoryGrowthTrend, chooseMemoryLayer, parseListOption, parseMemoryTagFilters, formatMemoryFilterSummary, matchesMemoryTags, getMemoryAccessStats, applyMemoryLifecycleOperations, normalizeSupersedeRefs, isStartupMemoryRecord, resolveSnapshotLimits, inferTopics, normalizeMemoryRefs, flattenMemoryRefs, formatMemoryRefs, matchesMemoryRef, touchMemoryAccess, getMemorySupersedesRefs, isOperationalRadioMemory, printMemorySearchResults, filterMemoryRecords, getMemoryIdentityKeys } from "./lib/memory-normalize.js";
+import { createDispatchRecordMutex, isClaimStale, shouldPersistDispatchReport, isDispatchableRadioMessage, isClosedDispatchSourceState, buildTaskDispatchText, buildWorkflowDispatchText, findRecipeStepTask, normalizeToolName, safeGitPathSegment, isKnownGeminiWarning, stripExistingModelArgs, getDispatchThreadKey, formatDispatchVerifyCommand, getDispatchRunStatus, getDispatchRunVerificationResult, getAsyncCallStateMeta, getDispatchSourceKey, getRelaySourceKey, dispatchJobFromTask, dispatchJobFromWorkflow, dispatchJobFromRelayEntry, shouldDispatchJob, buildDispatchWorktreeBranch, buildDispatchWorktreeSlug, nextRelayAttempt, normalizeRunnerStderr } from "./lib/dispatch.js";
 import { sendHtml, sendPlain, sendJson, sendErrorEnvelope, parsePageParam, getSafeStaticRelativePath, readTextIfExists } from "./lib/http.js";
 import { getToolDeclarationsFile, getModelsCacheFile, getRadioCursorFile, getAgentRegistryFile, getRoleRegistryFile, getTeamRegistryFile, getPolicyRulesFile } from "./lib/registry-paths.js";
-import { quoteWindowsCmdArg, escapeForWindowsCmd, quoteWindowsCommandArg, quoteShellArg, classifyCommandPath, shellQuote, getRunnerDoctorWarnings, runGit, resolveCommandPaths, commandPathPriority, shouldUseShellForCommand, buildWindowsCmdLine, resolveGitProcessCommand, commandExists, choosePreferredCommandPath } from "./lib/shell.js";
+import { quoteWindowsCmdArg, escapeForWindowsCmd, quoteWindowsCommandArg, quoteShellArg, classifyCommandPath, shellQuote, getRunnerDoctorWarnings, runGit, resolveCommandPaths, commandPathPriority, shouldUseShellForCommand, buildWindowsCmdLine, resolveGitProcessCommand, commandExists, choosePreferredCommandPath, resolveRunnerCommand, buildRunnerInvocation, runProcess } from "./lib/shell.js";
 import { normalizeResolveQuery, extractFilesystemPathCandidates, resolvePossiblyHomePath, pathMatchesResolveQuery } from "./lib/resolve.js";
 import { normalizeTaskSpecEnv, normalizeStringArray, normalizeTaskSpecList, normalizeTaskSpecLogs, selectPlatformCommand, getTaskSpecProcessStatus, resolveInside } from "./lib/task-spec.js";
 import { policyActorMatches, policyRuleSpecificity, isHiddenProjectId, findWorkflowIndex, findTaskIndex, createTaskNote, getNotificationChannels } from "./lib/entity-index.js";
 import { getFileHash, getGitHubBackupUploadWarnings, normalizeBackupPatternList, matchesAnyBackupPattern, normalizeScheduleTime, resolveConfiguredPath, extractListValue, renderGitHubBackupReadme, markProtectedBackups, parseBackupTimestampFromName, inferBackupReasonFromName, inferBackupRetentionTier, createdAtRetentionKey, formatBackupDay, getIsoWeekKey, isPathInsideDirectory, countBackupDirs, backupHub, resolveBackupDirectory, getGitHubBackupExportFiles, getDefaultGitHubBackupInclude, assertSafeGitHubBackupRepoDir, ensureSafeChildPath, planBackupRetention, inferBackupRetentionKey, assertSafeDispatchWorktreeRoot } from "./lib/backup.js";
 import { relayFailureFingerprint, createSkillDelta, createProject, createWorkflow, createTask, createSession, createRpcRequest, createNotification, createDispatchQueueEntry, validateVerifyCommand, validateMinimalImplementation, validateDependencyBudget, normalizeRefValues, mergeMemoryAccessMetadata, parseJsonObjectCandidate, createRadioMessage } from "./lib/entity-factory.js";
-import { readDiscoveredModels, detectVSCodeEnhanced, getDashboardStaticRoot, readTemplate, getLocalInstallTargets, getInstallTargets, renderDashboard } from "./lib/tools-detect.js";
+import { readDiscoveredModels, detectVSCodeEnhanced, getDashboardStaticRoot, readTemplate, getLocalInstallTargets, getInstallTargets, renderDashboard, getInstructionIncludeFiles } from "./lib/tools-detect.js";
 import {
   normalizeAdversarialVerifier,
   normalizeReviewDimensions,
@@ -931,17 +931,6 @@ function writeToolDeclaration(memoryDir, declaration) {
   return declaration;
 }
 
-function removeToolDeclaration(memoryDir, tool) {
-  const file = getToolDeclarationsFile(memoryDir);
-  const name = normalizeToolName(tool);
-  const existing = readToolDeclarations(memoryDir);
-  const remaining = existing.filter((entry) => normalizeToolName(entry.tool) !== name);
-  if (remaining.length === existing.length) {
-    return false;
-  }
-  writeFileAtomic(file, remaining.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
-  return true;
-}
 
 
 
@@ -1278,11 +1267,6 @@ function getUnreadRadioMessages(memoryDir, consumer) {
 
 // Upsert an agent's live status; creates the agent record if it doesn't exist yet.
 // Used by P0 task-claim linkage so a runner that claims a task auto-shows as busy.
-function touchAgentStatus(memoryDir, id, state, by) {
-  const nowIso = new Date().toISOString();
-  const existing = readAgentById(memoryDir, id) || { id: String(id).trim(), name: String(id).trim(), createdAt: nowIso };
-  return writeAgent(memoryDir, { ...existing, status: state, statusBy: by || existing.statusBy || "system", statusAt: nowIso });
-}
 
 // P2: team registry (first-class org entity, Cumora has none).
 
@@ -2270,55 +2254,6 @@ function syncLinkedWorkflowDeliveryState(memoryDir, task, patch = {}) {
   return updated;
 }
 
-function summarizeWorkflowLinkedTaskDelivery(workflow, tasks, patch = {}) {
-  const linkedTasks = (workflow.linkedTasks || [])
-    .map((id) => tasks.find((task) => task.id === id))
-    .filter(Boolean);
-  if (linkedTasks.length === 0) {
-    return {
-      deliveryState: patch.deliveryState || workflow.deliveryState || "",
-      progressPercent: workflow.progressPercent ?? null,
-      progressStatus: workflow.progressStatus || "",
-      progressAt: workflow.progressAt || "",
-      progressBy: workflow.progressBy || "",
-      lastError: patch.lastError || workflow.lastError || "",
-      nextRetryAt: patch.nextRetryAt || workflow.nextRetryAt || ""
-    };
-  }
-
-  const states = linkedTasks.map((task) => task.deliveryState || "").filter(Boolean);
-  const completedCount = linkedTasks.filter((task) => task.status === "done" || task.deliveryState === ASYNC_CALL_STATES.COMPLETED).length;
-  const failedTask = linkedTasks.find((task) => [ASYNC_CALL_STATES.ABANDONED, ASYNC_CALL_STATES.FAILED].includes(task.deliveryState));
-  const statePriority = [
-    ASYNC_CALL_STATES.ABANDONED,
-    ASYNC_CALL_STATES.FAILED,
-    ASYNC_CALL_STATES.RETRYING,
-    ASYNC_CALL_STATES.PROGRESS,
-    ASYNC_CALL_STATES.ACKED,
-    ASYNC_CALL_STATES.DISPATCHED
-  ];
-  let deliveryState = statePriority.find((state) => states.includes(state)) || "";
-  if (!deliveryState && completedCount === linkedTasks.length) {
-    deliveryState = ASYNC_CALL_STATES.COMPLETED;
-  } else if (!deliveryState && completedCount > 0) {
-    deliveryState = ASYNC_CALL_STATES.PROGRESS;
-  } else if (!deliveryState) {
-    deliveryState = patch.deliveryState || workflow.deliveryState || "";
-  }
-
-  return {
-    deliveryState,
-    progressPercent: Math.round((completedCount / linkedTasks.length) * 100),
-    progressStatus: `${completedCount}/${linkedTasks.length} linked tasks completed`,
-    progressAt: patch.progressAt || new Date().toISOString(),
-    progressBy: patch.progressBy || patch.tool || "",
-    lastError: failedTask?.lastError || patch.lastError || "",
-    nextRetryAt: linkedTasks
-      .map((task) => task.nextRetryAt || "")
-      .filter(Boolean)
-      .sort()[0] || patch.nextRetryAt || ""
-  };
-}
 
 function writeDispatchReportIfUseful(memoryDir, job, result, relayState) {
   const stdout = String(result.stdout || "").trim();
@@ -2514,11 +2449,6 @@ function areTaskRecipeDependenciesSatisfied(task, allTasks = []) {
 }
 
 
-function isDispatchSourceComplete(source) {
-  const status = String(source?.status || "").toLowerCase();
-  const deliveryState = String(source?.deliveryState || "").toLowerCase();
-  return status === "done" || deliveryState === ASYNC_CALL_STATES.COMPLETED;
-}
 
 
 function buildRetryDispatchJobs(memoryDir, relayState, { to, project, limit, respectRecipeDependencies = false }) {
@@ -2770,33 +2700,6 @@ function resolveDispatchWorktreeRoot(repoRoot, rootOption = "") {
 
 
 
-function resolveRunnerCommand(profile) {
-  const candidates = profile.commandCandidates || [profile.command].filter(Boolean);
-  const allPaths = [];
-  for (const candidate of candidates) {
-    for (const found of resolveCommandPaths(candidate)) {
-      if (!allPaths.includes(found)) {
-        allPaths.push(found);
-      }
-    }
-  }
-  if (process.platform === "win32" && profile.windowsExeFromCmd) {
-    const found = allPaths.find((item) => classifyCommandPath(item) === "cmd-shim");
-    if (found) {
-      const exe = path.join(path.dirname(found), profile.windowsExeFromCmd);
-      if (fs.existsSync(exe) && !allPaths.includes(exe)) {
-        allPaths.push(exe);
-      }
-    }
-  }
-  const pathValue = choosePreferredCommandPath(allPaths);
-  return {
-    name: pathValue ? path.basename(pathValue) : "",
-    path: pathValue,
-    kind: pathValue ? classifyCommandPath(pathValue) : "",
-    allPaths
-  };
-}
 
 function prepareDispatchJobContext(memoryDir, job, runner, options = {}) {
   const initialWorktree = options.isolateWorktree
@@ -3049,17 +2952,6 @@ async function runDispatchPool(memoryDir, preparedJobs, { concurrency = DISPATCH
   return results;
 }
 
-function buildRunnerInvocation(runner, args = []) {
-  const useCmdLauncher = process.platform === "win32" && runner.usesShell;
-  const command = useCmdLauncher ? buildWindowsCmdLine(runner.command, args) : runner.command;
-  const commandArgs = useCmdLauncher ? [] : args;
-  return {
-    command: runner.commandName || runner.command || "",
-    args: args.map((arg) => String(arg)),
-    commandLine: [command, ...commandArgs].filter(Boolean).join(" "),
-    usesShell: useCmdLauncher
-  };
-}
 
 function resolveCredentialEnvironment(memoryDir, references = []) {
   const env = {};
@@ -3153,52 +3045,10 @@ async function invokeRunnerCommandAsync(runner, args = [], input = "", timeoutMs
 
 
 
-function normalizeRunnerStderr(tool, stderr) {
-  const text = String(stderr || "");
-  if (!text.trim()) {
-    return { stderr: "", warnings: [] };
-  }
-  const lines = text.split(/\r?\n/);
-  const warnings = [];
-  const kept = [];
-  for (const line of lines) {
-    if (tool === "gemini" && isKnownGeminiWarning(line)) {
-      warnings.push(line.trim());
-      continue;
-    }
-    kept.push(line);
-  }
-  return {
-    stderr: kept.join("\n").trim(),
-    warnings: warnings.filter(Boolean)
-  };
-}
 
 
 
 
-function parseRunnerOutput(memoryDir, job, runner, stdout) {
-  if (runner.outputMode !== "claude-json") {
-    return { stdout, sessionId: "" };
-  }
-  const text = String(stdout || "").trim();
-  if (!text) {
-    return { stdout: "", sessionId: "" };
-  }
-  try {
-    const payload = JSON.parse(text);
-    const sessionId = payload.session_id || "";
-    if (sessionId && job.thread) {
-      writeClaudeSessionState(memoryDir, job, sessionId);
-    }
-    return {
-      stdout: payload.result || text,
-      sessionId
-    };
-  } catch {
-    return { stdout: text, sessionId: "" };
-  }
-}
 
 
 
@@ -3379,9 +3229,6 @@ function getRelayFailureStateWithOscillation(memoryDir, job, attempt, maxRetries
   return { state: baseState, oscillating: false };
 }
 
-function isValidAsyncCallState(state) {
-  return Object.values(ASYNC_CALL_STATES).includes(state);
-}
 
 function isValidAsyncCallTransition(fromState, toState) {
   if (!isValidAsyncCallState(fromState) || !isValidAsyncCallState(toState)) {
@@ -3686,20 +3533,6 @@ function indexCommand() {
 
 
 
-function printMemorySearchResults(results, asJson = false) {
-  if (asJson) {
-    console.log(JSON.stringify(results, null, 2));
-    return;
-  }
-  for (const item of results) {
-    const kind = item.metadata?.kind || "note";
-    const topics = (item.topics || []).slice(0, 4).join(",");
-    const refs = formatMemoryRefs(item.refs);
-    const project = item.project ? `project=${item.project} ` : "";
-    const tags = item.tags?.length ? `tags=${item.tags.slice(0, 5).join(",")} ` : "";
-    console.log(`[${item.score.toFixed(2)}] ${item.source}/${kind} ${project}${tags}${topics ? `(${topics}) ` : ""}${refs ? `[${refs}] ` : ""}${item.text}`);
-  }
-}
 
 function snapshotCommand(argv) {
   const config = loadConfig();
@@ -5729,19 +5562,6 @@ function analyzeInstructionIncludes(config, options = {}) {
   return diagnostics;
 }
 
-function getInstructionIncludeFiles(memoryDir) {
-  const targets = [
-    ...getInstallTargets(memoryDir),
-    ...getLocalInstallTargets(process.cwd(), memoryDir)
-  ];
-  const files = new Set();
-  for (const target of targets) {
-    if (target.file) {
-      files.add(path.resolve(target.file));
-    }
-  }
-  return [...files].sort();
-}
 
 
 
@@ -6910,16 +6730,6 @@ function parseMemoryFilters(argv) {
 
 
 
-function filterMemoryRecords(records, filters = {}) {
-  return records
-    .filter((record) => isMemoryLifecycleVisible(record))
-    .filter((record) => filters.project ? record.project === normalizeMemoryProject(filters.project) : true)
-    .filter((record) => matchesMemoryTags(record, filters.tags))
-    .filter((record) => matchesMemoryRef(record, "thread", filters.thread))
-    .filter((record) => matchesMemoryRef(record, "taskId", filters.taskId))
-    .filter((record) => matchesMemoryRef(record, "workflowId", filters.workflowId))
-    .filter((record) => matchesMemoryRef(record, "radioId", filters.radioId));
-}
 
 
 
@@ -7150,19 +6960,6 @@ function getMemoryPrimaryKey(record) {
   return getMemoryIdentityKeys(record)[0] || "";
 }
 
-function getMemoryIdentityKeys(record) {
-  return [
-    record.localEventId,
-    record.id,
-    record.metadata?.localEventId,
-    record.metadata?.id,
-    record.metadata?.stableId,
-    record.metadata?.key,
-    ...flattenMemoryRefs(record.refs || record.metadata?.refs)
-  ]
-    .map(normalizeSupersedeToken)
-    .filter(Boolean);
-}
 
 
 
@@ -7784,51 +7581,9 @@ function recoverMemoryEventFromRawText(rawText) {
 
 
 
-function parseLooseJsonMemoryEvent(text) {
-  if (!text.startsWith("{")) {
-    return null;
-  }
-  const source = extractLooseJsonStringField(text, "source") || "health-repair";
-  const type = extractLooseJsonStringField(text, "type") || "";
-  const memoryText = extractLooseJsonStringField(text, "text") || "";
-  if (!memoryText) {
-    return null;
-  }
-  const kind = extractLooseJsonStringField(text, "kind") || type || "reference";
-  const project = extractLooseJsonStringField(text, "project") || "";
-  return {
-    source,
-    text: memoryText,
-    metadata: {
-      kind,
-      project
-    }
-  };
-}
 
 
 
-function findDuplicateMemoryGroups(records) {
-  const groups = new Map();
-  for (const record of records) {
-    const key = normalizeDuplicateMemoryText(record.text);
-    if (!key || key.length < 16) {
-      continue;
-    }
-    if (!groups.has(key)) {
-      groups.set(key, []);
-    }
-    groups.get(key).push(record);
-  }
-  return [...groups.values()]
-    .filter((items) => items.length > 1)
-    .map((items) => ({
-      count: items.length,
-      example: truncateText(items[0].text, 120),
-      records: items
-    }))
-    .sort((a, b) => b.count - a.count || a.example.localeCompare(b.example));
-}
 
 
 function isCorruptedMemoryRecord(record) {
@@ -8726,27 +8481,6 @@ function runGitCommand(repoDir, args, options = {}) {
   });
 }
 
-function runProcess(command, args, options = {}) {
-  const useWindowsShellLauncher = process.platform === "win32" && options.shell;
-  const spawnCommand = useWindowsShellLauncher ? buildWindowsCmdLine(command, args) : command;
-  const spawnArgs = useWindowsShellLauncher ? [] : args;
-  const result = spawnSync(spawnCommand, spawnArgs, {
-    encoding: "utf8",
-    windowsHide: true,
-    shell: Boolean(options.shell)
-  });
-  const output = {
-    ok: result.status === 0,
-    exitCode: result.status ?? 1,
-    stdout: result.stdout || "",
-    stderr: result.stderr || "",
-    command: `${command} ${args.map(quoteShellArg).join(" ")}`
-  };
-  if (!output.ok && !options.allowFailure) {
-    throw new Error(`${command} failed (${output.exitCode}): ${output.stderr || output.stdout || result.error?.message || ""}`.trim());
-  }
-  return output;
-}
 
 
 function buildGitHubBackupScheduledTaskCommand(memoryDir) {
@@ -8961,14 +8695,6 @@ function acquireLock(lockPath, owner, staleMs) {
 }
 
 
-function isLockStale(lockPath, staleMs) {
-  try {
-    const status = describeLock(lockPath, staleMs);
-    return Boolean(status.stale);
-  } catch {
-    return false;
-  }
-}
 
 function readLockStatus(memoryDir) {
   const lockPath = path.join(memoryDir, "locks", "hub.lock");

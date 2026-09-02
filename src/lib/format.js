@@ -262,3 +262,47 @@ export function extractSearchTerms(text) {
     ...extractCompactVariants(normalized)
   ])];
 }
+
+export function parseLooseJsonMemoryEvent(text) {
+  if (!text.startsWith("{")) {
+    return null;
+  }
+  const source = extractLooseJsonStringField(text, "source") || "health-repair";
+  const type = extractLooseJsonStringField(text, "type") || "";
+  const memoryText = extractLooseJsonStringField(text, "text") || "";
+  if (!memoryText) {
+    return null;
+  }
+  const kind = extractLooseJsonStringField(text, "kind") || type || "reference";
+  const project = extractLooseJsonStringField(text, "project") || "";
+  return {
+    source,
+    text: memoryText,
+    metadata: {
+      kind,
+      project
+    }
+  };
+}
+
+export function findDuplicateMemoryGroups(records) {
+  const groups = new Map();
+  for (const record of records) {
+    const key = normalizeDuplicateMemoryText(record.text);
+    if (!key || key.length < 16) {
+      continue;
+    }
+    if (!groups.has(key)) {
+      groups.set(key, []);
+    }
+    groups.get(key).push(record);
+  }
+  return [...groups.values()]
+    .filter((items) => items.length > 1)
+    .map((items) => ({
+      count: items.length,
+      example: truncateText(items[0].text, 120),
+      records: items
+    }))
+    .sort((a, b) => b.count - a.count || a.example.localeCompare(b.example));
+}

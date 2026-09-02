@@ -166,3 +166,65 @@ export function choosePreferredCommandPath(paths) {
   return [...new Set((paths || []).filter(Boolean))]
     .sort((a, b) => commandPathPriority(a) - commandPathPriority(b))[0] || "";
 }
+
+export function resolveRunnerCommand(profile) {
+  const candidates = profile.commandCandidates || [profile.command].filter(Boolean);
+  const allPaths = [];
+  for (const candidate of candidates) {
+    for (const found of resolveCommandPaths(candidate)) {
+      if (!allPaths.includes(found)) {
+        allPaths.push(found);
+      }
+    }
+  }
+  if (process.platform === "win32" && profile.windowsExeFromCmd) {
+    const found = allPaths.find((item) => classifyCommandPath(item) === "cmd-shim");
+    if (found) {
+      const exe = path.join(path.dirname(found), profile.windowsExeFromCmd);
+      if (fs.existsSync(exe) && !allPaths.includes(exe)) {
+        allPaths.push(exe);
+      }
+    }
+  }
+  const pathValue = choosePreferredCommandPath(allPaths);
+  return {
+    name: pathValue ? path.basename(pathValue) : "",
+    path: pathValue,
+    kind: pathValue ? classifyCommandPath(pathValue) : "",
+    allPaths
+  };
+}
+
+export function buildRunnerInvocation(runner, args = []) {
+  const useCmdLauncher = process.platform === "win32" && runner.usesShell;
+  const command = useCmdLauncher ? buildWindowsCmdLine(runner.command, args) : runner.command;
+  const commandArgs = useCmdLauncher ? [] : args;
+  return {
+    command: runner.commandName || runner.command || "",
+    args: args.map((arg) => String(arg)),
+    commandLine: [command, ...commandArgs].filter(Boolean).join(" "),
+    usesShell: useCmdLauncher
+  };
+}
+
+export function runProcess(command, args, options = {}) {
+  const useWindowsShellLauncher = process.platform === "win32" && options.shell;
+  const spawnCommand = useWindowsShellLauncher ? buildWindowsCmdLine(command, args) : command;
+  const spawnArgs = useWindowsShellLauncher ? [] : args;
+  const result = spawnSync(spawnCommand, spawnArgs, {
+    encoding: "utf8",
+    windowsHide: true,
+    shell: Boolean(options.shell)
+  });
+  const output = {
+    ok: result.status === 0,
+    exitCode: result.status ?? 1,
+    stdout: result.stdout || "",
+    stderr: result.stderr || "",
+    command: `${command} ${args.map(quoteShellArg).join(" ")}`
+  };
+  if (!output.ok && !options.allowFailure) {
+    throw new Error(`${command} failed (${output.exitCode}): ${output.stderr || output.stdout || result.error?.message || ""}`.trim());
+  }
+  return output;
+}

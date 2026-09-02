@@ -475,3 +475,43 @@ export function isOperationalRadioMemory(memory, text) {
   }
   return /status|progress|dispatch|completed|done|pass|failed|review|heartbeat|状态|进度|完成|已完成|通过|失败|审核/i.test(String(text || ""));
 }
+
+export function printMemorySearchResults(results, asJson = false) {
+  if (asJson) {
+    console.log(JSON.stringify(results, null, 2));
+    return;
+  }
+  for (const item of results) {
+    const kind = item.metadata?.kind || "note";
+    const topics = (item.topics || []).slice(0, 4).join(",");
+    const refs = formatMemoryRefs(item.refs);
+    const project = item.project ? `project=${item.project} ` : "";
+    const tags = item.tags?.length ? `tags=${item.tags.slice(0, 5).join(",")} ` : "";
+    console.log(`[${item.score.toFixed(2)}] ${item.source}/${kind} ${project}${tags}${topics ? `(${topics}) ` : ""}${refs ? `[${refs}] ` : ""}${item.text}`);
+  }
+}
+
+export function filterMemoryRecords(records, filters = {}) {
+  return records
+    .filter((record) => isMemoryLifecycleVisible(record))
+    .filter((record) => filters.project ? record.project === normalizeMemoryProject(filters.project) : true)
+    .filter((record) => matchesMemoryTags(record, filters.tags))
+    .filter((record) => matchesMemoryRef(record, "thread", filters.thread))
+    .filter((record) => matchesMemoryRef(record, "taskId", filters.taskId))
+    .filter((record) => matchesMemoryRef(record, "workflowId", filters.workflowId))
+    .filter((record) => matchesMemoryRef(record, "radioId", filters.radioId));
+}
+
+export function getMemoryIdentityKeys(record) {
+  return [
+    record.localEventId,
+    record.id,
+    record.metadata?.localEventId,
+    record.metadata?.id,
+    record.metadata?.stableId,
+    record.metadata?.key,
+    ...flattenMemoryRefs(record.refs || record.metadata?.refs)
+  ]
+    .map(normalizeSupersedeToken)
+    .filter(Boolean);
+}

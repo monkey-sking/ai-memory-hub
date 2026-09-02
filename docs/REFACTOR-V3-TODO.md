@@ -4,24 +4,27 @@
 > 横切依赖走 deps 注入，共享常量下沉 `src/lib/constants.js`。
 > 本文档是唯一进度落点，任何 runner（codex / claude / gemini / antigravity / opencode / mimocode）接手前先读这里。
 
-## 当前进度（2026-09-02 实测，HEAD=`fb670fd`）
+## 当前进度（2026-09-02 实测，HEAD=`84e4ff8`）
 
 | 指标 | 数值 |
 |---|---|
 | index.js 起始行数 | 14,778 |
-| 当前行数 | **7,249**（已减 7,529 行） |
-| 已迁出命令族群 | 25 个 |
-| src/commands 模块数 | 35 个（共 5,675 行） |
-| src/lib 模块数 | 20 个（共 4,294 行） |
-| index.js 残留 | 30 个 `*Command` 函数、181 个顶层 function |
-| 已推送提交 | 到 `fb670fd`（工作区干净） |
+| 当前行数 | **6,294**（已减 8,484 行） |
+| 已迁出命令族群 | 26 个 |
+| src/commands 模块数 | 36 个（含新增 app.js，共约 6,728 行） |
+| src/lib 模块数 | 20 个（共约 4,650 行） |
+| index.js 残留 | 29 个 `*Command` 函数、约 170 个顶层 function |
+| 已推送提交 | 到 `84e4ff8`（工作区干净） |
 
-> 按 P0-2 的目标（降到 ~3,000 行）算，整体完成度约 **81%**（行数口径）。
+> 按 P0-2 的目标（降到 ~3,000 行）算，整体完成度约 **83%**（行数口径）。
 > 第五批（`e626917`）把文件级 IO 助手、entity 工厂、tools 检测下沉，index.js 破万；
 > 第六~十六批持续按主题下沉叶子函数，index.js 从 9,999 降至 7,530；
 > 第十七批整块下沉 task-spec 子系统（连续 10 个函数 + 2 常量）并收敛到 src/lib/task-spec.js，
-> 同时把 util.js 里错放的 3 个 task-spec runner 助手迁入，消除 util↔task-spec 循环，index.js 降至 7,249。
-> 剩余大头仍是 appCommand（~986 行）与非叶子共享函数（含 renderDispatchPrompt 等）。
+> 同时把 util.js 里错放的 3 个 task-spec runner 助手迁入，消除 util↔task-spec 循环，index.js 降至 7,249；
+> **P0-1（`84e4ff8`）攻坚完成**：把最大的单体 appCommand（~986 行 HTTP 服务，95 个 /api/* 路由）
+> 整块迁出到 `src/commands/app.js`，走 deps 注入（27 键：20 个 dashboard 实例 + 2 POLICY 常量 + 7 助手函数），
+> HTTP 冒烟全绿（health/dashboard/overview + 20 资源路由均 200），index.js 降至 6,294。
+> 剩余大头是非叶子共享函数（含 renderDispatchPrompt 等）。
 >
 > 好消息：经 AST 扫描，index.js 现有叶子函数**不依赖内部符号**的已基本沉完（仅剩
 > `renderDispatchPrompt` / `renderCompactDispatchPrompt` 因会形成
@@ -55,17 +58,20 @@
 | （第七~十五批见工作区记忆 .workbuddy/memory/2026-09-02.md，index.js 从 9,845 降至 8,327） | — | ✅ 已推送 |
 | `f9db559` | P0-2 第十六批：下沉 17 个叶子函数（backup/paths/tools-detect/memory-normalize/entity-*/dispatch），index.js 8,327→7,530，修复 sink 工具对 entity-repo 多行 import 的破坏 | ✅ 已推送 |
 | `fb670fd` | P0-2 第十七批：整块下沉 task-spec 子系统（10 函数 + 2 常量）到 `src/lib/task-spec.js`；把 util.js 错放的 summarizeTaskSpec/writeTaskSpecProcessLogs/resolveTaskSpecCwd 迁入收敛，消除 util↔task-spec 循环；顺带修 util.js 预存 bug（getDirectResolveCandidates 调用未导入 projectRoot）；index.js 7,530→7,249 | ✅ 已推送 |
+| `84e4ff8` | **P0-1 攻坚完成**：迁出 appCommand HTTP 服务（~986 行、95 个 /api/* 路由）到 `src/commands/app.js`。node 内置 + lib/独立模块直连 import；index.js 内部符号经 deps 注入（27 键：20 个 dashboard 实例 + 2 POLICY 常量 + 7 助手函数），deps 解构保持函数体逐字迁移。appCommandDeps 置于 dashboard 实例块后（TDZ-safe）。四步验证 + HTTP 冒烟全绿，index.js 7,249→6,294 | ✅ 已推送 |
 
 ## 后续任务（按优先级）
 
-### P0-1：攻坚 appCommand（987 行 HTTP 服务）
-- **现状**：`src/index.js` 里最大的单体命令，依赖所有 dashboard API，抽取脚本不敢动
-- **验收标准**：`node src/index.js app` 启动后 HTTP 冒烟全绿（现状多轮验证 200 OK）
-- **做法建议**：
-  1. 先列出 appCommand 依赖的所有内部符号清单（grep `appCommand` 函数体内调用的上层函数）
-  2. 判断哪些可整体下沉 `src/commands/app.js`，哪些 dashboard API 需走 deps 注入
-  3. 优先保住 HTTP 路由表不动，只动装配层
-- **风险**：这是服务入口，抽坏会导致全部 dashboard 功能挂掉。抽完后必须完整冒烟：启动服务 → 轮询几个关键 API → 关服务
+### P0-1：攻坚 appCommand（987 行 HTTP 服务）→ ✅ 已完成（`84e4ff8`）
+
+- **成果**：最大单体命令 `appCommand`（~986 行、95 个 `/api/*` 路由）已整块迁出到
+  `src/commands/app.js`，index.js 7,249→6,294 行。
+- **依赖处理**：node 内置（`http`/`os`/`path`）+ lib/独立模块函数（~67 个）直连 import；
+  index.js 内部符号经 deps 注入（`appCommand(argv, deps)` 开头解构为局部常量，函数体逐字迁移零改动）。
+- **TDZ 教训**：`appCommandDeps` 引用 20 个 `dashboard*` 实例，必须置于这些 const 实例化
+  （index.js 260-490 行）之后，否则对象字面量立即求值会 ReferenceError。
+- **验收通过**：四步验证（语法 / check-undefined / check-deps / CLI）全绿 + HTTP 冒烟
+  （health / dashboard / overview + 20 个资源路由均 200，dashboard 经 deps 正确返回数据）。
 
 ### P0-2：剩余共享函数下沉（进行中）
 

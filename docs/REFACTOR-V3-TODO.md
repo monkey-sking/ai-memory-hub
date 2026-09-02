@@ -4,19 +4,19 @@
 > 横切依赖走 deps 注入，共享常量下沉 `src/lib/constants.js`。
 > 本文档是唯一进度落点，任何 runner（codex / claude / gemini / antigravity / opencode / mimocode）接手前先读这里。
 
-## 当前进度（2026-09-02 实测，HEAD=`a3ae4d0`）
+## 当前进度（2026-09-02 实测，HEAD=`96a9ca8`）
 
 | 指标 | 数值 |
 |---|---|
 | index.js 起始行数 | 14,778 |
-| 当前行数 | **4,483**（已减 10,295 行） |
+| 当前行数 | **4,328**（已减 10,450 行） |
 | 已迁出命令族群 | 26 个 |
 | src/commands 模块数 | 36 个（含 app.js，共约 6,728 行） |
-| src/lib 模块数 | 30 个（新增 daemon-state/skill-store/github-backup/dispatch-pool/dispatch-run/runner-core/radio-messages/config/dispatch-retry/policy.js，共约 6,550 行） |
-| index.js 残留 | 约 29 个 `*Command` 函数、88 个顶层 function |
-| 已推送提交 | 到 `a3ae4d0`（工作区干净） |
+| src/lib 模块数 | 31 个（新增 daemon-state/skill-store/github-backup/dispatch-pool/dispatch-run/runner-core/radio-messages/config/dispatch-retry/policy/relay-status.js，共约 6,700 行） |
+| index.js 残留 | 约 29 个 `*Command` 函数、89 个顶层 function（83 定义 + 6 import） |
+| 已推送提交 | 到 `96a9ca8`（工作区干净，未提交 `.workbuddy-ai/`） |
 
-> 按 P0-2 的目标（降到 ~3,000 行）算，整体完成度约 **96%**（行数口径）。
+> 按 P0-2 的目标（降到 ~3,000 行）算，整体完成度约 **97%**（行数口径）。
 > 第五批（`e626917`）把文件级 IO 助手、entity 工厂、tools 检测下沉，index.js 破万；
 > 第六~十六批持续按主题下沉叶子函数，index.js 从 9,999 降至 7,530；
 > 第十七批整块下沉 task-spec 子系统（连续 10 个函数 + 2 常量）并收敛到 src/lib/task-spec.js，
@@ -116,6 +116,18 @@
 > help/status + policy 运行时单测 16 例（seed=12/idempotent/resolvePermission allow·destructive-ask·custom-deny
 > 全过）+ policy CLI check dispatch→allow + dispatch --dry-run + app HTTP /api/policy 12 条规则全绿 +
 > check:public 全绿。index.js 4,627→4,483（96%）。
+> **P0-2 第二十九批（`96a9ca8`）**下沉 relay-status 写侧状态机到 `src/lib/relay-status.js`。policy 下沉后
+> dispatch 编排大簇对 policy 的依赖已可直连 import，本批把该大簇最底层的写侧状态机（appendRelayStatus/
+> findDispatchOrigin/appendDispatchResponseMessage/appendDispatchStatusMessage/updateDispatchSourceState，
+> 195 行）先拔出——find-leaf-functions 复核确认 5 函数均已 leaf（依赖全落已沉 lib，无 index 内部符号），
+> 是首个可直连 import 的 relay/radio 写侧地基。index.js import 回全部 5 符号供 dispatch 编排大簇 +
+> dispatchCommandDeps 继续消费，注入契约零改动。四步验证 + relay-status 运行时单测 8 例 + dispatch CLI 冒烟 +
+> check:public 全绿。index.js 4,483→4,328（97%）。
+> 
+> ⚠️ 纪律重申（本批再次踩坑固化）：删除函数后的空行整理**只允许逐删除点、在删除点紧邻局部收紧**，
+> **绝不做全文件/大区间空行折叠**——本批初版脚本把空行收缩写成全文件遍历，误删约 380 行其它区域刻意
+> 保留的多空行，`git checkout -- src/index.js` 回滚后改用「严格删区间（零空行折叠）→ 逐删除点 Edit/局部
+> 脚本收紧锚点前行空行」两步完成。任何 runner 接手都先读此注记，勿重蹈。
 > 
 > 注：叶子函数清单每批后已变化，接手前请重跑 `find-leaf-functions.mjs` 拿当前值，别照抄本文档旧数字。
 > （第二十二批已证实：原以为会形成 `util→dispatch→entity-models→util` 循环而不敢下沉的
@@ -161,6 +173,7 @@
 | `0bed1d6` | P0-2 第二十六批：下沉配置主干到 `src/lib/config.js`（resolveMemoryDir + defaultConfig + loadConfig + 6 配置常量 MEMORY_DIR_ENV/DEFAULT_MEMORY_DIR/DEFAULT_CONFIG_PATH/DEFAULT_GITHUB_BACKUP_REMOTE/DEFAULT_GITHUB_BACKUP_REPO_DIR/DEFAULT_GITHUB_BACKUP_TASK_NAME，162 行）。该主干是全系统最被消费的共享核心（loadConfig 全代码库 ~224 处引用，几乎所有命令模块/dashboard 组件都经 deps 注入它），是剩余大簇（dispatch 重试编排/memory-health/startup）的最后 hub。**纯自包含簇**（外依赖全落 node 内置 + 已沉 lib cli getOption/readJson/writeJson、backup getDefaultGitHubBackupInclude、entity-models ensureHub + dashboard settings defaultDashboardShortcuts），无 index 内部符号 → 直连 import。resolveMemoryDir 默认参从 index 的 rawArgs 改为 process.argv.slice(2)（等价）。index.js 作调用方 import 回 4 个仍被外部使用的符号（loadConfig/resolveMemoryDir/defaultConfig/DEFAULT_GITHUB_BACKUP_TASK_NAME[供 initGithubBackupDeps]），其余 5 常量无 index 引用不外发；initGithubBackupDeps/initDispatchPoolDeps 注入契约零改动。四步验证 + CLI help/status/sync/init/detect/snapshot/pack/checkpoint 冒烟 + config 运行时单测 8 例（resolveMemoryDir env/argv、defaultConfig schema、loadConfig 建/合并全过）+ check:public 全绿。index.js 4,824→4,687 | ✅ 已推送 |
 | `d7d881d` | P0-2 第二十七批：下沉 dispatch-retry 状态决策核心到 `src/lib/dispatch-retry.js`（DEFAULT_DISPATCH_MAX_RETRIES 常量 + 8 个 retry-decision 纯函数 normalizeDispatchRetryLimit/computeNextRetryAt/getRelayFailureState/getDispatchJobMaxRetries/isSharedStateOnlyTool/shouldRetryJob/isRelayRetryDue/isRelayRetryRunnable，71 行）。**纯自包含簇**（外依赖全落已沉 constants[ASYNC_CALL_STATES]/entity-models[normalizeNonNegativeInteger]/runner-core[getRunnerProfile]），无 index 内部符号 → 直连 import。index.js 作调用方 import 回全部 9 符号（仍被留 index 的 relay/radio dispatch 状态机大簇 prepareDispatchJobForRun/processDispatchJobResult/executeDispatchRetry/markTimedOutRelayStatuses/buildRetryDispatchJobs + appendRelayStatus 调用）；dispatchCommandDeps 注入契约零改动（normalizeDispatchRetryLimit 仍经 index 注入 commands/dispatch.js）。⚠️ 原拟下沉「dispatch-retry 编排大簇」经 find-clusters 证实并非干净自包含簇（与 policy resolvePermission/memory-health 重叠互锁、共享 index 内部 hub，属架构级决策待拍板）→ 改先沉其被最多消费的 retry 决策核心（同第23/25批拔 hub 策略）。getRelayFailureStateWithOscillation 依赖 DISPATCH_OSCILLATION_THRESHOLD + countRecentRelayOscillation 仍留 index，不受影响。四步验证 + CLI help/status/dispatch --dry-run 冒烟 + dispatch-retry 运行时单测 14 例全过 + check:public 全绿。index.js 4,686→4,627 | ✅ 已推送 |
 | `a3ae4d0` | P0-2 第二十八批：下沉 policy 决策层到 `src/lib/policy.js`（5 个 POLICY_* 常量 POLICY_DECISIONS/POLICY_SCOPES/POLICY_SCOPE_BREADTH/POLICY_DESTRUCTIVE_OPERATIONS/POLICY_DEFAULT_SEED + 5 个 policy 决策函数 normalizePolicyRule/appendPolicyRule/seedDefaultPolicyRules/policyScopeMatches/resolvePermission，149 行）。该簇是 dispatch 编排大簇（prepareDispatchJobForRun/executeDispatchRetry 经 resolvePermission）与 memory-health 互锁的关键共享 hub，也是 policy 命令 + dashboard policy 界面（appCommandDeps）的消费对象。**纯自包含簇**（外依赖全落已沉 cli createId/ensureDir、io readPolicyRules、event-writer appendJsonl、registry-paths getPolicyRulesFile、entity-index policyActorMatches/policyRuleSpecificity、constants POLICY_OPERATIONS + node path），无 index 内部符号 → 直连 import。⚠️ appendJsonl 非 io.js 导出而是 io.js 从 ../event-writer.js re-import，新模块须从 event-writer 直连 import。index.js import 回 6 个仍被外部使用的符号（POLICY_DECISIONS/POLICY_SCOPES[供 appCommandDeps]/appendPolicyRule/policyScopeMatches/resolvePermission/seedDefaultPolicyRules[供 policyCommandDeps + dispatch 编排]），normalizePolicyRule 不外发；policyCommandDeps/appCommandDeps 契约零改动。四步验证 + policy 运行时单测 16 例 + policy CLI check dispatch→allow + app HTTP /api/policy 12 规则全绿 + check:public 全绿。index.js 4,627→4,483 | ✅ 已推送 |
+| `96a9ca8` | P0-2 第二十九批：下沉 relay-status 写侧状态机到 `src/lib/relay-status.js`（5 函数 appendRelayStatus/findDispatchOrigin/appendDispatchResponseMessage/appendDispatchStatusMessage/updateDispatchSourceState，195 行）。该簇是 dispatch 编排大簇（executeDispatch/executeDispatchRetry/processDispatchJobResult/markTimedOutRelayStatuses/applyDispatchOutcome/prepareDispatchJobForRun 全经其写 relay-status.jsonl + 回执 response/status 消息）与 dispatch 命令（dispatchCommandDeps）的共享写侧。find-leaf-functions 复核确认 5 函数均已 leaf（依赖全落已沉 lib），为 policy 下沉后首个可直连 import 的写侧地基。**纯自包含簇**（外依赖全落已沉 constants ASYNC_CALL_STATES、cli createId、dispatch getDispatchThreadKey、dispatch-retry normalizeDispatchRetryLimit、entity-factory createRadioMessage、format trimOutput/summarizeText、radio-messages read/updateRadioMessage、entity-models updateTask/updateWorkflow、entity-repo readTasks/readWorkflows/syncLinkedWorkflowDeliveryState、event-writer appendJsonl + node path），无 index 内部符号 → 直连 import。index.js import 回全部 5 符号（仍被留 index 的 dispatch 编排大簇 + dispatchCommandDeps 继续消费），注入契约零改动。⚠️ 纪律重申：删除点空行整理只准局部、逐删除点处理，**绝不做全文件/大区间空行折叠**（本批初版脚本误全局折叠，`git checkout` 回滚后改用严格局部删除 + 逐点 Edit 收紧）。四步验证 + relay-status 运行时单测 8 例（relay-status 落盘/responder 回执 origin/updateDispatchSourceState patch radio）+ dispatch CLI 冒烟（job 构建 + relayState 读取正常）+ check:public 全绿。index.js 4,483→4,328 | ✅ 已推送 |
 
 ## 后续任务（按优先级）
 

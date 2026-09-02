@@ -101,6 +101,7 @@ import { PROJECT_STATUSES, RECIPE_GATE_STRING_ARRAY_FIELDS, RECIPE_GATE_FIELDS, 
 import { projectRoot, recipeReadLocations, recipeListLocations, readRecipe, listRecipes } from "./lib/paths.js";
 import { POLICY_OPERATIONS, APP_NAME, DEFAULT_DISPATCH_ACK_TIMEOUT_MS, ASYNC_CALL_STATES, summarizeWorkflowLinkedTaskDelivery, isDispatchSourceComplete, isValidAsyncCallState, isRelayTimedOut, isRelayRetryCandidate, areTaskRecipeDependenciesSatisfied, ASYNC_CALL_TRANSITIONS, isValidAsyncCallTransition } from "./lib/constants.js";
 import { MODEL_CACHE_STALE_MS } from "./lib/constants.js";
+import { containsCorruptionMarker, isCorruptedRadioMessage, readRadioMessages, updateRadioMessage, getUnreadRadioMessages } from "./lib/radio-messages.js";
 import { promptCommand } from "./commands/prompt.js";
 import { workflowNodeCommand } from "./commands/workflow-node.js";
 import { taskCommand, taskSpecCommand } from "./commands/task.js";
@@ -251,7 +252,6 @@ const MEMORY_ACCESS_STALE_AFTER_DAYS = 45;
 const MEMORY_ACCESS_STALE_DECAY_RATE_PER_DAY = 0.5;
 const MEMORY_ACCESS_MAX_HEAT = 12;
 const MEMORY_ACCESS_MAX_STALE_PENALTY = 24;
-const CORRUPTION_MARKER_PATTERN = /[\u0000\ufffd]/;
 const TOOL_DETECTION_CACHE_TTL_MS = 30 * 1000;
 const STARTUP_MEMORY_LIMIT = 8;
 const SHARED_SKILL_LAYER_VERSION = "1";
@@ -1093,16 +1093,6 @@ function recordCommand(argv) {
 
 
 
-function getUnreadRadioMessages(memoryDir, consumer) {
-  const messages = readRadioMessages(memoryDir);
-  const cursor = readRadioCursor(memoryDir, consumer);
-  const startIdx = cursor.lastMessageId
-    ? messages.findIndex((m) => m.id === cursor.lastMessageId)
-    : -1;
-  const after = startIdx === -1 ? messages : messages.slice(startIdx + 1);
-  const processed = new Set(cursor.processedIds);
-  return after.filter((m) => !processed.has(m.id));
-}
 
 
 
@@ -4467,9 +4457,6 @@ function isCorruptedMemoryRecord(record) {
 
 
 
-function containsCorruptionMarker(value) {
-  return CORRUPTION_MARKER_PATTERN.test(String(value || ""));
-}
 
 
 
@@ -4696,80 +4683,10 @@ function readLockStatus(memoryDir) {
 
 
 
-function isCorruptedRadioMessage(message) {
-  return String(message.from || "").toLowerCase() === "raw" ||
-    String(message.type || "").toLowerCase() === "raw" ||
-    containsCorruptionMarker(message.text) ||
-    containsCorruptionMarker(message.thread) ||
-    containsCorruptionMarker(message.replyTo);
-}
 
-function readRadioMessages(memoryDir) {
-  const file = path.join(memoryDir, "radio", "messages.jsonl");
-  return readEvents(file).map(normalizeRadioMessage);
-}
 
-function normalizeRadioMessage(message) {
-  const recovered = recoverEmbeddedJsonMessage(message.text);
-  const content = recovered || message;
-  return {
-    id: message.id || content.id || createId(JSON.stringify(message)),
-    ts: message.ts || content.ts || "",
-    from: content.from || content.source || message.from || message.source || "unknown",
-    to: content.to || message.to || "all",
-    type: content.type || message.type || message.metadata?.kind || "note",
-    text: content.text || message.text || "",
-    thread: content.thread || message.thread || "",
-    replyTo: content.replyTo || content.reply_to || message.replyTo || message.reply_to || "",
-    project: content.project || message.project || "",
-    metadata: message.metadata || content.metadata || {},
-    deliveryState: message.deliveryState || "pending",
-    deliveryUpdatedAt: message.deliveryUpdatedAt || "",
-    dispatchId: message.dispatchId || "",
-    threadKey: message.threadKey || "",
-    attempt: Number(message.attempt || 0),
-    maxRetries: Number(message.maxRetries || 0),
-    nextRetryAt: message.nextRetryAt || "",
-    sessionId: message.sessionId || "",
-    lastError: message.lastError || "",
-    progressPercent: message.progressPercent ?? null,
-    progressStatus: message.progressStatus || "",
-    progressAt: message.progressAt || "",
-    progressBy: message.progressBy || "",
-    worktree: normalizeDispatchWorktreeMetadata(message.worktree),
-    promoted: Boolean(message.promoted),
-    promotedAt: message.promotedAt || ""
-  };
-}
 
-function recoverEmbeddedJsonMessage(value) {
-  const text = String(value || "");
-  if (!text || !containsCorruptionMarker(text)) {
-    return null;
-  }
-  const candidate = text
-    .replace(/\u0000/g, "")
-    .replace(/[\u0001-\u001f\u007f]/g, "")
-    .trim();
-  if (!candidate.startsWith("{") || !candidate.endsWith("}")) {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(candidate);
-    return isPlainObject(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
-}
 
-function updateRadioMessage(memoryDir, id, patch) {
-  const file = path.join(memoryDir, "radio", "messages.jsonl");
-  const messages = readRadioMessages(memoryDir).map((message) => (
-    message.id === id ? { ...message, ...patch } : message
-  ));
-  ensureDir(path.dirname(file));
-  writeFileAtomic(file, messages.map((message) => JSON.stringify(message)).join("\n") + (messages.length ? "\n" : ""), "utf8");
-}
 
 
 function syncSharedSkillLayer(file, snippet, { apply = false } = {}) {

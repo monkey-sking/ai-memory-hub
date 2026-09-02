@@ -4,19 +4,19 @@
 > 横切依赖走 deps 注入，共享常量下沉 `src/lib/constants.js`。
 > 本文档是唯一进度落点，任何 runner（codex / claude / gemini / antigravity / opencode / mimocode）接手前先读这里。
 
-## 当前进度（2026-09-02 实测，HEAD=`f036ef1`）
+## 当前进度（2026-09-02 实测，HEAD=`b4ca9a0`）
 
 | 指标 | 数值 |
 |---|---|
 | index.js 起始行数 | 14,778 |
-| 当前行数 | **5,518**（已减 9,260 行） |
+| 当前行数 | **5,166**（已减 9,612 行） |
 | 已迁出命令族群 | 26 个 |
 | src/commands 模块数 | 36 个（含 app.js，共约 6,728 行） |
-| src/lib 模块数 | 24 个（新增 daemon-state/skill-store/github-backup/dispatch-pool.js，共约 5,489 行） |
-| index.js 残留 | 约 29 个 `*Command` 函数、约 127 个顶层 function |
-| 已推送提交 | 到 `f036ef1`（工作区干净） |
+| src/lib 模块数 | 25 个（新增 daemon-state/skill-store/github-backup/dispatch-pool/dispatch-run.js，共约 5,880 行） |
+| index.js 残留 | 约 29 个 `*Command` 函数、约 117 个顶层 function |
+| 已推送提交 | 到 `b4ca9a0`（工作区干净） |
 
-> 按 P0-2 的目标（降到 ~3,000 行）算，整体完成度约 **88%**（行数口径）。
+> 按 P0-2 的目标（降到 ~3,000 行）算，整体完成度约 **89%**（行数口径）。
 > 第五批（`e626917`）把文件级 IO 助手、entity 工厂、tools 检测下沉，index.js 破万；
 > 第六~十六批持续按主题下沉叶子函数，index.js 从 9,999 降至 7,530；
 > 第十七批整块下沉 task-spec 子系统（连续 10 个函数 + 2 常量）并收敛到 src/lib/task-spec.js，
@@ -40,12 +40,20 @@
 > `src/lib/dispatch-pool.js`。runDispatchJobAsync + DISPATCH_MAX_CONCURRENCY 经 initDispatchPoolDeps 注入；
 > dispatchPoolState 单例迁入后 runDispatchPool 与 dashboard /api/dispatch/pool 共享同一 module state。
 > 踩到并修复 init TDZ（须置于 DISPATCH_MAX_CONCURRENCY const 定义后）。index.js 降至 5,518。
-> 剩余大头是非叶子共享函数（dispatch 单任务执行链含 renderDispatchPrompt、memory-health/startup）。
+> **P0-2 第二十二批（`b4ca9a0`）** 把 dispatch 单任务执行链（11 函数）整簇迁到
+> `src/lib/dispatch-run.js`：prepareDispatchWorktree / resolveDispatchWorktreeRoot /
+> prepareDispatchJobContext / finalizeDispatchJob / runDispatchJob / runDispatchJobAsync /
+> invokeRunnerCommand / invokeRunnerCommandAsync / renderDispatchPrompt /
+> renderCompactDispatchPrompt / writeDispatchRunLog。renderDispatchPrompt 两函数经 AST 证实
+> 已是 leaf（全部依赖落 lib/dispatch.js 与 lib/util.js），旧「util→dispatch→entity-models→util
+> 循环」顾虑过时，随整簇下沉无环；dispatch-pool.js 改直连 import runDispatchJobAsync，
+> 彻底与 index.js 解耦；3 个 index 常量经 initDispatchRunDeps 注入（TDZ-safe）。index.js 降至 5,166。
+> 剩余大头是非叶子共享函数（dispatch 重试编排、memory-health/startup）。
 >
-> 好消息：经 AST 扫描，index.js 现有叶子函数**不依赖内部符号**的已基本沉完（仅剩
-> `renderDispatchPrompt` / `renderCompactDispatchPrompt` 因会形成
-> `util→dispatch→entity-models→util` 模块循环而保留在命令层）。
 > 注：叶子函数清单每批后已变化，接手前请重跑 `find-leaf-functions.mjs` 拿当前值，别照抄本文档旧数字。
+> （第二十二批已证实：原以为会形成 `util→dispatch→entity-models→util` 循环而不敢下沉的
+> `renderDispatchPrompt` / `renderCompactDispatchPrompt`，经 AST 复查实为 leaf 函数 ——
+> 全部依赖已落 lib，随 dispatch 执行链整簇下沉无环。接手前先用 find-clusters 复查，别被旧循环顾虑劝退。）
 
 ## 已完成的批次（git log 对照）
 
@@ -79,6 +87,7 @@
 | `686c917` | P0-2 第十九批：整块下沉 skill candidate/delta JSONL 存取到 `src/lib/skill-store.js`（9 函数 + 2 常量）。candidates（readSkillCandidates/appendSkillCandidates/updateSkillCandidate）+ deltas（readSkillDeltas/approveSkillDelta/rejectSkillDelta/mergeSkillDelta/writeSkillDeltas）。自包含簇直连 import 8 个导出（merge/skill/task 命令 deps 契约不变）；修复 mergeSkillDelta __dirname 模板路径改用 projectRoot()。skill-delta create/list/approve/reject 全流程冒烟，index.js 6,179→6,066 | ✅ 已推送 |
 | `0675cef` | P0-2 第二十批：整块下沉 GitHub backup 领域簇到 `src/lib/github-backup.js`（11 函数：getGitHubBackupConfig/configureGitHubBackup/getGitHubBackupStatus/runGitHubBackup/githubBackupScheduleCommand/install+uninstallGitHubBackupSchedule/getGitHubBackupScheduleStatus/updateGitHubBackupState(+ScheduleState)/buildGitHubBackupScheduledTaskCommand）。簇依赖 index.js 内部符号（loadConfig/defaultConfig/resolveMemoryDir/DEFAULT_GITHUB_BACKUP_TASK_NAME/__filename），为 lib 模块引入首个 **init 注入模式**（initGithubBackupDeps，module 作用域 let 承接，index.js 导入后立即调用）；修复 __filename 下沉漂移（buildGitHubBackupScheduledTaskCommand 改注入 entryFile=src/index.js 绝对路径）。lib 依赖（cli/shell/util/backup）直连 import。四步验证 + backup/dashboard github 全链路冒烟（/api/backups/github/{status,configure,run}）通过，index.js 6,066→5,630 | ✅ 已推送 |
 | `f036ef1` | P0-2 第二十一批：**首开 dispatch 引擎下沉**。迁出 dispatchPoolState 单例 + 4 状态修改器（resetDispatchPoolState/markDispatchPoolJobStart/markDispatchPoolJobDone/markDispatchPoolFinished）+ getDispatchPoolSnapshot + runDispatchPool（feature ④ 并发池 + 实时状态子系统）到 `src/lib/dispatch-pool.js`。createDispatchRunId 直连 import ./io.js；runDispatchJobAsync（依赖 renderDispatchPrompt 任务链）+ DISPATCH_MAX_CONCURRENCY 经 initDispatchPoolDeps 注入。dispatchPoolState 单例迁入后 runDispatchPool 与 dashboard /api/dispatch/pool 共享同一 module state。踩到并修复 init TDZ（调用须置于 DISPATCH_MAX_CONCURRENCY const 定义后）。冒烟：app 启动正常 + /api/dispatch/pool 200 快照。index.js 5,630→5,518 | ✅ 已推送 |
+| `b4ca9a0` | P0-2 第二十二批：整块下沉 dispatch 单任务执行链到 `src/lib/dispatch-run.js`（11 函数：prepareDispatchWorktree/resolveDispatchWorktreeRoot/prepareDispatchJobContext/finalizeDispatchJob/runDispatchJob/runDispatchJobAsync/invokeRunnerCommand/invokeRunnerCommandAsync/renderDispatchPrompt/renderCompactDispatchPrompt/writeDispatchRunLog，351 行）。renderDispatchPrompt 两函数经 AST 证实 leaf（依赖全落 lib/dispatch.js+util.js），随簇下沉无环；**dispatch-pool.js 改直连 import runDispatchJobAsync（从 dispatch-run.js），不再经 initDispatchPoolDeps 注入** —— dispatch 执行链与 index.js 彻底解耦；index.js 作为调用方直连 import 4 入口（invokeRunnerCommand/runDispatchJob/runDispatchJobAsync/resolveDispatchWorktreeRoot，后者继续供 resolveCommandDeps）；3 个 index 常量（DEFAULT_DISPATCH_WORKTREE_DIR/DISPATCH_RUNS_DIR/DEFAULT_DISPATCH_RUN_TIMEOUT_MS）经 initDispatchRunDeps 注入（TDZ-safe）。lib 依赖（shell/dispatch/backup/cli/io/format/util/atomic-write/session-supervisor-service）直连 import。四步验证 + CLI help/status 冒烟 + dispatch-pool 全异步链实跑（runStatus=completed exit=0，dispatch-runs.jsonl 落盘）+ check:public 全绿。index.js 5,518→5,166 | ✅ 已推送 |
 
 ## 后续任务（按优先级）
 
@@ -118,10 +127,12 @@
   会随 __dirname 漂移的 `__filename` 一并作为 `entryFile` 注入。函数体保持逐字迁移、外部调用点零改动。
   至此 deps 判据完整成型：**引用已沉 lib 符号 → 直连 import；引用 index.js 内部符号 → 注入**
   （命令单入口用 *CommandDeps 解构，lib 多导出簇用 init 注入）。
-- **剩余**：待复扫。原 AST 扫描为 201 个叶子函数（约 1,989 行），前几批已吃掉大部分，
-  剩下的需重跑 `find-leaf-functions.mjs` 拿准确清单，别照抄本文档的旧数字。
-  非叶子函数（依赖其他内部符号的，如 `analyzeMemoryHealth`、`syncIndexedEvents`、`appCommand`）
-  需先拆分依赖或走 deps 注入
+  第二十二批 `b4ca9a0` 把 dispatch 单任务执行链（含 renderDispatchPrompt 两函数）整簇下沉，
+  dispatch-pool 也改直连 import，dispatch 执行层与 index.js 彻底解耦。
+- **剩余**：待复扫。dispatch 重试编排（getDispatchJobMaxRetries/normalizeDispatchRetryLimit/
+  computeNextRetryAt 等）与 memory-health/startup 等状态耦合的共享函数仍是 index.js 主体，
+  非叶子且依赖多个 index 内部符号，需先拆分依赖或走 deps 注入。
+  具体清单以重跑 `find-leaf-functions.mjs` + `find-clusters.mjs` 为准，别照抄本文档旧数字。
 - **分组原则**（第四批起的约定）：**按主题建模块，别再往 util.js 里堆**。
   util.js 已经在变成新的杂物抽屉，新函数优先归到 http / shell / backup / resolve /
   task-spec / entity-index / registry-paths 等主题模块，没有合适主题才进 util.js。

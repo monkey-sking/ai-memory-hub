@@ -2,9 +2,11 @@
 // 这些函数不依赖 index.js 内部的任何其他符号，可安全复用。
 
 import os from "node:os";
-import { getOption, isPlainObject } from "./cli.js";
-import { mergeMemoryAccessMetadata, normalizeRefValues } from "./entity-factory.js";
-import { sanitizeInlineText } from "./format.js";
+import path from "node:path";
+import { getOption, isPlainObject, createId } from "./cli.js";
+import { mergeMemoryAccessMetadata, normalizeRefValues, parseJsonObjectCandidate } from "./entity-factory.js";
+import { sanitizeInlineText, parseLooseJsonMemoryEvent, sanitizeLedgerText } from "./format.js";
+import { readEvents } from "./io.js";
 
 export function normalizeMemoryKind(kind) {
   const clean = String(kind || "note").trim().toLowerCase().replace(/[^a-z0-9_.-]+/g, "-");
@@ -658,4 +660,66 @@ export function normalizeMemoryEvent(event) {
     device: event.device || metadata.device || os.hostname(),
     metadata
   };
+}
+
+export function renderMemoryLine(memory) {
+  const source = sanitizeInlineText(memory.source || "unknown");
+  const memoryKind = sanitizeInlineText(memory.kind || memory.metadata?.kind || "");
+  const kind = memoryKind ? `/${memoryKind}` : "";
+  const topics = memory.topics?.length ? ` topics=${memory.topics.slice(0, 5).map(sanitizeInlineText).join(",")}` : "";
+  const project = memory.project ? ` project=${sanitizeInlineText(memory.project)}` : "";
+  const tags = memory.tags?.length ? ` tags=${memory.tags.slice(0, 5).map(sanitizeInlineText).join(",")}` : "";
+  const refs = formatMemoryRefs(memory.refs);
+  return `- [${source}${kind} score=${memory.importance}${project}${tags}${topics}${refs ? ` refs=${refs}` : ""}] ${sanitizeInlineText(memory.text)}`;
+}
+
+export function recoverMemoryEventFromRawText(rawText) {
+  const cleaned = sanitizeRawJsonCandidate(rawText);
+  if (!cleaned) {
+    return null;
+  }
+  const parsed = parseJsonObjectCandidate(cleaned) || parseLooseJsonMemoryEvent(cleaned);
+  if (!parsed || !parsed.text) {
+    return null;
+  }
+  const event = normalizeMemoryEvent(parsed);
+  if (parsed.type && (!parsed.metadata || !parsed.metadata.kind)) {
+    event.metadata.kind = normalizeMemoryKind(parsed.type);
+  }
+  event.text = sanitizeLedgerText(event.text);
+  return event.text ? event : null;
+}
+
+export function parseMemoryFilters(argv) {
+  return {
+    project: getOption(argv, "--project") || "",
+    tags: parseMemoryTagFilters(argv),
+    thread: getOption(argv, "--thread") || "",
+    taskId: getOption(argv, "--task") || getOption(argv, "--task-id") || "",
+    workflowId: getOption(argv, "--workflow") || getOption(argv, "--workflow-id") || "",
+    radioId: getOption(argv, "--radio") || getOption(argv, "--radio-id") || ""
+  };
+}
+
+export function readLedger(memoryDir) {
+  return readEvents(path.join(memoryDir, "memories", "ledger.jsonl"))
+    .map((item) => {
+      const baseMetadata = normalizeMemoryMetadata(item.metadata || {}, item);
+      const access = getMemoryAccessStats({ ...item, metadata: baseMetadata });
+      const metadata = mergeMemoryAccessMetadata(baseMetadata, access);
+      const record = {
+        ...item,
+        id: item.id || createId(item.text || JSON.stringify(item)),
+        localEventId: item.localEventId || item.local_event_id || "",
+        schemaVersion: item.schemaVersion || 1,
+        ts: item.ts || item.createdAt || "",
+        indexedAt: item.indexedAt || "",
+        source: item.source || metadata.source || "unknown",
+        text: item.text || item.memory || "",
+        device: item.device || metadata.device || "",
+        metadata
+      };
+      return applyMemoryAccessFields(record, access);
+    })
+    .filter((item) => item.text);
 }

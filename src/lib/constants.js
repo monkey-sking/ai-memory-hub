@@ -2,6 +2,7 @@
 // 这些函数不依赖 index.js 内部的任何其他符号，可安全复用。
 
 import { getRelayTimeoutBaseMs } from "./util.js";
+import { findRecipeStepTask } from "./dispatch.js";
 
 export const POLICY_OPERATIONS = [
   "read-memory", "write-memory", "send-radio", "claim-task", "dispatch",
@@ -118,4 +119,15 @@ export function isRelayRetryCandidate(entry, now = Date.now()) {
     return !Number.isNaN(nextRetryMs) && nextRetryMs <= now;
   }
   return isRelayTimedOut(entry, now);
+}
+
+export function areTaskRecipeDependenciesSatisfied(task, allTasks = []) {
+  const deps = Array.isArray(task?.recipeStep?.dependsOn) ? task.recipeStep.dependsOn : [];
+  if (deps.length === 0) {
+    return true;
+  }
+  return deps.every((depId) => {
+    const dependency = findRecipeStepTask(allTasks, task, depId);
+    return Boolean(dependency && isDispatchSourceComplete(dependency));
+  });
 }

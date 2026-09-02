@@ -416,3 +416,8 @@ export function getInstructionIncludeFiles(memoryDir) {
   }
   return [...files].sort();
 }
+
+export function getInstallTargetForTool(memoryDir, toolName, installTargets) {
+  const targets = installTargets || getInstallTargets(memoryDir);
+  return targets.find((target) => target.tool === toolName) || null;
+}

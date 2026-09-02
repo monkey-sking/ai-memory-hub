@@ -1,12 +1,15 @@
+// 从 src/index.js 下沉的通用工具函数（v3.0 重构 P0-2）。
+// 这些函数不依赖 index.js 内部的任何其他符号，可安全复用。
+
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { createTaskNote } from "./entity-index.js";
-import { resolvePossiblyHomePath } from "./resolve.js";
-import { parsePageParam } from "./http.js";
 import { appendWorkflowNodeEvent } from "./entity-repo.js";
-import { resolveInside, selectPlatformCommand } from "./task-spec.js";
+import { createTaskNote } from "./entity-index.js";
 import { ensureDir } from "./cli.js";
+import { parsePageParam } from "./http.js";
+import { resolveInside, selectPlatformCommand } from "./task-spec.js";
+import { resolvePossiblyHomePath } from "./resolve.js";
 import { writeFileAtomic } from "../atomic-write.js";
 
 export function parseRunnerModelList(tool, runner, stdout) {
@@ -708,4 +711,8 @@ export function getMemoryStorageSummary(memoryDir) {
     backupsBytes,
     items
   };
+}
+
+export function hasSharedMemoryInstructions(file) {
+  return inspectSharedMemoryInstructions(file).configured;
 }

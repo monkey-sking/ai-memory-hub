@@ -9,7 +9,10 @@ import { appendJsonl } from "../event-writer.js";
 import { createId, ensureDir, readJson, readJsonSafe, writeJson } from "./cli.js";
 import { getAgentRegistryFile, getModelsCacheFile, getPolicyRulesFile, getRadioCursorFile, getRoleRegistryFile, getTeamRegistryFile, getToolDeclarationsFile } from "./registry-paths.js";
 import { getRelaySourceKey, getDispatchSourceKey, getDispatchThreadKey, stripExistingModelArgs, normalizeToolName } from "./dispatch.js";
+import { resolveAgentTarget } from "../agent-wake.js";
+import { resolveCredential } from "../credentials.js";
 import { sleep } from "./util.js";
+import { summarizeText } from "./format.js";
 import { writeFileAtomic } from "../atomic-write.js";
 
 // Low-level JSONL file IO.
@@ -921,4 +924,100 @@ export function acquireLock(lockPath, owner, staleMs) {
   }
   const status = describeLock(lockPath, staleMs);
   throw new Error(`Memory hub lock timeout at ${lockPath} (owner=${status.owner || "unknown"}, pid=${status.pid || "unknown"}, ageMs=${status.ageMs ?? "unknown"}, stale=${status.stale ? "yes" : "no"})`);
+}
+
+export function readToolDeclarationByTool(memoryDir, tool) {
+  const name = normalizeToolName(tool);
+  const entries = readToolDeclarations(memoryDir);
+  const sorted = entries
+    .filter((entry) => normalizeToolName(entry.tool) === name)
+    .sort((a, b) => String(a.updatedAt || "").localeCompare(String(b.updatedAt || "")));
+  return sorted[sorted.length - 1] || null;
+}
+
+export function withHubLock(memoryDir, owner, fn, staleMs = 120000) {
+  const lockPath = path.join(memoryDir, "locks", "hub.lock");
+  ensureDir(path.dirname(lockPath));
+  acquireLock(lockPath, owner, staleMs);
+  try {
+    return fn();
+  } finally {
+    releaseLock(lockPath, owner);
+  }
+}
+
+export function resolveCredentialEnvironment(memoryDir, references = []) {
+  const env = {};
+  for (const reference of Array.isArray(references) ? references : []) {
+    const id = typeof reference === "string" ? reference : reference?.id;
+    const envName = typeof reference === "string" ? id : reference?.envVar || id;
+    if (!id || !envName) continue;
+    env[envName] = resolveCredential(memoryDir, id);
+  }
+  return env;
+}
+
+export function isRadioTargetingClosedSession(memoryDir, message) {
+  const target = resolveAgentTarget(message?.to || "");
+  if (target.kind !== "session" || !target.sessionId) return false;
+  const latest = [...readSessions(memoryDir)].reverse().find((session) => (session.id || session.sessionId) === target.sessionId);
+  const state = String(latest?.state || latest?.status || "").trim().toLowerCase();
+  return ["completed", "delivered", "done", "cancelled", "blocked", "failed", "stale", "dead", "abandoned"].includes(state);
+}
+
+export function buildRecentRelayStatusView(memoryDir, { project = "", tool = "", state = "", limit = 20 }) {
+  const filteredEntries = Object.values(readLatestRelayStatusByThread(memoryDir))
+    .filter((entry) => project ? entry.project === project : true)
+    .filter((entry) => tool ? entry.tool === tool : true)
+    .filter((entry) => state ? entry.state === state : true)
+    .sort((a, b) => String(b.ts || "").localeCompare(String(a.ts || "")));
+  const latestEntries = filteredEntries.slice(0, Math.max(1, Number(limit || 20)));
+  const latestRuns = readLatestDispatchRunByThread(memoryDir);
+
+  const countsByState = {};
+  const countsByTool = {};
+  for (const entry of filteredEntries) {
+    const stateKey = entry.state || "unknown";
+    const toolKey = entry.tool || "unknown";
+    countsByState[stateKey] = (countsByState[stateKey] || 0) + 1;
+    countsByTool[toolKey] = (countsByTool[toolKey] || 0) + 1;
+  }
+
+  return {
+    found: latestEntries.length > 0,
+    mode: "recent",
+    query: {
+      recent: limit,
+      project,
+      tool,
+      state
+    },
+    summary: {
+      totalMatched: filteredEntries.length,
+      returned: latestEntries.length,
+      countsByState,
+      countsByTool
+    },
+    items: latestEntries.map((entry) => ({
+      threadKey: entry.threadKey || "",
+      thread: entry.thread || "",
+      project: entry.project || "",
+      tool: entry.tool || "",
+      state: entry.state || "",
+      sourceKind: entry.sourceKind || "",
+      sourceId: entry.sourceId || "",
+      attempt: Number(entry.attempt || 0),
+      maxRetries: Number(entry.maxRetries || 0),
+      progressPercent: entry.progressPercent ?? null,
+      progressStatus: entry.progressStatus || "",
+      progressAt: entry.progressAt || "",
+      progressBy: entry.progressBy || "",
+      nextRetryAt: entry.nextRetryAt || "",
+      latestRunId: latestRuns[entry.threadKey || ""]?.runId || "",
+      latestRunStatus: latestRuns[entry.threadKey || ""]?.status || "",
+      latestRunFinishedAt: latestRuns[entry.threadKey || ""]?.finishedAt || "",
+      lastError: summarizeText(entry.lastError || "", 120),
+      ts: entry.ts || ""
+    }))
+  };
 }

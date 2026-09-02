@@ -1,6 +1,8 @@
 // 从 src/index.js 下沉的通用工具函数（v3.0 重构 P0-2）。
 // 这些函数不依赖 index.js 内部的任何其他符号，可安全复用。
 
+import { resolveAgentTarget } from "../agent-wake.js";
+
 export function createDispatchRecordMutex() {
   let chain = Promise.resolve();
   return (fn) => {
@@ -260,4 +262,19 @@ export function normalizeRunnerStderr(tool, stderr) {
     stderr: kept.join("\n").trim(),
     warnings: warnings.filter(Boolean)
   };
+}
+
+export function isDirectDispatchRadioMessage(message, to = "") {
+  if (!isDispatchableRadioMessage(message)) {
+    return false;
+  }
+  if (isClosedDispatchSourceState(message?.deliveryState || message?.status)) {
+    return false;
+  }
+  const target = resolveAgentTarget(message?.to || "");
+  if (!target.tool || target.tool === "all") {
+    return false;
+  }
+  const requested = resolveAgentTarget(to || "").tool;
+  return requested ? target.tool === requested : true;
 }

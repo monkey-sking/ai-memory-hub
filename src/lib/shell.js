@@ -228,3 +228,11 @@ export function runProcess(command, args, options = {}) {
   }
   return output;
 }
+
+export function runGitCommand(repoDir, args, options = {}) {
+  const git = resolveGitProcessCommand();
+  return runProcess(git.command, ["-C", repoDir, ...args], {
+    ...options,
+    shell: git.usesShell
+  });
+}

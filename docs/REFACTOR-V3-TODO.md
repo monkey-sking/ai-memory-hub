@@ -4,19 +4,19 @@
 > 横切依赖走 deps 注入，共享常量下沉 `src/lib/constants.js`。
 > 本文档是唯一进度落点，任何 runner（codex / claude / gemini / antigravity / opencode / mimocode）接手前先读这里。
 
-## 当前进度（2026-09-02 实测，HEAD=`0675cef`）
+## 当前进度（2026-09-02 实测，HEAD=`f036ef1`）
 
 | 指标 | 数值 |
 |---|---|
 | index.js 起始行数 | 14,778 |
-| 当前行数 | **5,630**（已减 9,148 行） |
+| 当前行数 | **5,518**（已减 9,260 行） |
 | 已迁出命令族群 | 26 个 |
 | src/commands 模块数 | 36 个（含 app.js，共约 6,728 行） |
-| src/lib 模块数 | 23 个（新增 daemon-state/skill-store/github-backup.js，共约 5,354 行） |
-| index.js 残留 | 约 29 个 `*Command` 函数、约 139 个顶层 function |
-| 已推送提交 | 到 `0675cef`（工作区干净） |
+| src/lib 模块数 | 24 个（新增 daemon-state/skill-store/github-backup/dispatch-pool.js，共约 5,489 行） |
+| index.js 残留 | 约 29 个 `*Command` 函数、约 127 个顶层 function |
+| 已推送提交 | 到 `f036ef1`（工作区干净） |
 
-> 按 P0-2 的目标（降到 ~3,000 行）算，整体完成度约 **87%**（行数口径）。
+> 按 P0-2 的目标（降到 ~3,000 行）算，整体完成度约 **88%**（行数口径）。
 > 第五批（`e626917`）把文件级 IO 助手、entity 工厂、tools 检测下沉，index.js 破万；
 > 第六~十六批持续按主题下沉叶子函数，index.js 从 9,999 降至 7,530；
 > 第十七批整块下沉 task-spec 子系统（连续 10 个函数 + 2 常量）并收敛到 src/lib/task-spec.js，
@@ -34,8 +34,13 @@
 > （11 函数），cluster 依赖 index.js 内部符号（loadConfig/defaultConfig/resolveMemoryDir/
 > DEFAULT_GITHUB_BACKUP_TASK_NAME/__filename），为 lib 模块引入首个 init 注入模式
 > （initGithubBackupDeps），并修复 __filename 下沉漂移（改注入 entryFile）；
-> backup/dashboard github 全链路冒烟通过，index.js 降至 5,630。
-> 剩余大头是非叶子共享函数（含 renderDispatchPrompt 等）。
+> backup/dashboard github 全链路冒烟通过，index.js 降至 5,630；
+> **P0-2 第二十一批（`f036ef1`）**首开 dispatch 引擎下沉：把 dispatchPoolState 单例 + 4 状态修改器 +
+> getDispatchPoolSnapshot + runDispatchPool（feature ④ 并发池 + 实时状态子系统）迁到
+> `src/lib/dispatch-pool.js`。runDispatchJobAsync + DISPATCH_MAX_CONCURRENCY 经 initDispatchPoolDeps 注入；
+> dispatchPoolState 单例迁入后 runDispatchPool 与 dashboard /api/dispatch/pool 共享同一 module state。
+> 踩到并修复 init TDZ（须置于 DISPATCH_MAX_CONCURRENCY const 定义后）。index.js 降至 5,518。
+> 剩余大头是非叶子共享函数（dispatch 单任务执行链含 renderDispatchPrompt、memory-health/startup）。
 >
 > 好消息：经 AST 扫描，index.js 现有叶子函数**不依赖内部符号**的已基本沉完（仅剩
 > `renderDispatchPrompt` / `renderCompactDispatchPrompt` 因会形成
@@ -73,6 +78,7 @@
 | `914d3f1` | P0-2 第十八批：整块下沉 daemon 状态子系统到 `src/lib/daemon-state.js`（10 函数 + 4 DAEMON_* 常量：pid/status/heartbeat 读写 + buildDaemonStatus 聚合）。自包含簇全依赖已在 lib，无 index.js 内部符号，故不建 deps 注入改直连 import 7 个导出；删 index.js 侧 dead import evaluateDaemonHeartbeat；daemonCommandDeps 契约不变。完整 daemon 生命周期冒烟（启动写文件→running→停止 stale/not_running），index.js 6,294→6,179 | ✅ 已推送 |
 | `686c917` | P0-2 第十九批：整块下沉 skill candidate/delta JSONL 存取到 `src/lib/skill-store.js`（9 函数 + 2 常量）。candidates（readSkillCandidates/appendSkillCandidates/updateSkillCandidate）+ deltas（readSkillDeltas/approveSkillDelta/rejectSkillDelta/mergeSkillDelta/writeSkillDeltas）。自包含簇直连 import 8 个导出（merge/skill/task 命令 deps 契约不变）；修复 mergeSkillDelta __dirname 模板路径改用 projectRoot()。skill-delta create/list/approve/reject 全流程冒烟，index.js 6,179→6,066 | ✅ 已推送 |
 | `0675cef` | P0-2 第二十批：整块下沉 GitHub backup 领域簇到 `src/lib/github-backup.js`（11 函数：getGitHubBackupConfig/configureGitHubBackup/getGitHubBackupStatus/runGitHubBackup/githubBackupScheduleCommand/install+uninstallGitHubBackupSchedule/getGitHubBackupScheduleStatus/updateGitHubBackupState(+ScheduleState)/buildGitHubBackupScheduledTaskCommand）。簇依赖 index.js 内部符号（loadConfig/defaultConfig/resolveMemoryDir/DEFAULT_GITHUB_BACKUP_TASK_NAME/__filename），为 lib 模块引入首个 **init 注入模式**（initGithubBackupDeps，module 作用域 let 承接，index.js 导入后立即调用）；修复 __filename 下沉漂移（buildGitHubBackupScheduledTaskCommand 改注入 entryFile=src/index.js 绝对路径）。lib 依赖（cli/shell/util/backup）直连 import。四步验证 + backup/dashboard github 全链路冒烟（/api/backups/github/{status,configure,run}）通过，index.js 6,066→5,630 | ✅ 已推送 |
+| `f036ef1` | P0-2 第二十一批：**首开 dispatch 引擎下沉**。迁出 dispatchPoolState 单例 + 4 状态修改器（resetDispatchPoolState/markDispatchPoolJobStart/markDispatchPoolJobDone/markDispatchPoolFinished）+ getDispatchPoolSnapshot + runDispatchPool（feature ④ 并发池 + 实时状态子系统）到 `src/lib/dispatch-pool.js`。createDispatchRunId 直连 import ./io.js；runDispatchJobAsync（依赖 renderDispatchPrompt 任务链）+ DISPATCH_MAX_CONCURRENCY 经 initDispatchPoolDeps 注入。dispatchPoolState 单例迁入后 runDispatchPool 与 dashboard /api/dispatch/pool 共享同一 module state。踩到并修复 init TDZ（调用须置于 DISPATCH_MAX_CONCURRENCY const 定义后）。冒烟：app 启动正常 + /api/dispatch/pool 200 快照。index.js 5,630→5,518 | ✅ 已推送 |
 
 ## 后续任务（按优先级）
 

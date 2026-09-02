@@ -95,7 +95,7 @@ import { memoryCommand } from "./commands/memory.js";
 const memoryCommandDeps = { buildMemoryIndex, ensureHub, isMemoryLifecycleVisible, loadConfig, normalizeMemoryMetadata, normalizeSupersedeToken, readLedger, rebuildMemoryOutputs, runAutomaticBackupStrategy, searchCommand, searchCommandDeps, snapshotCommand, withHubLock };
 import { sqliteCommand } from "./commands/sqlite.js";
 import { ensureDir, readJson, readJsonSafe, writeJson, createId, getOption, hasOption, hasFlag, parsePositiveIntegerOption, positionalArgs, countJsonlFiles, isPlainObject, hasOwnField } from "./lib/cli.js";
-import { readEvents, parseJsonlLine, countJsonlLines, readToolDeclarations, readModelsCache, writeModelsCache, readRadioCursor, writeRadioCursor, readAgents, readRoles, readTeams, readClaudeSessionState, readDispatchLog, readDispatchRuns, appendDispatchRunRecord, appendDispatchLog, readRelayStatus, resolveGitConflictsInFile, writeLedger, readApprovalGates, appendApprovalGateEvent, readPolicyRules, readSessions, readUnreadReceipts, appendUnreadReceipt, writeSessions, writeRpcRequest, readRpcRequest, writeRpcResult, readRpcResult, writeNotification, readNotifications, writeContextPack, readContextPack, readDispatchQueue, writeDispatchQueueEntry, readMemoryLifecycleOperations, archiveInbox, writeInboxEvents, readBackupManifest, readLockFile, readLockEvents, appendLockEvent, readEventsWithLocations, readAgentById, readRoleById, readTeamById, resolveRelayThreadKeys, findLatestRelayStatusEntry, readLatestDispatchRunByThread, readLatestRelayStatusByThread, readLatestRelayStatusBySource, updateSession, getActiveSessions, getPendingNotifications, getQueuedEntries, getRunningEntries, getFailedEntries } from "./lib/io.js";
+import { readEvents, parseJsonlLine, countJsonlLines, readToolDeclarations, readModelsCache, writeModelsCache, readRadioCursor, writeRadioCursor, readAgents, readRoles, readTeams, readClaudeSessionState, readDispatchLog, readDispatchRuns, appendDispatchRunRecord, appendDispatchLog, readRelayStatus, resolveGitConflictsInFile, writeLedger, readApprovalGates, appendApprovalGateEvent, readPolicyRules, readSessions, readUnreadReceipts, appendUnreadReceipt, writeSessions, writeRpcRequest, readRpcRequest, writeRpcResult, readRpcResult, writeNotification, readNotifications, writeContextPack, readContextPack, readDispatchQueue, writeDispatchQueueEntry, readMemoryLifecycleOperations, archiveInbox, writeInboxEvents, readBackupManifest, readLockFile, readLockEvents, appendLockEvent, readEventsWithLocations, readAgentById, readRoleById, readTeamById, resolveRelayThreadKeys, findLatestRelayStatusEntry, readLatestDispatchRunByThread, readLatestRelayStatusByThread, readLatestRelayStatusBySource, updateSession, getActiveSessions, getPendingNotifications, getQueuedEntries, getRunningEntries, getFailedEntries, buildRunnerArgs, writeClaudeSessionState, countRecentRelayOscillation } from "./lib/io.js";
 import { getEntityEventsFile, getEntityProjectionFile, readEntityEvents, bootstrapEntityEventsFromProjection, writeEntityRecords, appendEntityRecord, deleteEntityRecord, appendEntityEvents, createEntityEvent, replayEntityEvents, materializeEntityProjection, isEntityRecordNewerOrSame } from "./lib/entity-store.js";
 import { PROJECT_STATUSES, RECIPE_GATE_STRING_ARRAY_FIELDS, RECIPE_GATE_FIELDS, extractQualityGate, normalizeQualityGate, normalizeVerifyCommand, normalizeNonNegativeInteger, normalizeMinimalImplementation, normalizeDependencyBudget, normalizePriority, normalizeDispatchWorktreeMetadata, normalizeWorkflowRole, parseProjectListOption, uniqueStringList, isTaskStatus, isWorkflowStatus, normalizeRecipeMetadata, normalizeRecipeStepMetadata, normalizeProjectStatus, normalizeProjectResources, normalizeProject, normalizeWorkflow, normalizeTask, normalizePrompt, getTaskEventStoreDefinition, getProjectEventStoreDefinition, getWorkflowEventStoreDefinition, getPromptEventStoreDefinition, rebuildEventSourcedProjections, updateProject, updateWorkflow, updateTask, assertTaskStatus, assertWorkflowStatus, mergeQualityGates } from "./lib/entity-models.js";
 import { projectRoot } from "./lib/paths.js";
@@ -141,7 +141,7 @@ import { auditMemories } from "./memory-audit.js";
 import { parseRunnerModelList, semanticSearch, checkProcessLiveness, getContentType, readRequestJson, findProjectIndex, expandSynonyms, scanBackupFilesForSecrets, getRelayTimeoutBaseMs, renderDispatchWorktree, createHealthRepairAction, getPathSize, extractCjkNgrams, getBackupFileCatalog, markTieredBackups, parseCliArgs, parseDeclaredList, parseProgressPercent, isJobCheckpointed, getCheckpointStats, renderProjectRegistryReadme, extractSharedSkillLayerVersion, renderEmptyBootstrapSnapshot, sleep, sharedSkillLayerActionLabel, summarizeDir, releaseStaleClaim, inspectSharedMemoryInstructions, getDirectResolveCandidates, normalizeCandidatePath, getPageOptions, findProject, autoCreateWorkflowNodes, summarizeTaskSpec, writeTaskSpecProcessLogs, resolveTaskSpecCwd, getMemoryStorageSummary } from "./lib/util.js";
 import { extractInstructionIncludes, normalizeSeverity, formatTopCounts, formatPercent, formatBytes, sanitizeDisplayText, getMemoryAgeDays, inferScope, normalizeSearchText, countBy, sortByImportance, titleCase, looksSensitive, formatEventLocation, extractSection, extractSectionBeforeAny, renderTemplate, trimOutput, summarizeText, textMentionsResolveQuery, summarizeHealthAnalysisForRepair, sanitizeLedgerText, normalizeDuplicateMemoryText, sanitizeInlineText, extractKeywords, extractCompactVariants, getMemoryEventSkipReason } from "./lib/format.js";
 import { normalizeMemoryKind, normalizeMemoryProject, normalizeMemoryScope, normalizeList, firstDefinedRef, hasMemoryFilters, normalizeRefToken, normalizeConfidence, applyMemoryAccessFields, normalizeMemoryAccessCount, normalizeMemoryAccessTimestamp, firstDefinedValue, getDaysSinceTimestamp, isMemoryLifecycleVisible, normalizeSupersedeToken, hasExplicitSyncKey, readPositiveInteger, isMemoryHealthExcluded, formatMemoryHealthRepairPlan, sanitizeRawJsonCandidate, getMemoryGrowthTrend, chooseMemoryLayer, parseListOption, parseMemoryTagFilters, formatMemoryFilterSummary, matchesMemoryTags, getMemoryAccessStats, applyMemoryLifecycleOperations, normalizeSupersedeRefs, isStartupMemoryRecord, resolveSnapshotLimits, inferTopics } from "./lib/memory-normalize.js";
-import { createDispatchRecordMutex, isClaimStale, shouldPersistDispatchReport, isDispatchableRadioMessage, isClosedDispatchSourceState, buildTaskDispatchText, buildWorkflowDispatchText, findRecipeStepTask, normalizeToolName, safeGitPathSegment, isKnownGeminiWarning, stripExistingModelArgs, getDispatchThreadKey, formatDispatchVerifyCommand, getDispatchRunStatus, getDispatchRunVerificationResult, getAsyncCallStateMeta, getDispatchSourceKey, getRelaySourceKey, dispatchJobFromTask, dispatchJobFromWorkflow, dispatchJobFromRelayEntry } from "./lib/dispatch.js";
+import { createDispatchRecordMutex, isClaimStale, shouldPersistDispatchReport, isDispatchableRadioMessage, isClosedDispatchSourceState, buildTaskDispatchText, buildWorkflowDispatchText, findRecipeStepTask, normalizeToolName, safeGitPathSegment, isKnownGeminiWarning, stripExistingModelArgs, getDispatchThreadKey, formatDispatchVerifyCommand, getDispatchRunStatus, getDispatchRunVerificationResult, getAsyncCallStateMeta, getDispatchSourceKey, getRelaySourceKey, dispatchJobFromTask, dispatchJobFromWorkflow, dispatchJobFromRelayEntry, shouldDispatchJob, buildDispatchWorktreeBranch, buildDispatchWorktreeSlug, nextRelayAttempt } from "./lib/dispatch.js";
 import { sendHtml, sendPlain, sendJson, sendErrorEnvelope, parsePageParam, getSafeStaticRelativePath, readTextIfExists } from "./lib/http.js";
 import { getToolDeclarationsFile, getModelsCacheFile, getRadioCursorFile, getAgentRegistryFile, getRoleRegistryFile, getTeamRegistryFile, getPolicyRulesFile } from "./lib/registry-paths.js";
 import { quoteWindowsCmdArg, escapeForWindowsCmd, quoteWindowsCommandArg, quoteShellArg, classifyCommandPath, shellQuote, getRunnerDoctorWarnings, runGit, resolveCommandPaths, commandPathPriority, shouldUseShellForCommand } from "./lib/shell.js";
@@ -2562,17 +2562,6 @@ function isDispatchSourceComplete(source) {
   return status === "done" || deliveryState === ASYNC_CALL_STATES.COMPLETED;
 }
 
-function shouldDispatchJob(relayState, job, force = false) {
-  if (force) {
-    return true;
-  }
-  const latest = relayState[getDispatchSourceKey(job)];
-  if (!latest) {
-    return true;
-  }
-  const state = latest.state || "";
-  return state === "pending";
-}
 
 function buildRetryDispatchJobs(memoryDir, relayState, { to, project, limit, respectRecipeDependencies = false }) {
   const now = Date.now();
@@ -2830,23 +2819,7 @@ function assertSafeDispatchWorktreeRoot(repoRoot, worktreeRoot) {
   }
 }
 
-function buildDispatchWorktreeBranch(job) {
-  return [
-    "amh",
-    safeGitPathSegment(job.tool, "tool"),
-    safeGitPathSegment(job.project, "default"),
-    safeGitPathSegment(job.refId || job.id, "dispatch")
-  ].join("/");
-}
 
-function buildDispatchWorktreeSlug(job) {
-  return [
-    safeGitPathSegment(job.tool, "tool"),
-    safeGitPathSegment(job.project, "default"),
-    safeGitPathSegment(job.kind, "job"),
-    safeGitPathSegment(job.refId || job.id, "dispatch")
-  ].join("-");
-}
 
 
 function resolveRunnerCommand(profile) {
@@ -3257,24 +3230,6 @@ function normalizeRunnerStderr(tool, stderr) {
 }
 
 
-function buildRunnerArgs(memoryDir, job, runner, prompt) {
-  let args = [...(runner.args || [])];
-  const model = job.model || "";
-  if (model && typeof runner.modelArgs === "function") {
-    args = stripExistingModelArgs(args);
-    args.push(...runner.modelArgs(model));
-  }
-  const sessionId = runner.capabilities?.includes("session-resume")
-    ? job.sessionId || readClaudeSessionState(memoryDir)[getDispatchThreadKey(job)] || ""
-    : "";
-  if (sessionId && typeof runner.resumeArgs === "function") {
-    args.push(...runner.resumeArgs(sessionId));
-  }
-  if (runner.promptMode === "argv" && prompt) {
-    args.push(prompt);
-  }
-  return args;
-}
 
 
 function parseRunnerOutput(memoryDir, job, runner, stdout) {
@@ -3301,15 +3256,6 @@ function parseRunnerOutput(memoryDir, job, runner, stdout) {
 }
 
 
-function writeClaudeSessionState(memoryDir, job, sessionId) {
-  const threadKey = getDispatchThreadKey(job);
-  if (!threadKey) {
-    return;
-  }
-  const state = readClaudeSessionState(memoryDir);
-  state[threadKey] = sessionId;
-  writeJson(path.join(memoryDir, "state", "claude-sessions.json"), state);
-}
 
 
 
@@ -3440,10 +3386,6 @@ function writeDispatchRunLog(memoryDir, runId, stream, text) {
 
 
 
-function nextRelayAttempt(relayState, job) {
-  const sourceKey = getDispatchSourceKey(job);
-  return Number(relayState[sourceKey]?.attempt || 0) + 1;
-}
 
 function getDispatchJobMaxRetries(job, fallback = DEFAULT_DISPATCH_MAX_RETRIES) {
   const gateLimit = normalizeNonNegativeInteger(job?.qualityGate?.maxRepairAttempts);
@@ -3479,30 +3421,6 @@ function getRelayFailureState(attempt, maxRetries = DEFAULT_DISPATCH_MAX_RETRIES
 // Count how many of the most recent consecutive failed attempts for this job's
 // source share the given fingerprint. A run of identical failures signals the
 // dispatch loop is oscillating rather than making progress.
-function countRecentRelayOscillation(memoryDir, job, fingerprint) {
-  if (!fingerprint) {
-    return 0;
-  }
-  const sourceKey = getDispatchSourceKey(job);
-  const entries = readRelayStatus(memoryDir).filter(
-    (entry) => getRelaySourceKey(entry) === sourceKey
-  );
-  let run = 0;
-  for (let i = entries.length - 1; i >= 0; i -= 1) {
-    const entry = entries[i];
-    // Only failed/abandoned attempts carry a comparable fingerprint. Skip the
-    // in-flight dispatched/acked rows so they don't break the consecutive run.
-    if (entry.state !== "failed" && entry.state !== "abandoned") {
-      continue;
-    }
-    if (entry.fingerprint && entry.fingerprint === fingerprint) {
-      run += 1;
-    } else {
-      break;
-    }
-  }
-  return run;
-}
 
 // Decide the terminal/retry state for a failed dispatch, abandoning early when
 // the same failure has now repeated past the oscillation threshold.

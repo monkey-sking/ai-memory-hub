@@ -5,9 +5,9 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { appendJsonl } from "../event-writer.js";
-import { getRelaySourceKey } from "./dispatch.js";
-import { createId, ensureDir, readJson, readJsonSafe } from "./cli.js";
+import { createId, ensureDir, readJson, readJsonSafe, writeJson } from "./cli.js";
 import { getAgentRegistryFile, getModelsCacheFile, getPolicyRulesFile, getRadioCursorFile, getRoleRegistryFile, getTeamRegistryFile, getToolDeclarationsFile } from "./registry-paths.js";
+import { getRelaySourceKey, getDispatchSourceKey, getDispatchThreadKey, stripExistingModelArgs } from "./dispatch.js";
 import { writeFileAtomic } from "../atomic-write.js";
 
 // Low-level JSONL file IO.
@@ -601,4 +601,58 @@ export function getFailedEntries(memoryDir) {
   return readDispatchQueue(memoryDir)
     .filter((e) => e.status === "failed")
     .sort((a, b) => (b.completedAt || "").localeCompare(a.completedAt || ""));
+}
+
+export function buildRunnerArgs(memoryDir, job, runner, prompt) {
+  let args = [...(runner.args || [])];
+  const model = job.model || "";
+  if (model && typeof runner.modelArgs === "function") {
+    args = stripExistingModelArgs(args);
+    args.push(...runner.modelArgs(model));
+  }
+  const sessionId = runner.capabilities?.includes("session-resume")
+    ? job.sessionId || readClaudeSessionState(memoryDir)[getDispatchThreadKey(job)] || ""
+    : "";
+  if (sessionId && typeof runner.resumeArgs === "function") {
+    args.push(...runner.resumeArgs(sessionId));
+  }
+  if (runner.promptMode === "argv" && prompt) {
+    args.push(prompt);
+  }
+  return args;
+}
+
+export function writeClaudeSessionState(memoryDir, job, sessionId) {
+  const threadKey = getDispatchThreadKey(job);
+  if (!threadKey) {
+    return;
+  }
+  const state = readClaudeSessionState(memoryDir);
+  state[threadKey] = sessionId;
+  writeJson(path.join(memoryDir, "state", "claude-sessions.json"), state);
+}
+
+export function countRecentRelayOscillation(memoryDir, job, fingerprint) {
+  if (!fingerprint) {
+    return 0;
+  }
+  const sourceKey = getDispatchSourceKey(job);
+  const entries = readRelayStatus(memoryDir).filter(
+    (entry) => getRelaySourceKey(entry) === sourceKey
+  );
+  let run = 0;
+  for (let i = entries.length - 1; i >= 0; i -= 1) {
+    const entry = entries[i];
+    // Only failed/abandoned attempts carry a comparable fingerprint. Skip the
+    // in-flight dispatched/acked rows so they don't break the consecutive run.
+    if (entry.state !== "failed" && entry.state !== "abandoned") {
+      continue;
+    }
+    if (entry.fingerprint && entry.fingerprint === fingerprint) {
+      run += 1;
+    } else {
+      break;
+    }
+  }
+  return run;
 }

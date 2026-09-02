@@ -205,3 +205,38 @@ export function dispatchJobFromRelayEntry(entry) {
     thread: entry.thread || entry.sourceId || ""
   };
 }
+
+export function shouldDispatchJob(relayState, job, force = false) {
+  if (force) {
+    return true;
+  }
+  const latest = relayState[getDispatchSourceKey(job)];
+  if (!latest) {
+    return true;
+  }
+  const state = latest.state || "";
+  return state === "pending";
+}
+
+export function buildDispatchWorktreeBranch(job) {
+  return [
+    "amh",
+    safeGitPathSegment(job.tool, "tool"),
+    safeGitPathSegment(job.project, "default"),
+    safeGitPathSegment(job.refId || job.id, "dispatch")
+  ].join("/");
+}
+
+export function buildDispatchWorktreeSlug(job) {
+  return [
+    safeGitPathSegment(job.tool, "tool"),
+    safeGitPathSegment(job.project, "default"),
+    safeGitPathSegment(job.kind, "job"),
+    safeGitPathSegment(job.refId || job.id, "dispatch")
+  ].join("-");
+}
+
+export function nextRelayAttempt(relayState, job) {
+  const sourceKey = getDispatchSourceKey(job);
+  return Number(relayState[sourceKey]?.attempt || 0) + 1;
+}

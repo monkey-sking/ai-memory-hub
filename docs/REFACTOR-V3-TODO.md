@@ -4,19 +4,19 @@
 > 横切依赖走 deps 注入，共享常量下沉 `src/lib/constants.js`。
 > 本文档是唯一进度落点，任何 runner（codex / claude / gemini / antigravity / opencode / mimocode）接手前先读这里。
 
-## 当前进度（2026-09-02 实测，HEAD=`b55b6d1`）
+## 当前进度（2026-09-02 实测，HEAD=`e549460`）
 
 | 指标 | 数值 |
 |---|---|
 | index.js 起始行数 | 14,778 |
-| 当前行数 | **4,908**（已减 9,870 行） |
+| 当前行数 | **4,825**（已减 9,953 行） |
 | 已迁出命令族群 | 26 个 |
 | src/commands 模块数 | 36 个（含 app.js，共约 6,728 行） |
-| src/lib 模块数 | 26 个（新增 daemon-state/skill-store/github-backup/dispatch-pool/dispatch-run/runner-core.js，共约 6,120 行） |
-| index.js 残留 | 约 29 个 `*Command` 函数、约 112 个顶层 function |
-| 已推送提交 | 到 `b55b6d1`（工作区干净） |
+| src/lib 模块数 | 27 个（新增 daemon-state/skill-store/github-backup/dispatch-pool/dispatch-run/runner-core/radio-messages.js，共约 6,190 行） |
+| index.js 残留 | 约 29 个 `*Command` 函数、107 个顶层 function |
+| 已推送提交 | 到 `e549460`（工作区干净） |
 
-> 按 P0-2 的目标（降到 ~3,000 行）算，整体完成度约 **91%**（行数口径）。
+> 按 P0-2 的目标（降到 ~3,000 行）算，整体完成度约 **92%**（行数口径）。
 > 第五批（`e626917`）把文件级 IO 助手、entity 工厂、tools 检测下沉，index.js 破万；
 > 第六~十六批持续按主题下沉叶子函数，index.js 从 9,999 降至 7,530；
 > 第十七批整块下沉 task-spec 子系统（连续 10 个函数 + 2 常量）并收敛到 src/lib/task-spec.js，
@@ -62,6 +62,18 @@
 > dead code（无调用点），行为零变化。移除了 relay/radio 状态机簇对一个 index 内部符号的依赖。
 > index.js 降至 4,908。剩余核心（dispatch 重试编排 / memory-health / startup 与 relay/radio 状态机
 > 互锁簇）仍为 index 内部，属架构级决策待拍板。
+> **P0-2 第二十五批（`e549460`）** 下沉 radio message I/O + 归一化族到 `src/lib/radio-messages.js`
+> （8 符号：CORRUPTION_MARKER_PATTERN + containsCorruptionMarker + isCorruptedRadioMessage +
+> readRadioMessages + normalizeRadioMessage + recoverEmbeddedJsonMessage + updateRadioMessage +
+> getUnreadRadioMessages）。该族是所有 relay/radio dispatch 状态机簇（appendRelayStatus /
+> updateDispatchSourceState / dispatch 重试编排）的共享地基。find-clusters 复核显示剩余 113 非叶子
+> 函数成 23 自洽簇、0 非自洽，但绝大多数簇仍经过 index 内部 hub（loadConfig/defaultConfig/
+> resolveMemoryDir + radio reader）—— 故选先沉 radio reader 地基（同第 23 批 runner-core 策略），
+> 使大簇不再把 readRadioMessages/normalizeRadioMessage 当 index 内部符号。纯自包含簇（外依赖全落
+> io/cli/entity-models/atomic-write + node path），直连 import。index.js 作调用方 import 回 5 个仍被
+> 外部使用的符号（containsCorruptionMarker/isCorruptedRadioMessage/readRadioMessages/updateRadioMessage/
+> getUnreadRadioMessages），normalizeRadioMessage/recoverEmbeddedJsonMessage/CORRUPTION_MARKER_PATTERN
+> 无块外引用不外发；radioCommandDeps 等 *Deps 注入契约零改动。index.js 降至 4,825（92%）。
 > 
 > 注：叶子函数清单每批后已变化，接手前请重跑 `find-leaf-functions.mjs` 拿当前值，别照抄本文档旧数字。
 > （第二十二批已证实：原以为会形成 `util→dispatch→entity-models→util` 循环而不敢下沉的
@@ -103,6 +115,7 @@
 | `b4ca9a0` | P0-2 第二十二批：整块下沉 dispatch 单任务执行链到 `src/lib/dispatch-run.js`（11 函数：prepareDispatchWorktree/resolveDispatchWorktreeRoot/prepareDispatchJobContext/finalizeDispatchJob/runDispatchJob/runDispatchJobAsync/invokeRunnerCommand/invokeRunnerCommandAsync/renderDispatchPrompt/renderCompactDispatchPrompt/writeDispatchRunLog，351 行）。renderDispatchPrompt 两函数经 AST 证实 leaf（依赖全落 lib/dispatch.js+util.js），随簇下沉无环；**dispatch-pool.js 改直连 import runDispatchJobAsync（从 dispatch-run.js），不再经 initDispatchPoolDeps 注入** —— dispatch 执行链与 index.js 彻底解耦；index.js 作为调用方直连 import 4 入口（invokeRunnerCommand/runDispatchJob/runDispatchJobAsync/resolveDispatchWorktreeRoot，后者继续供 resolveCommandDeps）；3 个 index 常量（DEFAULT_DISPATCH_WORKTREE_DIR/DISPATCH_RUNS_DIR/DEFAULT_DISPATCH_RUN_TIMEOUT_MS）经 initDispatchRunDeps 注入（TDZ-safe）。lib 依赖（shell/dispatch/backup/cli/io/format/util/atomic-write/session-supervisor-service）直连 import。四步验证 + CLI help/status 冒烟 + dispatch-pool 全异步链实跑（runStatus=completed exit=0，dispatch-runs.jsonl 落盘）+ check:public 全绿。index.js 5,518→5,166 | ✅ 已推送 |
 | `c0404bf` | P0-2 第二十三批：下沉「runner 解析地基」到 `src/lib/runner-core.js`（RUNNER_PROFILES 数据对象 15 个工具 profile + runnerResolutionCache 单例 + getRunnerProfile/getKnownRunnerToolNames/getToolRunner/resolveToolRunnerUncached，238 行）。该簇是 dispatch 重试编排/memory-health/startup/status/doctor/detect 多簇共用地基，先沉它后续簇才有直连 import 可能。**纯自包含簇**（仅依赖 lib/dispatch.js normalizeToolName + lib/shell.js resolveRunnerCommand/shouldUseShellForCommand + node 内置 path/os，RUNNER_PROFILES 里拼 claude.exe/grok/antigravity 路径），无 index.js 内部符号 → 直连 import 无需 init 注入。index.js 作调用方 import 回 5 导出（RUNNER_PROFILES/getRunnerProfile/getKnownRunnerToolNames/getToolRunner/resolveToolRunnerUncached），modelsCommandDeps(36 getter)/resolveCommandDeps(48)/daemonCommandDeps(89) 契约零改动；runnerResolutionCache 与 getToolRunner/resolveToolRunnerUncached 同模块共享 state。四步验证 + CLI help/status 冒烟 + runner-core 运行时单测（15 工具/cache 单例共享/os.homedir 数据完整）+ check:public 全绿。index.js 5,166→4,929 | ✅ 已推送 |
 | `b55b6d1` | P0-2 第二十四批（第一步）：下沉 async-call-state 状态机到 `src/lib/constants.js`（ASYNC_CALL_TRANSITIONS 8 态有向转换表 + isValidAsyncCallTransition 校验函数，迁入并 export，21 行）。二者为纯 async-call-state 域（仅依赖已在 constants.js 的 isValidAsyncCallState/ASYNC_CALL_STATES），无 index 内部符号 → 低风险「纯数据+纯函数」下沉，不需架构级拍板；isValidAsyncCallTransition 原为 index 内 dead code（无调用点），行为零变化。index.js 删本地定义（原 538/2277 行）改顶部 import 回，移除 relay/radio 状态机簇对一个 index 内部符号的依赖。四步验证 + CLI help/status 冒烟 + constants.js 运行时单测 9 例（转换合法/非法全过）+ check:public 全绿。index.js 4,929→4,908 | ✅ 已推送 |
+| `e549460` | P0-2 第二十五批：下沉 radio message I/O + 归一化族到 `src/lib/radio-messages.js`（8 符号：CORRUPTION_MARKER_PATTERN + containsCorruptionMarker + isCorruptedRadioMessage + readRadioMessages + normalizeRadioMessage + recoverEmbeddedJsonMessage + updateRadioMessage + getUnreadRadioMessages，约 84 行）。该族是所有 relay/radio dispatch 状态机簇（appendRelayStatus/updateDispatchSourceState/dispatch 重试编排）的共享地基；find-clusters 复核（113 非叶子→23 自洽簇、0 非自洽）显示多数簇仍经 index 内部 hub（loadConfig/defaultConfig/resolveMemoryDir + radio reader），故选先沉 radio reader 地基（同第 23 批 runner-core 先沉共享地基策略）。**纯自包含簇**（外依赖全落 io.js readEvents/readRadioCursor + cli.js createId/ensureDir/isPlainObject + entity-models.js normalizeDispatchWorktreeMetadata + ../atomic-write.js writeFileAtomic + node path + 本簇内部共享损坏标记），无 index 内部符号 → 直连 import。index.js 作调用方 import 回 5 个仍被外部使用的符号（containsCorruptionMarker/isCorruptedRadioMessage/readRadioMessages/updateRadioMessage/getUnreadRadioMessages），normalizeRadioMessage/recoverEmbeddedJsonMessage/CORRUPTION_MARKER_PATTERN 无块外引用不外发；radioCommandDeps 等 *Deps 引用不变，注入契约零改动。四步验证 + CLI help/status/radio 冒烟 + radio-messages 运行时单测 7 例（损坏标记/归一化恢复 JSON/read/update/isCorrupted 全过）+ check:public 全绿。index.js 4,907→4,825 | ✅ 已推送 |
 
 ## 后续任务（按优先级）
 

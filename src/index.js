@@ -138,7 +138,7 @@ import { listCredentialProfiles, setCredentialProfile, removeCredentialProfile, 
 
 import { listRelatedEntities, readRelations, recordMemoryRelations, recordRelation, rebuildMemoryRelations, revokeRelation } from "./relations.js";
 import { auditMemories } from "./memory-audit.js";
-import { parseRunnerModelList, semanticSearch, checkProcessLiveness, getContentType, readRequestJson, findProjectIndex, expandSynonyms, scanBackupFilesForSecrets, getRelayTimeoutBaseMs, renderDispatchWorktree, createHealthRepairAction, getPathSize, extractCjkNgrams, getBackupFileCatalog, markTieredBackups, parseCliArgs, parseDeclaredList, parseProgressPercent, isJobCheckpointed, getCheckpointStats, renderProjectRegistryReadme, extractSharedSkillLayerVersion, renderEmptyBootstrapSnapshot, sleep, sharedSkillLayerActionLabel, summarizeDir, releaseStaleClaim, inspectSharedMemoryInstructions, getDirectResolveCandidates, normalizeCandidatePath, getPageOptions, findProject, autoCreateWorkflowNodes, summarizeTaskSpec, writeTaskSpecProcessLogs, resolveTaskSpecCwd, getMemoryStorageSummary, hasSharedMemoryInstructions } from "./lib/util.js";
+import { parseRunnerModelList, semanticSearch, checkProcessLiveness, getContentType, readRequestJson, findProjectIndex, expandSynonyms, scanBackupFilesForSecrets, getRelayTimeoutBaseMs, renderDispatchWorktree, createHealthRepairAction, getPathSize, extractCjkNgrams, getBackupFileCatalog, markTieredBackups, parseCliArgs, parseDeclaredList, parseProgressPercent, isJobCheckpointed, getCheckpointStats, renderProjectRegistryReadme, extractSharedSkillLayerVersion, renderEmptyBootstrapSnapshot, sleep, sharedSkillLayerActionLabel, summarizeDir, releaseStaleClaim, inspectSharedMemoryInstructions, getDirectResolveCandidates, normalizeCandidatePath, getPageOptions, findProject, autoCreateWorkflowNodes, getMemoryStorageSummary, hasSharedMemoryInstructions } from "./lib/util.js";
 import { extractInstructionIncludes, normalizeSeverity, formatTopCounts, formatPercent, formatBytes, sanitizeDisplayText, getMemoryAgeDays, inferScope, normalizeSearchText, countBy, sortByImportance, titleCase, looksSensitive, formatEventLocation, extractSection, extractSectionBeforeAny, renderTemplate, trimOutput, summarizeText, textMentionsResolveQuery, summarizeHealthAnalysisForRepair, sanitizeLedgerText, normalizeDuplicateMemoryText, sanitizeInlineText, extractKeywords, extractCompactVariants, getMemoryEventSkipReason, extractLooseJsonStringField, formatMemoryRecordPointer, truncateText, extractSearchTerms, parseLooseJsonMemoryEvent, findDuplicateMemoryGroups, getBackupFilePreview } from "./lib/format.js";
 import { normalizeMemoryKind, normalizeMemoryProject, normalizeMemoryScope, normalizeList, firstDefinedRef, hasMemoryFilters, normalizeRefToken, normalizeConfidence, applyMemoryAccessFields, normalizeMemoryAccessCount, normalizeMemoryAccessTimestamp, firstDefinedValue, getDaysSinceTimestamp, isMemoryLifecycleVisible, normalizeSupersedeToken, hasExplicitSyncKey, readPositiveInteger, isMemoryHealthExcluded, formatMemoryHealthRepairPlan, sanitizeRawJsonCandidate, getMemoryGrowthTrend, chooseMemoryLayer, parseListOption, parseMemoryTagFilters, formatMemoryFilterSummary, matchesMemoryTags, getMemoryAccessStats, applyMemoryLifecycleOperations, normalizeSupersedeRefs, isStartupMemoryRecord, resolveSnapshotLimits, inferTopics, normalizeMemoryRefs, flattenMemoryRefs, formatMemoryRefs, matchesMemoryRef, touchMemoryAccess, getMemorySupersedesRefs, isOperationalRadioMemory, printMemorySearchResults, filterMemoryRecords, getMemoryIdentityKeys, normalizeMemoryMetadata, recordMemoryAccess, getMemoryPrimaryKey, buildMemorySupersededBy, applyMemorySupersedeState, getMemoryRecordStableKey, markDuplicateLedgerRecordSuperseded, normalizeMemoryEvent, renderMemoryLine, recoverMemoryEventFromRawText, parseMemoryFilters, readLedger, renderIndexMarkdown, searchMemories, searchMemoriesForContext } from "./lib/memory-normalize.js";
 import { createDispatchRecordMutex, isClaimStale, shouldPersistDispatchReport, isDispatchableRadioMessage, isClosedDispatchSourceState, buildTaskDispatchText, buildWorkflowDispatchText, findRecipeStepTask, normalizeToolName, safeGitPathSegment, isKnownGeminiWarning, stripExistingModelArgs, getDispatchThreadKey, formatDispatchVerifyCommand, getDispatchRunStatus, getDispatchRunVerificationResult, getAsyncCallStateMeta, getDispatchSourceKey, getRelaySourceKey, dispatchJobFromTask, dispatchJobFromWorkflow, dispatchJobFromRelayEntry, shouldDispatchJob, buildDispatchWorktreeBranch, buildDispatchWorktreeSlug, nextRelayAttempt, normalizeRunnerStderr, isDirectDispatchRadioMessage, renderDispatchQualityGate } from "./lib/dispatch.js";
@@ -146,7 +146,7 @@ import { sendHtml, sendPlain, sendJson, sendErrorEnvelope, parsePageParam, getSa
 import { getToolDeclarationsFile, getModelsCacheFile, getRadioCursorFile, getAgentRegistryFile, getRoleRegistryFile, getTeamRegistryFile, getPolicyRulesFile } from "./lib/registry-paths.js";
 import { quoteWindowsCmdArg, escapeForWindowsCmd, quoteWindowsCommandArg, quoteShellArg, classifyCommandPath, shellQuote, getRunnerDoctorWarnings, runGit, resolveCommandPaths, commandPathPriority, shouldUseShellForCommand, buildWindowsCmdLine, resolveGitProcessCommand, commandExists, choosePreferredCommandPath, resolveRunnerCommand, buildRunnerInvocation, runProcess, runGitCommand, collectDispatchWorktreeReviewMetadata, ensureGitIdentity, inspectDashboardWorktree, resolveGitRepositoryRoot, snapshotDashboardWorktree } from "./lib/shell.js";
 import { normalizeResolveQuery, extractFilesystemPathCandidates, resolvePossiblyHomePath, pathMatchesResolveQuery } from "./lib/resolve.js";
-import { normalizeTaskSpecEnv, normalizeStringArray, normalizeTaskSpecList, normalizeTaskSpecLogs, selectPlatformCommand, getTaskSpecProcessStatus, resolveInside } from "./lib/task-spec.js";
+import { resolveInside, loadTaskSpecContext, resolveTaskSpecFile, resolveTaskSpecFromArgs, validateTaskSpecDocument, runTaskSpec, summarizeTaskSpec, resolveTaskSpecCwd } from "./lib/task-spec.js";
 import { policyActorMatches, policyRuleSpecificity, isHiddenProjectId, findWorkflowIndex, findTaskIndex, createTaskNote, getNotificationChannels } from "./lib/entity-index.js";
 import { getFileHash, getGitHubBackupUploadWarnings, normalizeBackupPatternList, matchesAnyBackupPattern, normalizeScheduleTime, resolveConfiguredPath, extractListValue, renderGitHubBackupReadme, markProtectedBackups, parseBackupTimestampFromName, inferBackupReasonFromName, inferBackupRetentionTier, createdAtRetentionKey, formatBackupDay, getIsoWeekKey, isPathInsideDirectory, countBackupDirs, backupHub, resolveBackupDirectory, getGitHubBackupExportFiles, getDefaultGitHubBackupInclude, assertSafeGitHubBackupRepoDir, ensureSafeChildPath, planBackupRetention, inferBackupRetentionKey, assertSafeDispatchWorktreeRoot, ensureGitHubBackupRepo, describeBackupFile, listBackupFiles, listBackupDirectories, buildBackupRestorePlan, hasBackupForRetentionKey, getBackupSummary, pruneBackups, deleteBackups, getBackupDetail, createScheduledBackupIfDue, exportGitHubBackupSnapshot } from "./lib/backup.js";
 import { relayFailureFingerprint, createSkillDelta, createProject, createWorkflow, createTask, createSession, createRpcRequest, createNotification, createDispatchQueueEntry, validateVerifyCommand, validateMinimalImplementation, validateDependencyBudget, normalizeRefValues, mergeMemoryAccessMetadata, parseJsonObjectCandidate, createRadioMessage, validateQualityGateFields, validateQualityGate, validateRecipe } from "./lib/entity-factory.js";
@@ -230,7 +230,6 @@ const DEFAULT_DISPATCH_MAX_RETRIES = 3;
 // fingerprint mean the loop is stuck repeating the same call for the same result.
 // Abandon early instead of burning the full retry budget on a deterministic failure.
 const DISPATCH_OSCILLATION_THRESHOLD = 2;
-const DEFAULT_TASK_SPEC_TIMEOUT_MS = 10 * 60 * 1000;
 const STALE_OPERATIONAL_RADIO_AFTER_DAYS = 7;
 const OPERATIONAL_RADIO_DECAY_RATE_PER_DAY = 8;
 const MEMORY_ACCESS_RECENT_DAYS = 7;
@@ -245,11 +244,6 @@ const SHARED_SKILL_LAYER_VERSION = "1";
 const SHARED_SKILL_LAYER_MARKER = `AI_MEMORY_HUB_SHARED_SKILL_LAYER v${SHARED_SKILL_LAYER_VERSION}`;
 const SHARED_SKILL_LAYER_MARKER_PREFIX = "AI_MEMORY_HUB_SHARED_SKILL_LAYER";
 const PROJECT_VISIBLE_STATUSES = ["active", "paused", "planning"];
-const DEFAULT_TASK_SPEC_FILES = [
-  ".tasks.json",
-  "task-specs.json",
-  path.join(".ai-memory", "task-specs.json")
-];
 const RESEARCH_REPORTS_DIR = "research-reports";
 const DISPATCH_RUNS_DIR = "dispatch-runs";
 const DEFAULT_DISPATCH_WORKTREE_DIR = ".ai-worktrees";
@@ -5679,281 +5673,6 @@ function createWorkflowFromRecipe(memoryDir, recipeName, toolMapping, variables)
 
   return { workflow, tasks, recipe };
 }
-
-// Project Task Spec Functions
-function loadTaskSpecContext(argv) {
-  const projectRoot = path.resolve(getOption(argv, "--root") || process.cwd());
-  const file = resolveTaskSpecFile(argv, projectRoot);
-  const document = readJson(file);
-  return {
-    projectRoot,
-    file,
-    displayFile: path.relative(projectRoot, file).replace(/\\/g, "/") || path.basename(file),
-    document
-  };
-}
-
-function resolveTaskSpecFile(argv, projectRoot) {
-  const fileArg = getOption(argv, "--file");
-  if (fileArg) {
-    const resolved = path.resolve(projectRoot, fileArg);
-    if (!fs.existsSync(resolved)) {
-      throw new Error(`Task spec file not found: ${resolved}`);
-    }
-    return resolved;
-  }
-
-  for (const candidate of DEFAULT_TASK_SPEC_FILES) {
-    const file = path.join(projectRoot, candidate);
-    if (fs.existsSync(file)) {
-      return file;
-    }
-  }
-
-  throw new Error(`Task spec file not found. Tried: ${DEFAULT_TASK_SPEC_FILES.join(", ")}`);
-}
-
-function resolveTaskSpecFromArgs(argv, taskId) {
-  const context = loadTaskSpecContext(argv);
-  const validation = validateTaskSpecDocument(context.document);
-  if (!validation.valid) {
-    throw new Error(`Invalid task spec: ${validation.error}`);
-  }
-  const task = validation.tasks.find((item) => item.id === taskId || item.name === taskId);
-  if (!task) {
-    throw new Error(`Task spec not found: ${taskId}`);
-  }
-  return { task, context };
-}
-
-function validateTaskSpecDocument(document) {
-  if (!document || typeof document !== "object" || Array.isArray(document)) {
-    return { valid: false, error: "Task spec file must be a JSON object" };
-  }
-  const tasks = normalizeTaskSpecs(document);
-  if (tasks.length === 0) {
-    return { valid: false, error: "Task spec must define at least one task" };
-  }
-
-  const seen = new Set();
-  for (const task of tasks) {
-    if (!task.id) {
-      return { valid: false, error: "Each task spec needs an id or object key" };
-    }
-    if (!/^[A-Za-z0-9_.:-]+$/.test(task.id)) {
-      return { valid: false, error: `Task spec id contains unsupported characters: ${task.id}` };
-    }
-    if (seen.has(task.id)) {
-      return { valid: false, error: `Duplicate task spec id: ${task.id}` };
-    }
-    seen.add(task.id);
-    const command = selectPlatformCommand(task);
-    if (!command) {
-      return { valid: false, error: `Task spec ${task.id} requires command` };
-    }
-    if (!Array.isArray(task.args)) {
-      return { valid: false, error: `Task spec ${task.id} args must be an array` };
-    }
-    if (!Number.isInteger(task.timeoutMs) || task.timeoutMs <= 0) {
-      return { valid: false, error: `Task spec ${task.id} timeoutMs must be a positive integer` };
-    }
-    for (const verify of task.verify) {
-      if (!selectPlatformCommand(verify)) {
-        return { valid: false, error: `Task spec ${task.id} verify command requires command` };
-      }
-      if (!Array.isArray(verify.args)) {
-        return { valid: false, error: `Task spec ${task.id} verify args must be an array` };
-      }
-    }
-  }
-
-  return { valid: true, tasks };
-}
-
-function normalizeTaskSpecs(document) {
-  const rawTasks = document.tasks || document.commands || {};
-  if (Array.isArray(rawTasks)) {
-    return rawTasks.map((task) => normalizeTaskSpec(task));
-  }
-  if (rawTasks && typeof rawTasks === "object") {
-    return Object.entries(rawTasks).map(([id, task]) => normalizeTaskSpec({ id, ...(task || {}) }));
-  }
-  return [];
-}
-
-function normalizeTaskSpec(task) {
-  const normalized = normalizeTaskSpecCommand(task || {});
-  return {
-    ...normalized,
-    id: String(task.id || task.name || "").trim(),
-    name: String(task.name || task.id || "").trim(),
-    title: String(task.title || task.name || task.id || "").trim(),
-    description: String(task.description || ""),
-    ports: normalizeTaskSpecList(task.ports),
-    resources: normalizeTaskSpecList(task.resources),
-    logs: normalizeTaskSpecLogs(task.logs),
-    verify: normalizeTaskSpecVerify(task.verify)
-  };
-}
-
-function normalizeTaskSpecCommand(commandSpec) {
-  return {
-    command: String(commandSpec.command || "").trim(),
-    windowsCommand: String(commandSpec.windowsCommand || "").trim(),
-    args: normalizeStringArray(commandSpec.args),
-    cwd: String(commandSpec.cwd || "."),
-    env: normalizeTaskSpecEnv(commandSpec.env),
-    timeoutMs: Number(commandSpec.timeoutMs || DEFAULT_TASK_SPEC_TIMEOUT_MS),
-    shell: Boolean(commandSpec.shell),
-    logs: normalizeTaskSpecLogs(commandSpec.logs)
-  };
-}
-
-function normalizeTaskSpecVerify(verify) {
-  if (!verify) {
-    return [];
-  }
-  const entries = Array.isArray(verify) ? verify : [verify];
-  return entries
-    .filter((entry) => entry && typeof entry === "object")
-    .map((entry) => normalizeTaskSpecCommand(entry));
-}
-
-
-
-
-
-
-
-function runTaskSpec(task, { projectRoot, runVerify = true, allowOutsideCwd = false } = {}) {
-  const startedAt = new Date().toISOString();
-  const main = runTaskSpecProcess(task, {
-    projectRoot,
-    phase: "command",
-    inherit: task,
-    allowOutsideCwd
-  });
-
-  const verification = {
-    status: "skipped",
-    commands: []
-  };
-
-  if (main.status === "passed" && runVerify && task.verify.length > 0) {
-    verification.status = "passed";
-    for (const verify of task.verify) {
-      const result = runTaskSpecProcess(verify, {
-        projectRoot,
-        phase: "verify",
-        inherit: task,
-        allowOutsideCwd
-      });
-      verification.commands.push(result);
-      if (result.status !== "passed") {
-        verification.status = result.status;
-        break;
-      }
-    }
-  }
-
-  const status = main.status === "passed" && ["passed", "skipped"].includes(verification.status)
-    ? "passed"
-    : main.status === "timed_out" || verification.status === "timed_out"
-      ? "timed_out"
-      : "failed";
-
-  return {
-    taskId: task.id,
-    title: task.title,
-    status,
-    startedAt,
-    finishedAt: new Date().toISOString(),
-    command: main,
-    verification
-  };
-}
-
-function runTaskSpecProcess(commandSpec, { projectRoot, phase, inherit = {}, allowOutsideCwd = false } = {}) {
-  const cwd = resolveTaskSpecCwd(projectRoot, commandSpec.cwd || inherit.cwd || ".", allowOutsideCwd);
-  const commandName = selectPlatformCommand(commandSpec);
-  const commandPaths = resolveCommandPaths(commandName);
-  const resolvedCommand = choosePreferredCommandPath(commandPaths) || commandName;
-  const args = commandSpec.args || [];
-  const timeoutMs = commandSpec.timeoutMs || inherit.timeoutMs || DEFAULT_TASK_SPEC_TIMEOUT_MS;
-  const startedAtMs = Date.now();
-  const startedAt = new Date(startedAtMs).toISOString();
-  const useCmdLauncher = process.platform === "win32" && shouldUseShellForCommand(resolvedCommand);
-  const usesShell = Boolean(commandSpec.shell) || useCmdLauncher;
-  const spawnCommand = useCmdLauncher ? buildWindowsCmdLine(resolvedCommand, args) : resolvedCommand;
-  const spawnArgs = useCmdLauncher ? [] : args;
-  const completed = spawnSync(spawnCommand, spawnArgs, {
-    cwd,
-    env: {
-      ...process.env,
-      ...(inherit.env || {}),
-      ...(commandSpec.env || {})
-    },
-    encoding: "utf8",
-    timeout: timeoutMs,
-    windowsHide: true,
-    shell: usesShell
-  });
-  const finishedAtMs = Date.now();
-  const status = getTaskSpecProcessStatus(completed);
-  const logs = writeTaskSpecProcessLogs(projectRoot, commandSpec.logs || {}, completed);
-  return {
-    phase,
-    command: commandName,
-    resolvedCommand,
-    args,
-    commandLine: [commandName, ...args].map((part) => String(part)).join(" "),
-    cwd: path.relative(projectRoot, cwd).replace(/\\/g, "/") || ".",
-    startedAt,
-    finishedAt: new Date(finishedAtMs).toISOString(),
-    durationMs: Math.max(0, finishedAtMs - startedAtMs),
-    timeoutMs,
-    exitCode: completed.status ?? null,
-    status,
-    error: completed.error?.message || "",
-    stdout: trimOutput(completed.stdout, 2000),
-    stderr: trimOutput(completed.stderr, 2000),
-    logs
-  };
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 function scoreMemoryAccessHeat(access = {}) {
   const count = normalizeMemoryAccessCount(access.accessCount);

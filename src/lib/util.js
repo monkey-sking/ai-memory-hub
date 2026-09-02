@@ -6,11 +6,9 @@ import os from "node:os";
 import path from "node:path";
 import { appendWorkflowNodeEvent } from "./entity-repo.js";
 import { createTaskNote } from "./entity-index.js";
-import { ensureDir } from "./cli.js";
 import { parsePageParam } from "./http.js";
-import { resolveInside, selectPlatformCommand } from "./task-spec.js";
 import { resolvePossiblyHomePath } from "./resolve.js";
-import { writeFileAtomic } from "../atomic-write.js";
+import { projectRoot } from "./paths.js";
 
 export function parseRunnerModelList(tool, runner, stdout) {
   const format = runner.modelListFormat || "";
@@ -646,46 +644,6 @@ export function autoCreateWorkflowNodes(memoryDir, workflow) {
   }
 
   return nodes.length;
-}
-
-export function summarizeTaskSpec(task) {
-  return {
-    id: task.id,
-    title: task.title,
-    command: selectPlatformCommand(task),
-    args: task.args,
-    cwd: task.cwd,
-    hasVerify: task.verify.length > 0,
-    ports: task.ports,
-    resources: task.resources,
-    logs: task.logs
-  };
-}
-
-export function writeTaskSpecProcessLogs(projectRoot, logs, completed) {
-  const written = {};
-  for (const [stream, text] of [
-    ["stdout", completed.stdout],
-    ["stderr", completed.stderr]
-  ]) {
-    const relativeLogPath = logs?.[stream] || "";
-    if (!relativeLogPath) {
-      continue;
-    }
-    const file = resolveInside(projectRoot, relativeLogPath);
-    ensureDir(path.dirname(file));
-    writeFileAtomic(file, String(text || ""), "utf8");
-    written[stream] = path.relative(projectRoot, file).replace(/\\/g, "/");
-  }
-  return written;
-}
-
-export function resolveTaskSpecCwd(projectRoot, cwd, allowOutsideCwd) {
-  const resolved = path.resolve(projectRoot, cwd || ".");
-  if (!allowOutsideCwd) {
-    resolveInside(projectRoot, path.relative(projectRoot, resolved) || ".");
-  }
-  return resolved;
 }
 
 export function getMemoryStorageSummary(memoryDir) {

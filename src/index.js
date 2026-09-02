@@ -152,6 +152,7 @@ import { appendSkillCandidates, approveSkillDelta, mergeSkillDelta, readSkillCan
 import { getGitHubBackupConfig, configureGitHubBackup, getGitHubBackupStatus, runGitHubBackup, githubBackupScheduleCommand, installGitHubBackupSchedule, uninstallGitHubBackupSchedule, getGitHubBackupScheduleStatus, updateGitHubBackupState, updateGitHubBackupScheduleState, buildGitHubBackupScheduledTaskCommand, initGithubBackupDeps } from "./lib/github-backup.js";
 import { resetDispatchPoolState, markDispatchPoolJobStart, markDispatchPoolJobDone, markDispatchPoolFinished, getDispatchPoolSnapshot, runDispatchPool, initDispatchPoolDeps } from "./lib/dispatch-pool.js";
 import { invokeRunnerCommand, runDispatchJob, runDispatchJobAsync, resolveDispatchWorktreeRoot, initDispatchRunDeps } from "./lib/dispatch-run.js";
+import { RUNNER_PROFILES, getRunnerProfile, getKnownRunnerToolNames, getToolRunner, resolveToolRunnerUncached } from "./lib/runner-core.js";
 import { policyActorMatches, policyRuleSpecificity, isHiddenProjectId, findWorkflowIndex, findTaskIndex, createTaskNote, getNotificationChannels } from "./lib/entity-index.js";
 import { getFileHash, getGitHubBackupUploadWarnings, normalizeBackupPatternList, matchesAnyBackupPattern, normalizeScheduleTime, resolveConfiguredPath, extractListValue, renderGitHubBackupReadme, markProtectedBackups, parseBackupTimestampFromName, inferBackupReasonFromName, inferBackupRetentionTier, createdAtRetentionKey, formatBackupDay, getIsoWeekKey, isPathInsideDirectory, countBackupDirs, backupHub, resolveBackupDirectory, getGitHubBackupExportFiles, getDefaultGitHubBackupInclude, assertSafeGitHubBackupRepoDir, ensureSafeChildPath, planBackupRetention, inferBackupRetentionKey, assertSafeDispatchWorktreeRoot, ensureGitHubBackupRepo, describeBackupFile, listBackupFiles, listBackupDirectories, buildBackupRestorePlan, hasBackupForRetentionKey, getBackupSummary, pruneBackups, deleteBackups, getBackupDetail, createScheduledBackupIfDue, exportGitHubBackupSnapshot } from "./lib/backup.js";
 import { relayFailureFingerprint, createSkillDelta, createProject, createWorkflow, createTask, createSession, createRpcRequest, createNotification, createDispatchQueueEntry, validateVerifyCommand, validateMinimalImplementation, validateDependencyBudget, normalizeRefValues, mergeMemoryAccessMetadata, parseJsonObjectCandidate, createRadioMessage, validateQualityGateFields, validateQualityGate, validateRecipe } from "./lib/entity-factory.js";
@@ -532,168 +533,6 @@ const appCommandDeps = {
   runMemoryHealthRepair
 };
 
-const RUNNER_PROFILES = {
-  codex: {
-    tool: "codex",
-    commandCandidates: ["codex.cmd", "codex"],
-    args: ["exec", "--sandbox", "danger-full-access", "--skip-git-repo-check"],
-    promptMode: "stdin",
-    outputMode: "text",
-    preview: "codex exec --sandbox danger-full-access --skip-git-repo-check <stdin>",
-    versionArgs: ["--version"],
-    probeArgs: ["--help"],
-    modelArgs: (model) => ["--model", model],
-    capabilities: ["direct-dispatch", "stdin-prompt", "text-output"]
-  },
-  claude: {
-    tool: "claude",
-    commandCandidates: ["claude.cmd", "claude"],
-    windowsExeFromCmd: path.join("node_modules", "@anthropic-ai", "claude-code", "bin", "claude.exe"),
-    args: ["-p", "-", "--output-format", "json", "--permission-mode", "bypassPermissions", "--bare", "--model", "sonnet", "--effort", "low"],
-    promptMode: "stdin",
-    outputMode: "claude-json",
-    preview: "claude -p - --output-format json --permission-mode bypassPermissions --bare <stdin>",
-    versionArgs: ["--version"],
-    probeArgs: ["--help"],
-    resumeArgs: (sessionId) => ["--resume", sessionId],
-    modelArgs: (model) => ["--model", model],
-    capabilities: ["direct-dispatch", "stdin-prompt", "json-output", "session-resume"]
-  },
-  codebuddy: {
-    tool: "codebuddy",
-    commandCandidates: ["codebuddy.cmd", "codebuddy", "codebuddy-code"],
-    args: ["-p", "--permission-mode", "bypassPermissions"],
-    promptMode: "stdin",
-    outputMode: "text",
-    preview: "codebuddy -p --permission-mode bypassPermissions <stdin>",
-    versionArgs: ["--version"],
-    probeArgs: ["--help"],
-    modelArgs: (model) => ["--model", model],
-    capabilities: ["direct-dispatch", "stdin-prompt", "text-output"]
-  },
-  gemini: {
-    tool: "gemini",
-    commandCandidates: ["gemini.cmd", "gemini"],
-    args: [],
-    promptMode: "stdin",
-    outputMode: "text",
-    preview: "gemini <stdin>",
-    versionArgs: ["--version"],
-    probeArgs: ["--help"],
-    modelArgs: (model) => ["--model", model],
-    capabilities: ["direct-dispatch", "stdin-prompt", "text-output", "warning-filter"]
-  },
-  "qoder-cn": {
-    tool: "qoder-cn",
-    commandCandidates: ["qoder-cn.cmd", "qoder-cn"],
-    args: ["run"],
-    promptMode: "stdin",
-    outputMode: "text",
-    preview: "qoder-cn run <stdin>",
-    versionArgs: ["--version"],
-    probeArgs: ["--help"],
-    modelArgs: (model) => ["--model", model],
-    capabilities: ["direct-dispatch", "stdin-prompt", "text-output"]
-  },
-  opencode: {
-    tool: "opencode",
-    commandCandidates: ["opencode.cmd", "opencode", "qoder-cn.cmd", "qoder-cn"],
-    args: ["run", "--auto"],
-    promptMode: "stdin",
-    outputMode: "text",
-    preview: "opencode run --auto <stdin>",
-    versionArgs: ["--version"],
-    probeArgs: ["--help"],
-    modelArgs: (model) => ["--model", model],
-    modelsCommand: ["models"],
-    modelListFormat: "provider-model",
-    capabilities: ["direct-dispatch", "stdin-prompt", "text-output"]
-  },
-  mimocode: {
-    tool: "mimocode",
-    commandCandidates: ["mimo.cmd", "mimo", "mimocode.cmd", "mimocode"],
-    args: ["run"],
-    promptMode: "argv",
-    outputMode: "text",
-    compactPrompt: true,
-    preview: "mimo run <prompt>",
-    versionArgs: ["--version"],
-    probeArgs: ["--help"],
-    modelArgs: (model) => ["--model", model],
-    modelsCommand: ["models"],
-    modelListFormat: "provider-model",
-    capabilities: ["direct-dispatch", "argv-prompt", "text-output", "opencode-compatible"]
-  },
-  grok: {
-    tool: "grok",
-    commandCandidates: [
-      path.join(os.homedir(), ".grok", "bin", "grok"),
-      path.join(os.homedir(), ".grok", "bin", "grok.exe"),
-      path.join(os.homedir(), ".local", "bin", "grok"),
-      "grok.cmd",
-      "grok"
-    ],
-    args: ["--always-approve", "-p"],
-    promptMode: "argv",
-    outputMode: "text",
-    compactPrompt: true,
-    preview: "grok --always-approve -p <prompt>",
-    versionArgs: ["--version"],
-    probeArgs: ["--help"],
-    modelArgs: (model) => ["--model", model],
-    modelsCommand: ["models"],
-    modelListFormat: "grok",
-    capabilities: ["direct-dispatch", "argv-prompt", "text-output"]
-  },
-  marvis: {
-    tool: "marvis",
-    sharedStateOnly: true,
-    reason: "marvis currently integrates through shared radio/task state only; no verified direct CLI runner is configured on this machine"
-  },
-  qclaw: {
-    tool: "qclaw",
-    sharedStateOnly: true,
-    reason: "qclaw should currently be coordinated through shared tasks/radio or its own gateway; no verified direct prompt runner is configured"
-  },
-  coze: {
-    tool: "coze",
-    sharedStateOnly: true,
-    reason: "coze (扣子) should currently be coordinated through shared tasks/radio or its own gateway; no verified direct prompt runner is configured"
-  },
-  openclaw: {
-    tool: "openclaw",
-    sharedStateOnly: true,
-    reason: "openclaw should currently be coordinated through shared tasks/radio or gateway APIs; no verified direct prompt runner is configured"
-  },
-  antigravity: {
-    tool: "antigravity",
-    commandCandidates: [
-      path.join(os.homedir(), "AppData", "Local", "agy", "bin", "agy.exe"),
-      "agy.cmd",
-      "agy"
-    ],
-    args: ["--print"],
-    promptMode: "argv",
-    outputMode: "text",
-    compactPrompt: true,
-    preview: "agy --print <prompt>",
-    versionArgs: ["--version"],
-    probeArgs: ["--help"],
-    modelArgs: (model) => ["--model", model],
-    capabilities: ["direct-dispatch", "argv-prompt", "text-output", "session-history"]
-  },
-  "codex-app": {
-    tool: "codex-app",
-    sharedStateOnly: true,
-    reason: "codex-app is a desktop/app target; use shared state or app automation rather than direct CLI dispatch"
-  },
-  "claude-desktop": {
-    tool: "claude-desktop",
-    sharedStateOnly: true,
-    reason: "claude-desktop is a desktop/app target; use shared state or app automation rather than direct CLI dispatch"
-  }
-};
-
 // Unified async call state machine
 
 const ASYNC_CALL_TRANSITIONS = {
@@ -708,7 +547,6 @@ const ASYNC_CALL_TRANSITIONS = {
 };
 
 
-const runnerResolutionCache = new Map();
 
 const rawArgs = process.argv.slice(2);
 const parsedArgs = parseCliArgs(rawArgs);
@@ -2379,81 +2217,6 @@ function shouldRetryJob(job) {
   return !isSharedStateOnlyTool(job.tool);
 }
 
-function getRunnerProfile(tool) {
-  return RUNNER_PROFILES[normalizeToolName(tool)] || null;
-}
-
-function getKnownRunnerToolNames() {
-  return Object.keys(RUNNER_PROFILES);
-}
-
-
-// runnerResolutionCache 声明已上移至本文件 main() 调用之前，避免 TDZ
-
-function getToolRunner(tool) {
-  const name = normalizeToolName(tool);
-  if (runnerResolutionCache.has(name)) {
-    return runnerResolutionCache.get(name);
-  }
-  const result = resolveToolRunnerUncached(name);
-  runnerResolutionCache.set(name, result);
-  return result;
-}
-
-function resolveToolRunnerUncached(name) {
-  const profile = getRunnerProfile(name);
-  if (!profile) {
-    return {
-      tool: name,
-      available: false,
-      reason: `${name || "unknown"} has shared instructions but no verified CLI runner on this machine`
-    };
-  }
-  if (profile.sharedStateOnly) {
-    return {
-      ...profile,
-      available: false,
-      sharedStateOnly: true,
-      reason: profile.reason || `${profile.tool} is shared-state-only`
-    };
-  }
-
-  const resolution = resolveRunnerCommand(profile);
-  if (!resolution.path) {
-    return {
-      ...profile,
-      available: false,
-      reason: `${profile.tool} CLI not found in PATH`,
-      commandCandidates: profile.commandCandidates || [profile.command].filter(Boolean),
-      resolvedCommands: resolution.allPaths || []
-    };
-  }
-  if (resolution.kind === "powershell-shim") {
-    return {
-      ...profile,
-      available: false,
-      reason: `${profile.tool} only resolved to a PowerShell .ps1 shim; install a .cmd/.exe shim or use a direct Node entry point for safe dispatch`,
-      commandName: resolution.name,
-      commandKind: resolution.kind,
-      commandPath: resolution.path,
-      resolvedCommands: resolution.allPaths
-    };
-  }
-
-  const shell = shouldUseShellForCommand(resolution.path);
-  return {
-    ...profile,
-    available: true,
-    command: resolution.path,
-    commandName: resolution.name,
-    commandKind: resolution.kind,
-    commandPath: resolution.path,
-    resolvedCommands: resolution.allPaths,
-    usesShell: shell,
-    shell: shell ? "cmd.exe" : "none",
-    preview: profile.preview || `${profile.tool} <${profile.promptMode || "argv"}>`
-  };
-}
 
 function isSharedStateOnlyTool(tool) {
   const profile = getRunnerProfile(tool);

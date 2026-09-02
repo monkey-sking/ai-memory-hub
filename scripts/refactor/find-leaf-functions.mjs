@@ -230,3 +230,11 @@ const nonLeaf = results.filter((r) => r.internalDeps.length > 0).sort((a, b) => 
 for (const r of nonLeaf.slice(0, 15)) {
   console.log(`${String(r.size).padStart(4)} 行  L${String(r.start).padStart(5)}  ${r.name}  → ${r.internalDeps.slice(0, 6).join(", ")}${r.internalDeps.length > 6 ? " ..." : ""}`);
 }
+
+// --deps 模式：输出所有非叶子函数的 name → internalDeps（供簇分析脚本消费）
+if (flags.has("--deps")) {
+  console.log("\n=== ALL_NONLEAF_DEPS ===");
+  for (const r of nonLeaf) {
+    console.log(`${r.name}\t${r.internalDeps.join(",")}`);
+  }
+}

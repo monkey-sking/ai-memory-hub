@@ -1,8 +1,11 @@
+// 从 src/index.js 下沉的通用工具函数（v3.0 重构 P0-2）。
+// 这些函数不依赖 index.js 内部的任何其他符号，可安全复用。
+
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { normalizeToolName } from "./dispatch.js";
 import { execSync } from "node:child_process";
+import { normalizeToolName } from "./dispatch.js";
 import { projectRoot } from "./paths.js";
 
 export function readDiscoveredModels(memoryDir, tool) {
@@ -160,4 +163,242 @@ export function getDashboardStaticRoot() {
 
 export function readTemplate(name) {
   return fs.readFileSync(path.join(projectRoot(), "templates", name), "utf8");
+}
+
+export function getLocalInstallTargets(cwd, memoryDir) {
+  return [
+    {
+      tool: "codex",
+      file: path.join(cwd, "AGENTS.md"),
+      template: readTemplate("AGENTS.md")
+    },
+    {
+      tool: "codex-app",
+      file: path.join(cwd, "AGENTS.md"),
+      template: readTemplate("AGENTS.md")
+    },
+    {
+      tool: "claude",
+      file: path.join(cwd, "CLAUDE.md"),
+      template: readTemplate("CLAUDE.md")
+    },
+    {
+      tool: "claude-desktop",
+      file: path.join(cwd, "CLAUDE.md"),
+      template: readTemplate("CLAUDE.md")
+    },
+    {
+      tool: "gemini",
+      file: path.join(cwd, "GEMINI.md"),
+      template: readTemplate("GEMINI.md")
+    },
+    {
+      tool: "antigravity",
+      file: path.join(cwd, "GEMINI.md"),
+      template: readTemplate("GEMINI.md")
+    },
+    {
+      tool: "antigravity-cockpit",
+      file: path.join(cwd, "GEMINI.md"),
+      template: readTemplate("GEMINI.md")
+    },
+    {
+      tool: "antigravity-gemini",
+      file: path.join(cwd, "GEMINI.md"),
+      template: readTemplate("GEMINI.md")
+    },
+    {
+      tool: "cursor",
+      file: path.join(cwd, ".cursorrules"),
+      template: readTemplate("shared-instructions.md")
+    },
+    {
+      tool: "windsurf",
+      file: path.join(cwd, ".windsurfrules"),
+      template: readTemplate("shared-instructions.md")
+    },
+    {
+      tool: "cline",
+      file: path.join(cwd, ".clinerules"),
+      template: readTemplate("shared-instructions.md")
+    },
+    {
+      tool: "roo-code",
+      file: path.join(cwd, ".clinerules"),
+      template: readTemplate("shared-instructions.md")
+    },
+    {
+      tool: "aider",
+      file: path.join(cwd, ".aider.instructions.md"),
+      template: readTemplate("shared-instructions.md")
+    },
+    {
+      tool: "mimocode",
+      file: path.join(cwd, ".mimocode", "skills", "ai-memory-hub", "SKILL.md"),
+      template: readTemplate("MIMOCODE_SKILL.md")
+    },
+    {
+      tool: "grok",
+      file: path.join(cwd, "AGENTS.md"),
+      template: readTemplate("AGENTS.md")
+    },
+    {
+      tool: "vscode",
+      file: path.join(cwd, ".github", "copilot-instructions.md"),
+      template: readTemplate("shared-instructions.md")
+    },
+    {
+      tool: "chatgpt",
+      file: path.join(cwd, "CHATGPT.md"),
+      template: readTemplate("shared-instructions.md")
+    },
+    {
+      tool: "ollama",
+      file: path.join(cwd, "OLLAMA.md"),
+      template: readTemplate("shared-instructions.md")
+    },
+    {
+      tool: "cherry-studio",
+      file: path.join(cwd, "CHERRY_STUDIO.md"),
+      template: readTemplate("shared-instructions.md")
+    }
+  ];
+}
+
+export function getInstallTargets(memoryDir) {
+  const home = os.homedir();
+  return [
+    {
+      tool: "codex",
+      file: path.join(home, ".codex", "AGENTS.md"),
+      template: readTemplate("AGENTS.md")
+    },
+    {
+      tool: "claude",
+      file: path.join(home, ".claude", "CLAUDE.md"),
+      template: readTemplate("CLAUDE.md")
+    },
+    {
+      tool: "gemini",
+      file: path.join(home, ".gemini", "GEMINI.md"),
+      template: readTemplate("GEMINI.md")
+    },
+    {
+      tool: "codebuddy",
+      file: path.join(home, ".codebuddy", "CODEBUDDY.md"),
+      template: readTemplate("AGENTS.md")
+    },
+    {
+      tool: "codebuddy",
+      file: path.join(memoryDir, "tools", "codebuddy-shared-memory.md"),
+      template: readTemplate("shared-instructions.md")
+    },
+    {
+      tool: "antigravity",
+      file: path.join(memoryDir, "tools", "antigravity-shared-memory.md"),
+      template: readTemplate("shared-instructions.md")
+    },
+    {
+      tool: "antigravity-cockpit",
+      file: path.join(memoryDir, "tools", "antigravity-cockpit-shared-memory.md"),
+      template: readTemplate("shared-instructions.md")
+    },
+    {
+      tool: "antigravity-gemini",
+      file: path.join(memoryDir, "tools", "antigravity-gemini-shared-memory.md"),
+      template: readTemplate("shared-instructions.md")
+    },
+    {
+      tool: "cc-switch",
+      file: path.join(memoryDir, "tools", "cc-switch-shared-memory.md"),
+      template: readTemplate("shared-instructions.md")
+    },
+    {
+      tool: "codex-app",
+      file: path.join(memoryDir, "tools", "codex-app-shared-memory.md"),
+      template: readTemplate("shared-instructions.md")
+    },
+    {
+      tool: "marvis",
+      file: path.join(home, "AppData", "Roaming", "Tencent", "Marvis", "skills", "ai-memory-hub", "SKILL.md"),
+      template: readTemplate("MARVIS_SKILL.md")
+    },
+    {
+      tool: "qclaw",
+      file: path.join(home, ".qclaw", "skills", "ai-memory-hub", "SKILL.md"),
+      template: readTemplate("QCLAW_SKILL.md")
+    },
+    {
+      tool: "coze",
+      file: path.join(home, ".coze", "skills", "ai-memory-hub", "SKILL.md"),
+      template: readTemplate("COZE_SKILL.md")
+    },
+    {
+      tool: "openclaw",
+      file: path.join(home, ".openclaw", "skills", "ai-memory-hub", "SKILL.md"),
+      template: readTemplate("OPENCLAW_SKILL.md")
+    },
+    {
+      tool: "opencode",
+      file: path.join(home, ".config", "opencode", "skills", "ai-memory-hub", "SKILL.md"),
+      template: readTemplate("OPENCODE_SKILL.md")
+    },
+    {
+      tool: "mimocode",
+      file: path.join(home, ".config", "mimocode", "skills", "ai-memory-hub", "SKILL.md"),
+      template: readTemplate("MIMOCODE_SKILL.md")
+    },
+    {
+      tool: "grok",
+      file: path.join(home, ".grok", "AGENTS.md"),
+      template: readTemplate("AGENTS.md")
+    },
+    {
+      tool: "grok",
+      file: path.join(home, ".grok", "skills", "ai-memory-hub", "SKILL.md"),
+      template: readTemplate("GROK_SKILL.md")
+    },
+    {
+      tool: "grok",
+      file: path.join(memoryDir, "tools", "grok-shared-memory.md"),
+      template: readTemplate("shared-instructions.md")
+    },
+    ...[
+      "claude-desktop",
+      "cursor",
+      "windsurf",
+      "vscode",
+      "continue",
+      "cline",
+      "roo-code",
+      "trae",
+      "kiro",
+      "zed",
+      "chatgpt",
+      "ollama",
+      "lmstudio",
+      "jan",
+      "anythingllm",
+      "cherry-studio",
+      "dify",
+      "open-webui",
+      "aider",
+      "tabby",
+      "codeium",
+      "augment",
+      "supermaven"
+    ].map((tool) => ({
+      tool,
+      file: path.join(memoryDir, "tools", `${tool}-shared-memory.md`),
+      template: readTemplate("shared-instructions.md")
+    }))
+  ];
+}
+
+export function renderDashboard() {
+  const indexPath = path.join(getDashboardStaticRoot(), "index.html");
+  if (fs.existsSync(indexPath) && fs.statSync(indexPath).isFile()) {
+    return fs.readFileSync(indexPath, "utf8");
+  }
+  return readTemplate("dashboard-v2.html");
 }

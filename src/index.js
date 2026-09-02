@@ -95,7 +95,7 @@ import { memoryCommand } from "./commands/memory.js";
 const memoryCommandDeps = { buildMemoryIndex, ensureHub, isMemoryLifecycleVisible, loadConfig, normalizeMemoryMetadata, normalizeSupersedeToken, readLedger, rebuildMemoryOutputs, runAutomaticBackupStrategy, searchCommand, searchCommandDeps, snapshotCommand, withHubLock };
 import { sqliteCommand } from "./commands/sqlite.js";
 import { ensureDir, readJson, readJsonSafe, writeJson, createId, getOption, hasOption, hasFlag, parsePositiveIntegerOption, positionalArgs, countJsonlFiles, isPlainObject, hasOwnField } from "./lib/cli.js";
-import { readEvents, parseJsonlLine, countJsonlLines, readToolDeclarations, readModelsCache, writeModelsCache, readRadioCursor, writeRadioCursor, readAgents, readRoles, readTeams, readClaudeSessionState, readDispatchLog, readDispatchRuns, appendDispatchRunRecord, appendDispatchLog, readRelayStatus, resolveGitConflictsInFile, writeLedger, readApprovalGates, appendApprovalGateEvent, readPolicyRules, readSessions, readUnreadReceipts, appendUnreadReceipt, writeSessions, writeRpcRequest, readRpcRequest, writeRpcResult, readRpcResult, writeNotification, readNotifications, writeContextPack, readContextPack, readDispatchQueue, writeDispatchQueueEntry, readMemoryLifecycleOperations, archiveInbox, writeInboxEvents, readBackupManifest, readLockFile, readLockEvents, appendLockEvent, readEventsWithLocations, readAgentById, readRoleById, readTeamById, resolveRelayThreadKeys, findLatestRelayStatusEntry, readLatestDispatchRunByThread, readLatestRelayStatusByThread, readLatestRelayStatusBySource, updateSession, getActiveSessions, getPendingNotifications, getQueuedEntries, getRunningEntries, getFailedEntries, buildRunnerArgs, writeClaudeSessionState, countRecentRelayOscillation } from "./lib/io.js";
+import { readEvents, parseJsonlLine, countJsonlLines, readToolDeclarations, readModelsCache, writeModelsCache, readRadioCursor, writeRadioCursor, readAgents, readRoles, readTeams, readClaudeSessionState, readDispatchLog, readDispatchRuns, appendDispatchRunRecord, appendDispatchLog, readRelayStatus, resolveGitConflictsInFile, writeLedger, readApprovalGates, appendApprovalGateEvent, readPolicyRules, readSessions, readUnreadReceipts, appendUnreadReceipt, writeSessions, writeRpcRequest, readRpcRequest, writeRpcResult, readRpcResult, writeNotification, readNotifications, writeContextPack, readContextPack, readDispatchQueue, writeDispatchQueueEntry, readMemoryLifecycleOperations, archiveInbox, writeInboxEvents, readBackupManifest, readLockFile, readLockEvents, appendLockEvent, readEventsWithLocations, readAgentById, readRoleById, readTeamById, resolveRelayThreadKeys, findLatestRelayStatusEntry, readLatestDispatchRunByThread, readLatestRelayStatusByThread, readLatestRelayStatusBySource, updateSession, getActiveSessions, getPendingNotifications, getQueuedEntries, getRunningEntries, getFailedEntries, buildRunnerArgs, writeClaudeSessionState, countRecentRelayOscillation, writeAgent, writeRole, writeTeam, createDispatchRunId, removePolicyRule, updateNotificationStatus, updateDispatchQueueEntry, releaseLock, describeLock, waitForRpcResult } from "./lib/io.js";
 import { getEntityEventsFile, getEntityProjectionFile, readEntityEvents, bootstrapEntityEventsFromProjection, writeEntityRecords, appendEntityRecord, deleteEntityRecord, appendEntityEvents, createEntityEvent, replayEntityEvents, materializeEntityProjection, isEntityRecordNewerOrSame } from "./lib/entity-store.js";
 import { PROJECT_STATUSES, RECIPE_GATE_STRING_ARRAY_FIELDS, RECIPE_GATE_FIELDS, extractQualityGate, normalizeQualityGate, normalizeVerifyCommand, normalizeNonNegativeInteger, normalizeMinimalImplementation, normalizeDependencyBudget, normalizePriority, normalizeDispatchWorktreeMetadata, normalizeWorkflowRole, parseProjectListOption, uniqueStringList, isTaskStatus, isWorkflowStatus, normalizeRecipeMetadata, normalizeRecipeStepMetadata, normalizeProjectStatus, normalizeProjectResources, normalizeProject, normalizeWorkflow, normalizeTask, normalizePrompt, getTaskEventStoreDefinition, getProjectEventStoreDefinition, getWorkflowEventStoreDefinition, getPromptEventStoreDefinition, rebuildEventSourcedProjections, updateProject, updateWorkflow, updateTask, assertTaskStatus, assertWorkflowStatus, mergeQualityGates } from "./lib/entity-models.js";
 import { projectRoot } from "./lib/paths.js";
@@ -144,13 +144,13 @@ import { normalizeMemoryKind, normalizeMemoryProject, normalizeMemoryScope, norm
 import { createDispatchRecordMutex, isClaimStale, shouldPersistDispatchReport, isDispatchableRadioMessage, isClosedDispatchSourceState, buildTaskDispatchText, buildWorkflowDispatchText, findRecipeStepTask, normalizeToolName, safeGitPathSegment, isKnownGeminiWarning, stripExistingModelArgs, getDispatchThreadKey, formatDispatchVerifyCommand, getDispatchRunStatus, getDispatchRunVerificationResult, getAsyncCallStateMeta, getDispatchSourceKey, getRelaySourceKey, dispatchJobFromTask, dispatchJobFromWorkflow, dispatchJobFromRelayEntry, shouldDispatchJob, buildDispatchWorktreeBranch, buildDispatchWorktreeSlug, nextRelayAttempt } from "./lib/dispatch.js";
 import { sendHtml, sendPlain, sendJson, sendErrorEnvelope, parsePageParam, getSafeStaticRelativePath, readTextIfExists } from "./lib/http.js";
 import { getToolDeclarationsFile, getModelsCacheFile, getRadioCursorFile, getAgentRegistryFile, getRoleRegistryFile, getTeamRegistryFile, getPolicyRulesFile } from "./lib/registry-paths.js";
-import { quoteWindowsCmdArg, escapeForWindowsCmd, quoteWindowsCommandArg, quoteShellArg, classifyCommandPath, shellQuote, getRunnerDoctorWarnings, runGit, resolveCommandPaths, commandPathPriority, shouldUseShellForCommand } from "./lib/shell.js";
+import { quoteWindowsCmdArg, escapeForWindowsCmd, quoteWindowsCommandArg, quoteShellArg, classifyCommandPath, shellQuote, getRunnerDoctorWarnings, runGit, resolveCommandPaths, commandPathPriority, shouldUseShellForCommand, buildWindowsCmdLine, resolveGitProcessCommand, commandExists, choosePreferredCommandPath } from "./lib/shell.js";
 import { normalizeResolveQuery, extractFilesystemPathCandidates, resolvePossiblyHomePath, pathMatchesResolveQuery } from "./lib/resolve.js";
 import { normalizeTaskSpecEnv, normalizeStringArray, normalizeTaskSpecList, normalizeTaskSpecLogs, selectPlatformCommand, getTaskSpecProcessStatus, resolveInside } from "./lib/task-spec.js";
 import { policyActorMatches, policyRuleSpecificity, isHiddenProjectId, findWorkflowIndex, findTaskIndex, createTaskNote, getNotificationChannels } from "./lib/entity-index.js";
-import { getFileHash, getGitHubBackupUploadWarnings, normalizeBackupPatternList, matchesAnyBackupPattern, normalizeScheduleTime, resolveConfiguredPath, extractListValue, renderGitHubBackupReadme, markProtectedBackups, parseBackupTimestampFromName, inferBackupReasonFromName, inferBackupRetentionTier, createdAtRetentionKey, formatBackupDay, getIsoWeekKey, isPathInsideDirectory, countBackupDirs, backupHub, resolveBackupDirectory, getGitHubBackupExportFiles, getDefaultGitHubBackupInclude, assertSafeGitHubBackupRepoDir, ensureSafeChildPath, planBackupRetention, inferBackupRetentionKey } from "./lib/backup.js";
+import { getFileHash, getGitHubBackupUploadWarnings, normalizeBackupPatternList, matchesAnyBackupPattern, normalizeScheduleTime, resolveConfiguredPath, extractListValue, renderGitHubBackupReadme, markProtectedBackups, parseBackupTimestampFromName, inferBackupReasonFromName, inferBackupRetentionTier, createdAtRetentionKey, formatBackupDay, getIsoWeekKey, isPathInsideDirectory, countBackupDirs, backupHub, resolveBackupDirectory, getGitHubBackupExportFiles, getDefaultGitHubBackupInclude, assertSafeGitHubBackupRepoDir, ensureSafeChildPath, planBackupRetention, inferBackupRetentionKey, assertSafeDispatchWorktreeRoot } from "./lib/backup.js";
 import { relayFailureFingerprint, createSkillDelta, createProject, createWorkflow, createTask, createSession, createRpcRequest, createNotification, createDispatchQueueEntry, validateVerifyCommand, validateMinimalImplementation, validateDependencyBudget, normalizeRefValues, mergeMemoryAccessMetadata, parseJsonObjectCandidate, createRadioMessage } from "./lib/entity-factory.js";
-import { readDiscoveredModels, detectVSCodeEnhanced, getDashboardStaticRoot, readTemplate } from "./lib/tools-detect.js";
+import { readDiscoveredModels, detectVSCodeEnhanced, getDashboardStaticRoot, readTemplate, getLocalInstallTargets, getInstallTargets, renderDashboard } from "./lib/tools-detect.js";
 import {
   normalizeAdversarialVerifier,
   normalizeReviewDimensions,
@@ -1276,20 +1276,6 @@ function getUnreadRadioMessages(memoryDir, consumer) {
 
 // ---- P1: agent + role registries (borrowed from Cumora participants; role is a first-class entity here) ----
 
-function writeAgent(memoryDir, agent) {
-  const file = getAgentRegistryFile(memoryDir);
-  ensureDir(path.dirname(file));
-  const agents = readAgents(memoryDir);
-  const key = String(agent.id || "").trim().toLowerCase();
-  if (!key) throw new Error("agent requires an id");
-  const idx = agents.findIndex((a) => String(a.id || "").trim().toLowerCase() === key);
-  const nowIso = new Date().toISOString();
-  const next = { ...agent, id: agents[idx] ? agents[idx].id : agent.id, updatedAt: nowIso };
-  if (idx === -1) { next.createdAt = agent.createdAt || nowIso; agents.push(next); }
-  else agents[idx] = { ...agents[idx], ...next, id: agents[idx].id, createdAt: agents[idx].createdAt || nowIso };
-  writeFileAtomic(file, agents.map((a) => JSON.stringify(a)).join("\n") + (agents.length ? "\n" : ""), "utf8");
-  return next;
-}
 // Upsert an agent's live status; creates the agent record if it doesn't exist yet.
 // Used by P0 task-claim linkage so a runner that claims a task auto-shows as busy.
 function touchAgentStatus(memoryDir, id, state, by) {
@@ -1297,36 +1283,8 @@ function touchAgentStatus(memoryDir, id, state, by) {
   const existing = readAgentById(memoryDir, id) || { id: String(id).trim(), name: String(id).trim(), createdAt: nowIso };
   return writeAgent(memoryDir, { ...existing, status: state, statusBy: by || existing.statusBy || "system", statusAt: nowIso });
 }
-function writeRole(memoryDir, role) {
-  const file = getRoleRegistryFile(memoryDir);
-  ensureDir(path.dirname(file));
-  const roles = readRoles(memoryDir);
-  const key = String(role.id || "").trim().toLowerCase();
-  if (!key) throw new Error("role requires an id");
-  const idx = roles.findIndex((r) => String(r.id || "").trim().toLowerCase() === key);
-  const nowIso = new Date().toISOString();
-  const next = { ...role, id: roles[idx] ? roles[idx].id : role.id, updatedAt: nowIso };
-  if (idx === -1) { next.createdAt = role.createdAt || nowIso; roles.push(next); }
-  else roles[idx] = { ...roles[idx], ...next, id: roles[idx].id, createdAt: roles[idx].createdAt || nowIso };
-  writeFileAtomic(file, roles.map((r) => JSON.stringify(r)).join("\n") + (roles.length ? "\n" : ""), "utf8");
-  return next;
-}
 
 // P2: team registry (first-class org entity, Cumora has none).
-function writeTeam(memoryDir, team) {
-  const file = getTeamRegistryFile(memoryDir);
-  ensureDir(path.dirname(file));
-  const teams = readTeams(memoryDir);
-  const key = String(team.id || "").trim().toLowerCase();
-  if (!key) throw new Error("team requires an id");
-  const idx = teams.findIndex((t) => String(t.id || "").trim().toLowerCase() === key);
-  const nowIso = new Date().toISOString();
-  const next = { ...team, id: teams[idx] ? teams[idx].id : team.id, updatedAt: nowIso };
-  if (idx === -1) { next.createdAt = team.createdAt || nowIso; teams.push(next); }
-  else teams[idx] = { ...teams[idx], ...next, id: teams[idx].id, createdAt: teams[idx].createdAt || nowIso };
-  writeFileAtomic(file, teams.map((t) => JSON.stringify(t)).join("\n") + (teams.length ? "\n" : ""), "utf8");
-  return next;
-}
 
 
 
@@ -2808,16 +2766,6 @@ function resolveDispatchWorktreeRoot(repoRoot, rootOption = "") {
   return path.resolve(repoRoot, raw);
 }
 
-function assertSafeDispatchWorktreeRoot(repoRoot, worktreeRoot) {
-  const resolvedRoot = path.resolve(worktreeRoot);
-  if (resolvedRoot === path.parse(resolvedRoot).root) {
-    throw new Error("Dispatch worktree root cannot be a filesystem root.");
-  }
-  const gitDir = path.join(path.resolve(repoRoot), ".git");
-  if (resolvedRoot === gitDir || isPathInsideDirectory(resolvedRoot, gitDir)) {
-    throw new Error("Dispatch worktree root cannot be inside the repository .git directory.");
-  }
-}
 
 
 
@@ -3203,9 +3151,6 @@ async function invokeRunnerCommandAsync(runner, args = [], input = "", timeoutMs
   throw lastError;
 }
 
-function buildWindowsCmdLine(command, args = []) {
-  return [command, ...(args || [])].map(quoteWindowsCmdArg).join(" ");
-}
 
 
 function normalizeRunnerStderr(tool, stderr) {
@@ -3365,9 +3310,6 @@ function renderCompactDispatchPrompt(memoryDir, job) {
 
 
 
-function createDispatchRunId(job) {
-  return createId(`dispatch-run:${job.id}:${job.refId}:${new Date().toISOString()}:${crypto.randomUUID()}`);
-}
 
 function writeDispatchRunLog(memoryDir, runId, stream, text) {
   const safeRunId = String(runId || "run").replace(/[^a-zA-Z0-9_.-]+/g, "-");
@@ -5679,235 +5621,7 @@ function getInstallTargetForTool(memoryDir, toolName, installTargets) {
   return targets.find((target) => target.tool === toolName) || null;
 }
 
-function getLocalInstallTargets(cwd, memoryDir) {
-  return [
-    {
-      tool: "codex",
-      file: path.join(cwd, "AGENTS.md"),
-      template: readTemplate("AGENTS.md")
-    },
-    {
-      tool: "codex-app",
-      file: path.join(cwd, "AGENTS.md"),
-      template: readTemplate("AGENTS.md")
-    },
-    {
-      tool: "claude",
-      file: path.join(cwd, "CLAUDE.md"),
-      template: readTemplate("CLAUDE.md")
-    },
-    {
-      tool: "claude-desktop",
-      file: path.join(cwd, "CLAUDE.md"),
-      template: readTemplate("CLAUDE.md")
-    },
-    {
-      tool: "gemini",
-      file: path.join(cwd, "GEMINI.md"),
-      template: readTemplate("GEMINI.md")
-    },
-    {
-      tool: "antigravity",
-      file: path.join(cwd, "GEMINI.md"),
-      template: readTemplate("GEMINI.md")
-    },
-    {
-      tool: "antigravity-cockpit",
-      file: path.join(cwd, "GEMINI.md"),
-      template: readTemplate("GEMINI.md")
-    },
-    {
-      tool: "antigravity-gemini",
-      file: path.join(cwd, "GEMINI.md"),
-      template: readTemplate("GEMINI.md")
-    },
-    {
-      tool: "cursor",
-      file: path.join(cwd, ".cursorrules"),
-      template: readTemplate("shared-instructions.md")
-    },
-    {
-      tool: "windsurf",
-      file: path.join(cwd, ".windsurfrules"),
-      template: readTemplate("shared-instructions.md")
-    },
-    {
-      tool: "cline",
-      file: path.join(cwd, ".clinerules"),
-      template: readTemplate("shared-instructions.md")
-    },
-    {
-      tool: "roo-code",
-      file: path.join(cwd, ".clinerules"),
-      template: readTemplate("shared-instructions.md")
-    },
-    {
-      tool: "aider",
-      file: path.join(cwd, ".aider.instructions.md"),
-      template: readTemplate("shared-instructions.md")
-    },
-    {
-      tool: "mimocode",
-      file: path.join(cwd, ".mimocode", "skills", "ai-memory-hub", "SKILL.md"),
-      template: readTemplate("MIMOCODE_SKILL.md")
-    },
-    {
-      tool: "grok",
-      file: path.join(cwd, "AGENTS.md"),
-      template: readTemplate("AGENTS.md")
-    },
-    {
-      tool: "vscode",
-      file: path.join(cwd, ".github", "copilot-instructions.md"),
-      template: readTemplate("shared-instructions.md")
-    },
-    {
-      tool: "chatgpt",
-      file: path.join(cwd, "CHATGPT.md"),
-      template: readTemplate("shared-instructions.md")
-    },
-    {
-      tool: "ollama",
-      file: path.join(cwd, "OLLAMA.md"),
-      template: readTemplate("shared-instructions.md")
-    },
-    {
-      tool: "cherry-studio",
-      file: path.join(cwd, "CHERRY_STUDIO.md"),
-      template: readTemplate("shared-instructions.md")
-    }
-  ];
-}
 
-function getInstallTargets(memoryDir) {
-  const home = os.homedir();
-  return [
-    {
-      tool: "codex",
-      file: path.join(home, ".codex", "AGENTS.md"),
-      template: readTemplate("AGENTS.md")
-    },
-    {
-      tool: "claude",
-      file: path.join(home, ".claude", "CLAUDE.md"),
-      template: readTemplate("CLAUDE.md")
-    },
-    {
-      tool: "gemini",
-      file: path.join(home, ".gemini", "GEMINI.md"),
-      template: readTemplate("GEMINI.md")
-    },
-    {
-      tool: "codebuddy",
-      file: path.join(home, ".codebuddy", "CODEBUDDY.md"),
-      template: readTemplate("AGENTS.md")
-    },
-    {
-      tool: "codebuddy",
-      file: path.join(memoryDir, "tools", "codebuddy-shared-memory.md"),
-      template: readTemplate("shared-instructions.md")
-    },
-    {
-      tool: "antigravity",
-      file: path.join(memoryDir, "tools", "antigravity-shared-memory.md"),
-      template: readTemplate("shared-instructions.md")
-    },
-    {
-      tool: "antigravity-cockpit",
-      file: path.join(memoryDir, "tools", "antigravity-cockpit-shared-memory.md"),
-      template: readTemplate("shared-instructions.md")
-    },
-    {
-      tool: "antigravity-gemini",
-      file: path.join(memoryDir, "tools", "antigravity-gemini-shared-memory.md"),
-      template: readTemplate("shared-instructions.md")
-    },
-    {
-      tool: "cc-switch",
-      file: path.join(memoryDir, "tools", "cc-switch-shared-memory.md"),
-      template: readTemplate("shared-instructions.md")
-    },
-    {
-      tool: "codex-app",
-      file: path.join(memoryDir, "tools", "codex-app-shared-memory.md"),
-      template: readTemplate("shared-instructions.md")
-    },
-    {
-      tool: "marvis",
-      file: path.join(home, "AppData", "Roaming", "Tencent", "Marvis", "skills", "ai-memory-hub", "SKILL.md"),
-      template: readTemplate("MARVIS_SKILL.md")
-    },
-    {
-      tool: "qclaw",
-      file: path.join(home, ".qclaw", "skills", "ai-memory-hub", "SKILL.md"),
-      template: readTemplate("QCLAW_SKILL.md")
-    },
-    {
-      tool: "coze",
-      file: path.join(home, ".coze", "skills", "ai-memory-hub", "SKILL.md"),
-      template: readTemplate("COZE_SKILL.md")
-    },
-    {
-      tool: "openclaw",
-      file: path.join(home, ".openclaw", "skills", "ai-memory-hub", "SKILL.md"),
-      template: readTemplate("OPENCLAW_SKILL.md")
-    },
-    {
-      tool: "opencode",
-      file: path.join(home, ".config", "opencode", "skills", "ai-memory-hub", "SKILL.md"),
-      template: readTemplate("OPENCODE_SKILL.md")
-    },
-    {
-      tool: "mimocode",
-      file: path.join(home, ".config", "mimocode", "skills", "ai-memory-hub", "SKILL.md"),
-      template: readTemplate("MIMOCODE_SKILL.md")
-    },
-    {
-      tool: "grok",
-      file: path.join(home, ".grok", "AGENTS.md"),
-      template: readTemplate("AGENTS.md")
-    },
-    {
-      tool: "grok",
-      file: path.join(home, ".grok", "skills", "ai-memory-hub", "SKILL.md"),
-      template: readTemplate("GROK_SKILL.md")
-    },
-    {
-      tool: "grok",
-      file: path.join(memoryDir, "tools", "grok-shared-memory.md"),
-      template: readTemplate("shared-instructions.md")
-    },
-    ...[
-      "claude-desktop",
-      "cursor",
-      "windsurf",
-      "vscode",
-      "continue",
-      "cline",
-      "roo-code",
-      "trae",
-      "kiro",
-      "zed",
-      "chatgpt",
-      "ollama",
-      "lmstudio",
-      "jan",
-      "anythingllm",
-      "cherry-studio",
-      "dify",
-      "open-webui",
-      "aider",
-      "tabby",
-      "codeium",
-      "augment",
-      "supermaven"
-    ].map((tool) => ({
-      tool,
-      file: path.join(memoryDir, "tools", `${tool}-shared-memory.md`),
-      template: readTemplate("shared-instructions.md")
-    }))
-  ];
-}
 
 function resolveReference(query, config, options = {}) {
   const normalizedQuery = normalizeResolveQuery(query);
@@ -6030,13 +5744,6 @@ function getInstructionIncludeFiles(memoryDir) {
 }
 
 
-function renderDashboard() {
-  const indexPath = path.join(getDashboardStaticRoot(), "index.html");
-  if (fs.existsSync(indexPath) && fs.statSync(indexPath).isFile()) {
-    return fs.readFileSync(indexPath, "utf8");
-  }
-  return readTemplate("dashboard-v2.html");
-}
 
 function sendStaticFile(res, pathname) {
   const publicDir = getDashboardStaticRoot();
@@ -6259,30 +5966,6 @@ function appendPolicyRule(memoryDir, rule) {
   return normalized;
 }
 
-function removePolicyRule(memoryDir, id, by = "manual") {
-  const rules = readPolicyRules(memoryDir);
-  const target = rules.find((rule) => rule.id === id || rule.id.startsWith(id));
-  if (!target) {
-    throw new Error(`Policy rule not found: ${id}`);
-  }
-  const file = getPolicyRulesFile(memoryDir);
-  ensureDir(path.dirname(file));
-  appendJsonl(file, {
-    type: "policy.rule",
-    id: target.id,
-    actor: target.actor,
-    project: target.project,
-    operation: target.operation,
-    scope: target.scope,
-    decision: "__removed__",
-    reason: "",
-    priority: target.priority,
-    createdAt: target.createdAt,
-    createdBy: by,
-    ts: new Date().toISOString()
-  });
-  return target;
-}
 
 function seedDefaultPolicyRules(memoryDir) {
   const existing = readPolicyRules(memoryDir);
@@ -6525,17 +6208,6 @@ function notifyWorkflowRoles(memoryDir, workflow) {
 
 
 
-function waitForRpcResult(memoryDir, requestId, timeoutMs = 30000) {
-  const started = Date.now();
-  while (Date.now() - started < timeoutMs) {
-    const result = readRpcResult(memoryDir, requestId);
-    if (result) {
-      return result;
-    }
-    sleep(500);
-  }
-  return null;
-}
 
 // Notification Bus Functions
 
@@ -6543,22 +6215,6 @@ function waitForRpcResult(memoryDir, requestId, timeoutMs = 30000) {
 
 
 
-function updateNotificationStatus(memoryDir, notificationId, status, deliveredTo = []) {
-  const file = path.join(memoryDir, "notifications", "notifications.jsonl");
-  const notifications = readNotifications(memoryDir).map((n) => {
-    if (n.id === notificationId) {
-      return {
-        ...n,
-        status,
-        deliveredTo: [...new Set([...(n.deliveredTo || []), ...deliveredTo])],
-        updatedAt: new Date().toISOString()
-      };
-    }
-    return n;
-  });
-  ensureDir(path.dirname(file));
-  writeFileAtomic(file, notifications.map((n) => JSON.stringify(n)).join("\n") + "\n", "utf8");
-}
 
 
 // Context Pack Functions
@@ -6674,21 +6330,6 @@ function searchMemoriesForContext(memoryDir, query, project, limit = 10) {
 
 
 
-function updateDispatchQueueEntry(memoryDir, entryId, updates) {
-  const file = path.join(memoryDir, "dispatch", "queue.jsonl");
-  const entries = readDispatchQueue(memoryDir).map((entry) => {
-    if (entry.id === entryId) {
-      return {
-        ...entry,
-        ...updates,
-        updatedAt: new Date().toISOString()
-      };
-    }
-    return entry;
-  });
-  ensureDir(path.dirname(file));
-  writeFileAtomic(file, entries.map((e) => JSON.stringify(e)).join("\n") + "\n", "utf8");
-}
 
 
 
@@ -9107,15 +8748,6 @@ function runProcess(command, args, options = {}) {
   return output;
 }
 
-function resolveGitProcessCommand() {
-  const override = String(process.env.AI_MEMORY_HUB_GIT_COMMAND || "").trim();
-  const command = override || resolveCommandPaths("git")
-    .find((file) => classifyCommandPath(file) !== "powershell-shim") || "git";
-  return {
-    command,
-    usesShell: shouldUseShellForCommand(command)
-  };
-}
 
 function buildGitHubBackupScheduledTaskCommand(memoryDir) {
   return [
@@ -9328,19 +8960,6 @@ function acquireLock(lockPath, owner, staleMs) {
   throw new Error(`Memory hub lock timeout at ${lockPath} (owner=${status.owner || "unknown"}, pid=${status.pid || "unknown"}, ageMs=${status.ageMs ?? "unknown"}, stale=${status.stale ? "yes" : "no"})`);
 }
 
-function releaseLock(lockPath, owner = "") {
-  try {
-    fs.unlinkSync(lockPath);
-    appendLockEvent(lockPath, {
-      type: "released",
-      owner: owner || "unknown",
-      pid: process.pid,
-      host: os.hostname()
-    });
-  } catch {
-    // Lock may already be removed if it was considered stale.
-  }
-}
 
 function isLockStale(lockPath, staleMs) {
   try {
@@ -9367,27 +8986,6 @@ function readLockStatus(memoryDir) {
   };
 }
 
-function describeLock(lockPath, staleMs) {
-  const data = readLockFile(lockPath);
-  const stat = fs.existsSync(lockPath) ? fs.statSync(lockPath) : null;
-  const createdAt = data.createdAt || "";
-  const createdMs = createdAt ? Date.parse(createdAt) : NaN;
-  const ageMs = Number.isNaN(createdMs)
-    ? (stat ? Math.max(0, Math.round(Date.now() - stat.mtimeMs)) : null)
-    : Math.max(0, Date.now() - createdMs);
-  return {
-    path: lockPath,
-    owner: data.owner || "",
-    pid: data.pid || null,
-    host: data.host || "",
-    cwd: data.cwd || "",
-    createdAt,
-    ageMs,
-    staleMs,
-    stale: ageMs !== null ? ageMs > staleMs : false,
-    parseError: data.parseError || ""
-  };
-}
 
 
 
@@ -9612,15 +9210,8 @@ function buildInstallTemplateValues(tool, memoryDir) {
 
 
 
-function commandExists(commandName) {
-  return resolveCommandPaths(commandName).length > 0;
-}
 
 
-function choosePreferredCommandPath(paths) {
-  return [...new Set((paths || []).filter(Boolean))]
-    .sort((a, b) => commandPathPriority(a) - commandPathPriority(b))[0] || "";
-}
 
 
 

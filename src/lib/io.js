@@ -3,11 +3,13 @@
 
 import crypto from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { appendJsonl } from "../event-writer.js";
 import { createId, ensureDir, readJson, readJsonSafe, writeJson } from "./cli.js";
 import { getAgentRegistryFile, getModelsCacheFile, getPolicyRulesFile, getRadioCursorFile, getRoleRegistryFile, getTeamRegistryFile, getToolDeclarationsFile } from "./registry-paths.js";
 import { getRelaySourceKey, getDispatchSourceKey, getDispatchThreadKey, stripExistingModelArgs } from "./dispatch.js";
+import { sleep } from "./util.js";
 import { writeFileAtomic } from "../atomic-write.js";
 
 // Low-level JSONL file IO.
@@ -655,4 +657,159 @@ export function countRecentRelayOscillation(memoryDir, job, fingerprint) {
     }
   }
   return run;
+}
+
+export function writeAgent(memoryDir, agent) {
+  const file = getAgentRegistryFile(memoryDir);
+  ensureDir(path.dirname(file));
+  const agents = readAgents(memoryDir);
+  const key = String(agent.id || "").trim().toLowerCase();
+  if (!key) throw new Error("agent requires an id");
+  const idx = agents.findIndex((a) => String(a.id || "").trim().toLowerCase() === key);
+  const nowIso = new Date().toISOString();
+  const next = { ...agent, id: agents[idx] ? agents[idx].id : agent.id, updatedAt: nowIso };
+  if (idx === -1) { next.createdAt = agent.createdAt || nowIso; agents.push(next); }
+  else agents[idx] = { ...agents[idx], ...next, id: agents[idx].id, createdAt: agents[idx].createdAt || nowIso };
+  writeFileAtomic(file, agents.map((a) => JSON.stringify(a)).join("\n") + (agents.length ? "\n" : ""), "utf8");
+  return next;
+}
+
+export function writeRole(memoryDir, role) {
+  const file = getRoleRegistryFile(memoryDir);
+  ensureDir(path.dirname(file));
+  const roles = readRoles(memoryDir);
+  const key = String(role.id || "").trim().toLowerCase();
+  if (!key) throw new Error("role requires an id");
+  const idx = roles.findIndex((r) => String(r.id || "").trim().toLowerCase() === key);
+  const nowIso = new Date().toISOString();
+  const next = { ...role, id: roles[idx] ? roles[idx].id : role.id, updatedAt: nowIso };
+  if (idx === -1) { next.createdAt = role.createdAt || nowIso; roles.push(next); }
+  else roles[idx] = { ...roles[idx], ...next, id: roles[idx].id, createdAt: roles[idx].createdAt || nowIso };
+  writeFileAtomic(file, roles.map((r) => JSON.stringify(r)).join("\n") + (roles.length ? "\n" : ""), "utf8");
+  return next;
+}
+
+export function writeTeam(memoryDir, team) {
+  const file = getTeamRegistryFile(memoryDir);
+  ensureDir(path.dirname(file));
+  const teams = readTeams(memoryDir);
+  const key = String(team.id || "").trim().toLowerCase();
+  if (!key) throw new Error("team requires an id");
+  const idx = teams.findIndex((t) => String(t.id || "").trim().toLowerCase() === key);
+  const nowIso = new Date().toISOString();
+  const next = { ...team, id: teams[idx] ? teams[idx].id : team.id, updatedAt: nowIso };
+  if (idx === -1) { next.createdAt = team.createdAt || nowIso; teams.push(next); }
+  else teams[idx] = { ...teams[idx], ...next, id: teams[idx].id, createdAt: teams[idx].createdAt || nowIso };
+  writeFileAtomic(file, teams.map((t) => JSON.stringify(t)).join("\n") + (teams.length ? "\n" : ""), "utf8");
+  return next;
+}
+
+export function createDispatchRunId(job) {
+  return createId(`dispatch-run:${job.id}:${job.refId}:${new Date().toISOString()}:${crypto.randomUUID()}`);
+}
+
+export function removePolicyRule(memoryDir, id, by = "manual") {
+  const rules = readPolicyRules(memoryDir);
+  const target = rules.find((rule) => rule.id === id || rule.id.startsWith(id));
+  if (!target) {
+    throw new Error(`Policy rule not found: ${id}`);
+  }
+  const file = getPolicyRulesFile(memoryDir);
+  ensureDir(path.dirname(file));
+  appendJsonl(file, {
+    type: "policy.rule",
+    id: target.id,
+    actor: target.actor,
+    project: target.project,
+    operation: target.operation,
+    scope: target.scope,
+    decision: "__removed__",
+    reason: "",
+    priority: target.priority,
+    createdAt: target.createdAt,
+    createdBy: by,
+    ts: new Date().toISOString()
+  });
+  return target;
+}
+
+export function updateNotificationStatus(memoryDir, notificationId, status, deliveredTo = []) {
+  const file = path.join(memoryDir, "notifications", "notifications.jsonl");
+  const notifications = readNotifications(memoryDir).map((n) => {
+    if (n.id === notificationId) {
+      return {
+        ...n,
+        status,
+        deliveredTo: [...new Set([...(n.deliveredTo || []), ...deliveredTo])],
+        updatedAt: new Date().toISOString()
+      };
+    }
+    return n;
+  });
+  ensureDir(path.dirname(file));
+  writeFileAtomic(file, notifications.map((n) => JSON.stringify(n)).join("\n") + "\n", "utf8");
+}
+
+export function updateDispatchQueueEntry(memoryDir, entryId, updates) {
+  const file = path.join(memoryDir, "dispatch", "queue.jsonl");
+  const entries = readDispatchQueue(memoryDir).map((entry) => {
+    if (entry.id === entryId) {
+      return {
+        ...entry,
+        ...updates,
+        updatedAt: new Date().toISOString()
+      };
+    }
+    return entry;
+  });
+  ensureDir(path.dirname(file));
+  writeFileAtomic(file, entries.map((e) => JSON.stringify(e)).join("\n") + "\n", "utf8");
+}
+
+export function releaseLock(lockPath, owner = "") {
+  try {
+    fs.unlinkSync(lockPath);
+    appendLockEvent(lockPath, {
+      type: "released",
+      owner: owner || "unknown",
+      pid: process.pid,
+      host: os.hostname()
+    });
+  } catch {
+    // Lock may already be removed if it was considered stale.
+  }
+}
+
+export function describeLock(lockPath, staleMs) {
+  const data = readLockFile(lockPath);
+  const stat = fs.existsSync(lockPath) ? fs.statSync(lockPath) : null;
+  const createdAt = data.createdAt || "";
+  const createdMs = createdAt ? Date.parse(createdAt) : NaN;
+  const ageMs = Number.isNaN(createdMs)
+    ? (stat ? Math.max(0, Math.round(Date.now() - stat.mtimeMs)) : null)
+    : Math.max(0, Date.now() - createdMs);
+  return {
+    path: lockPath,
+    owner: data.owner || "",
+    pid: data.pid || null,
+    host: data.host || "",
+    cwd: data.cwd || "",
+    createdAt,
+    ageMs,
+    staleMs,
+    stale: ageMs !== null ? ageMs > staleMs : false,
+    parseError: data.parseError || ""
+  };
+}
+
+export function waitForRpcResult(memoryDir, requestId, timeoutMs = 30000) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const result = readRpcResult(memoryDir, requestId);
+    if (result) {
+      return result;
+    }
+    sleep(500);
+  }
+  return null;
 }

@@ -1,3 +1,6 @@
+// 从 src/index.js 下沉的通用工具函数（v3.0 重构 P0-2）。
+// 这些函数不依赖 index.js 内部的任何其他符号，可安全复用。
+
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -288,4 +291,15 @@ export function inferBackupRetentionKey(tier, createdAt) {
   if (tier === "weekly") return getIsoWeekKey(createdAt);
   if (tier === "pre-sync") return createdAtRetentionKey(createdAt);
   return "";
+}
+
+export function assertSafeDispatchWorktreeRoot(repoRoot, worktreeRoot) {
+  const resolvedRoot = path.resolve(worktreeRoot);
+  if (resolvedRoot === path.parse(resolvedRoot).root) {
+    throw new Error("Dispatch worktree root cannot be a filesystem root.");
+  }
+  const gitDir = path.join(path.resolve(repoRoot), ".git");
+  if (resolvedRoot === gitDir || isPathInsideDirectory(resolvedRoot, gitDir)) {
+    throw new Error("Dispatch worktree root cannot be inside the repository .git directory.");
+  }
 }

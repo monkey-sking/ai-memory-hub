@@ -1,3 +1,6 @@
+// 从 src/index.js 下沉的通用工具函数（v3.0 重构 P0-2）。
+// 这些函数不依赖 index.js 内部的任何其他符号，可安全复用。
+
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -139,4 +142,27 @@ export function shouldUseShellForCommand(file) {
   }
   const kind = classifyCommandPath(file);
   return kind === "cmd-shim" || kind === "cmd-script";
+}
+
+export function buildWindowsCmdLine(command, args = []) {
+  return [command, ...(args || [])].map(quoteWindowsCmdArg).join(" ");
+}
+
+export function resolveGitProcessCommand() {
+  const override = String(process.env.AI_MEMORY_HUB_GIT_COMMAND || "").trim();
+  const command = override || resolveCommandPaths("git")
+    .find((file) => classifyCommandPath(file) !== "powershell-shim") || "git";
+  return {
+    command,
+    usesShell: shouldUseShellForCommand(command)
+  };
+}
+
+export function commandExists(commandName) {
+  return resolveCommandPaths(commandName).length > 0;
+}
+
+export function choosePreferredCommandPath(paths) {
+  return [...new Set((paths || []).filter(Boolean))]
+    .sort((a, b) => commandPathPriority(a) - commandPathPriority(b))[0] || "";
 }

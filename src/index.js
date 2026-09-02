@@ -148,6 +148,7 @@ import { quoteWindowsCmdArg, escapeForWindowsCmd, quoteWindowsCommandArg, quoteS
 import { normalizeResolveQuery, extractFilesystemPathCandidates, resolvePossiblyHomePath, pathMatchesResolveQuery } from "./lib/resolve.js";
 import { resolveInside, loadTaskSpecContext, resolveTaskSpecFile, resolveTaskSpecFromArgs, validateTaskSpecDocument, runTaskSpec, summarizeTaskSpec, resolveTaskSpecCwd } from "./lib/task-spec.js";
 import { buildDaemonStatus, clearDaemonPid, readDaemonHeartbeat, checkDaemonHeartbeat, writeDaemonHeartbeat, writeDaemonPid, writeDaemonStatus } from "./lib/daemon-state.js";
+import { appendSkillCandidates, approveSkillDelta, mergeSkillDelta, readSkillCandidates, readSkillDeltas, rejectSkillDelta, updateSkillCandidate, writeSkillDeltas } from "./lib/skill-store.js";
 import { policyActorMatches, policyRuleSpecificity, isHiddenProjectId, findWorkflowIndex, findTaskIndex, createTaskNote, getNotificationChannels } from "./lib/entity-index.js";
 import { getFileHash, getGitHubBackupUploadWarnings, normalizeBackupPatternList, matchesAnyBackupPattern, normalizeScheduleTime, resolveConfiguredPath, extractListValue, renderGitHubBackupReadme, markProtectedBackups, parseBackupTimestampFromName, inferBackupReasonFromName, inferBackupRetentionTier, createdAtRetentionKey, formatBackupDay, getIsoWeekKey, isPathInsideDirectory, countBackupDirs, backupHub, resolveBackupDirectory, getGitHubBackupExportFiles, getDefaultGitHubBackupInclude, assertSafeGitHubBackupRepoDir, ensureSafeChildPath, planBackupRetention, inferBackupRetentionKey, assertSafeDispatchWorktreeRoot, ensureGitHubBackupRepo, describeBackupFile, listBackupFiles, listBackupDirectories, buildBackupRestorePlan, hasBackupForRetentionKey, getBackupSummary, pruneBackups, deleteBackups, getBackupDetail, createScheduledBackupIfDue, exportGitHubBackupSnapshot } from "./lib/backup.js";
 import { relayFailureFingerprint, createSkillDelta, createProject, createWorkflow, createTask, createSession, createRpcRequest, createNotification, createDispatchQueueEntry, validateVerifyCommand, validateMinimalImplementation, validateDependencyBudget, normalizeRefValues, mergeMemoryAccessMetadata, parseJsonObjectCandidate, createRadioMessage, validateQualityGateFields, validateQualityGate, validateRecipe } from "./lib/entity-factory.js";
@@ -249,8 +250,6 @@ const RESEARCH_REPORTS_DIR = "research-reports";
 const DISPATCH_RUNS_DIR = "dispatch-runs";
 const DEFAULT_DISPATCH_WORKTREE_DIR = ".ai-worktrees";
 const LOOP_CHECKPOINT_FILE = "loop-checkpoint.json";
-const SKILL_DELTA_FILE = "skill-deltas.jsonl";
-const SKILL_CANDIDATE_FILE = "skill-candidates.jsonl";
 const TOOL_CAPABILITY_REGISTRY_VERSION = 1;
 let toolDetectionCache = null;
 
@@ -3318,37 +3317,6 @@ function watchCommand(argv) {
   setInterval(tick, intervalMs);
 }
 
-function getSkillCandidatesFile(memoryDir) {
-  return path.join(memoryDir, "prompts", SKILL_CANDIDATE_FILE);
-}
-
-function readSkillCandidates(memoryDir) {
-  const file = getSkillCandidatesFile(memoryDir);
-  return fs.existsSync(file) ? readEvents(file) : [];
-}
-
-function appendSkillCandidates(memoryDir, candidates) {
-  if (!Array.isArray(candidates) || candidates.length === 0) return [];
-  const existing = readSkillCandidates(memoryDir);
-  const existingIds = new Set(existing.map((candidate) => candidate.id));
-  const fresh = candidates.filter((candidate) => !existingIds.has(candidate.id));
-  if (fresh.length === 0) return [];
-  const file = getSkillCandidatesFile(memoryDir);
-  ensureDir(path.dirname(file));
-  fs.appendFileSync(file, fresh.map((candidate) => JSON.stringify(candidate)).join("\n") + "\n", "utf8");
-  return fresh;
-}
-
-function updateSkillCandidate(memoryDir, id, updater) {
-  const candidates = readSkillCandidates(memoryDir);
-  const index = candidates.findIndex((candidate) => candidate.id === id || candidate.id.startsWith(id));
-  if (index === -1) throw new Error(`Skill candidate not found: ${id}`);
-  candidates[index] = updater(candidates[index]);
-  const file = getSkillCandidatesFile(memoryDir);
-  ensureDir(path.dirname(file));
-  writeFileAtomic(file, candidates.map((candidate) => JSON.stringify(candidate)).join("\n") + "\n", "utf8");
-  return candidates[index];
-}
 
 
 function packCommand(argv) {
@@ -3399,87 +3367,6 @@ async function mcpCommand(argv) {
 }
 
 
-function getSkillDeltasFile(memoryDir) {
-  return path.join(memoryDir, "prompts", SKILL_DELTA_FILE);
-}
-
-function readSkillDeltas(memoryDir) {
-  const file = getSkillDeltasFile(memoryDir);
-  if (!fs.existsSync(file)) return [];
-  return readEvents(file);
-}
-
-
-function approveSkillDelta(memoryDir, id, reviewer) {
-  const deltas = readSkillDeltas(memoryDir);
-  const index = deltas.findIndex((d) => d.id === id || d.id.startsWith(id));
-  if (index === -1) throw new Error(`Skill delta not found: ${id}`);
-  deltas[index].status = "approved";
-  deltas[index].reviewedBy = reviewer;
-  deltas[index].reviewedAt = new Date().toISOString();
-  writeSkillDeltas(memoryDir, deltas);
-  return deltas[index];
-}
-
-function rejectSkillDelta(memoryDir, id, reviewer, reason) {
-  const deltas = readSkillDeltas(memoryDir);
-  const index = deltas.findIndex((d) => d.id === id || d.id.startsWith(id));
-  if (index === -1) throw new Error(`Skill delta not found: ${id}`);
-  deltas[index].status = "rejected";
-  deltas[index].reviewedBy = reviewer;
-  deltas[index].reviewedAt = new Date().toISOString();
-  if (reason) deltas[index].rejectReason = reason;
-  writeSkillDeltas(memoryDir, deltas);
-  return deltas[index];
-}
-
-function mergeSkillDelta(memoryDir, id) {
-  const deltas = readSkillDeltas(memoryDir);
-  const index = deltas.findIndex((d) => d.id === id || d.id.startsWith(id));
-  if (index === -1) throw new Error(`Skill delta not found: ${id}`);
-  const delta = deltas[index];
-  if (delta.status !== "approved") {
-    throw new Error(`Delta must be approved before merging. Current status: ${delta.status}`);
-  }
-
-  // Find and update the skill template
-  const toolName = delta.tool;
-  const templateDir = path.join(__dirname, "..", "templates");
-  const possibleFiles = [
-    path.join(templateDir, `${toolName.toUpperCase()}.md`),
-    path.join(templateDir, `${toolName.toUpperCase()}_SKILL.md`),
-    path.join(templateDir, "shared-skill-layer.md"),
-    path.join(templateDir, "shared-instructions.md")
-  ];
-
-  let merged = false;
-  for (const file of possibleFiles) {
-    if (!fs.existsSync(file)) continue;
-    const content = fs.readFileSync(file, "utf8");
-    if (delta.original && content.includes(delta.original)) {
-      const updated = content.replace(delta.original, delta.proposed);
-      writeFileAtomic(file, updated, "utf8");
-      delta.status = "merged";
-      delta.mergedAt = new Date().toISOString();
-      merged = true;
-      break;
-    }
-  }
-
-  if (!merged) {
-    throw new Error(`Could not find original text in any template file for tool: ${toolName}`);
-  }
-
-  writeSkillDeltas(memoryDir, deltas);
-  return delta;
-}
-
-function writeSkillDeltas(memoryDir, deltas) {
-  const file = getSkillDeltasFile(memoryDir);
-  ensureDir(path.dirname(file));
-  const lines = deltas.map((d) => JSON.stringify(d)).join("\n") + "\n";
-  writeFileAtomic(file, lines, "utf8");
-}
 
 
 function checkpointCommand(argv) {

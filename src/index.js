@@ -150,6 +150,7 @@ import { resolveInside, loadTaskSpecContext, resolveTaskSpecFile, resolveTaskSpe
 import { buildDaemonStatus, clearDaemonPid, readDaemonHeartbeat, checkDaemonHeartbeat, writeDaemonHeartbeat, writeDaemonPid, writeDaemonStatus } from "./lib/daemon-state.js";
 import { appendSkillCandidates, approveSkillDelta, mergeSkillDelta, readSkillCandidates, readSkillDeltas, rejectSkillDelta, updateSkillCandidate, writeSkillDeltas } from "./lib/skill-store.js";
 import { getGitHubBackupConfig, configureGitHubBackup, getGitHubBackupStatus, runGitHubBackup, githubBackupScheduleCommand, installGitHubBackupSchedule, uninstallGitHubBackupSchedule, getGitHubBackupScheduleStatus, updateGitHubBackupState, updateGitHubBackupScheduleState, buildGitHubBackupScheduledTaskCommand, initGithubBackupDeps } from "./lib/github-backup.js";
+import { resetDispatchPoolState, markDispatchPoolJobStart, markDispatchPoolJobDone, markDispatchPoolFinished, getDispatchPoolSnapshot, runDispatchPool, initDispatchPoolDeps } from "./lib/dispatch-pool.js";
 import { policyActorMatches, policyRuleSpecificity, isHiddenProjectId, findWorkflowIndex, findTaskIndex, createTaskNote, getNotificationChannels } from "./lib/entity-index.js";
 import { getFileHash, getGitHubBackupUploadWarnings, normalizeBackupPatternList, matchesAnyBackupPattern, normalizeScheduleTime, resolveConfiguredPath, extractListValue, renderGitHubBackupReadme, markProtectedBackups, parseBackupTimestampFromName, inferBackupReasonFromName, inferBackupRetentionTier, createdAtRetentionKey, formatBackupDay, getIsoWeekKey, isPathInsideDirectory, countBackupDirs, backupHub, resolveBackupDirectory, getGitHubBackupExportFiles, getDefaultGitHubBackupInclude, assertSafeGitHubBackupRepoDir, ensureSafeChildPath, planBackupRetention, inferBackupRetentionKey, assertSafeDispatchWorktreeRoot, ensureGitHubBackupRepo, describeBackupFile, listBackupFiles, listBackupDirectories, buildBackupRestorePlan, hasBackupForRetentionKey, getBackupSummary, pruneBackups, deleteBackups, getBackupDetail, createScheduledBackupIfDue, exportGitHubBackupSnapshot } from "./lib/backup.js";
 import { relayFailureFingerprint, createSkillDelta, createProject, createWorkflow, createTask, createSession, createRpcRequest, createNotification, createDispatchQueueEntry, validateVerifyCommand, validateMinimalImplementation, validateDependencyBudget, normalizeRefValues, mergeMemoryAccessMetadata, parseJsonObjectCandidate, createRadioMessage, validateQualityGateFields, validateQualityGate, validateRecipe } from "./lib/entity-factory.js";
@@ -202,6 +203,10 @@ const DEFAULT_GITHUB_BACKUP_TASK_NAME = "AI Memory Hub GitHub Backup";
 initGithubBackupDeps({ loadConfig, defaultConfig, resolveMemoryDir, DEFAULT_GITHUB_BACKUP_TASK_NAME, entryFile: __filename });
 const DEFAULT_DISPATCH_RUN_TIMEOUT_MS = 10 * 60 * 1000;
 const DISPATCH_MAX_CONCURRENCY = 6;
+// dispatch-pool lib 模块需要 index.js 内部符号（runDispatchJobAsync 任务执行链 +
+// DISPATCH_MAX_CONCURRENCY 常量），经 initDispatchPoolDeps 注入。须置于
+// DISPATCH_MAX_CONCURRENCY const 定义之后（TDZ-safe）；runDispatchJobAsync 为函数声明已提升。
+initDispatchPoolDeps({ runDispatchJobAsync, DISPATCH_MAX_CONCURRENCY });
 
 // Live dispatch-pool status for multi-runner collaboration visibility (feature ④).
 const dispatchRunState = {
@@ -2638,122 +2643,6 @@ async function runDispatchJobAsync(memoryDir, job, runner, options = {}) {
   }
   return finalizeDispatchJob(memoryDir, job, runner, completed, ctx);
 }
-
-// ── feature ④: concurrent dispatch pool with live status ──────────────────
-// Module-level singleton tracking active pool execution for dashboard visibility.
-const dispatchPoolState = {
-  active: false,
-  concurrency: 1,
-  total: 0,
-  completed: 0,
-  failed: 0,
-  running: [],
-  finished: [],
-  startedAt: null,
-  finishedAt: null,
-  lastError: null
-};
-
-function resetDispatchPoolState(concurrency, total) {
-  dispatchPoolState.active = true;
-  dispatchPoolState.concurrency = concurrency;
-  dispatchPoolState.total = total;
-  dispatchPoolState.completed = 0;
-  dispatchPoolState.failed = 0;
-  dispatchPoolState.running = [];
-  dispatchPoolState.finished = [];
-  dispatchPoolState.startedAt = new Date().toISOString();
-  dispatchPoolState.finishedAt = null;
-  dispatchPoolState.lastError = null;
-}
-
-function markDispatchPoolJobStart(jobInfo) {
-  dispatchPoolState.running.push(jobInfo);
-}
-
-function markDispatchPoolJobDone(runId, status, durationMs) {
-  dispatchPoolState.running = dispatchPoolState.running.filter((j) => j.runId !== runId);
-  dispatchPoolState.finished.push({ runId, status, durationMs, finishedAt: new Date().toISOString() });
-  dispatchPoolState.completed++;
-  if (status !== "completed") dispatchPoolState.failed++;
-}
-
-function markDispatchPoolFinished(lastError = null) {
-  dispatchPoolState.active = false;
-  dispatchPoolState.running = [];
-  dispatchPoolState.finishedAt = new Date().toISOString();
-  dispatchPoolState.lastError = lastError;
-}
-
-function getDispatchPoolSnapshot() {
-  return {
-    active: dispatchPoolState.active,
-    concurrency: dispatchPoolState.concurrency,
-    total: dispatchPoolState.total,
-    completed: dispatchPoolState.completed,
-    failed: dispatchPoolState.failed,
-    pending: Math.max(0, dispatchPoolState.total - dispatchPoolState.completed),
-    running: dispatchPoolState.running.slice(),
-    finished: dispatchPoolState.finished.slice(-20),
-    startedAt: dispatchPoolState.startedAt,
-    finishedAt: dispatchPoolState.finishedAt,
-    lastError: dispatchPoolState.lastError
-  };
-}
-
-/**
- * Run an array of prepared dispatch jobs through a bounded-concurrency pool.
- * Each entry in `preparedJobs` is { job, runner, options }.
- * Returns results in the same order as input (order-preserving).
- */
-async function runDispatchPool(memoryDir, preparedJobs, { concurrency = DISPATCH_MAX_CONCURRENCY } = {}) {
-  const limit = Math.max(1, Math.min(concurrency || 1, preparedJobs.length || 1));
-  resetDispatchPoolState(limit, preparedJobs.length);
-  const results = new Array(preparedJobs.length);
-  let cursor = 0;
-  let poolError = null;
-
-  async function worker() {
-    while (cursor < preparedJobs.length) {
-      const idx = cursor++;
-      const { job, runner, options } = preparedJobs[idx];
-      const runId = createDispatchRunId(job);
-      const jobInfo = {
-        runId,
-        dispatchId: job.id,
-        tool: job.tool || "",
-        project: job.project || "",
-        startedAt: new Date().toISOString()
-      };
-      markDispatchPoolJobStart(jobInfo);
-      try {
-        // eslint-disable-next-line no-await-in-loop -- pool worker loop
-        const result = await runDispatchJobAsync(memoryDir, job, runner, options);
-        markDispatchPoolJobDone(runId, result.runStatus || (result.exitCode === 0 ? "completed" : "failed"), result.runDurationMs || 0);
-        results[idx] = result;
-      } catch (error) {
-        markDispatchPoolJobDone(runId, "failed", 0);
-        poolError = poolError || error;
-        results[idx] = {
-          ...job,
-          runnable: true,
-          exitCode: -1,
-          runId,
-          runStatus: "failed",
-          error: error.message,
-          runStartedAt: jobInfo.startedAt,
-          runFinishedAt: new Date().toISOString()
-        };
-      }
-    }
-  }
-
-  const workers = Array.from({ length: limit }, () => worker());
-  await Promise.all(workers);
-  markDispatchPoolFinished(poolError?.message || null);
-  return results;
-}
-
 
 function invokeRunnerCommand(runner, args = [], input = "", timeoutMs = DEFAULT_DISPATCH_RUN_TIMEOUT_MS, cwd = process.cwd(), credentialEnv = {}) {
   const invocation = buildRunnerInvocation(runner, args);

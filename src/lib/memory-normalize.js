@@ -5,8 +5,8 @@ import os from "node:os";
 import path from "node:path";
 import { getOption, isPlainObject, createId } from "./cli.js";
 import { mergeMemoryAccessMetadata, normalizeRefValues, parseJsonObjectCandidate } from "./entity-factory.js";
-import { sanitizeInlineText, parseLooseJsonMemoryEvent, sanitizeLedgerText } from "./format.js";
 import { readEvents } from "./io.js";
+import { sanitizeInlineText, parseLooseJsonMemoryEvent, sanitizeLedgerText, sortByImportance, titleCase } from "./format.js";
 
 export function normalizeMemoryKind(kind) {
   const clean = String(kind || "note").trim().toLowerCase().replace(/[^a-z0-9_.-]+/g, "-");
@@ -722,4 +722,51 @@ export function readLedger(memoryDir) {
       return applyMemoryAccessFields(record, access);
     })
     .filter((item) => item.text);
+}
+
+export function renderIndexMarkdown(index) {
+  const lines = [
+    "# Shared AI Memory Index",
+    "",
+    `Rebuilt locally at ${index.stats.rebuiltAt}.`,
+    "",
+    "## Stats",
+    "",
+    `- Records: ${index.stats.records}`,
+    `- Core: ${index.stats.core}`,
+    `- Working: ${index.stats.working}`,
+    `- Archive: ${index.stats.archive}`,
+    `- Schema version: ${index.schemaVersion || index.version || 1}`,
+    "",
+    "## Top Topics",
+    ""
+  ];
+  for (const item of index.topics.slice(0, 40)) {
+    lines.push(`- ${item.key}: ${item.count}`);
+  }
+  lines.push("");
+  lines.push("## Top Projects");
+  lines.push("");
+  for (const item of index.projects.slice(0, 40)) {
+    lines.push(`- ${item.key}: ${item.count}`);
+  }
+  lines.push("");
+  lines.push("## Top Tags");
+  lines.push("");
+  for (const item of index.tags.slice(0, 40)) {
+    lines.push(`- ${item.key}: ${item.count}`);
+  }
+  lines.push("");
+  for (const layer of ["core", "working", "archive"]) {
+    lines.push(`## ${titleCase(layer)} Records`);
+    lines.push("");
+    const records = index.records
+      .filter((item) => item.layer === layer)
+      .sort(layer === "core" ? sortByImportance : (a, b) => String(b.ts || "").localeCompare(String(a.ts || "")));
+    for (const memory of records) {
+      lines.push(renderMemoryLine(memory));
+    }
+    lines.push("");
+  }
+  return lines.join("\n");
 }

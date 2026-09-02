@@ -236,3 +236,30 @@ export function runGitCommand(repoDir, args, options = {}) {
     shell: git.usesShell
   });
 }
+
+export function collectDispatchWorktreeReviewMetadata(worktree) {
+  if (!worktree?.enabled || !worktree.path) {
+    return worktree || null;
+  }
+  const head = runGitCommand(worktree.path, ["rev-parse", "HEAD"], { allowFailure: true }).stdout.trim() || worktree.head || "";
+  const status = runGitCommand(worktree.path, ["status", "--short"], { allowFailure: true }).stdout.trim();
+  const diffStat = runGitCommand(worktree.path, ["diff", "--stat"], { allowFailure: true }).stdout.trim();
+  return {
+    ...worktree,
+    head,
+    diffStatus: status,
+    diffStat,
+    hasChanges: Boolean(status || diffStat)
+  };
+}
+
+export function ensureGitIdentity(repoDir) {
+  const name = runGitCommand(repoDir, ["config", "user.name"], { allowFailure: true });
+  if (!name.ok || !name.stdout.trim()) {
+    runGitCommand(repoDir, ["config", "user.name", "AI Memory Hub"]);
+  }
+  const email = runGitCommand(repoDir, ["config", "user.email"], { allowFailure: true });
+  if (!email.ok || !email.stdout.trim()) {
+    runGitCommand(repoDir, ["config", "user.email", "ai-memory-hub@localhost"]);
+  }
+}

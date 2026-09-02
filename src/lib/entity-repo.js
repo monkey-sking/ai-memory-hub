@@ -1,3 +1,6 @@
+// 从 src/index.js 下沉的通用工具函数（v3.0 重构 P0-2）。
+// 这些函数不依赖 index.js 内部的任何其他符号，可安全复用。
+
 import path from "node:path";
 import { readEvents } from "./io.js";
 import {
@@ -14,6 +17,8 @@ import {
   getWorkflowEventStoreDefinition,
   getProjectEventStoreDefinition
 } from "./entity-models.js";
+import { isClosedDispatchSourceState } from "./dispatch.js";
+import { isRadioTargetingClosedSession } from "./io.js";
 import { ensureDir } from "./cli.js";
 import { appendJsonl } from "../event-writer.js";
 
@@ -188,4 +193,22 @@ export function deriveWorkflowStatusFromNodes(nodes) {
     return "review";
   }
   return "open";
+}
+
+export function isRadioLinkedToClosedSource(memoryDir, message) {
+  if (isRadioTargetingClosedSession(memoryDir, message)) return true;
+  const refs = [message?.thread, message?.replyTo]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+  if (refs.length === 0) {
+    return false;
+  }
+  const refSet = new Set(refs);
+  const closedTask = readTasks(memoryDir)
+    .some((task) => refSet.has(task.id) && isClosedDispatchSourceState(task.status || task.deliveryState));
+  if (closedTask) {
+    return true;
+  }
+  return readWorkflows(memoryDir)
+    .some((workflow) => refSet.has(workflow.id) && isClosedDispatchSourceState(workflow.status || workflow.deliveryState));
 }

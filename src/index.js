@@ -140,17 +140,18 @@ import { listRelatedEntities, readRelations, recordMemoryRelations, recordRelati
 import { auditMemories } from "./memory-audit.js";
 import { parseRunnerModelList, semanticSearch, checkProcessLiveness, getContentType, readRequestJson, findProjectIndex, expandSynonyms, scanBackupFilesForSecrets, getRelayTimeoutBaseMs, renderDispatchWorktree, createHealthRepairAction, getPathSize, extractCjkNgrams, getBackupFileCatalog, markTieredBackups, parseCliArgs, parseDeclaredList, parseProgressPercent, isJobCheckpointed, getCheckpointStats, renderProjectRegistryReadme, extractSharedSkillLayerVersion, renderEmptyBootstrapSnapshot, sleep, sharedSkillLayerActionLabel, summarizeDir, releaseStaleClaim, inspectSharedMemoryInstructions, getDirectResolveCandidates, normalizeCandidatePath, getPageOptions, findProject, autoCreateWorkflowNodes, summarizeTaskSpec, writeTaskSpecProcessLogs, resolveTaskSpecCwd, getMemoryStorageSummary, hasSharedMemoryInstructions } from "./lib/util.js";
 import { extractInstructionIncludes, normalizeSeverity, formatTopCounts, formatPercent, formatBytes, sanitizeDisplayText, getMemoryAgeDays, inferScope, normalizeSearchText, countBy, sortByImportance, titleCase, looksSensitive, formatEventLocation, extractSection, extractSectionBeforeAny, renderTemplate, trimOutput, summarizeText, textMentionsResolveQuery, summarizeHealthAnalysisForRepair, sanitizeLedgerText, normalizeDuplicateMemoryText, sanitizeInlineText, extractKeywords, extractCompactVariants, getMemoryEventSkipReason, extractLooseJsonStringField, formatMemoryRecordPointer, truncateText, extractSearchTerms, parseLooseJsonMemoryEvent, findDuplicateMemoryGroups, getBackupFilePreview } from "./lib/format.js";
-import { normalizeMemoryKind, normalizeMemoryProject, normalizeMemoryScope, normalizeList, firstDefinedRef, hasMemoryFilters, normalizeRefToken, normalizeConfidence, applyMemoryAccessFields, normalizeMemoryAccessCount, normalizeMemoryAccessTimestamp, firstDefinedValue, getDaysSinceTimestamp, isMemoryLifecycleVisible, normalizeSupersedeToken, hasExplicitSyncKey, readPositiveInteger, isMemoryHealthExcluded, formatMemoryHealthRepairPlan, sanitizeRawJsonCandidate, getMemoryGrowthTrend, chooseMemoryLayer, parseListOption, parseMemoryTagFilters, formatMemoryFilterSummary, matchesMemoryTags, getMemoryAccessStats, applyMemoryLifecycleOperations, normalizeSupersedeRefs, isStartupMemoryRecord, resolveSnapshotLimits, inferTopics, normalizeMemoryRefs, flattenMemoryRefs, formatMemoryRefs, matchesMemoryRef, touchMemoryAccess, getMemorySupersedesRefs, isOperationalRadioMemory, printMemorySearchResults, filterMemoryRecords, getMemoryIdentityKeys, normalizeMemoryMetadata, recordMemoryAccess, getMemoryPrimaryKey, buildMemorySupersededBy, applyMemorySupersedeState, getMemoryRecordStableKey, markDuplicateLedgerRecordSuperseded, normalizeMemoryEvent, renderMemoryLine, recoverMemoryEventFromRawText, parseMemoryFilters, readLedger } from "./lib/memory-normalize.js";
+import { normalizeMemoryKind, normalizeMemoryProject, normalizeMemoryScope, normalizeList, firstDefinedRef, hasMemoryFilters, normalizeRefToken, normalizeConfidence, applyMemoryAccessFields, normalizeMemoryAccessCount, normalizeMemoryAccessTimestamp, firstDefinedValue, getDaysSinceTimestamp, isMemoryLifecycleVisible, normalizeSupersedeToken, hasExplicitSyncKey, readPositiveInteger, isMemoryHealthExcluded, formatMemoryHealthRepairPlan, sanitizeRawJsonCandidate, getMemoryGrowthTrend, chooseMemoryLayer, parseListOption, parseMemoryTagFilters, formatMemoryFilterSummary, matchesMemoryTags, getMemoryAccessStats, applyMemoryLifecycleOperations, normalizeSupersedeRefs, isStartupMemoryRecord, resolveSnapshotLimits, inferTopics, normalizeMemoryRefs, flattenMemoryRefs, formatMemoryRefs, matchesMemoryRef, touchMemoryAccess, getMemorySupersedesRefs, isOperationalRadioMemory, printMemorySearchResults, filterMemoryRecords, getMemoryIdentityKeys, normalizeMemoryMetadata, recordMemoryAccess, getMemoryPrimaryKey, buildMemorySupersededBy, applyMemorySupersedeState, getMemoryRecordStableKey, markDuplicateLedgerRecordSuperseded, normalizeMemoryEvent, renderMemoryLine, recoverMemoryEventFromRawText, parseMemoryFilters, readLedger, renderIndexMarkdown } from "./lib/memory-normalize.js";
 import { createDispatchRecordMutex, isClaimStale, shouldPersistDispatchReport, isDispatchableRadioMessage, isClosedDispatchSourceState, buildTaskDispatchText, buildWorkflowDispatchText, findRecipeStepTask, normalizeToolName, safeGitPathSegment, isKnownGeminiWarning, stripExistingModelArgs, getDispatchThreadKey, formatDispatchVerifyCommand, getDispatchRunStatus, getDispatchRunVerificationResult, getAsyncCallStateMeta, getDispatchSourceKey, getRelaySourceKey, dispatchJobFromTask, dispatchJobFromWorkflow, dispatchJobFromRelayEntry, shouldDispatchJob, buildDispatchWorktreeBranch, buildDispatchWorktreeSlug, nextRelayAttempt, normalizeRunnerStderr, isDirectDispatchRadioMessage } from "./lib/dispatch.js";
 import { sendHtml, sendPlain, sendJson, sendErrorEnvelope, parsePageParam, getSafeStaticRelativePath, readTextIfExists } from "./lib/http.js";
 import { getToolDeclarationsFile, getModelsCacheFile, getRadioCursorFile, getAgentRegistryFile, getRoleRegistryFile, getTeamRegistryFile, getPolicyRulesFile } from "./lib/registry-paths.js";
-import { quoteWindowsCmdArg, escapeForWindowsCmd, quoteWindowsCommandArg, quoteShellArg, classifyCommandPath, shellQuote, getRunnerDoctorWarnings, runGit, resolveCommandPaths, commandPathPriority, shouldUseShellForCommand, buildWindowsCmdLine, resolveGitProcessCommand, commandExists, choosePreferredCommandPath, resolveRunnerCommand, buildRunnerInvocation, runProcess, runGitCommand } from "./lib/shell.js";
+import { quoteWindowsCmdArg, escapeForWindowsCmd, quoteWindowsCommandArg, quoteShellArg, classifyCommandPath, shellQuote, getRunnerDoctorWarnings, runGit, resolveCommandPaths, commandPathPriority, shouldUseShellForCommand, buildWindowsCmdLine, resolveGitProcessCommand, commandExists, choosePreferredCommandPath, resolveRunnerCommand, buildRunnerInvocation, runProcess, runGitCommand, collectDispatchWorktreeReviewMetadata, ensureGitIdentity } from "./lib/shell.js";
 import { normalizeResolveQuery, extractFilesystemPathCandidates, resolvePossiblyHomePath, pathMatchesResolveQuery } from "./lib/resolve.js";
 import { normalizeTaskSpecEnv, normalizeStringArray, normalizeTaskSpecList, normalizeTaskSpecLogs, selectPlatformCommand, getTaskSpecProcessStatus, resolveInside } from "./lib/task-spec.js";
 import { policyActorMatches, policyRuleSpecificity, isHiddenProjectId, findWorkflowIndex, findTaskIndex, createTaskNote, getNotificationChannels } from "./lib/entity-index.js";
 import { getFileHash, getGitHubBackupUploadWarnings, normalizeBackupPatternList, matchesAnyBackupPattern, normalizeScheduleTime, resolveConfiguredPath, extractListValue, renderGitHubBackupReadme, markProtectedBackups, parseBackupTimestampFromName, inferBackupReasonFromName, inferBackupRetentionTier, createdAtRetentionKey, formatBackupDay, getIsoWeekKey, isPathInsideDirectory, countBackupDirs, backupHub, resolveBackupDirectory, getGitHubBackupExportFiles, getDefaultGitHubBackupInclude, assertSafeGitHubBackupRepoDir, ensureSafeChildPath, planBackupRetention, inferBackupRetentionKey, assertSafeDispatchWorktreeRoot } from "./lib/backup.js";
 import { relayFailureFingerprint, createSkillDelta, createProject, createWorkflow, createTask, createSession, createRpcRequest, createNotification, createDispatchQueueEntry, validateVerifyCommand, validateMinimalImplementation, validateDependencyBudget, normalizeRefValues, mergeMemoryAccessMetadata, parseJsonObjectCandidate, createRadioMessage } from "./lib/entity-factory.js";
 import { readDiscoveredModels, detectVSCodeEnhanced, getDashboardStaticRoot, readTemplate, getLocalInstallTargets, getInstallTargets, renderDashboard, getInstructionIncludeFiles, getInstallTargetForTool } from "./lib/tools-detect.js";
+import { isRadioLinkedToClosedSource } from "./lib/entity-repo.js";
 import {
   normalizeAdversarialVerifier,
   normalizeReviewDimensions,
@@ -2246,23 +2247,6 @@ function updateDispatchSourceState(memoryDir, job, patch) {
 
 
 
-function isRadioLinkedToClosedSource(memoryDir, message) {
-  if (isRadioTargetingClosedSession(memoryDir, message)) return true;
-  const refs = [message?.thread, message?.replyTo]
-    .map((value) => String(value || "").trim())
-    .filter(Boolean);
-  if (refs.length === 0) {
-    return false;
-  }
-  const refSet = new Set(refs);
-  const closedTask = readTasks(memoryDir)
-    .some((task) => refSet.has(task.id) && isClosedDispatchSourceState(task.status || task.deliveryState));
-  if (closedTask) {
-    return true;
-  }
-  return readWorkflows(memoryDir)
-    .some((workflow) => refSet.has(workflow.id) && isClosedDispatchSourceState(workflow.status || workflow.deliveryState));
-}
 
 function buildDispatchJobs(memoryDir, { to, project, limit, force, respectRecipeDependencies = false }) {
   const relayState = readLatestRelayStatusBySource(memoryDir);
@@ -2522,21 +2506,6 @@ function prepareDispatchWorktree(job, { root = "" } = {}) {
   };
 }
 
-function collectDispatchWorktreeReviewMetadata(worktree) {
-  if (!worktree?.enabled || !worktree.path) {
-    return worktree || null;
-  }
-  const head = runGitCommand(worktree.path, ["rev-parse", "HEAD"], { allowFailure: true }).stdout.trim() || worktree.head || "";
-  const status = runGitCommand(worktree.path, ["status", "--short"], { allowFailure: true }).stdout.trim();
-  const diffStat = runGitCommand(worktree.path, ["diff", "--stat"], { allowFailure: true }).stdout.trim();
-  return {
-    ...worktree,
-    head,
-    diffStatus: status,
-    diffStat,
-    hasChanges: Boolean(status || diffStat)
-  };
-}
 
 function inspectDashboardWorktree(worktree) {
   if (!worktree?.path || !fs.existsSync(worktree.path)) {
@@ -6757,52 +6726,6 @@ function selectStartupMemoryRecords(records = [], _config = {}) {
 
 
 
-function renderIndexMarkdown(index) {
-  const lines = [
-    "# Shared AI Memory Index",
-    "",
-    `Rebuilt locally at ${index.stats.rebuiltAt}.`,
-    "",
-    "## Stats",
-    "",
-    `- Records: ${index.stats.records}`,
-    `- Core: ${index.stats.core}`,
-    `- Working: ${index.stats.working}`,
-    `- Archive: ${index.stats.archive}`,
-    `- Schema version: ${index.schemaVersion || index.version || 1}`,
-    "",
-    "## Top Topics",
-    ""
-  ];
-  for (const item of index.topics.slice(0, 40)) {
-    lines.push(`- ${item.key}: ${item.count}`);
-  }
-  lines.push("");
-  lines.push("## Top Projects");
-  lines.push("");
-  for (const item of index.projects.slice(0, 40)) {
-    lines.push(`- ${item.key}: ${item.count}`);
-  }
-  lines.push("");
-  lines.push("## Top Tags");
-  lines.push("");
-  for (const item of index.tags.slice(0, 40)) {
-    lines.push(`- ${item.key}: ${item.count}`);
-  }
-  lines.push("");
-  for (const layer of ["core", "working", "archive"]) {
-    lines.push(`## ${titleCase(layer)} Records`);
-    lines.push("");
-    const records = index.records
-      .filter((item) => item.layer === layer)
-      .sort(layer === "core" ? sortByImportance : (a, b) => String(b.ts || "").localeCompare(String(a.ts || "")));
-    for (const memory of records) {
-      lines.push(renderMemoryLine(memory));
-    }
-    lines.push("");
-  }
-  return lines.join("\n");
-}
 
 function renderMemoryHealthReport(config, index, options = {}) {
   const analysis = options.analysis || analyzeMemoryHealth(config, index, options);
@@ -8040,16 +7963,6 @@ function ensureGitHubBackupRepo(github) {
   }
 }
 
-function ensureGitIdentity(repoDir) {
-  const name = runGitCommand(repoDir, ["config", "user.name"], { allowFailure: true });
-  if (!name.ok || !name.stdout.trim()) {
-    runGitCommand(repoDir, ["config", "user.name", "AI Memory Hub"]);
-  }
-  const email = runGitCommand(repoDir, ["config", "user.email"], { allowFailure: true });
-  if (!email.ok || !email.stdout.trim()) {
-    runGitCommand(repoDir, ["config", "user.email", "ai-memory-hub@localhost"]);
-  }
-}
 
 
 function updateGitHubBackupState(config, patch) {

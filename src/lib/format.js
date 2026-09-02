@@ -1,6 +1,7 @@
 // 从 src/index.js 下沉的通用工具函数（v3.0 重构 P0-2）。
 // 这些函数不依赖 index.js 内部的任何其他符号，可安全复用。
 
+import fs from "node:fs";
 import path from "node:path";
 import { extractCjkNgrams } from "./util.js";
 
@@ -305,4 +306,18 @@ export function findDuplicateMemoryGroups(records) {
       records: items
     }))
     .sort((a, b) => b.count - a.count || a.example.localeCompare(b.example));
+}
+
+export function getBackupFilePreview(file) {
+  const ext = path.extname(file).toLowerCase();
+  const basename = path.basename(file).toLowerCase();
+  if (![".json", ".jsonl", ".md", ".txt"].includes(ext) && basename !== "manifest.json") {
+    return "";
+  }
+  const buffer = fs.readFileSync(file);
+  const sample = buffer.subarray(0, Math.min(buffer.length, 2000)).toString("utf8");
+  if (sample.includes("\u0000")) {
+    return "";
+  }
+  return truncateText(sample, 1000);
 }

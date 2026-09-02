@@ -97,9 +97,9 @@ import { sqliteCommand } from "./commands/sqlite.js";
 import { ensureDir, readJson, readJsonSafe, writeJson, createId, getOption, hasOption, hasFlag, parsePositiveIntegerOption, positionalArgs, countJsonlFiles, isPlainObject, hasOwnField } from "./lib/cli.js";
 import { readEvents, parseJsonlLine, countJsonlLines, readToolDeclarations, readModelsCache, writeModelsCache, readRadioCursor, writeRadioCursor, readAgents, readRoles, readTeams, readClaudeSessionState, readDispatchLog, readDispatchRuns, appendDispatchRunRecord, appendDispatchLog, readRelayStatus, resolveGitConflictsInFile, writeLedger, readApprovalGates, appendApprovalGateEvent, readPolicyRules, readSessions, readUnreadReceipts, appendUnreadReceipt, writeSessions, writeRpcRequest, readRpcRequest, writeRpcResult, readRpcResult, writeNotification, readNotifications, writeContextPack, readContextPack, readDispatchQueue, writeDispatchQueueEntry, readMemoryLifecycleOperations, archiveInbox, writeInboxEvents, readBackupManifest, readLockFile, readLockEvents, appendLockEvent, readEventsWithLocations, readAgentById, readRoleById, readTeamById, resolveRelayThreadKeys, findLatestRelayStatusEntry, readLatestDispatchRunByThread, readLatestRelayStatusByThread, readLatestRelayStatusBySource, updateSession, getActiveSessions, getPendingNotifications, getQueuedEntries, getRunningEntries, getFailedEntries, buildRunnerArgs, writeClaudeSessionState, countRecentRelayOscillation, writeAgent, writeRole, writeTeam, createDispatchRunId, removePolicyRule, updateNotificationStatus, updateDispatchQueueEntry, releaseLock, describeLock, waitForRpcResult, touchAgentStatus, parseRunnerOutput, isLockStale, removeToolDeclaration, writeToolDeclaration, acquireLock } from "./lib/io.js";
 import { getEntityEventsFile, getEntityProjectionFile, readEntityEvents, bootstrapEntityEventsFromProjection, writeEntityRecords, appendEntityRecord, deleteEntityRecord, appendEntityEvents, createEntityEvent, replayEntityEvents, materializeEntityProjection, isEntityRecordNewerOrSame } from "./lib/entity-store.js";
-import { PROJECT_STATUSES, RECIPE_GATE_STRING_ARRAY_FIELDS, RECIPE_GATE_FIELDS, extractQualityGate, normalizeQualityGate, normalizeVerifyCommand, normalizeNonNegativeInteger, normalizeMinimalImplementation, normalizeDependencyBudget, normalizePriority, normalizeDispatchWorktreeMetadata, normalizeWorkflowRole, parseProjectListOption, uniqueStringList, isTaskStatus, isWorkflowStatus, normalizeRecipeMetadata, normalizeRecipeStepMetadata, normalizeProjectStatus, normalizeProjectResources, normalizeProject, normalizeWorkflow, normalizeTask, normalizePrompt, getTaskEventStoreDefinition, getProjectEventStoreDefinition, getWorkflowEventStoreDefinition, getPromptEventStoreDefinition, rebuildEventSourcedProjections, updateProject, updateWorkflow, updateTask, assertTaskStatus, assertWorkflowStatus, mergeQualityGates, getSeedProjects } from "./lib/entity-models.js";
-import { projectRoot } from "./lib/paths.js";
-import { POLICY_OPERATIONS, APP_NAME, DEFAULT_DISPATCH_ACK_TIMEOUT_MS, ASYNC_CALL_STATES, summarizeWorkflowLinkedTaskDelivery, isDispatchSourceComplete, isValidAsyncCallState, isRelayTimedOut } from "./lib/constants.js";
+import { PROJECT_STATUSES, RECIPE_GATE_STRING_ARRAY_FIELDS, RECIPE_GATE_FIELDS, extractQualityGate, normalizeQualityGate, normalizeVerifyCommand, normalizeNonNegativeInteger, normalizeMinimalImplementation, normalizeDependencyBudget, normalizePriority, normalizeDispatchWorktreeMetadata, normalizeWorkflowRole, parseProjectListOption, uniqueStringList, isTaskStatus, isWorkflowStatus, normalizeRecipeMetadata, normalizeRecipeStepMetadata, normalizeProjectStatus, normalizeProjectResources, normalizeProject, normalizeWorkflow, normalizeTask, normalizePrompt, getTaskEventStoreDefinition, getProjectEventStoreDefinition, getWorkflowEventStoreDefinition, getPromptEventStoreDefinition, rebuildEventSourcedProjections, updateProject, updateWorkflow, updateTask, assertTaskStatus, assertWorkflowStatus, mergeQualityGates, getSeedProjects, mergeSeedProjects } from "./lib/entity-models.js";
+import { projectRoot, recipeReadLocations, recipeListLocations } from "./lib/paths.js";
+import { POLICY_OPERATIONS, APP_NAME, DEFAULT_DISPATCH_ACK_TIMEOUT_MS, ASYNC_CALL_STATES, summarizeWorkflowLinkedTaskDelivery, isDispatchSourceComplete, isValidAsyncCallState, isRelayTimedOut, isRelayRetryCandidate } from "./lib/constants.js";
 import { MODEL_CACHE_STALE_MS } from "./lib/constants.js";
 import { promptCommand } from "./commands/prompt.js";
 import { workflowNodeCommand } from "./commands/workflow-node.js";
@@ -139,8 +139,8 @@ import { listCredentialProfiles, setCredentialProfile, removeCredentialProfile, 
 import { listRelatedEntities, readRelations, recordMemoryRelations, recordRelation, rebuildMemoryRelations, revokeRelation } from "./relations.js";
 import { auditMemories } from "./memory-audit.js";
 import { parseRunnerModelList, semanticSearch, checkProcessLiveness, getContentType, readRequestJson, findProjectIndex, expandSynonyms, scanBackupFilesForSecrets, getRelayTimeoutBaseMs, renderDispatchWorktree, createHealthRepairAction, getPathSize, extractCjkNgrams, getBackupFileCatalog, markTieredBackups, parseCliArgs, parseDeclaredList, parseProgressPercent, isJobCheckpointed, getCheckpointStats, renderProjectRegistryReadme, extractSharedSkillLayerVersion, renderEmptyBootstrapSnapshot, sleep, sharedSkillLayerActionLabel, summarizeDir, releaseStaleClaim, inspectSharedMemoryInstructions, getDirectResolveCandidates, normalizeCandidatePath, getPageOptions, findProject, autoCreateWorkflowNodes, summarizeTaskSpec, writeTaskSpecProcessLogs, resolveTaskSpecCwd, getMemoryStorageSummary } from "./lib/util.js";
-import { extractInstructionIncludes, normalizeSeverity, formatTopCounts, formatPercent, formatBytes, sanitizeDisplayText, getMemoryAgeDays, inferScope, normalizeSearchText, countBy, sortByImportance, titleCase, looksSensitive, formatEventLocation, extractSection, extractSectionBeforeAny, renderTemplate, trimOutput, summarizeText, textMentionsResolveQuery, summarizeHealthAnalysisForRepair, sanitizeLedgerText, normalizeDuplicateMemoryText, sanitizeInlineText, extractKeywords, extractCompactVariants, getMemoryEventSkipReason, extractLooseJsonStringField, formatMemoryRecordPointer, truncateText, extractSearchTerms, parseLooseJsonMemoryEvent, findDuplicateMemoryGroups } from "./lib/format.js";
-import { normalizeMemoryKind, normalizeMemoryProject, normalizeMemoryScope, normalizeList, firstDefinedRef, hasMemoryFilters, normalizeRefToken, normalizeConfidence, applyMemoryAccessFields, normalizeMemoryAccessCount, normalizeMemoryAccessTimestamp, firstDefinedValue, getDaysSinceTimestamp, isMemoryLifecycleVisible, normalizeSupersedeToken, hasExplicitSyncKey, readPositiveInteger, isMemoryHealthExcluded, formatMemoryHealthRepairPlan, sanitizeRawJsonCandidate, getMemoryGrowthTrend, chooseMemoryLayer, parseListOption, parseMemoryTagFilters, formatMemoryFilterSummary, matchesMemoryTags, getMemoryAccessStats, applyMemoryLifecycleOperations, normalizeSupersedeRefs, isStartupMemoryRecord, resolveSnapshotLimits, inferTopics, normalizeMemoryRefs, flattenMemoryRefs, formatMemoryRefs, matchesMemoryRef, touchMemoryAccess, getMemorySupersedesRefs, isOperationalRadioMemory, printMemorySearchResults, filterMemoryRecords, getMemoryIdentityKeys, normalizeMemoryMetadata, recordMemoryAccess, getMemoryPrimaryKey } from "./lib/memory-normalize.js";
+import { extractInstructionIncludes, normalizeSeverity, formatTopCounts, formatPercent, formatBytes, sanitizeDisplayText, getMemoryAgeDays, inferScope, normalizeSearchText, countBy, sortByImportance, titleCase, looksSensitive, formatEventLocation, extractSection, extractSectionBeforeAny, renderTemplate, trimOutput, summarizeText, textMentionsResolveQuery, summarizeHealthAnalysisForRepair, sanitizeLedgerText, normalizeDuplicateMemoryText, sanitizeInlineText, extractKeywords, extractCompactVariants, getMemoryEventSkipReason, extractLooseJsonStringField, formatMemoryRecordPointer, truncateText, extractSearchTerms, parseLooseJsonMemoryEvent, findDuplicateMemoryGroups, getBackupFilePreview } from "./lib/format.js";
+import { normalizeMemoryKind, normalizeMemoryProject, normalizeMemoryScope, normalizeList, firstDefinedRef, hasMemoryFilters, normalizeRefToken, normalizeConfidence, applyMemoryAccessFields, normalizeMemoryAccessCount, normalizeMemoryAccessTimestamp, firstDefinedValue, getDaysSinceTimestamp, isMemoryLifecycleVisible, normalizeSupersedeToken, hasExplicitSyncKey, readPositiveInteger, isMemoryHealthExcluded, formatMemoryHealthRepairPlan, sanitizeRawJsonCandidate, getMemoryGrowthTrend, chooseMemoryLayer, parseListOption, parseMemoryTagFilters, formatMemoryFilterSummary, matchesMemoryTags, getMemoryAccessStats, applyMemoryLifecycleOperations, normalizeSupersedeRefs, isStartupMemoryRecord, resolveSnapshotLimits, inferTopics, normalizeMemoryRefs, flattenMemoryRefs, formatMemoryRefs, matchesMemoryRef, touchMemoryAccess, getMemorySupersedesRefs, isOperationalRadioMemory, printMemorySearchResults, filterMemoryRecords, getMemoryIdentityKeys, normalizeMemoryMetadata, recordMemoryAccess, getMemoryPrimaryKey, buildMemorySupersededBy, applyMemorySupersedeState, getMemoryRecordStableKey, markDuplicateLedgerRecordSuperseded, normalizeMemoryEvent } from "./lib/memory-normalize.js";
 import { createDispatchRecordMutex, isClaimStale, shouldPersistDispatchReport, isDispatchableRadioMessage, isClosedDispatchSourceState, buildTaskDispatchText, buildWorkflowDispatchText, findRecipeStepTask, normalizeToolName, safeGitPathSegment, isKnownGeminiWarning, stripExistingModelArgs, getDispatchThreadKey, formatDispatchVerifyCommand, getDispatchRunStatus, getDispatchRunVerificationResult, getAsyncCallStateMeta, getDispatchSourceKey, getRelaySourceKey, dispatchJobFromTask, dispatchJobFromWorkflow, dispatchJobFromRelayEntry, shouldDispatchJob, buildDispatchWorktreeBranch, buildDispatchWorktreeSlug, nextRelayAttempt, normalizeRunnerStderr } from "./lib/dispatch.js";
 import { sendHtml, sendPlain, sendJson, sendErrorEnvelope, parsePageParam, getSafeStaticRelativePath, readTextIfExists } from "./lib/http.js";
 import { getToolDeclarationsFile, getModelsCacheFile, getRadioCursorFile, getAgentRegistryFile, getRoleRegistryFile, getTeamRegistryFile, getPolicyRulesFile } from "./lib/registry-paths.js";
@@ -3228,23 +3228,6 @@ function isRelayRetryRunnable(entry) {
   return !isSharedStateOnlyTool(entry?.tool || "");
 }
 
-function isRelayRetryCandidate(entry, now = Date.now()) {
-  if (!entry) {
-    return false;
-  }
-  // Phase 2: approval-required is retryable once gate is approved
-  if (entry.state === "approval-required") {
-    return true;
-  }
-  if (entry.state === ASYNC_CALL_STATES.FAILED) {
-    if (!entry.nextRetryAt) {
-      return false;
-    }
-    const nextRetryMs = Date.parse(entry.nextRetryAt);
-    return !Number.isNaN(nextRetryMs) && nextRetryMs <= now;
-  }
-  return isRelayTimedOut(entry, now);
-}
 
 function appendRelayStatus(memoryDir, job, patch = {}) {
   const now = new Date().toISOString();
@@ -5884,17 +5867,6 @@ function parseProjectResourceOptions(argv) {
 }
 
 
-function mergeSeedProjects(projects) {
-  const merged = [...projects];
-  for (const seed of getSeedProjects()) {
-    const identities = uniqueStringList([seed.id, seed.name, seed.displayName, ...(seed.aliases || [])]);
-    const exists = identities.some((identity) => findProjectIndex(merged, identity) !== -1);
-    if (!exists) {
-      merged.push(seed);
-    }
-  }
-  return merged;
-}
 
 
 
@@ -6148,19 +6120,7 @@ function listRecipes(memoryDir) {
   return Array.from(recipes.values()).sort((a, b) => a.name.localeCompare(b.name));
 }
 
-function recipeReadLocations(memoryDir) {
-  return [
-    { source: "user", dir: path.join(memoryDir, "recipes") },
-    { source: "builtin", dir: path.join(projectRoot(), "recipes") }
-  ];
-}
 
-function recipeListLocations(memoryDir) {
-  return [
-    { source: "builtin", dir: path.join(projectRoot(), "recipes") },
-    { source: "user", dir: path.join(memoryDir, "recipes") }
-  ];
-}
 
 
 
@@ -6823,63 +6783,7 @@ function enrichMemory(memory, ordinal, total) {
   };
 }
 
-function buildMemorySupersededBy(records) {
-  const lookup = new Map();
-  for (const record of records) {
-    for (const key of getMemoryIdentityKeys(record)) {
-      if (!lookup.has(key)) {
-        lookup.set(key, record);
-      }
-    }
-  }
 
-  const supersededBy = new Map();
-  for (const superseder of records) {
-    const refs = getMemorySupersedesRefs(superseder);
-    for (const ref of refs) {
-      const target = lookup.get(ref);
-      if (!target || target === superseder) {
-        continue;
-      }
-      const targetKey = getMemoryPrimaryKey(target);
-      if (!targetKey) {
-        continue;
-      }
-      const supersederRef = getMemoryPrimaryKey(superseder);
-      const existing = supersededBy.get(targetKey) || [];
-      if (supersederRef && !existing.includes(supersederRef)) {
-        existing.push(supersederRef);
-      }
-      supersededBy.set(targetKey, existing);
-    }
-  }
-  return supersededBy;
-}
-
-function applyMemorySupersedeState(record, supersededBy) {
-  const supersededByRefs = supersededBy.get(getMemoryPrimaryKey(record)) || [];
-  if (supersededByRefs.length === 0) {
-    return record;
-  }
-  const importance = Math.max(1, Number(record.importance || 0) - 50);
-  return {
-    ...record,
-    superseded: true,
-    supersededBy: supersededByRefs,
-    importance,
-    layer: "archive",
-    metadata: {
-      ...record.metadata,
-      superseded: true,
-      supersededBy: supersededByRefs,
-      lifecycle: {
-        ...(record.metadata?.lifecycle || {}),
-        superseded: true,
-        supersededBy: supersededByRefs
-      }
-    }
-  };
-}
 
 
 
@@ -6993,9 +6897,6 @@ function selectStartupMemoryRecords(records = [], _config = {}) {
 }
 
 
-function getMemoryRecordStableKey(record) {
-  return getMemoryPrimaryKey(record) || record.id || record.localEventId || record.text || "";
-}
 
 
 
@@ -7458,32 +7359,6 @@ function repairCorruptedLedgerRecord(record, repairedAt) {
   };
 }
 
-function markDuplicateLedgerRecordSuperseded(record, keeperKey, repairedAt) {
-  return {
-    ...record,
-    superseded: true,
-    supersededBy: [keeperKey],
-    healthExcluded: true,
-    metadata: normalizeMemoryMetadata({
-      ...record.metadata,
-      superseded: true,
-      supersededBy: [keeperKey],
-      healthExcluded: true,
-      lifecycle: {
-        ...(record.metadata?.lifecycle || {}),
-        superseded: true,
-        supersededBy: [keeperKey],
-        healthExcluded: true,
-        healthRepair: {
-          status: "superseded-duplicate",
-          healthExcluded: true,
-          repairedAt,
-          duplicateOf: keeperKey
-        }
-      }
-    }, record)
-  };
-}
 
 function recoverMemoryEventFromRawText(rawText) {
   const cleaned = sanitizeRawJsonCandidate(rawText);
@@ -7808,19 +7683,6 @@ function describeBackupFile(memoryDir, backupDir, name, spec) {
 
 
 
-function getBackupFilePreview(file) {
-  const ext = path.extname(file).toLowerCase();
-  const basename = path.basename(file).toLowerCase();
-  if (![".json", ".jsonl", ".md", ".txt"].includes(ext) && basename !== "manifest.json") {
-    return "";
-  }
-  const buffer = fs.readFileSync(file);
-  const sample = buffer.subarray(0, Math.min(buffer.length, 2000)).toString("utf8");
-  if (sample.includes("\u0000")) {
-    return "";
-  }
-  return truncateText(sample, 1000);
-}
 
 function runAutomaticBackupStrategy(config, { trigger = "sync", includePreSync = true, now = new Date() } = {}) {
   const retention = getBackupRetentionConfig(config);
@@ -8594,24 +8456,6 @@ function readLockStatus(memoryDir) {
 
 
 
-function normalizeMemoryEvent(event) {
-  const text = event.text ?? event.content ?? event.memory ?? "";
-  const metadata = normalizeMemoryMetadata(event.metadata || {}, event);
-  if (!metadata.kind && event.type) {
-    metadata.kind = normalizeMemoryKind(event.type);
-  }
-  if (event.tags && !metadata.tags) {
-    metadata.tags = normalizeList(event.tags);
-  }
-  return {
-    id: event.id || "",
-    ts: event.ts || event.timestamp || event.createdAt || "",
-    source: event.source || metadata.source || "unknown",
-    text: String(text || "").trim(),
-    device: event.device || metadata.device || os.hostname(),
-    metadata
-  };
-}
 
 
 

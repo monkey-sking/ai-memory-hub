@@ -644,3 +644,15 @@ export function getSeedProjects() {
     }
   ].map(normalizeProject);
 }
+
+export function mergeSeedProjects(projects) {
+  const merged = [...projects];
+  for (const seed of getSeedProjects()) {
+    const identities = uniqueStringList([seed.id, seed.name, seed.displayName, ...(seed.aliases || [])]);
+    const exists = identities.some((identity) => findProjectIndex(merged, identity) !== -1);
+    if (!exists) {
+      merged.push(seed);
+    }
+  }
+  return merged;
+}

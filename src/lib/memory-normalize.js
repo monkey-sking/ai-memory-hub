@@ -551,3 +551,111 @@ export function recordMemoryAccess(ledger, results, accessedAt = new Date().toIS
 export function getMemoryPrimaryKey(record) {
   return getMemoryIdentityKeys(record)[0] || "";
 }
+
+export function buildMemorySupersededBy(records) {
+  const lookup = new Map();
+  for (const record of records) {
+    for (const key of getMemoryIdentityKeys(record)) {
+      if (!lookup.has(key)) {
+        lookup.set(key, record);
+      }
+    }
+  }
+
+  const supersededBy = new Map();
+  for (const superseder of records) {
+    const refs = getMemorySupersedesRefs(superseder);
+    for (const ref of refs) {
+      const target = lookup.get(ref);
+      if (!target || target === superseder) {
+        continue;
+      }
+      const targetKey = getMemoryPrimaryKey(target);
+      if (!targetKey) {
+        continue;
+      }
+      const supersederRef = getMemoryPrimaryKey(superseder);
+      const existing = supersededBy.get(targetKey) || [];
+      if (supersederRef && !existing.includes(supersederRef)) {
+        existing.push(supersederRef);
+      }
+      supersededBy.set(targetKey, existing);
+    }
+  }
+  return supersededBy;
+}
+
+export function applyMemorySupersedeState(record, supersededBy) {
+  const supersededByRefs = supersededBy.get(getMemoryPrimaryKey(record)) || [];
+  if (supersededByRefs.length === 0) {
+    return record;
+  }
+  const importance = Math.max(1, Number(record.importance || 0) - 50);
+  return {
+    ...record,
+    superseded: true,
+    supersededBy: supersededByRefs,
+    importance,
+    layer: "archive",
+    metadata: {
+      ...record.metadata,
+      superseded: true,
+      supersededBy: supersededByRefs,
+      lifecycle: {
+        ...(record.metadata?.lifecycle || {}),
+        superseded: true,
+        supersededBy: supersededByRefs
+      }
+    }
+  };
+}
+
+export function getMemoryRecordStableKey(record) {
+  return getMemoryPrimaryKey(record) || record.id || record.localEventId || record.text || "";
+}
+
+export function markDuplicateLedgerRecordSuperseded(record, keeperKey, repairedAt) {
+  return {
+    ...record,
+    superseded: true,
+    supersededBy: [keeperKey],
+    healthExcluded: true,
+    metadata: normalizeMemoryMetadata({
+      ...record.metadata,
+      superseded: true,
+      supersededBy: [keeperKey],
+      healthExcluded: true,
+      lifecycle: {
+        ...(record.metadata?.lifecycle || {}),
+        superseded: true,
+        supersededBy: [keeperKey],
+        healthExcluded: true,
+        healthRepair: {
+          status: "superseded-duplicate",
+          healthExcluded: true,
+          repairedAt,
+          duplicateOf: keeperKey
+        }
+      }
+    }, record)
+  };
+}
+
+export function normalizeMemoryEvent(event) {
+  const text = event.text ?? event.content ?? event.memory ?? "";
+  const metadata = normalizeMemoryMetadata(event.metadata || {}, event);
+  if (!metadata.kind && event.type) {
+    metadata.kind = normalizeMemoryKind(event.type);
+  }
+  if (event.tags && !metadata.tags) {
+    metadata.tags = normalizeList(event.tags);
+  }
+  return {
+    id: event.id || "",
+    ts: event.ts || event.timestamp || event.createdAt || "",
+    source: event.source || metadata.source || "unknown",
+    text: String(text || "").trim(),
+    device: event.device || metadata.device || os.hostname(),
+    metadata
+  };
+}

@@ -101,3 +101,21 @@ export function isRelayTimedOut(entry, now = Date.now()) {
   const baseMs = getRelayTimeoutBaseMs(entry);
   return Number.isFinite(baseMs) && baseMs + timeoutMs <= now;
 }
+
+export function isRelayRetryCandidate(entry, now = Date.now()) {
+  if (!entry) {
+    return false;
+  }
+  // Phase 2: approval-required is retryable once gate is approved
+  if (entry.state === "approval-required") {
+    return true;
+  }
+  if (entry.state === ASYNC_CALL_STATES.FAILED) {
+    if (!entry.nextRetryAt) {
+      return false;
+    }
+    const nextRetryMs = Date.parse(entry.nextRetryAt);
+    return !Number.isNaN(nextRetryMs) && nextRetryMs <= now;
+  }
+  return isRelayTimedOut(entry, now);
+}

@@ -4,19 +4,19 @@
 > 横切依赖走 deps 注入，共享常量下沉 `src/lib/constants.js`。
 > 本文档是唯一进度落点，任何 runner（codex / claude / gemini / antigravity / opencode / mimocode）接手前先读这里。
 
-## 当前进度（2026-09-02 实测，HEAD=`686c917`）
+## 当前进度（2026-09-02 实测，HEAD=`0675cef`）
 
 | 指标 | 数值 |
 |---|---|
 | index.js 起始行数 | 14,778 |
-| 当前行数 | **6,066**（已减 8,712 行） |
+| 当前行数 | **5,630**（已减 9,148 行） |
 | 已迁出命令族群 | 26 个 |
 | src/commands 模块数 | 36 个（含 app.js，共约 6,728 行） |
-| src/lib 模块数 | 22 个（新增 daemon-state/skill-store.js，共约 4,915 行） |
-| index.js 残留 | 约 29 个 `*Command` 函数、约 150 个顶层 function |
-| 已推送提交 | 到 `686c917`（工作区干净） |
+| src/lib 模块数 | 23 个（新增 daemon-state/skill-store/github-backup.js，共约 5,354 行） |
+| index.js 残留 | 约 29 个 `*Command` 函数、约 139 个顶层 function |
+| 已推送提交 | 到 `0675cef`（工作区干净） |
 
-> 按 P0-2 的目标（降到 ~3,000 行）算，整体完成度约 **85%**（行数口径）。
+> 按 P0-2 的目标（降到 ~3,000 行）算，整体完成度约 **87%**（行数口径）。
 > 第五批（`e626917`）把文件级 IO 助手、entity 工厂、tools 检测下沉，index.js 破万；
 > 第六~十六批持续按主题下沉叶子函数，index.js 从 9,999 降至 7,530；
 > 第十七批整块下沉 task-spec 子系统（连续 10 个函数 + 2 常量）并收敛到 src/lib/task-spec.js，
@@ -29,7 +29,12 @@
 > 完整 daemon 生命周期冒烟通过，index.js 降至 6,179；
 > **P0-2 第十九批（`686c917`）**整块下沉 skill candidate/delta JSONL 存取到 `src/lib/skill-store.js`
 > （9 函数 + 2 常量），自包含簇 index.js 直连 import 8 个导出；修复 mergeSkillDelta 的 __dirname
-> 模板路径改用 projectRoot()；skill-delta 全流程冒烟通过，index.js 降至 6,066。
+> 模板路径改用 projectRoot()；skill-delta 全流程冒烟通过，index.js 降至 6,066；
+> **P0-2 第二十批（`0675cef`）**整块下沉 GitHub backup 领域簇到 `src/lib/github-backup.js`
+> （11 函数），cluster 依赖 index.js 内部符号（loadConfig/defaultConfig/resolveMemoryDir/
+> DEFAULT_GITHUB_BACKUP_TASK_NAME/__filename），为 lib 模块引入首个 init 注入模式
+> （initGithubBackupDeps），并修复 __filename 下沉漂移（改注入 entryFile）；
+> backup/dashboard github 全链路冒烟通过，index.js 降至 5,630。
 > 剩余大头是非叶子共享函数（含 renderDispatchPrompt 等）。
 >
 > 好消息：经 AST 扫描，index.js 现有叶子函数**不依赖内部符号**的已基本沉完（仅剩
@@ -67,6 +72,7 @@
 | `84e4ff8` | **P0-1 攻坚完成**：迁出 appCommand HTTP 服务（~986 行、95 个 /api/* 路由）到 `src/commands/app.js`。node 内置 + lib/独立模块直连 import；index.js 内部符号经 deps 注入（27 键：20 个 dashboard 实例 + 2 POLICY 常量 + 7 助手函数），deps 解构保持函数体逐字迁移。appCommandDeps 置于 dashboard 实例块后（TDZ-safe）。四步验证 + HTTP 冒烟全绿，index.js 7,249→6,294 | ✅ 已推送 |
 | `914d3f1` | P0-2 第十八批：整块下沉 daemon 状态子系统到 `src/lib/daemon-state.js`（10 函数 + 4 DAEMON_* 常量：pid/status/heartbeat 读写 + buildDaemonStatus 聚合）。自包含簇全依赖已在 lib，无 index.js 内部符号，故不建 deps 注入改直连 import 7 个导出；删 index.js 侧 dead import evaluateDaemonHeartbeat；daemonCommandDeps 契约不变。完整 daemon 生命周期冒烟（启动写文件→running→停止 stale/not_running），index.js 6,294→6,179 | ✅ 已推送 |
 | `686c917` | P0-2 第十九批：整块下沉 skill candidate/delta JSONL 存取到 `src/lib/skill-store.js`（9 函数 + 2 常量）。candidates（readSkillCandidates/appendSkillCandidates/updateSkillCandidate）+ deltas（readSkillDeltas/approveSkillDelta/rejectSkillDelta/mergeSkillDelta/writeSkillDeltas）。自包含簇直连 import 8 个导出（merge/skill/task 命令 deps 契约不变）；修复 mergeSkillDelta __dirname 模板路径改用 projectRoot()。skill-delta create/list/approve/reject 全流程冒烟，index.js 6,179→6,066 | ✅ 已推送 |
+| `0675cef` | P0-2 第二十批：整块下沉 GitHub backup 领域簇到 `src/lib/github-backup.js`（11 函数：getGitHubBackupConfig/configureGitHubBackup/getGitHubBackupStatus/runGitHubBackup/githubBackupScheduleCommand/install+uninstallGitHubBackupSchedule/getGitHubBackupScheduleStatus/updateGitHubBackupState(+ScheduleState)/buildGitHubBackupScheduledTaskCommand）。簇依赖 index.js 内部符号（loadConfig/defaultConfig/resolveMemoryDir/DEFAULT_GITHUB_BACKUP_TASK_NAME/__filename），为 lib 模块引入首个 **init 注入模式**（initGithubBackupDeps，module 作用域 let 承接，index.js 导入后立即调用）；修复 __filename 下沉漂移（buildGitHubBackupScheduledTaskCommand 改注入 entryFile=src/index.js 绝对路径）。lib 依赖（cli/shell/util/backup）直连 import。四步验证 + backup/dashboard github 全链路冒烟（/api/backups/github/{status,configure,run}）通过，index.js 6,066→5,630 | ✅ 已推送 |
 
 ## 后续任务（按优先级）
 
@@ -98,6 +104,14 @@
   （readEvents/io、ensureDir/cli、writeFileAtomic/atomic-write）皆在 lib，自包含直连 import 8 个导出。
   此批还暴露一个**下沉常见坑**：函数内若用了 `__dirname` 拼项目路径，迁到更深的 src/lib 子目录后
   `__dirname` 层级变了会拼错路径 —— 需改用 `projectRoot()`（src/lib/paths.js）显式解析项目根。
+  第二十批 `0675cef` 首次面对「簇依赖 index.js 内部符号」的 lib 下沉场景：GitHub backup 簇（11 函数）
+  引用 loadConfig/defaultConfig/resolveMemoryDir/DEFAULT_GITHUB_BACKUP_TASK_NAME/__filename 这 5 个
+  index.js 内部符号。因该簇是被 commands + dashboard 以**多个独立函数值**（非单一 dispatcher）注入消费，
+  无法像 app.js 那样靠单个入口函数解构 deps，故引入 **init 注入模式**：lib 模块顶层 `let loadConfig = ...`
+  （默认抛错占位），导出 `initGithubBackupDeps(deps)` 由 index.js 在模块导入后立即调用回填；同时把
+  会随 __dirname 漂移的 `__filename` 一并作为 `entryFile` 注入。函数体保持逐字迁移、外部调用点零改动。
+  至此 deps 判据完整成型：**引用已沉 lib 符号 → 直连 import；引用 index.js 内部符号 → 注入**
+  （命令单入口用 *CommandDeps 解构，lib 多导出簇用 init 注入）。
 - **剩余**：待复扫。原 AST 扫描为 201 个叶子函数（约 1,989 行），前几批已吃掉大部分，
   剩下的需重跑 `find-leaf-functions.mjs` 拿准确清单，别照抄本文档的旧数字。
   非叶子函数（依赖其他内部符号的，如 `analyzeMemoryHealth`、`syncIndexedEvents`、`appCommand`）

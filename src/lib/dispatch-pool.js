@@ -3,12 +3,14 @@
 // + runDispatchPool，把「并发池状态」自洽子系统收拢到一个模块。
 //
 // 依赖说明：
-// - lib/ 模块函数（createDispatchRunId / io）→ 直连 import。
-// - index.js 内部符号（runDispatchJobAsync — 它依赖 renderDispatchPrompt 等无法随池下沉的
-//   任务执行链；DISPATCH_MAX_CONCURRENCY — index 常量）→ 经 initDispatchPoolDeps(deps) 注入。
-//   本模块绝不 import src/index.js（保持依赖图无环）。
+// - lib/ 模块函数（createDispatchRunId / io / runDispatchJobAsync）→ 直连 import。
+//   runDispatchJobAsync 已随 P0-2 第22批下沉到 ./dispatch-run.js，本模块直接复用，
+//   不再经 init 注入 —— dispatch 执行链不再与 index.js 耦合。
+// - index.js 内部符号（DISPATCH_MAX_CONCURRENCY — index 常量）→ 经 initDispatchPoolDeps(deps)
+//   注入。本模块绝不 import src/index.js（保持依赖图无环）。
 
 import { createDispatchRunId } from "./io.js";
+import { runDispatchJobAsync } from "./dispatch-run.js";
 
 // Module-level singleton tracking active pool execution for dashboard visibility.
 // (原 index.js 2644 迁入)
@@ -26,11 +28,9 @@ const dispatchPoolState = {
 };
 
 // index.js 内部符号经 init 注入（由 src/index.js 在模块导入后立即调用）。
-let runDispatchJobAsync = () => { throw new Error("dispatch-pool: runDispatchJobAsync not injected"); };
 let DISPATCH_MAX_CONCURRENCY = 6;
 
 export function initDispatchPoolDeps(deps) {
-  runDispatchJobAsync = deps.runDispatchJobAsync;
   DISPATCH_MAX_CONCURRENCY = deps.DISPATCH_MAX_CONCURRENCY;
 }
 

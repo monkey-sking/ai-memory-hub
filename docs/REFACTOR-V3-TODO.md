@@ -4,24 +4,26 @@
 > 横切依赖走 deps 注入，共享常量下沉 `src/lib/constants.js`。
 > 本文档是唯一进度落点，任何 runner（codex / claude / gemini / antigravity / opencode / mimocode）接手前先读这里。
 
-## 当前进度（2026-09-02 实测，HEAD=`e626917`）
+## 当前进度（2026-09-02 实测，HEAD=`f9db559`）
 
 | 指标 | 数值 |
 |---|---|
 | index.js 起始行数 | 14,778 |
-| 当前行数 | **9,999**（已减 4,779 行） |
+| 当前行数 | **7,530**（已减 7,248 行） |
 | 已迁出命令族群 | 25 个 |
 | src/commands 模块数 | 35 个（共 5,675 行） |
 | src/lib 模块数 | 20 个（共 4,294 行） |
-| index.js 残留 | 30 个 `*Command` 函数、307 个顶层 function |
-| 已推送提交 | 到 `e626917`（工作区干净） |
+| index.js 残留 | 30 个 `*Command` 函数、181 个顶层 function |
+| 已推送提交 | 到 `f9db559`（工作区干净） |
 
-> 按 P0-2 的目标（降到 ~3,000 行）算，整体完成度约 **74%**。
-> 第五批把大批文件级 IO 助手、entity 工厂、tools 检测下沉到 lib 主题模块，
-> index.js 从 11,518 直接跌破 1 万行（净减 1,519 行），是迄今最大的一批。
-> 剩余大头仍是 appCommand（~986 行）与非叶子共享函数。
+> 按 P0-2 的目标（降到 ~3,000 行）算，整体完成度约 **80%**（行数口径）。
+> 第五批（`e626917`）把文件级 IO 助手、entity 工厂、tools 检测下沉，index.js 破万；
+> 第六~十六批持续按主题下沉叶子函数，index.js 已从 9,999 降至 7,530。
+> 剩余大头仍是 appCommand（~986 行）与非叶子共享函数（含 renderDispatchPrompt 等）。
 >
-> 好消息：经 AST 扫描，index.js 现有叶子函数**不依赖内部符号**的仍可继续半自动下沉。
+> 好消息：经 AST 扫描，index.js 现有叶子函数**不依赖内部符号**的已基本沉完（仅剩
+> `renderDispatchPrompt` / `renderCompactDispatchPrompt` 因会形成
+> `util→dispatch→entity-models→util` 模块循环而保留在命令层）。
 > 注：叶子函数清单每批后已变化，接手前请重跑 `find-leaf-functions.mjs` 拿当前值，别照抄本文档旧数字。
 
 ## 已完成的批次（git log 对照）
@@ -47,6 +49,9 @@
 | `db7cb8c` | docs：清理 runbook 里的真实绝对路径（pre-push 门禁会拦） | ✅ 已推送 |
 | `fdebc17` | docs：校准 v3.0 进度到 db7cb8c（11,518 行 / 28%） | ✅ 已推送 |
 | `e626917` | P0-2 第五批：下沉 40+ 个 IO 助手 + entity 工厂 + tools 检测，index.js 净减 1,519 行（破万） | ✅ 已推送 |
+| `0b1ec71` | P0-2 第六批：下沉 4 个 IO 助手（index.js 9,999→9,845） | ✅ 已推送 |
+| （第七~十五批见工作区记忆 .workbuddy/memory/2026-09-02.md，index.js 从 9,845 降至 8,327） | — | ✅ 已推送 |
+| `f9db559` | P0-2 第十六批：下沉 17 个叶子函数（backup/paths/tools-detect/memory-normalize/entity-*/dispatch），index.js 8,327→7,530，修复 sink 工具对 entity-repo 多行 import 的破坏 | ✅ 已推送 |
 
 ## 后续任务（按优先级）
 

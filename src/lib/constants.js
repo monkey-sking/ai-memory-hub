@@ -131,3 +131,24 @@ export function areTaskRecipeDependenciesSatisfied(task, allTasks = []) {
     return Boolean(dependency && isDispatchSourceComplete(dependency));
   });
 }
+
+// Unified async call state machine — allowed state transitions.
+// Keys are the source (from) states; values are the target states reachable from it.
+export const ASYNC_CALL_TRANSITIONS = {
+  "pending": ["dispatched"],
+  "dispatched": ["acked", "progress", "failed", "completed"],
+  "acked": ["progress", "completed", "failed"],
+  "progress": ["progress", "acked", "completed", "failed"],
+  "retrying": ["dispatched", "progress", "failed", "abandoned"],
+  "failed": ["retrying", "abandoned"],
+  "completed": [],
+  "abandoned": []
+};
+
+export function isValidAsyncCallTransition(fromState, toState) {
+  if (!isValidAsyncCallState(fromState) || !isValidAsyncCallState(toState)) {
+    return false;
+  }
+  const allowedTransitions = ASYNC_CALL_TRANSITIONS[fromState] || [];
+  return allowedTransitions.includes(toState);
+}

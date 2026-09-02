@@ -99,7 +99,7 @@ import { readEvents, parseJsonlLine, countJsonlLines, readToolDeclarations, read
 import { getEntityEventsFile, getEntityProjectionFile, readEntityEvents, bootstrapEntityEventsFromProjection, writeEntityRecords, appendEntityRecord, deleteEntityRecord, appendEntityEvents, createEntityEvent, replayEntityEvents, materializeEntityProjection, isEntityRecordNewerOrSame } from "./lib/entity-store.js";
 import { PROJECT_STATUSES, RECIPE_GATE_STRING_ARRAY_FIELDS, RECIPE_GATE_FIELDS, extractQualityGate, normalizeQualityGate, normalizeVerifyCommand, normalizeNonNegativeInteger, normalizeMinimalImplementation, normalizeDependencyBudget, normalizePriority, normalizeDispatchWorktreeMetadata, normalizeWorkflowRole, parseProjectListOption, uniqueStringList, isTaskStatus, isWorkflowStatus, normalizeRecipeMetadata, normalizeRecipeStepMetadata, normalizeProjectStatus, normalizeProjectResources, normalizeProject, normalizeWorkflow, normalizeTask, normalizePrompt, getTaskEventStoreDefinition, getProjectEventStoreDefinition, getWorkflowEventStoreDefinition, getPromptEventStoreDefinition, rebuildEventSourcedProjections, updateProject, updateWorkflow, updateTask, assertTaskStatus, assertWorkflowStatus, mergeQualityGates, getSeedProjects, mergeSeedProjects, parseProjectResourceOptions, ensureHub } from "./lib/entity-models.js";
 import { projectRoot, recipeReadLocations, recipeListLocations, readRecipe, listRecipes } from "./lib/paths.js";
-import { POLICY_OPERATIONS, APP_NAME, DEFAULT_DISPATCH_ACK_TIMEOUT_MS, ASYNC_CALL_STATES, summarizeWorkflowLinkedTaskDelivery, isDispatchSourceComplete, isValidAsyncCallState, isRelayTimedOut, isRelayRetryCandidate, areTaskRecipeDependenciesSatisfied } from "./lib/constants.js";
+import { POLICY_OPERATIONS, APP_NAME, DEFAULT_DISPATCH_ACK_TIMEOUT_MS, ASYNC_CALL_STATES, summarizeWorkflowLinkedTaskDelivery, isDispatchSourceComplete, isValidAsyncCallState, isRelayTimedOut, isRelayRetryCandidate, areTaskRecipeDependenciesSatisfied, ASYNC_CALL_TRANSITIONS, isValidAsyncCallTransition } from "./lib/constants.js";
 import { MODEL_CACHE_STALE_MS } from "./lib/constants.js";
 import { promptCommand } from "./commands/prompt.js";
 import { workflowNodeCommand } from "./commands/workflow-node.js";
@@ -532,21 +532,6 @@ const appCommandDeps = {
   refreshDetectedTools,
   runMemoryHealthRepair
 };
-
-// Unified async call state machine
-
-const ASYNC_CALL_TRANSITIONS = {
-  "pending": ["dispatched"],
-  "dispatched": ["acked", "progress", "failed", "completed"],
-  "acked": ["progress", "completed", "failed"],
-  "progress": ["progress", "acked", "completed", "failed"],
-  "retrying": ["dispatched", "progress", "failed", "abandoned"],
-  "failed": ["retrying", "abandoned"],
-  "completed": [],
-  "abandoned": []
-};
-
-
 
 const rawArgs = process.argv.slice(2);
 const parsedArgs = parseCliArgs(rawArgs);
@@ -2274,13 +2259,6 @@ function getRelayFailureStateWithOscillation(memoryDir, job, attempt, maxRetries
 }
 
 
-function isValidAsyncCallTransition(fromState, toState) {
-  if (!isValidAsyncCallState(fromState) || !isValidAsyncCallState(toState)) {
-    return false;
-  }
-  const allowedTransitions = ASYNC_CALL_TRANSITIONS[fromState] || [];
-  return allowedTransitions.includes(toState);
-}
 
 
 function isRelayRetryDue(entry) {

@@ -103,6 +103,7 @@ import { POLICY_OPERATIONS, APP_NAME, DEFAULT_DISPATCH_ACK_TIMEOUT_MS, ASYNC_CAL
 import { MODEL_CACHE_STALE_MS } from "./lib/constants.js";
 import { containsCorruptionMarker, isCorruptedRadioMessage, readRadioMessages, updateRadioMessage, getUnreadRadioMessages } from "./lib/radio-messages.js";
 import { loadConfig, resolveMemoryDir, defaultConfig, DEFAULT_GITHUB_BACKUP_TASK_NAME } from "./lib/config.js";
+import { DEFAULT_DISPATCH_MAX_RETRIES, normalizeDispatchRetryLimit, computeNextRetryAt, getRelayFailureState, getDispatchJobMaxRetries, isSharedStateOnlyTool, shouldRetryJob, isRelayRetryDue, isRelayRetryRunnable } from "./lib/dispatch-retry.js";
 import { promptCommand } from "./commands/prompt.js";
 import { workflowNodeCommand } from "./commands/workflow-node.js";
 import { taskCommand, taskSpecCommand } from "./commands/task.js";
@@ -235,7 +236,6 @@ function resetDispatchRunState(concurrency, total) {
 // Serializes shared JSONL record writes across concurrent dispatch jobs so
 // appendDispatchRunRecord / appendRelayStatus / appendDispatchLog don't interleave.
 const dispatchRecordMutex = createDispatchRecordMutex();
-const DEFAULT_DISPATCH_MAX_RETRIES = 3;
 // Oscillation: N consecutive failed attempts with an identical (exitCode, error)
 // fingerprint mean the loop is stuck repeating the same call for the same result.
 // Abandon early instead of burning the full retry budget on a deterministic failure.
@@ -2175,46 +2175,6 @@ function rebuildDispatchJobFromRelay(memoryDir, entry, { respectRecipeDependenci
   return null;
 }
 
-function shouldRetryJob(job) {
-  if (!job?.tool) {
-    return false;
-  }
-  return !isSharedStateOnlyTool(job.tool);
-}
-
-
-function isSharedStateOnlyTool(tool) {
-  const profile = getRunnerProfile(tool);
-  return Boolean(profile?.sharedStateOnly);
-}
-
-function getDispatchJobMaxRetries(job, fallback = DEFAULT_DISPATCH_MAX_RETRIES) {
-  const gateLimit = normalizeNonNegativeInteger(job?.qualityGate?.maxRepairAttempts);
-  if (gateLimit !== null) {
-    return gateLimit;
-  }
-  return normalizeDispatchRetryLimit(fallback);
-}
-
-function normalizeDispatchRetryLimit(value) {
-  const limit = normalizeNonNegativeInteger(value);
-  return limit !== null ? limit : DEFAULT_DISPATCH_MAX_RETRIES;
-}
-
-function computeNextRetryAt(attempt, maxRetries = DEFAULT_DISPATCH_MAX_RETRIES) {
-  const limit = normalizeDispatchRetryLimit(maxRetries);
-  if (Number(attempt || 0) >= limit) {
-    return "";
-  }
-  const delays = [30 * 1000, 2 * 60 * 1000, 5 * 60 * 1000];
-  const delayMs = delays[Math.max(0, Number(attempt || 1) - 1)] || delays[delays.length - 1];
-  return new Date(Date.now() + delayMs).toISOString();
-}
-
-function getRelayFailureState(attempt, maxRetries = DEFAULT_DISPATCH_MAX_RETRIES) {
-  return Number(attempt || 0) >= normalizeDispatchRetryLimit(maxRetries) ? "abandoned" : "failed";
-}
-
 // Fingerprint a failed attempt by its observable outcome (exit code + error text),
 // normalizing volatile substrings (timestamps, hex ids) so two structurally
 // identical failures hash the same. Used to detect oscillation across attempts.
@@ -2237,25 +2197,6 @@ function getRelayFailureStateWithOscillation(memoryDir, job, attempt, maxRetries
   }
   return { state: baseState, oscillating: false };
 }
-
-
-
-
-function isRelayRetryDue(entry) {
-  if (!entry || entry.state !== ASYNC_CALL_STATES.FAILED || !entry.nextRetryAt) {
-    return false;
-  }
-  const nextRetryMs = Date.parse(entry.nextRetryAt);
-  if (Number.isNaN(nextRetryMs)) {
-    return false;
-  }
-  return nextRetryMs <= Date.now() && Number(entry.attempt || 0) < normalizeDispatchRetryLimit(entry.maxRetries);
-}
-
-function isRelayRetryRunnable(entry) {
-  return !isSharedStateOnlyTool(entry?.tool || "");
-}
-
 
 function appendRelayStatus(memoryDir, job, patch = {}) {
   const now = new Date().toISOString();

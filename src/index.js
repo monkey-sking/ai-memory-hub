@@ -156,6 +156,7 @@ import { appendSkillCandidates, approveSkillDelta, mergeSkillDelta, readSkillCan
 import { getGitHubBackupConfig, configureGitHubBackup, getGitHubBackupStatus, runGitHubBackup, githubBackupScheduleCommand, installGitHubBackupSchedule, uninstallGitHubBackupSchedule, getGitHubBackupScheduleStatus, updateGitHubBackupState, updateGitHubBackupScheduleState, buildGitHubBackupScheduledTaskCommand, initGithubBackupDeps } from "./lib/github-backup.js";
 import { resetDispatchPoolState, markDispatchPoolJobStart, markDispatchPoolJobDone, markDispatchPoolFinished, getDispatchPoolSnapshot, runDispatchPool, initDispatchPoolDeps } from "./lib/dispatch-pool.js";
 import { invokeRunnerCommand, runDispatchJob, runDispatchJobAsync, resolveDispatchWorktreeRoot, initDispatchRunDeps } from "./lib/dispatch-run.js";
+import { appendRelayStatus, appendDispatchResponseMessage, appendDispatchStatusMessage, findDispatchOrigin, updateDispatchSourceState } from "./lib/relay-status.js";
 import { RUNNER_PROFILES, getRunnerProfile, getKnownRunnerToolNames, getToolRunner, resolveToolRunnerUncached } from "./lib/runner-core.js";
 import { policyActorMatches, policyRuleSpecificity, isHiddenProjectId, findWorkflowIndex, findTaskIndex, createTaskNote, getNotificationChannels } from "./lib/entity-index.js";
 import { getFileHash, getGitHubBackupUploadWarnings, normalizeBackupPatternList, matchesAnyBackupPattern, normalizeScheduleTime, resolveConfiguredPath, extractListValue, renderGitHubBackupReadme, markProtectedBackups, parseBackupTimestampFromName, inferBackupReasonFromName, inferBackupRetentionTier, createdAtRetentionKey, formatBackupDay, getIsoWeekKey, isPathInsideDirectory, countBackupDirs, backupHub, resolveBackupDirectory, getGitHubBackupExportFiles, getDefaultGitHubBackupInclude, assertSafeGitHubBackupRepoDir, ensureSafeChildPath, planBackupRetention, inferBackupRetentionKey, assertSafeDispatchWorktreeRoot, ensureGitHubBackupRepo, describeBackupFile, listBackupFiles, listBackupDirectories, buildBackupRestorePlan, hasBackupForRetentionKey, getBackupSummary, pruneBackups, deleteBackups, getBackupDetail, createScheduledBackupIfDue, exportGitHubBackupSnapshot } from "./lib/backup.js";
@@ -1974,48 +1975,7 @@ function writeDispatchReportIfUseful(memoryDir, job, result, relayState) {
 }
 
 
-function updateDispatchSourceState(memoryDir, job, patch) {
-  if (!job || !job.refId) {
-    return;
-  }
-  const statePatch = {
-    deliveryState: patch.deliveryState || "",
-    deliveryUpdatedAt: new Date().toISOString(),
-    dispatchId: patch.dispatchId || "",
-    threadKey: patch.threadKey || "",
-    attempt: Number(patch.attempt || 0),
-    maxRetries: Number(patch.maxRetries || 0),
-    nextRetryAt: patch.nextRetryAt || "",
-    sessionId: patch.sessionId || "",
-    lastError: String(patch.lastError || "").trim(),
-    progressPercent: patch.progressPercent ?? null,
-    progressStatus: patch.progressStatus || "",
-    progressAt: patch.progressAt || "",
-    progressBy: patch.progressBy || "",
-    worktree: patch.worktree || null,
-    gateId: patch.gateId || ""
-  };
-  if (job.kind === "radio") {
-    updateRadioMessage(memoryDir, job.refId, statePatch);
-    return;
-  }
-  if (job.kind === "task") {
-    const updatedTask = updateTask(memoryDir, job.refId, (task) => ({
-      ...task,
-      ...statePatch,
-      updatedAt: new Date().toISOString()
-    }));
-    syncLinkedWorkflowDeliveryState(memoryDir, updatedTask, statePatch);
-    return;
-  }
-  if (job.kind === "workflow") {
-    updateWorkflow(memoryDir, job.refId, (workflow) => ({
-      ...workflow,
-      ...statePatch,
-      updatedAt: new Date().toISOString()
-    }));
-  }
-}
+
 
 
 
@@ -2176,122 +2136,7 @@ function getRelayFailureStateWithOscillation(memoryDir, job, attempt, maxRetries
   return { state: baseState, oscillating: false };
 }
 
-function appendRelayStatus(memoryDir, job, patch = {}) {
-  const now = new Date().toISOString();
-  const nextState = patch.state || ASYNC_CALL_STATES.PENDING;
 
-  appendJsonl(path.join(memoryDir, "state", "relay-status.jsonl"), {
-    id: createId(`relay:${job.id}:${now}:${nextState}`),
-    ts: now,
-    threadKey: getDispatchThreadKey(job),
-    sourceKind: job.kind,
-    sourceId: job.refId,
-    dispatchId: job.id,
-    state: nextState,
-    attempt: Number(patch.attempt || 1),
-    maxRetries: normalizeDispatchRetryLimit(patch.maxRetries),
-    dispatchedAt: patch.state === ASYNC_CALL_STATES.DISPATCHED ? now : "",
-    ackTimeout: Number(patch.ackTimeout || 0),
-    sessionId: patch.sessionId || "",
-    exitCode: patch.exitCode ?? null,
-    lastError: String(patch.lastError || "").trim(),
-    progressPercent: patch.progressPercent ?? null,
-    progressStatus: String(patch.progressStatus || "").trim(),
-    progressAt: patch.progressAt || "",
-    progressBy: patch.progressBy || "",
-    nextRetryAt: patch.nextRetryAt || "",
-    worktree: patch.worktree || null,
-    fingerprint: patch.fingerprint || "",
-    oscillating: patch.oscillating === true,
-    project: job.project || "",
-    tool: job.tool || "",
-    thread: job.thread || "",
-    gateId: patch.gateId || ""
-  });
-}
-
-
-
-function appendDispatchResponseMessage(memoryDir, job, result) {
-  const origin = findDispatchOrigin(memoryDir, job);
-  if (!origin?.from || !result.stdout) {
-    return null;
-  }
-  const message = createRadioMessage({
-    from: job.tool || "unknown",
-    to: origin.from,
-    type: "response",
-    text: trimOutput(result.stdout),
-    thread: origin.thread || job.thread || job.refId,
-    replyTo: origin.id || job.refId,
-    project: origin.project || job.project || ""
-  });
-  appendJsonl(path.join(memoryDir, "radio", "messages.jsonl"), message);
-  return message;
-}
-
-function appendDispatchStatusMessage(memoryDir, job, result) {
-  const origin = findDispatchOrigin(memoryDir, job);
-  if (!origin?.from) {
-    return null;
-  }
-  const state = result.relayState || (result.exitCode === 0 ? "completed" : "failed");
-  const parts = [
-    `Dispatch ${state} for ${job.tool}`,
-    `thread=${job.thread || job.refId}`
-  ];
-  if (result.sessionId) {
-    parts.push(`session=${result.sessionId}`);
-  }
-  if (result.exitCode !== null && result.exitCode !== undefined) {
-    parts.push(`exit=${result.exitCode}`);
-  }
-  if (result.error) {
-    parts.push(`error=${summarizeText(result.error, 120)}`);
-  }
-  const message = createRadioMessage({
-    from: "ai-memory-hub",
-    to: origin.from,
-    type: "status",
-    text: parts.join(" | "),
-    thread: origin.thread || job.thread || job.refId,
-    replyTo: origin.id || job.refId,
-    project: origin.project || job.project || ""
-  });
-  appendJsonl(path.join(memoryDir, "radio", "messages.jsonl"), message);
-  return message;
-}
-
-function findDispatchOrigin(memoryDir, job) {
-  if (job.kind === "radio") {
-    return readRadioMessages(memoryDir).find((message) => message.id === job.refId) || null;
-  }
-  if (job.kind === "task") {
-    const task = readTasks(memoryDir).find((item) => item.id === job.refId);
-    if (!task) {
-      return null;
-    }
-    return {
-      id: task.id,
-      from: task.createdBy,
-      thread: task.id,
-      project: task.project
-    };
-  }
-  if (job.kind === "workflow") {
-    const workflow = readWorkflows(memoryDir).find((item) => item.id === job.refId);
-    if (!workflow) {
-      return null;
-    }
-    return {
-      id: workflow.id,
-      from: workflow.createdBy,
-      thread: workflow.id,
-      project: workflow.project
-    };
-  }
-  return null;
-}
 
 function syncCommand(argv) {
   const dryRun = hasFlag(argv, "--dry-run");

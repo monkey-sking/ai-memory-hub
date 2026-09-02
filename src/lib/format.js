@@ -1,3 +1,6 @@
+// 从 src/index.js 下沉的通用工具函数（v3.0 重构 P0-2）。
+// 这些函数不依赖 index.js 内部的任何其他符号，可安全复用。
+
 import path from "node:path";
 import { extractCjkNgrams } from "./util.js";
 
@@ -209,4 +212,53 @@ export function getMemoryEventSkipReason(normalizedEvent) {
     return "looks sensitive";
   }
   return "";
+}
+
+export function extractLooseJsonStringField(text, field) {
+  const marker = `"${field}"`;
+  const markerIndex = text.indexOf(marker);
+  if (markerIndex === -1) {
+    return "";
+  }
+  const colonIndex = text.indexOf(":", markerIndex + marker.length);
+  if (colonIndex === -1) {
+    return "";
+  }
+  const firstQuote = text.indexOf("\"", colonIndex + 1);
+  if (firstQuote === -1) {
+    return "";
+  }
+  const boundaryPattern = /"\s*(?:,\s*"|})/g;
+  boundaryPattern.lastIndex = firstQuote + 1;
+  let match;
+  while ((match = boundaryPattern.exec(text))) {
+    const raw = text.slice(firstQuote + 1, match.index);
+    if (raw) {
+      return sanitizeLedgerText(raw.replace(/\\"/g, "\"").replace(/\\n/g, "\n").replace(/\\r/g, "\r").replace(/\\t/g, "\t"));
+    }
+  }
+  return "";
+}
+
+export function formatMemoryRecordPointer(record) {
+  const source = sanitizeInlineText(record.source || "unknown") || "unknown";
+  const kind = sanitizeInlineText(record.kind || "note") || "note";
+  const id = sanitizeInlineText(record.localEventId || record.id || "");
+  return id ? `${source}/${kind} ${id}:` : `${source}/${kind}:`;
+}
+
+export function truncateText(text, limit) {
+  const clean = sanitizeInlineText(text);
+  if (clean.length <= limit) {
+    return clean;
+  }
+  return `${clean.slice(0, Math.max(0, limit - 3))}...`;
+}
+
+export function extractSearchTerms(text) {
+  const normalized = normalizeSearchText(text);
+  return [...new Set([
+    ...extractKeywords(normalized),
+    ...extractCompactVariants(normalized)
+  ])];
 }

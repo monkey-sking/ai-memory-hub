@@ -139,8 +139,8 @@ import { listCredentialProfiles, setCredentialProfile, removeCredentialProfile, 
 import { listRelatedEntities, readRelations, recordMemoryRelations, recordRelation, rebuildMemoryRelations, revokeRelation } from "./relations.js";
 import { auditMemories } from "./memory-audit.js";
 import { parseRunnerModelList, semanticSearch, checkProcessLiveness, getContentType, readRequestJson, findProjectIndex, expandSynonyms, scanBackupFilesForSecrets, getRelayTimeoutBaseMs, renderDispatchWorktree, createHealthRepairAction, getPathSize, extractCjkNgrams, getBackupFileCatalog, markTieredBackups, parseCliArgs, parseDeclaredList, parseProgressPercent, isJobCheckpointed, getCheckpointStats, renderProjectRegistryReadme, extractSharedSkillLayerVersion, renderEmptyBootstrapSnapshot, sleep, sharedSkillLayerActionLabel, summarizeDir, releaseStaleClaim, inspectSharedMemoryInstructions, getDirectResolveCandidates, normalizeCandidatePath, getPageOptions, findProject, autoCreateWorkflowNodes, summarizeTaskSpec, writeTaskSpecProcessLogs, resolveTaskSpecCwd, getMemoryStorageSummary } from "./lib/util.js";
-import { extractInstructionIncludes, normalizeSeverity, formatTopCounts, formatPercent, formatBytes, sanitizeDisplayText, getMemoryAgeDays, inferScope, normalizeSearchText, countBy, sortByImportance, titleCase, looksSensitive, formatEventLocation, extractSection, extractSectionBeforeAny, renderTemplate, trimOutput, summarizeText, textMentionsResolveQuery, summarizeHealthAnalysisForRepair, sanitizeLedgerText, normalizeDuplicateMemoryText, sanitizeInlineText, extractKeywords, extractCompactVariants, getMemoryEventSkipReason } from "./lib/format.js";
-import { normalizeMemoryKind, normalizeMemoryProject, normalizeMemoryScope, normalizeList, firstDefinedRef, hasMemoryFilters, normalizeRefToken, normalizeConfidence, applyMemoryAccessFields, normalizeMemoryAccessCount, normalizeMemoryAccessTimestamp, firstDefinedValue, getDaysSinceTimestamp, isMemoryLifecycleVisible, normalizeSupersedeToken, hasExplicitSyncKey, readPositiveInteger, isMemoryHealthExcluded, formatMemoryHealthRepairPlan, sanitizeRawJsonCandidate, getMemoryGrowthTrend, chooseMemoryLayer, parseListOption, parseMemoryTagFilters, formatMemoryFilterSummary, matchesMemoryTags, getMemoryAccessStats, applyMemoryLifecycleOperations, normalizeSupersedeRefs, isStartupMemoryRecord, resolveSnapshotLimits, inferTopics } from "./lib/memory-normalize.js";
+import { extractInstructionIncludes, normalizeSeverity, formatTopCounts, formatPercent, formatBytes, sanitizeDisplayText, getMemoryAgeDays, inferScope, normalizeSearchText, countBy, sortByImportance, titleCase, looksSensitive, formatEventLocation, extractSection, extractSectionBeforeAny, renderTemplate, trimOutput, summarizeText, textMentionsResolveQuery, summarizeHealthAnalysisForRepair, sanitizeLedgerText, normalizeDuplicateMemoryText, sanitizeInlineText, extractKeywords, extractCompactVariants, getMemoryEventSkipReason, extractLooseJsonStringField, formatMemoryRecordPointer, truncateText, extractSearchTerms } from "./lib/format.js";
+import { normalizeMemoryKind, normalizeMemoryProject, normalizeMemoryScope, normalizeList, firstDefinedRef, hasMemoryFilters, normalizeRefToken, normalizeConfidence, applyMemoryAccessFields, normalizeMemoryAccessCount, normalizeMemoryAccessTimestamp, firstDefinedValue, getDaysSinceTimestamp, isMemoryLifecycleVisible, normalizeSupersedeToken, hasExplicitSyncKey, readPositiveInteger, isMemoryHealthExcluded, formatMemoryHealthRepairPlan, sanitizeRawJsonCandidate, getMemoryGrowthTrend, chooseMemoryLayer, parseListOption, parseMemoryTagFilters, formatMemoryFilterSummary, matchesMemoryTags, getMemoryAccessStats, applyMemoryLifecycleOperations, normalizeSupersedeRefs, isStartupMemoryRecord, resolveSnapshotLimits, inferTopics, normalizeMemoryRefs, flattenMemoryRefs, formatMemoryRefs, matchesMemoryRef, touchMemoryAccess, getMemorySupersedesRefs, isOperationalRadioMemory } from "./lib/memory-normalize.js";
 import { createDispatchRecordMutex, isClaimStale, shouldPersistDispatchReport, isDispatchableRadioMessage, isClosedDispatchSourceState, buildTaskDispatchText, buildWorkflowDispatchText, findRecipeStepTask, normalizeToolName, safeGitPathSegment, isKnownGeminiWarning, stripExistingModelArgs, getDispatchThreadKey, formatDispatchVerifyCommand, getDispatchRunStatus, getDispatchRunVerificationResult, getAsyncCallStateMeta, getDispatchSourceKey, getRelaySourceKey, dispatchJobFromTask, dispatchJobFromWorkflow, dispatchJobFromRelayEntry, shouldDispatchJob, buildDispatchWorktreeBranch, buildDispatchWorktreeSlug, nextRelayAttempt } from "./lib/dispatch.js";
 import { sendHtml, sendPlain, sendJson, sendErrorEnvelope, parsePageParam, getSafeStaticRelativePath, readTextIfExists } from "./lib/http.js";
 import { getToolDeclarationsFile, getModelsCacheFile, getRadioCursorFile, getAgentRegistryFile, getRoleRegistryFile, getTeamRegistryFile, getPolicyRulesFile } from "./lib/registry-paths.js";
@@ -7249,52 +7249,11 @@ function normalizeMemoryMetadata(metadata = {}, fallback = {}) {
 
 
 
-function normalizeMemoryRefs(refs = {}, fallback = {}) {
-  const source = isPlainObject(refs) ? refs : {};
-  const aliases = {
-    thread: ["thread", "threadId", "thread_id", "conversationId", "conversation_id"],
-    threadKey: ["threadKey", "thread_key"],
-    taskId: ["taskId", "task_id", "task"],
-    workflowId: ["workflowId", "workflow_id", "workflow"],
-    radioId: ["radioId", "radio_id", "radio", "messageId", "message_id", "replyTo", "reply_to"],
-    dispatchId: ["dispatchId", "dispatch_id"],
-    sourceId: ["sourceId", "source_id", "localEventId", "local_event_id"]
-  };
-  const normalized = {};
-  for (const [targetKey, keys] of Object.entries(aliases)) {
-    const values = normalizeRefValues(firstDefinedRef(source, fallback, keys));
-    if (values.length === 1) {
-      normalized[targetKey] = values[0];
-    } else if (values.length > 1) {
-      normalized[targetKey] = values;
-    }
-  }
-  return normalized;
-}
 
 
 
 
-function flattenMemoryRefs(refs = {}) {
-  if (!isPlainObject(refs)) {
-    return [];
-  }
-  return [...new Set(Object.values(refs).flatMap((value) => normalizeRefValues(value)))];
-}
 
-function formatMemoryRefs(refs = {}) {
-  if (!isPlainObject(refs)) {
-    return "";
-  }
-  const parts = [];
-  for (const key of ["thread", "threadKey", "taskId", "workflowId", "radioId"]) {
-    const values = normalizeRefValues(refs[key]).map(sanitizeInlineText).filter(Boolean).slice(0, 3);
-    if (values.length > 0) {
-      parts.push(`${key}=${values.join(",")}`);
-    }
-  }
-  return parts.join(" ");
-}
 
 function parseMemoryFilters(argv) {
   return {
@@ -7322,20 +7281,6 @@ function filterMemoryRecords(records, filters = {}) {
 }
 
 
-function matchesMemoryRef(memory, key, query) {
-  if (!query) {
-    return true;
-  }
-  const target = normalizeRefToken(query);
-  const candidates = [
-    ...(normalizeRefValues(memory.refs?.[key])),
-    ...(normalizeRefValues(memory.metadata?.refs?.[key]))
-  ];
-  return candidates.some((candidate) => {
-    const value = normalizeRefToken(candidate);
-    return value === target || value.startsWith(target) || target.startsWith(value);
-  });
-}
 
 
 
@@ -7358,18 +7303,6 @@ function recordMemoryAccess(ledger, results, accessedAt = new Date().toISOString
   return { ledger: updatedLedger, updated };
 }
 
-function touchMemoryAccess(record, accessedAt = new Date().toISOString()) {
-  const current = getMemoryAccessStats(record);
-  const access = {
-    ...current,
-    accessCount: current.accessCount + 1,
-    firstAccessedAt: current.firstAccessedAt || accessedAt,
-    lastAccessedAt: normalizeMemoryAccessTimestamp(accessedAt),
-    hasAccessTelemetry: true
-  };
-  const metadata = mergeMemoryAccessMetadata(record.metadata || {}, access);
-  return applyMemoryAccessFields({ ...record, metadata }, access);
-}
 
 
 
@@ -7571,9 +7504,6 @@ function applyMemorySupersedeState(record, supersededBy) {
   };
 }
 
-function getMemorySupersedesRefs(record) {
-  return normalizeSupersedeRefs(record.metadata?.supersedes || record.supersedes || record.metadata?.lifecycle?.supersedes);
-}
 
 function getMemoryPrimaryKey(record) {
   return getMemoryIdentityKeys(record)[0] || "";
@@ -8235,31 +8165,6 @@ function parseLooseJsonMemoryEvent(text) {
   };
 }
 
-function extractLooseJsonStringField(text, field) {
-  const marker = `"${field}"`;
-  const markerIndex = text.indexOf(marker);
-  if (markerIndex === -1) {
-    return "";
-  }
-  const colonIndex = text.indexOf(":", markerIndex + marker.length);
-  if (colonIndex === -1) {
-    return "";
-  }
-  const firstQuote = text.indexOf("\"", colonIndex + 1);
-  if (firstQuote === -1) {
-    return "";
-  }
-  const boundaryPattern = /"\s*(?:,\s*"|})/g;
-  boundaryPattern.lastIndex = firstQuote + 1;
-  let match;
-  while ((match = boundaryPattern.exec(text))) {
-    const raw = text.slice(firstQuote + 1, match.index);
-    if (raw) {
-      return sanitizeLedgerText(raw.replace(/\\"/g, "\"").replace(/\\n/g, "\n").replace(/\\r/g, "\r").replace(/\\t/g, "\t"));
-    }
-  }
-  return "";
-}
 
 
 function findDuplicateMemoryGroups(records) {
@@ -8300,22 +8205,9 @@ function isCorruptedMemoryRecord(record) {
 
 
 
-function formatMemoryRecordPointer(record) {
-  const source = sanitizeInlineText(record.source || "unknown") || "unknown";
-  const kind = sanitizeInlineText(record.kind || "note") || "note";
-  const id = sanitizeInlineText(record.localEventId || record.id || "");
-  return id ? `${source}/${kind} ${id}:` : `${source}/${kind}:`;
-}
 
 
 
-function truncateText(text, limit) {
-  const clean = sanitizeInlineText(text);
-  if (clean.length <= limit) {
-    return clean;
-  }
-  return `${clean.slice(0, Math.max(0, limit - 3))}...`;
-}
 
 function renderMemoryLine(memory) {
   const source = sanitizeInlineText(memory.source || "unknown");
@@ -8439,28 +8331,11 @@ function isStaleOperationalRadioMemory(memory, text) {
   return isOperationalRadioMemory(memory, text) && getMemoryAgeDays(memory) > STALE_OPERATIONAL_RADIO_AFTER_DAYS;
 }
 
-function isOperationalRadioMemory(memory, text) {
-  const source = String(memory.source || "").toLowerCase();
-  const kind = String(memory.metadata?.kind || memory.kind || "").toLowerCase();
-  const hasRadioRef = normalizeRefValues(memory.refs?.radioId || memory.metadata?.refs?.radioId).length > 0;
-  const isRadio = source.startsWith("radio") || kind === "radio" || hasRadioRef;
-  if (!isRadio) {
-    return false;
-  }
-  return /status|progress|dispatch|completed|done|pass|failed|review|heartbeat|状态|进度|完成|已完成|通过|失败|审核/i.test(String(text || ""));
-}
 
 
 
 
 
-function extractSearchTerms(text) {
-  const normalized = normalizeSearchText(text);
-  return [...new Set([
-    ...extractKeywords(normalized),
-    ...extractCompactVariants(normalized)
-  ])];
-}
 
 
 

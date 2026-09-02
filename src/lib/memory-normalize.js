@@ -1,6 +1,9 @@
-import { getOption, isPlainObject } from "./cli.js";
 // 从 src/index.js 下沉的通用工具函数（v3.0 重构 P0-2）。
 // 这些函数不依赖 index.js 内部的任何其他符号，可安全复用。
+
+import { getOption, isPlainObject } from "./cli.js";
+import { mergeMemoryAccessMetadata, normalizeRefValues } from "./entity-factory.js";
+import { sanitizeInlineText } from "./format.js";
 
 export function normalizeMemoryKind(kind) {
   const clean = String(kind || "note").trim().toLowerCase().replace(/[^a-z0-9_.-]+/g, "-");
@@ -384,4 +387,91 @@ export function inferTopics(memory) {
     if (pattern.test(text)) topics.push(topic);
   }
   return [...new Set(topics)];
+}
+
+export function normalizeMemoryRefs(refs = {}, fallback = {}) {
+  const source = isPlainObject(refs) ? refs : {};
+  const aliases = {
+    thread: ["thread", "threadId", "thread_id", "conversationId", "conversation_id"],
+    threadKey: ["threadKey", "thread_key"],
+    taskId: ["taskId", "task_id", "task"],
+    workflowId: ["workflowId", "workflow_id", "workflow"],
+    radioId: ["radioId", "radio_id", "radio", "messageId", "message_id", "replyTo", "reply_to"],
+    dispatchId: ["dispatchId", "dispatch_id"],
+    sourceId: ["sourceId", "source_id", "localEventId", "local_event_id"]
+  };
+  const normalized = {};
+  for (const [targetKey, keys] of Object.entries(aliases)) {
+    const values = normalizeRefValues(firstDefinedRef(source, fallback, keys));
+    if (values.length === 1) {
+      normalized[targetKey] = values[0];
+    } else if (values.length > 1) {
+      normalized[targetKey] = values;
+    }
+  }
+  return normalized;
+}
+
+export function flattenMemoryRefs(refs = {}) {
+  if (!isPlainObject(refs)) {
+    return [];
+  }
+  return [...new Set(Object.values(refs).flatMap((value) => normalizeRefValues(value)))];
+}
+
+export function formatMemoryRefs(refs = {}) {
+  if (!isPlainObject(refs)) {
+    return "";
+  }
+  const parts = [];
+  for (const key of ["thread", "threadKey", "taskId", "workflowId", "radioId"]) {
+    const values = normalizeRefValues(refs[key]).map(sanitizeInlineText).filter(Boolean).slice(0, 3);
+    if (values.length > 0) {
+      parts.push(`${key}=${values.join(",")}`);
+    }
+  }
+  return parts.join(" ");
+}
+
+export function matchesMemoryRef(memory, key, query) {
+  if (!query) {
+    return true;
+  }
+  const target = normalizeRefToken(query);
+  const candidates = [
+    ...(normalizeRefValues(memory.refs?.[key])),
+    ...(normalizeRefValues(memory.metadata?.refs?.[key]))
+  ];
+  return candidates.some((candidate) => {
+    const value = normalizeRefToken(candidate);
+    return value === target || value.startsWith(target) || target.startsWith(value);
+  });
+}
+
+export function touchMemoryAccess(record, accessedAt = new Date().toISOString()) {
+  const current = getMemoryAccessStats(record);
+  const access = {
+    ...current,
+    accessCount: current.accessCount + 1,
+    firstAccessedAt: current.firstAccessedAt || accessedAt,
+    lastAccessedAt: normalizeMemoryAccessTimestamp(accessedAt),
+    hasAccessTelemetry: true
+  };
+  const metadata = mergeMemoryAccessMetadata(record.metadata || {}, access);
+  return applyMemoryAccessFields({ ...record, metadata }, access);
+}
+
+export function getMemorySupersedesRefs(record) {
+  return normalizeSupersedeRefs(record.metadata?.supersedes || record.supersedes || record.metadata?.lifecycle?.supersedes);
+}
+
+export function isOperationalRadioMemory(memory, text) {
+  const source = String(memory.source || "").toLowerCase();
+  const kind = String(memory.metadata?.kind || memory.kind || "").toLowerCase();
+  const hasRadioRef = normalizeRefValues(memory.refs?.radioId || memory.metadata?.refs?.radioId).length > 0;
+  const isRadio = source.startsWith("radio") || kind === "radio" || hasRadioRef;
+  if (!isRadio) {
+    return false;
+  }
+  return /status|progress|dispatch|completed|done|pass|failed|review|heartbeat|状态|进度|完成|已完成|通过|失败|审核/i.test(String(text || ""));
 }

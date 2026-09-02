@@ -1,8 +1,13 @@
-// 从 src/index.js 下沉的通用工具函数（v3.0 重构 P0-2）。
-// 这些函数不依赖 index.js 内部的任何其他符号，可安全复用。
-
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
+import { createTaskNote } from "./entity-index.js";
+import { resolvePossiblyHomePath } from "./resolve.js";
+import { parsePageParam } from "./http.js";
+import { appendWorkflowNodeEvent } from "./entity-repo.js";
+import { resolveInside, selectPlatformCommand } from "./task-spec.js";
+import { ensureDir } from "./cli.js";
+import { writeFileAtomic } from "../atomic-write.js";
 
 export function parseRunnerModelList(tool, runner, stdout) {
   const format = runner.modelListFormat || "";
@@ -480,4 +485,227 @@ export function summarizeDir(dir) {
   } catch {
     return [];
   }
+}
+
+export function releaseStaleClaim(task, nowIso) {
+  return {
+    ...task,
+    status: "open",
+    claimedAt: "",
+    claimExpiresAt: "",
+    lastAssignee: task.assignee || task.lastAssignee || "",
+    updatedAt: nowIso,
+    notes: [
+      ...(task.notes || []),
+      createTaskNote(task.assignee || "system", `Claim auto-released (TTL expired).`)
+    ]
+  };
+}
+
+export function inspectSharedMemoryInstructions(file) {
+  if (!file || !fs.existsSync(file)) {
+    return {
+      configured: false,
+      skillLayer: false,
+      skillLayerVersion: "",
+      status: "missing"
+    };
+  }
+  const text = fs.readFileSync(file, "utf8");
+  const configured = text.includes("Shared AI Memory") && (
+    text.includes("ai-memory-hub") ||
+    text.includes(".ai-memory") ||
+    text.includes("AI Memory Hub")
+  );
+  const skillLayerVersion = extractSharedSkillLayerVersion(text);
+  const skillLayer = Boolean(skillLayerVersion);
+  return {
+    configured,
+    skillLayer,
+    skillLayerVersion,
+    status: skillLayer
+      ? `shared-skill-layer-v${skillLayerVersion}`
+      : configured
+        ? "legacy-shared-memory"
+        : "missing"
+  };
+}
+
+export function getDirectResolveCandidates(normalizedQuery, config, fromFile = "") {
+  const home = os.homedir();
+  const roots = [
+    process.cwd(),
+    home,
+    path.join(home, ".codex"),
+    path.join(home, ".claude"),
+    path.join(home, ".gemini"),
+    path.join(home, ".grok"),
+    config.memoryDir,
+    path.join(config.memoryDir, "tools"),
+    projectRoot()
+  ];
+  const candidates = [];
+  const add = (candidatePath, source, confidence = 50) => {
+    candidates.push({ path: candidatePath, source, confidence, evidence: source });
+  };
+  if (fromFile) {
+    add(path.resolve(path.dirname(fromFile), normalizedQuery), `relative:${fromFile}`, 90);
+  }
+  if (path.isAbsolute(normalizedQuery)) {
+    add(normalizedQuery, "absolute-path", 95);
+  }
+  for (const root of roots) {
+    add(path.resolve(root, normalizedQuery), `root:${root}`, root === home ? 80 : 65);
+  }
+  return candidates;
+}
+
+export function normalizeCandidatePath(candidatePath) {
+  const clean = resolvePossiblyHomePath(candidatePath);
+  if (!clean) {
+    return "";
+  }
+  return path.isAbsolute(clean) ? path.normalize(clean) : path.resolve(clean);
+}
+
+export function getPageOptions(url) {
+  return {
+    offset: parsePageParam(url.searchParams.get("offset"), 0),
+    limit: parsePageParam(url.searchParams.get("limit"), undefined)
+  };
+}
+
+export function findProject(projects, query) {
+  const index = findProjectIndex(projects, query);
+  return index === -1 ? null : projects[index];
+}
+
+export function autoCreateWorkflowNodes(memoryDir, workflow) {
+  // Phase 4: Auto-create initial nodes for planner/executor/reviewer when workflow is created
+  const nodes = [];
+
+  // Roles are arrays, take first element if present
+  const plannerActor = Array.isArray(workflow.planner) && workflow.planner.length > 0 ? workflow.planner[0] : workflow.planner;
+  const executorActor = Array.isArray(workflow.executor) && workflow.executor.length > 0 ? workflow.executor[0] : workflow.executor;
+  const reviewerActor = Array.isArray(workflow.reviewer) && workflow.reviewer.length > 0 ? workflow.reviewer[0] : workflow.reviewer;
+
+  if (plannerActor) {
+    nodes.push({
+      slug: "plan",
+      label: "Planning phase",
+      role: "planner",
+      actor: plannerActor,
+      status: "running", // planner starts immediately
+      isRequired: true
+    });
+  }
+
+  if (executorActor) {
+    nodes.push({
+      slug: "exec",
+      label: "Execution phase",
+      role: "executor",
+      actor: executorActor,
+      status: "queued", // executor waits for plan
+      isRequired: true
+    });
+  }
+
+  if (reviewerActor) {
+    nodes.push({
+      slug: "review",
+      label: "Review phase",
+      role: "reviewer",
+      actor: reviewerActor,
+      status: "queued", // reviewer waits for execution
+      isRequired: !workflow.qualityGate?.reviewOptional // required unless marked optional
+    });
+  }
+
+  // Create node events
+  for (const node of nodes) {
+    appendWorkflowNodeEvent(memoryDir, {
+      type: "workflow.node",
+      workflowId: workflow.id,
+      nodeId: `${workflow.id}:${node.slug}`,
+      slug: node.slug,
+      label: node.label,
+      role: node.role,
+      actor: node.actor,
+      status: node.status,
+      ts: new Date().toISOString(),
+      note: "Auto-created by workflow creation",
+      isRequired: node.isRequired,
+      input: {},
+      output: {},
+      error: ""
+    });
+  }
+
+  return nodes.length;
+}
+
+export function summarizeTaskSpec(task) {
+  return {
+    id: task.id,
+    title: task.title,
+    command: selectPlatformCommand(task),
+    args: task.args,
+    cwd: task.cwd,
+    hasVerify: task.verify.length > 0,
+    ports: task.ports,
+    resources: task.resources,
+    logs: task.logs
+  };
+}
+
+export function writeTaskSpecProcessLogs(projectRoot, logs, completed) {
+  const written = {};
+  for (const [stream, text] of [
+    ["stdout", completed.stdout],
+    ["stderr", completed.stderr]
+  ]) {
+    const relativeLogPath = logs?.[stream] || "";
+    if (!relativeLogPath) {
+      continue;
+    }
+    const file = resolveInside(projectRoot, relativeLogPath);
+    ensureDir(path.dirname(file));
+    writeFileAtomic(file, String(text || ""), "utf8");
+    written[stream] = path.relative(projectRoot, file).replace(/\\/g, "/");
+  }
+  return written;
+}
+
+export function resolveTaskSpecCwd(projectRoot, cwd, allowOutsideCwd) {
+  const resolved = path.resolve(projectRoot, cwd || ".");
+  if (!allowOutsideCwd) {
+    resolveInside(projectRoot, path.relative(projectRoot, resolved) || ".");
+  }
+  return resolved;
+}
+
+export function getMemoryStorageSummary(memoryDir) {
+  const items = [
+    ["MEMORY.md", path.join(memoryDir, "MEMORY.md")],
+    ["INDEX.md", path.join(memoryDir, "INDEX.md")],
+    ["memories/ledger.jsonl", path.join(memoryDir, "memories", "ledger.jsonl")],
+    ["memories/index.json", path.join(memoryDir, "memories", "index.json")],
+    ["inbox/events.jsonl", path.join(memoryDir, "inbox", "events.jsonl")],
+    ["radio/messages.jsonl", path.join(memoryDir, "radio", "messages.jsonl")],
+    ["tasks/tasks.jsonl", path.join(memoryDir, "tasks", "tasks.jsonl")],
+    ["workflows/workflows.jsonl", path.join(memoryDir, "workflows", "workflows.jsonl")],
+    ["backups/", path.join(memoryDir, "backups")]
+  ].map(([label, target]) => ({
+    label,
+    bytes: getPathSize(target)
+  }));
+  const ledgerBytes = items.find((item) => item.label === "memories/ledger.jsonl")?.bytes || 0;
+  const backupsBytes = items.find((item) => item.label === "backups/")?.bytes || 0;
+  return {
+    totalBytes: getPathSize(memoryDir),
+    ledgerBytes,
+    backupsBytes,
+    items
+  };
 }

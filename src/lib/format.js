@@ -1,5 +1,5 @@
-// 从 src/index.js 下沉的通用工具函数（v3.0 重构 P0-2）。
-// 这些函数不依赖 index.js 内部的任何其他符号，可安全复用。
+import path from "node:path";
+import { extractCjkNgrams } from "./util.js";
 
 export function extractInstructionIncludes(text) {
   const includes = [];
@@ -149,4 +149,64 @@ export function summarizeText(value, limit = 80) {
   }
   const safeLimit = Math.max(0, Number(limit) || 0);
   return `${text.slice(0, Math.max(0, safeLimit - 3)).trimEnd()}...`;
+}
+
+export function textMentionsResolveQuery(text, normalizedQuery) {
+  const basename = path.basename(normalizedQuery).toLowerCase();
+  const normalizedText = normalizeSearchText(text);
+  return normalizedText.includes(normalizeSearchText(normalizedQuery)) ||
+    (basename && normalizedText.includes(basename));
+}
+
+export function summarizeHealthAnalysisForRepair(analysis) {
+  return {
+    score: analysis.score,
+    status: analysis.status,
+    totalRecords: analysis.totalRecords,
+    qualityRecords: analysis.qualityRecords,
+    duplicateRecords: analysis.duplicateRecords,
+    corruptedRecords: analysis.corruptedRecords.length,
+    storageDisplay: formatBytes(analysis.storage.totalBytes)
+  };
+}
+
+export function sanitizeLedgerText(value) {
+  return sanitizeDisplayText(value).trim();
+}
+
+export function normalizeDuplicateMemoryText(text) {
+  return normalizeSearchText(text)
+    .replace(/[^\p{L}\p{N}\u4e00-\u9fff]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function sanitizeInlineText(value) {
+  return sanitizeDisplayText(value).replace(/\s+/g, " ").trim();
+}
+
+export function extractKeywords(text) {
+  const normalized = normalizeSearchText(text);
+  const latin = normalized.match(/[a-z0-9][a-z0-9_.-]{1,}/g) || [];
+  const cjk = normalized.match(/[\u4e00-\u9fff]{2,}/g) || [];
+  const ngrams = extractCjkNgrams(normalized);
+  const stop = new Set(["the", "and", "for", "with", "when", "this", "that", "into", "from", "should", "memory", "local"]);
+  return [...new Set([...latin, ...cjk, ...ngrams].filter((term) => term && !stop.has(term)).slice(0, 120))];
+}
+
+export function extractCompactVariants(text) {
+  const normalized = normalizeSearchText(text);
+  if (!normalized) return [];
+  const compact = normalized.replace(/[\s`~!@#$%^&*()\-_=+\[\]{}\\|;:'",<.>/?。，、；：！？（）【】《》“”‘’]+/g, "");
+  return compact && compact !== normalized ? [compact] : [];
+}
+
+export function getMemoryEventSkipReason(normalizedEvent) {
+  if (!normalizedEvent.text) {
+    return "missing text";
+  }
+  if (looksSensitive(normalizedEvent.text)) {
+    return "looks sensitive";
+  }
+  return "";
 }

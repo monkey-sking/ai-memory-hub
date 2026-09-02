@@ -9,6 +9,7 @@
 //   node scripts/refactor/find-leaf-functions.mjs                 # 默认 src/index.js
 //   node scripts/refactor/find-leaf-functions.mjs src/other.js
 //   node scripts/refactor/find-leaf-functions.mjs --sinkable      # 只列脚本能自动处理的
+//   node scripts/refactor/find-leaf-functions.mjs --group         # 按依赖来源分组，决定往哪儿沉
 //
 // 前置：需要 acorn。项目里没有装，用 NODE_PATH 指过去：
 //   NODE_PATH=<含 acorn 的 node_modules> node scripts/refactor/find-leaf-functions.mjs
@@ -203,6 +204,25 @@ for (const r of list.slice(0, limit)) {
 }
 if (!flags.has("--sinkable")) {
   console.log("\n（行首 ! 表示依赖项目内模块，下沉需手工补 import）");
+}
+
+// 按「依赖哪些 import 来源」分组。同组函数下沉到同一个目标模块时，
+// 整组的 import 清单是一样的 —— 用它来决定往哪儿沉最省事：
+// 若某组只依赖 ./lib/format.js，直接沉进 format.js 就一个 import 都不用加。
+if (flags.has("--group")) {
+  console.log(`\n=== 按依赖来源分组（可下沉 ${safeLeaves.length} 个 / ${lines(safeLeaves)} 行）===`);
+  const groups = new Map();
+  for (const r of safeLeaves) {
+    const key = r.sources.length ? r.sources.join(" + ") : "(无 import 依赖)";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(r);
+  }
+  for (const [key, list] of [...groups.entries()].sort((a, b) => lines(b[1]) - lines(a[1]))) {
+    console.log(`\n### ${key}  (${list.length} 个 / ${lines(list)} 行)`);
+    for (const r of list.sort((a, b) => b.size - a.size)) {
+      console.log(`  ${String(r.size).padStart(4)} 行 L${String(r.start).padStart(5)}  ${r.name}  → ${r.externalDeps.join(", ")}`);
+    }
+  }
 }
 
 console.log(`\n=== 有内部依赖、不能单独下沉的最大 15 个 ===`);

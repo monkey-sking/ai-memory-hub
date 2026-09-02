@@ -1,3 +1,11 @@
+import { createId, hasOwnField, isPlainObject } from "./cli.js";
+import { normalizeGithubLinks } from "../github-links.js";
+import { normalizeAdversarialVerifier, normalizeReviewDimensions } from "../review-config.js";
+import { appendEntityRecord, bootstrapEntityEventsFromProjection, materializeEntityProjection } from "./entity-store.js";
+import { readProjects, readTasks, readWorkflows } from "./entity-repo.js";
+import { findProjectIndex } from "./util.js";
+import { findTaskIndex, findWorkflowIndex } from "./entity-index.js";
+
 // src/lib/entity-models.js
 // Entity model layer for AI Memory Hub.
 //
@@ -10,10 +18,6 @@
 //
 // This module intentionally has NO dependency on index.js so the module graph
 // stays acyclic: it only reaches into cli.js, github-links.js and review-config.js.
-
-import { isPlainObject, createId, hasOwnField } from "./cli.js";
-import { normalizeGithubLinks } from "../github-links.js";
-import { normalizeReviewDimensions, normalizeAdversarialVerifier } from "../review-config.js";
 
 export const PROJECT_STATUSES = ["active", "paused", "archived", "planning"];
 export const RECIPE_GATE_STRING_ARRAY_FIELDS = ["stopWhen", "allowedActions", "forbiddenActions", "reviewDimensions"];
@@ -543,4 +547,77 @@ export function getPromptEventStoreDefinition() {
     normalize: normalizePrompt,
     isValid: (prompt) => prompt.id && prompt.name
   };
+}
+
+export function rebuildEventSourcedProjections(memoryDir) {
+  bootstrapEntityEventsFromProjection(memoryDir, getTaskEventStoreDefinition());
+  bootstrapEntityEventsFromProjection(memoryDir, getProjectEventStoreDefinition());
+  bootstrapEntityEventsFromProjection(memoryDir, getWorkflowEventStoreDefinition());
+  const tasks = materializeEntityProjection(memoryDir, getTaskEventStoreDefinition());
+  const projects = materializeEntityProjection(memoryDir, getProjectEventStoreDefinition());
+  const workflows = materializeEntityProjection(memoryDir, getWorkflowEventStoreDefinition());
+  return {
+    tasks: tasks.length,
+    projects: projects.length,
+    workflows: workflows.length
+  };
+}
+
+export function updateProject(memoryDir, id, updater) {
+  const projects = readProjects(memoryDir);
+  const index = findProjectIndex(projects, id);
+  if (index === -1) {
+    throw new Error(`Project not found: ${id}`);
+  }
+  const updated = normalizeProject({
+    ...updater(projects[index]),
+    updatedAt: new Date().toISOString()
+  });
+  return appendEntityRecord(memoryDir, getProjectEventStoreDefinition(), updated, {
+    reason: "project:update"
+  });
+}
+
+export function updateWorkflow(memoryDir, id, updater) {
+  const workflows = readWorkflows(memoryDir);
+  const index = findWorkflowIndex(workflows, id);
+  if (index === -1) {
+    throw new Error(`Workflow not found: ${id}`);
+  }
+  const updated = normalizeWorkflow(updater(workflows[index]));
+  return appendEntityRecord(memoryDir, getWorkflowEventStoreDefinition(), updated, {
+    reason: "workflow:update"
+  });
+}
+
+export function updateTask(memoryDir, id, updater) {
+  const tasks = readTasks(memoryDir);
+  const index = findTaskIndex(tasks, id);
+  if (index === -1) {
+    throw new Error(`Task not found: ${id}`);
+  }
+  const updated = normalizeTask(updater(tasks[index]));
+  return appendEntityRecord(memoryDir, getTaskEventStoreDefinition(), updated, {
+    reason: "task:update"
+  });
+}
+
+export function assertTaskStatus(status) {
+  if (!isTaskStatus(status)) {
+    throw new Error(`Invalid task status: ${status}`);
+  }
+}
+
+export function assertWorkflowStatus(status) {
+  if (!isWorkflowStatus(status)) {
+    throw new Error(`Invalid workflow status: ${status}`);
+  }
+}
+
+export function mergeQualityGates(...sources) {
+  const merged = {};
+  for (const source of sources) {
+    Object.assign(merged, normalizeQualityGate(source));
+  }
+  return merged;
 }

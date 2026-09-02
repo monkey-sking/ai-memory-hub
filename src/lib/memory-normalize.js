@@ -1,3 +1,4 @@
+import { getOption, isPlainObject } from "./cli.js";
 // 从 src/index.js 下沉的通用工具函数（v3.0 重构 P0-2）。
 // 这些函数不依赖 index.js 内部的任何其他符号，可安全复用。
 
@@ -202,4 +203,185 @@ export function chooseMemoryLayer(kind, importance) {
     return "working";
   }
   return "archive";
+}
+
+export function parseListOption(value) {
+  return normalizeList(value);
+}
+
+export function parseMemoryTagFilters(argv) {
+  return normalizeList([
+    getOption(argv, "--tag"),
+    getOption(argv, "--tags")
+  ]);
+}
+
+export function formatMemoryFilterSummary(filters = {}) {
+  const parts = [];
+  if (filters.project) {
+    parts.push(`project=${normalizeMemoryProject(filters.project)}`);
+  }
+  if (filters.tags?.length) {
+    parts.push(`tags=${filters.tags.join(",")}`);
+  }
+  if (filters.thread) {
+    parts.push(`thread=${normalizeRefToken(filters.thread)}`);
+  }
+  if (filters.taskId) {
+    parts.push(`taskId=${normalizeRefToken(filters.taskId)}`);
+  }
+  if (filters.workflowId) {
+    parts.push(`workflowId=${normalizeRefToken(filters.workflowId)}`);
+  }
+  if (filters.radioId) {
+    parts.push(`radioId=${normalizeRefToken(filters.radioId)}`);
+  }
+  return parts.join(" ");
+}
+
+export function matchesMemoryTags(memory, queryTags = []) {
+  const requested = normalizeList(queryTags);
+  if (requested.length === 0) {
+    return true;
+  }
+  const candidates = normalizeList(memory.tags?.length ? memory.tags : memory.metadata?.tags);
+  return requested.every((tag) => candidates.includes(tag));
+}
+
+export function getMemoryAccessStats(memory = {}) {
+  const lifecycle = isPlainObject(memory.metadata?.lifecycle) ? memory.metadata.lifecycle : {};
+  const lifecycleAccess = isPlainObject(lifecycle.access) ? lifecycle.access : {};
+  const accessCountValue = firstDefinedValue(
+    memory.accessCount,
+    memory.metadata?.accessCount,
+    lifecycleAccess.accessCount,
+    lifecycleAccess.count
+  );
+  const firstAccessedAt = normalizeMemoryAccessTimestamp(firstDefinedValue(
+    memory.firstAccessedAt,
+    memory.metadata?.firstAccessedAt,
+    lifecycleAccess.firstAccessedAt
+  ));
+  const lastAccessedAt = normalizeMemoryAccessTimestamp(firstDefinedValue(
+    memory.lastAccessedAt,
+    memory.metadata?.lastAccessedAt,
+    lifecycleAccess.lastAccessedAt
+  ));
+  const hasAccessTelemetry = [
+    memory.accessCount,
+    memory.lastAccessedAt,
+    memory.firstAccessedAt,
+    memory.metadata?.accessCount,
+    memory.metadata?.lastAccessedAt,
+    memory.metadata?.firstAccessedAt,
+    lifecycleAccess.accessCount,
+    lifecycleAccess.count,
+    lifecycleAccess.lastAccessedAt,
+    lifecycleAccess.firstAccessedAt
+  ].some((value) => value !== undefined && value !== null && value !== "");
+
+  return {
+    accessCount: normalizeMemoryAccessCount(accessCountValue),
+    firstAccessedAt,
+    lastAccessedAt,
+    hasAccessTelemetry
+  };
+}
+
+export function applyMemoryLifecycleOperations(records, operations, getIdentityKeys) {
+  const lookup = new Map();
+  for (const record of records) {
+    for (const key of getIdentityKeys(record)) lookup.set(normalizeSupersedeToken(key), record);
+  }
+  const overlays = new Map();
+  for (const operation of [...operations].sort((a, b) => String(a.ts || "").localeCompare(String(b.ts || "")))) {
+    const target = lookup.get(normalizeSupersedeToken(operation.target?.recordId));
+    if (!target) continue;
+    const key = getIdentityKeys(target)[0];
+    if (!key) continue;
+    const current = overlays.get(key) || {};
+    let state = operation.patch?.lifecycle?.state || current.state || "active";
+    if ((operation.action === "pin" || operation.action === "review") && current.state !== "revoked") state = "active";
+    if (operation.action === "supersede") state = "superseded";
+    if (operation.action === "revoke") state = "revoked";
+    if (operation.action === "archive") state = "archived";
+    overlays.set(key, {
+      ...current,
+      state,
+      reason: operation.reason || current.reason || "",
+      reviewedAt: operation.action === "review" ? operation.ts : current.reviewedAt,
+      supersededBy: operation.refs?.supersededBy || current.supersededBy || []
+    });
+  }
+  return records.map((record) => {
+    const overlay = overlays.get(getIdentityKeys(record)[0]);
+    const lifecycle = { ...(record.metadata?.lifecycle || {}), ...(overlay || {}), state: overlay?.state || record.metadata?.lifecycle?.state || "active" };
+    return { ...record, lifecycle, metadata: { ...(record.metadata || {}), lifecycle } };
+  });
+}
+
+export function normalizeSupersedeRefs(value) {
+  if (Array.isArray(value)) {
+    return [...new Set(value.flatMap(normalizeSupersedeRefs))];
+  }
+  if (isPlainObject(value)) {
+    return normalizeSupersedeRefs(Object.values(value));
+  }
+  return String(value || "")
+    .split(",")
+    .map(normalizeSupersedeToken)
+    .filter(Boolean);
+}
+
+export function isStartupMemoryRecord(record) {
+  const tags = normalizeList(record.tags?.length ? record.tags : record.metadata?.tags);
+  const scope = normalizeMemoryScope(record.scope || record.metadata?.scope || "");
+  const kind = normalizeMemoryKind(record.kind || record.metadata?.kind || "note");
+  const text = String(record.text || "");
+  if (tags.some((tag) => ["startup", "bootstrap", "boot", "agent-startup", "critical", "pinned"].includes(tag))) {
+    return true;
+  }
+  if (["startup", "bootstrap", "agent-startup"].includes(scope)) {
+    return true;
+  }
+  if (!["preference", "workflow", "correction", "project", "lesson", "reference"].includes(kind)) {
+    return false;
+  }
+  return /RTK\.md|AGENTS\.md|CLAUDE\.md|GEMINI\.md|@include|@引用|Shared AI Memory|Shared Agent Radio|Shared Task List|Shared Workflows|ai-memory-hub search|inbox\/events\.jsonl|memories\/ledger\.jsonl|MEMORY\.md|共享记忆|共同记忆|启动|启动关键|指令/i.test(text);
+}
+
+export function resolveSnapshotLimits(config = {}) {
+  const snapshotLimit = readPositiveInteger(config.sync?.snapshotLimit, 120);
+  const explicitCoreLimit = hasExplicitSyncKey(config, "coreLimit");
+  const explicitRecentLimit = hasExplicitSyncKey(config, "recentLimit");
+  return {
+    snapshotLimit,
+    coreLimit: explicitCoreLimit
+      ? readPositiveInteger(config.sync.coreLimit, 30)
+      : Math.max(10, Math.round(snapshotLimit * 0.25)),
+    recentLimit: explicitRecentLimit
+      ? readPositiveInteger(config.sync.recentLimit, 18)
+      : Math.max(5, Math.round(snapshotLimit * 0.15))
+  };
+}
+
+export function inferTopics(memory) {
+  const tags = normalizeList(memory.tags?.length ? memory.tags : memory.metadata?.tags);
+  const text = `${memory.text || ""} ${memory.project || memory.metadata?.project || ""} ${tags.join(" ")}`.toLowerCase();
+  const topics = [];
+  const rules = [
+    ["ai-memory-hub", /ai-memory|shared memory|memory hub|agent radio|opencode|mimocode|mimo code|grok|xai|qclaw|coze|扣子|claude|codex|gemini|共享记忆|本地记忆/],
+    ["game", /game|unity|mahjong|match|西游|麻将|小游戏|策划|关卡|体力|广告|分享/],
+    ["wechat-mini-game", /wechat|微信|小游戏|wx\.|sendgift|红包|开放能力/],
+    ["lark-feishu", /lark|feishu|飞书|多维表格|任务|文档|lark-cli/],
+    ["git", /git|github|gitee|commit|提交/],
+    ["team", /team|member|role|团队|成员|pm|planner|dev|art/],
+    ["automation", /automation|daemon|watcher|script|自动|脚本|后台|签到/],
+    ["docs", /readme|doc|文档|prd|gdd|策划文档/],
+    ["security", /secret|password|token|key|合规|隐私|上传|ignore|gitignore/]
+  ];
+  for (const [topic, pattern] of rules) {
+    if (pattern.test(text)) topics.push(topic);
+  }
+  return [...new Set(topics)];
 }

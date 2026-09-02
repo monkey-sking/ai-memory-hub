@@ -95,9 +95,9 @@ import { memoryCommand } from "./commands/memory.js";
 const memoryCommandDeps = { buildMemoryIndex, ensureHub, isMemoryLifecycleVisible, loadConfig, normalizeMemoryMetadata, normalizeSupersedeToken, readLedger, rebuildMemoryOutputs, runAutomaticBackupStrategy, searchCommand, searchCommandDeps, snapshotCommand, withHubLock };
 import { sqliteCommand } from "./commands/sqlite.js";
 import { ensureDir, readJson, readJsonSafe, writeJson, createId, getOption, hasOption, hasFlag, parsePositiveIntegerOption, positionalArgs, countJsonlFiles, isPlainObject, hasOwnField } from "./lib/cli.js";
-import { readEvents, parseJsonlLine, countJsonlLines } from "./lib/io.js";
+import { readEvents, parseJsonlLine, countJsonlLines, readToolDeclarations, readModelsCache, writeModelsCache, readRadioCursor, writeRadioCursor, readAgents, readRoles, readTeams, readClaudeSessionState, readDispatchLog, readDispatchRuns, appendDispatchRunRecord, appendDispatchLog, readRelayStatus, resolveGitConflictsInFile, writeLedger, readApprovalGates, appendApprovalGateEvent, readPolicyRules, readSessions, readUnreadReceipts, appendUnreadReceipt, writeSessions, writeRpcRequest, readRpcRequest, writeRpcResult, readRpcResult, writeNotification, readNotifications, writeContextPack, readContextPack, readDispatchQueue, writeDispatchQueueEntry, readMemoryLifecycleOperations, archiveInbox, writeInboxEvents, readBackupManifest, readLockFile, readLockEvents, appendLockEvent, readEventsWithLocations } from "./lib/io.js";
 import { getEntityEventsFile, getEntityProjectionFile, readEntityEvents, bootstrapEntityEventsFromProjection, writeEntityRecords, appendEntityRecord, deleteEntityRecord, appendEntityEvents, createEntityEvent, replayEntityEvents, materializeEntityProjection, isEntityRecordNewerOrSame } from "./lib/entity-store.js";
-import { PROJECT_STATUSES, RECIPE_GATE_STRING_ARRAY_FIELDS, RECIPE_GATE_FIELDS, extractQualityGate, normalizeQualityGate, normalizeVerifyCommand, normalizeNonNegativeInteger, normalizeMinimalImplementation, normalizeDependencyBudget, normalizePriority, normalizeDispatchWorktreeMetadata, normalizeWorkflowRole, parseProjectListOption, uniqueStringList, isTaskStatus, isWorkflowStatus, normalizeRecipeMetadata, normalizeRecipeStepMetadata, normalizeProjectStatus, normalizeProjectResources, normalizeProject, normalizeWorkflow, normalizeTask, normalizePrompt, getTaskEventStoreDefinition, getProjectEventStoreDefinition, getWorkflowEventStoreDefinition, getPromptEventStoreDefinition } from "./lib/entity-models.js";
+import { PROJECT_STATUSES, RECIPE_GATE_STRING_ARRAY_FIELDS, RECIPE_GATE_FIELDS, extractQualityGate, normalizeQualityGate, normalizeVerifyCommand, normalizeNonNegativeInteger, normalizeMinimalImplementation, normalizeDependencyBudget, normalizePriority, normalizeDispatchWorktreeMetadata, normalizeWorkflowRole, parseProjectListOption, uniqueStringList, isTaskStatus, isWorkflowStatus, normalizeRecipeMetadata, normalizeRecipeStepMetadata, normalizeProjectStatus, normalizeProjectResources, normalizeProject, normalizeWorkflow, normalizeTask, normalizePrompt, getTaskEventStoreDefinition, getProjectEventStoreDefinition, getWorkflowEventStoreDefinition, getPromptEventStoreDefinition, rebuildEventSourcedProjections, updateProject, updateWorkflow, updateTask, assertTaskStatus, assertWorkflowStatus, mergeQualityGates } from "./lib/entity-models.js";
 import { projectRoot } from "./lib/paths.js";
 import { POLICY_OPERATIONS, APP_NAME, DEFAULT_DISPATCH_ACK_TIMEOUT_MS, ASYNC_CALL_STATES } from "./lib/constants.js";
 import { MODEL_CACHE_STALE_MS } from "./lib/constants.js";
@@ -138,17 +138,19 @@ import { listCredentialProfiles, setCredentialProfile, removeCredentialProfile, 
 
 import { listRelatedEntities, readRelations, recordMemoryRelations, recordRelation, rebuildMemoryRelations, revokeRelation } from "./relations.js";
 import { auditMemories } from "./memory-audit.js";
-import { parseRunnerModelList, semanticSearch, checkProcessLiveness, getContentType, readRequestJson, findProjectIndex, expandSynonyms, scanBackupFilesForSecrets, getRelayTimeoutBaseMs, renderDispatchWorktree, createHealthRepairAction, getPathSize, extractCjkNgrams, getBackupFileCatalog, markTieredBackups, parseCliArgs, parseDeclaredList, parseProgressPercent, isJobCheckpointed, getCheckpointStats, renderProjectRegistryReadme, extractSharedSkillLayerVersion, renderEmptyBootstrapSnapshot, sleep, sharedSkillLayerActionLabel, summarizeDir } from "./lib/util.js";
-import { extractInstructionIncludes, normalizeSeverity, formatTopCounts, formatPercent, formatBytes, sanitizeDisplayText, getMemoryAgeDays, inferScope, normalizeSearchText, countBy, sortByImportance, titleCase, looksSensitive, formatEventLocation, extractSection, extractSectionBeforeAny, renderTemplate, trimOutput, summarizeText } from "./lib/format.js";
-import { normalizeMemoryKind, normalizeMemoryProject, normalizeMemoryScope, normalizeList, firstDefinedRef, hasMemoryFilters, normalizeRefToken, normalizeConfidence, applyMemoryAccessFields, normalizeMemoryAccessCount, normalizeMemoryAccessTimestamp, firstDefinedValue, getDaysSinceTimestamp, isMemoryLifecycleVisible, normalizeSupersedeToken, hasExplicitSyncKey, readPositiveInteger, isMemoryHealthExcluded, formatMemoryHealthRepairPlan, sanitizeRawJsonCandidate, getMemoryGrowthTrend, chooseMemoryLayer } from "./lib/memory-normalize.js";
+import { parseRunnerModelList, semanticSearch, checkProcessLiveness, getContentType, readRequestJson, findProjectIndex, expandSynonyms, scanBackupFilesForSecrets, getRelayTimeoutBaseMs, renderDispatchWorktree, createHealthRepairAction, getPathSize, extractCjkNgrams, getBackupFileCatalog, markTieredBackups, parseCliArgs, parseDeclaredList, parseProgressPercent, isJobCheckpointed, getCheckpointStats, renderProjectRegistryReadme, extractSharedSkillLayerVersion, renderEmptyBootstrapSnapshot, sleep, sharedSkillLayerActionLabel, summarizeDir, releaseStaleClaim, inspectSharedMemoryInstructions, getDirectResolveCandidates, normalizeCandidatePath, getPageOptions, findProject, autoCreateWorkflowNodes, summarizeTaskSpec, writeTaskSpecProcessLogs, resolveTaskSpecCwd, getMemoryStorageSummary } from "./lib/util.js";
+import { extractInstructionIncludes, normalizeSeverity, formatTopCounts, formatPercent, formatBytes, sanitizeDisplayText, getMemoryAgeDays, inferScope, normalizeSearchText, countBy, sortByImportance, titleCase, looksSensitive, formatEventLocation, extractSection, extractSectionBeforeAny, renderTemplate, trimOutput, summarizeText, textMentionsResolveQuery, summarizeHealthAnalysisForRepair, sanitizeLedgerText, normalizeDuplicateMemoryText, sanitizeInlineText, extractKeywords, extractCompactVariants, getMemoryEventSkipReason } from "./lib/format.js";
+import { normalizeMemoryKind, normalizeMemoryProject, normalizeMemoryScope, normalizeList, firstDefinedRef, hasMemoryFilters, normalizeRefToken, normalizeConfidence, applyMemoryAccessFields, normalizeMemoryAccessCount, normalizeMemoryAccessTimestamp, firstDefinedValue, getDaysSinceTimestamp, isMemoryLifecycleVisible, normalizeSupersedeToken, hasExplicitSyncKey, readPositiveInteger, isMemoryHealthExcluded, formatMemoryHealthRepairPlan, sanitizeRawJsonCandidate, getMemoryGrowthTrend, chooseMemoryLayer, parseListOption, parseMemoryTagFilters, formatMemoryFilterSummary, matchesMemoryTags, getMemoryAccessStats, applyMemoryLifecycleOperations, normalizeSupersedeRefs, isStartupMemoryRecord, resolveSnapshotLimits, inferTopics } from "./lib/memory-normalize.js";
 import { createDispatchRecordMutex, isClaimStale, shouldPersistDispatchReport, isDispatchableRadioMessage, isClosedDispatchSourceState, buildTaskDispatchText, buildWorkflowDispatchText, findRecipeStepTask, normalizeToolName, safeGitPathSegment, isKnownGeminiWarning, stripExistingModelArgs, getDispatchThreadKey, formatDispatchVerifyCommand, getDispatchRunStatus, getDispatchRunVerificationResult, getAsyncCallStateMeta, getDispatchSourceKey, getRelaySourceKey, dispatchJobFromTask, dispatchJobFromWorkflow, dispatchJobFromRelayEntry } from "./lib/dispatch.js";
 import { sendHtml, sendPlain, sendJson, sendErrorEnvelope, parsePageParam, getSafeStaticRelativePath, readTextIfExists } from "./lib/http.js";
 import { getToolDeclarationsFile, getModelsCacheFile, getRadioCursorFile, getAgentRegistryFile, getRoleRegistryFile, getTeamRegistryFile, getPolicyRulesFile } from "./lib/registry-paths.js";
-import { quoteWindowsCmdArg, escapeForWindowsCmd, quoteWindowsCommandArg, quoteShellArg, classifyCommandPath, shellQuote } from "./lib/shell.js";
+import { quoteWindowsCmdArg, escapeForWindowsCmd, quoteWindowsCommandArg, quoteShellArg, classifyCommandPath, shellQuote, getRunnerDoctorWarnings, runGit, resolveCommandPaths, commandPathPriority, shouldUseShellForCommand } from "./lib/shell.js";
 import { normalizeResolveQuery, extractFilesystemPathCandidates, resolvePossiblyHomePath, pathMatchesResolveQuery } from "./lib/resolve.js";
 import { normalizeTaskSpecEnv, normalizeStringArray, normalizeTaskSpecList, normalizeTaskSpecLogs, selectPlatformCommand, getTaskSpecProcessStatus, resolveInside } from "./lib/task-spec.js";
 import { policyActorMatches, policyRuleSpecificity, isHiddenProjectId, findWorkflowIndex, findTaskIndex, createTaskNote, getNotificationChannels } from "./lib/entity-index.js";
-import { getFileHash, getGitHubBackupUploadWarnings, normalizeBackupPatternList, matchesAnyBackupPattern, normalizeScheduleTime, resolveConfiguredPath, extractListValue, renderGitHubBackupReadme, markProtectedBackups, parseBackupTimestampFromName, inferBackupReasonFromName, inferBackupRetentionTier, createdAtRetentionKey, formatBackupDay, getIsoWeekKey, isPathInsideDirectory, countBackupDirs } from "./lib/backup.js";
+import { getFileHash, getGitHubBackupUploadWarnings, normalizeBackupPatternList, matchesAnyBackupPattern, normalizeScheduleTime, resolveConfiguredPath, extractListValue, renderGitHubBackupReadme, markProtectedBackups, parseBackupTimestampFromName, inferBackupReasonFromName, inferBackupRetentionTier, createdAtRetentionKey, formatBackupDay, getIsoWeekKey, isPathInsideDirectory, countBackupDirs, backupHub, resolveBackupDirectory, getGitHubBackupExportFiles, getDefaultGitHubBackupInclude, assertSafeGitHubBackupRepoDir, ensureSafeChildPath, planBackupRetention, inferBackupRetentionKey } from "./lib/backup.js";
+import { relayFailureFingerprint, createSkillDelta, createProject, createWorkflow, createTask, createSession, createRpcRequest, createNotification, createDispatchQueueEntry, validateVerifyCommand, validateMinimalImplementation, validateDependencyBudget, normalizeRefValues, mergeMemoryAccessMetadata, parseJsonObjectCandidate, createRadioMessage } from "./lib/entity-factory.js";
+import { readDiscoveredModels, detectVSCodeEnhanced, getDashboardStaticRoot, readTemplate } from "./lib/tools-detect.js";
 import {
   normalizeAdversarialVerifier,
   normalizeReviewDimensions,
@@ -907,17 +909,6 @@ function capabilitiesCommand(argv) {
 }
 
 
-function readToolDeclarations(memoryDir) {
-  const file = getToolDeclarationsFile(memoryDir);
-  if (!fs.existsSync(file)) {
-    return [];
-  }
-  try {
-    return readEvents(file);
-  } catch {
-    return [];
-  }
-}
 
 function readToolDeclarationByTool(memoryDir, tool) {
   const name = normalizeToolName(tool);
@@ -928,19 +919,6 @@ function readToolDeclarationByTool(memoryDir, tool) {
   return sorted[sorted.length - 1] || null;
 }
 
-function readDiscoveredModels(memoryDir, tool) {
-  const cacheFile = path.join(memoryDir, "state", "tool-models.json");
-  if (!fs.existsSync(cacheFile)) {
-    return [];
-  }
-  try {
-    const cache = JSON.parse(fs.readFileSync(cacheFile, "utf8"));
-    const name = normalizeToolName(tool);
-    return Array.isArray(cache[name]?.models) ? cache[name].models : [];
-  } catch {
-    return [];
-  }
-}
 
 function writeToolDeclaration(memoryDir, declaration) {
   const file = getToolDeclarationsFile(memoryDir);
@@ -996,21 +974,7 @@ function fetchToolModels(memoryDir, tool) {
 
 
 
-function readModelsCache(memoryDir) {
-  const cacheFile = getModelsCacheFile(memoryDir);
-  if (!fs.existsSync(cacheFile)) {
-    return {};
-  }
-  try {
-    return JSON.parse(fs.readFileSync(cacheFile, "utf8"));
-  } catch {
-    return {};
-  }
-}
 
-function writeModelsCache(memoryDir, cache) {
-  writeFileAtomic(getModelsCacheFile(memoryDir), JSON.stringify(cache, null, 2));
-}
 
 function refreshModelsIfStale(memoryDir, { tool = "", force = false } = {}) {
   const cache = readModelsCache(memoryDir);
@@ -1145,34 +1109,6 @@ function runRunnerProbe(tool, runner, args = [], input = "", timeoutMs = 5000) {
   };
 }
 
-function getRunnerDoctorWarnings(runner) {
-  const warnings = [];
-  if (!runner.available) {
-    warnings.push(runner.sharedStateOnly
-      ? "Shared-state-only: dispatch will not launch this tool directly."
-      : runner.reason || "Runner is unavailable.");
-    return warnings;
-  }
-  if (process.platform === "win32") {
-    const resolved = runner.resolvedCommands || [];
-    if (resolved.some((item) => classifyCommandPath(item) === "powershell-shim")) {
-      warnings.push("PowerShell .ps1 shim is present in PATH; this runner resolved a safer .cmd/.exe/native command for automation.");
-    }
-    if (runner.commandKind === "powershell-shim") {
-      warnings.push("Unsafe for automation: only a PowerShell .ps1 shim was found.");
-    }
-    if (runner.usesShell) {
-      const promptHint = runner.promptMode === "stdin"
-        ? "prompt payload remains on stdin"
-        : `prompt mode remains ${runner.promptMode || "argv"}`;
-      warnings.push(`Uses cmd.exe only to execute a .cmd/.bat shim; ${promptHint}.`);
-    }
-  }
-  if (runner.promptMode && runner.promptMode !== "stdin") {
-    warnings.push(`Prompt mode is ${runner.promptMode}; long prompts may need temp-file escaping.`);
-  }
-  return warnings;
-}
 
 function statusCommand() {
   console.log(JSON.stringify(getStatusObject(), null, 2));
@@ -1323,35 +1259,7 @@ function recordCommand(argv) {
 }
 
 
-function readRadioCursor(memoryDir, consumer) {
-  const file = getRadioCursorFile(memoryDir, consumer);
-  if (!fs.existsSync(file)) {
-    return { consumer: consumer || "all", lastMessageId: "", processedIds: [], updatedAt: "" };
-  }
-  try {
-    const data = JSON.parse(fs.readFileSync(file, "utf8"));
-    return {
-      consumer: data.consumer || consumer || "all",
-      lastMessageId: data.lastMessageId || "",
-      processedIds: Array.isArray(data.processedIds) ? data.processedIds : [],
-      updatedAt: data.updatedAt || ""
-    };
-  } catch {
-    return { consumer: consumer || "all", lastMessageId: "", processedIds: [], updatedAt: "" };
-  }
-}
 
-function writeRadioCursor(memoryDir, consumer, lastMessageId, processedIds) {
-  const file = getRadioCursorFile(memoryDir, consumer);
-  ensureDir(path.dirname(file));
-  const cursor = {
-    consumer: consumer || "all",
-    lastMessageId,
-    processedIds: processedIds.slice(-50),
-    updatedAt: new Date().toISOString()
-  };
-  writeFileAtomic(file, JSON.stringify(cursor, null, 2), "utf8");
-}
 
 function getUnreadRadioMessages(memoryDir, consumer) {
   const messages = readRadioMessages(memoryDir);
@@ -1368,11 +1276,6 @@ function getUnreadRadioMessages(memoryDir, consumer) {
 
 // ---- P1: agent + role registries (borrowed from Cumora participants; role is a first-class entity here) ----
 
-function readAgents(memoryDir) {
-  const file = getAgentRegistryFile(memoryDir);
-  if (!fs.existsSync(file)) return [];
-  return fs.readFileSync(file, "utf8").split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
-}
 function readAgentById(memoryDir, id) {
   const key = String(id || "").trim().toLowerCase();
   if (!key) return null;
@@ -1399,11 +1302,6 @@ function touchAgentStatus(memoryDir, id, state, by) {
   const existing = readAgentById(memoryDir, id) || { id: String(id).trim(), name: String(id).trim(), createdAt: nowIso };
   return writeAgent(memoryDir, { ...existing, status: state, statusBy: by || existing.statusBy || "system", statusAt: nowIso });
 }
-function readRoles(memoryDir) {
-  const file = getRoleRegistryFile(memoryDir);
-  if (!fs.existsSync(file)) return [];
-  return fs.readFileSync(file, "utf8").split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
-}
 function readRoleById(memoryDir, id) {
   const key = String(id || "").trim().toLowerCase();
   if (!key) return null;
@@ -1425,11 +1323,6 @@ function writeRole(memoryDir, role) {
 }
 
 // P2: team registry (first-class org entity, Cumora has none).
-function readTeams(memoryDir) {
-  const file = getTeamRegistryFile(memoryDir);
-  if (!fs.existsSync(file)) return [];
-  return fs.readFileSync(file, "utf8").split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
-}
 function readTeamById(memoryDir, id) {
   const key = String(id || "").trim().toLowerCase();
   if (!key) return null;
@@ -1485,11 +1378,6 @@ function reviewCommand(argv) {
 }
 
 
-function runGit(repoDir, args) {
-  const r = spawnSync("git", args, { cwd: repoDir, encoding: "utf8" });
-  if (r.status !== 0) throw new Error(`git ${args.join(" ")} failed: ${(r.stderr || r.stdout || "").trim().slice(0, 300)}`);
-  return r.stdout.trim();
-}
 
 /** 创建隔离 worktree：git worktree add <repo>/.ai-worktrees/<name> [-b <branch>]，并归档一条 memory 事件。 */
 
@@ -1703,20 +1591,6 @@ function getClaimTtlMs(config) {
 }
 
 
-function releaseStaleClaim(task, nowIso) {
-  return {
-    ...task,
-    status: "open",
-    claimedAt: "",
-    claimExpiresAt: "",
-    lastAssignee: task.assignee || task.lastAssignee || "",
-    updatedAt: nowIso,
-    notes: [
-      ...(task.notes || []),
-      createTaskNote(task.assignee || "system", `Claim auto-released (TTL expired).`)
-    ]
-  };
-}
 
 function buildRecentRelayStatusView(memoryDir, { project = "", tool = "", state = "", limit = 20 }) {
   const filteredEntries = Object.values(readLatestRelayStatusByThread(memoryDir))
@@ -3479,17 +3353,6 @@ function parseRunnerOutput(memoryDir, job, runner, stdout) {
   }
 }
 
-function readClaudeSessionState(memoryDir) {
-  const file = path.join(memoryDir, "state", "claude-sessions.json");
-  if (!fs.existsSync(file)) {
-    return {};
-  }
-  try {
-    return readJson(file);
-  } catch {
-    return {};
-  }
-}
 
 function writeClaudeSessionState(memoryDir, job, sessionId) {
   const threadKey = getDispatchThreadKey(job);
@@ -3606,13 +3469,7 @@ function renderCompactDispatchPrompt(memoryDir, job) {
   return parts.filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
 }
 
-function readDispatchLog(memoryDir) {
-  return readEvents(path.join(memoryDir, "state", "dispatch-log.jsonl"));
-}
 
-function readDispatchRuns(memoryDir) {
-  return readEvents(path.join(memoryDir, "state", "dispatch-runs.jsonl"));
-}
 
 function readLatestDispatchRunByThread(memoryDir) {
   const latest = {};
@@ -3645,22 +3502,10 @@ function writeDispatchRunLog(memoryDir, runId, stream, text) {
   return relativePath.replace(/\\/g, "/");
 }
 
-function appendDispatchRunRecord(memoryDir, record) {
-  appendJsonl(path.join(memoryDir, "state", "dispatch-runs.jsonl"), record);
-}
 
 
 
-function appendDispatchLog(memoryDir, result) {
-  appendJsonl(path.join(memoryDir, "state", "dispatch-log.jsonl"), {
-    ...result,
-    dispatchedAt: new Date().toISOString()
-  });
-}
 
-function readRelayStatus(memoryDir) {
-  return readEvents(path.join(memoryDir, "state", "relay-status.jsonl"));
-}
 
 function readLatestRelayStatusByThread(memoryDir) {
   const latest = {};
@@ -3731,17 +3576,6 @@ function getRelayFailureState(attempt, maxRetries = DEFAULT_DISPATCH_MAX_RETRIES
 // Fingerprint a failed attempt by its observable outcome (exit code + error text),
 // normalizing volatile substrings (timestamps, hex ids) so two structurally
 // identical failures hash the same. Used to detect oscillation across attempts.
-function relayFailureFingerprint(exitCode, lastError) {
-  const normalizedError = String(lastError || "")
-    .toLowerCase()
-    .replace(/\d{4}-\d{2}-\d{2}t[\d:.]+z?/g, "<ts>")
-    .replace(/0x[0-9a-f]+/g, "<hex>")
-    .replace(/\b[0-9a-f]{8,}\b/g, "<id>")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 500);
-  return createId(`relay-fp:${exitCode ?? "null"}:${normalizedError}`);
-}
 
 // Count how many of the most recent consecutive failed attempts for this job's
 // source share the given fingerprint. A run of identical failures signals the
@@ -4142,44 +3976,6 @@ function pullCommand() {
 }
 
 
-function resolveGitConflictsInFile(filePath) {
-  if (!fs.existsSync(filePath)) {
-    return false;
-  }
-  const content = fs.readFileSync(filePath, "utf8");
-  if (!content.includes("<<<<<<<")) {
-    return false;
-  }
-  
-  console.log(`Conflict detected in ${path.basename(filePath)}. Resolving...`);
-  const lines = content.split(/\r?\n/);
-  const records = {};
-  
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    if (trimmed.startsWith("<<<<<<<") || trimmed.startsWith("=======") || trimmed.startsWith(">>>>>>>")) {
-      continue;
-    }
-    try {
-      const data = JSON.parse(trimmed);
-      const id = data.id || data.localEventId || createId(data.text || JSON.stringify(data));
-      records[id] = data;
-    } catch {
-      // Ignore
-    }
-  }
-  
-  const sortedRecords = Object.values(records).sort((a, b) => {
-    const tsA = a.ts || a.createdAt || a.indexedAt || "";
-    const tsB = b.ts || b.createdAt || b.indexedAt || "";
-    return String(tsA).localeCompare(String(tsB));
-  });
-  
-  writeFileAtomic(filePath, sortedRecords.map(r => JSON.stringify(r)).join("\n") + "\n", "utf8");
-  console.log(`Resolved conflict: ${path.basename(filePath)} successfully rewritten with ${sortedRecords.length} unique records.`);
-  return true;
-}
 
 
 
@@ -4296,23 +4092,6 @@ function readSkillDeltas(memoryDir) {
   return readEvents(file);
 }
 
-function createSkillDelta({ tool, section, original, proposed, reason, createdBy }) {
-  const now = new Date().toISOString();
-  return {
-    id: createId(`delta:${tool}:${section}:${proposed}`),
-    createdAt: now,
-    tool: String(tool || ""),
-    section: String(section || ""),
-    original: String(original || ""),
-    proposed: String(proposed || ""),
-    reason: String(reason || ""),
-    status: "pending", // pending | approved | rejected | merged
-    createdBy: String(createdBy || "observer"),
-    reviewedBy: "",
-    reviewedAt: "",
-    mergedAt: ""
-  };
-}
 
 function approveSkillDelta(memoryDir, id, reviewer) {
   const deltas = readSkillDeltas(memoryDir);
@@ -5803,136 +5582,6 @@ function invalidateToolDetectionCache(memoryDir = resolveMemoryDir()) {
   }
 }
 
-function detectVSCodeEnhanced() {
-  const home = os.homedir();
-  const platform = process.platform;
-
-  // Detect config/data directories
-  const configDir = platform === 'win32'
-    ? path.join(home, 'AppData', 'Roaming', 'Code')
-    : platform === 'darwin'
-    ? path.join(home, 'Library', 'Application Support', 'Code')
-    : path.join(home, '.config', 'Code');
-
-  const extensionsDir = platform === 'win32'
-    ? path.join(home, '.vscode', 'extensions')
-    : path.join(home, '.vscode', 'extensions');
-
-  // Try to find executable
-  const candidates = [];
-  if (platform === 'win32') {
-    candidates.push(
-      path.join(home, 'AppData', 'Local', 'Programs', 'Microsoft VS Code', 'Code.exe'),
-      path.join(home, 'AppData', 'Local', 'Programs', 'Microsoft VS Code Insiders', 'Code - Insiders.exe'),
-      'C:\\Program Files\\Microsoft VS Code\\Code.exe',
-      'C:\\Program Files (x86)\\Microsoft VS Code\\Code.exe'
-    );
-  } else if (platform === 'darwin') {
-    candidates.push(
-      '/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code',
-      '/Applications/Visual Studio Code - Insiders.app/Contents/Resources/app/bin/code'
-    );
-  } else {
-    candidates.push(
-      '/usr/bin/code',
-      '/usr/share/code/bin/code',
-      '/usr/local/bin/code'
-    );
-  }
-
-  let executablePath = null;
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) {
-      executablePath = candidate;
-      break;
-    }
-  }
-
-  // Check PATH as fallback
-  if (!executablePath) {
-    try {
-      const whereCmd = platform === 'win32' ? 'where code' : 'which code';
-      const result = execSync(whereCmd, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'ignore'] });
-      const lines = result.split('\n').filter(Boolean);
-      if (lines.length > 0) {
-        executablePath = lines[0].trim();
-      }
-    } catch (e) {
-      // code not in PATH
-    }
-  }
-
-  // Get version if executable found
-  let version = null;
-  if (executablePath) {
-    try {
-      const result = execSync(`"${executablePath}" --version`, {
-        encoding: 'utf-8',
-        stdio: ['pipe', 'pipe', 'ignore'],
-        timeout: 5000
-      });
-      const lines = result.split('\n').filter(Boolean);
-      if (lines.length > 0) {
-        version = lines[0].trim();
-      }
-    } catch (e) {
-      // Version check failed
-    }
-  }
-
-  // Detect AI extensions
-  const extensions = [];
-  const aiExtensionMap = {
-    'saoudrizwan.claude-dev': 'Cline',
-    'continue.continue': 'Continue',
-    'rooveterinaryinc.roo-cline': 'Roo-Code',
-    'github.copilot': 'GitHub Copilot',
-    'codeium.codeium': 'Codeium',
-    'tabnine.tabnine-vscode': 'Tabnine'
-  };
-
-  if (fs.existsSync(extensionsDir)) {
-    try {
-      const extensionDirs = fs.readdirSync(extensionsDir);
-      for (const [extId, extName] of Object.entries(aiExtensionMap)) {
-        const matches = extensionDirs.filter(d => d.startsWith(extId));
-        if (matches.length > 0) {
-          const dirName = matches[0];
-          const versionMatch = dirName.match(/-(\d+\.\d+\.\d+)$/);
-          extensions.push({
-            id: extId,
-            name: extName,
-            dir: dirName,
-            version: versionMatch ? versionMatch[1] : 'unknown'
-          });
-        }
-      }
-    } catch (e) {
-      // Failed to read extensions directory
-    }
-  }
-
-  const installed = fs.existsSync(configDir);
-  const verified = Boolean(executablePath && version);
-
-  return {
-    name: 'vscode',
-    kind: 'editor-state',
-    installed,
-    verified,
-    executablePath: executablePath || null,
-    version: version || null,
-    configDir,
-    extensionsDir,
-    extensions,
-    capability: {
-      canLaunch: verified,
-      canOpenFiles: verified,
-      hasAIExtensions: extensions.length > 0,
-      aiExtensionCount: extensions.length
-    }
-  };
-}
 
 function detectTools(memoryDir = resolveMemoryDir()) {
   const home = os.homedir();
@@ -6206,34 +5855,6 @@ function hasSharedMemoryInstructions(file) {
   return inspectSharedMemoryInstructions(file).configured;
 }
 
-function inspectSharedMemoryInstructions(file) {
-  if (!file || !fs.existsSync(file)) {
-    return {
-      configured: false,
-      skillLayer: false,
-      skillLayerVersion: "",
-      status: "missing"
-    };
-  }
-  const text = fs.readFileSync(file, "utf8");
-  const configured = text.includes("Shared AI Memory") && (
-    text.includes("ai-memory-hub") ||
-    text.includes(".ai-memory") ||
-    text.includes("AI Memory Hub")
-  );
-  const skillLayerVersion = extractSharedSkillLayerVersion(text);
-  const skillLayer = Boolean(skillLayerVersion);
-  return {
-    configured,
-    skillLayer,
-    skillLayerVersion,
-    status: skillLayer
-      ? `shared-skill-layer-v${skillLayerVersion}`
-      : configured
-        ? "legacy-shared-memory"
-        : "missing"
-  };
-}
 
 
 function getInstallTargetForTool(memoryDir, toolName, installTargets) {
@@ -6533,51 +6154,10 @@ function resolveReference(query, config, options = {}) {
   };
 }
 
-function getDirectResolveCandidates(normalizedQuery, config, fromFile = "") {
-  const home = os.homedir();
-  const roots = [
-    process.cwd(),
-    home,
-    path.join(home, ".codex"),
-    path.join(home, ".claude"),
-    path.join(home, ".gemini"),
-    path.join(home, ".grok"),
-    config.memoryDir,
-    path.join(config.memoryDir, "tools"),
-    projectRoot()
-  ];
-  const candidates = [];
-  const add = (candidatePath, source, confidence = 50) => {
-    candidates.push({ path: candidatePath, source, confidence, evidence: source });
-  };
-  if (fromFile) {
-    add(path.resolve(path.dirname(fromFile), normalizedQuery), `relative:${fromFile}`, 90);
-  }
-  if (path.isAbsolute(normalizedQuery)) {
-    add(normalizedQuery, "absolute-path", 95);
-  }
-  for (const root of roots) {
-    add(path.resolve(root, normalizedQuery), `root:${root}`, root === home ? 80 : 65);
-  }
-  return candidates;
-}
 
 
-function textMentionsResolveQuery(text, normalizedQuery) {
-  const basename = path.basename(normalizedQuery).toLowerCase();
-  const normalizedText = normalizeSearchText(text);
-  return normalizedText.includes(normalizeSearchText(normalizedQuery)) ||
-    (basename && normalizedText.includes(basename));
-}
 
 
-function normalizeCandidatePath(candidatePath) {
-  const clean = resolvePossiblyHomePath(candidatePath);
-  if (!clean) {
-    return "";
-  }
-  return path.isAbsolute(clean) ? path.normalize(clean) : path.resolve(clean);
-}
 
 
 
@@ -6731,12 +6311,6 @@ function getRequestMetricsSnapshot() {
 
 // 统一错误信封：仅用于未捕获异常，局部 400/404 保持原样不动（不破坏前端契约）。
 
-function getPageOptions(url) {
-  return {
-    offset: parsePageParam(url.searchParams.get("offset"), 0),
-    limit: parsePageParam(url.searchParams.get("limit"), undefined)
-  };
-}
 
 
 function sendStaticAsset(res, pathname) {
@@ -6769,13 +6343,6 @@ function sendStaticAsset(res, pathname) {
   fs.createReadStream(normalizedAssetPath).pipe(res);
 }
 
-function getDashboardStaticRoot() {
-  const publicDir = path.join(projectRoot(), "public");
-  if (fs.existsSync(publicDir) && fs.statSync(publicDir).isDirectory()) {
-    return publicDir;
-  }
-  return path.join(projectRoot(), "dashboard-next", "dist");
-}
 
 
 
@@ -6804,11 +6371,6 @@ function readLedger(memoryDir) {
     .filter((item) => item.text);
 }
 
-function writeLedger(memoryDir, ledger) {
-  const file = path.join(memoryDir, "memories", "ledger.jsonl");
-  ensureDir(path.dirname(file));
-  writeFileAtomic(file, ledger.map((item) => JSON.stringify(item)).join("\n") + (ledger.length ? "\n" : ""), "utf8");
-}
 
 
 
@@ -6835,72 +6397,12 @@ function writeLedger(memoryDir, ledger) {
 // Approval Gates
 // ─────────────────────────────────────────────────────────────────────────────
 
-function readApprovalGates(memoryDir, filters = {}) {
-  const gatesFile = path.join(memoryDir, "gates", "approvals.jsonl");
-  if (!fs.existsSync(gatesFile)) return [];
-  const events = readEvents(gatesFile);
-  // Group by gateId, take most recent event per gate
-  const byGate = events.reduce((acc, event) => {
-    const id = event.gateId;
-    if (!acc[id] || event.ts > acc[id].ts) {
-      acc[id] = event;
-    }
-    return acc;
-  }, {});
-  let gates = Object.values(byGate);
-  // Apply filters
-  if (filters.status) gates = gates.filter((g) => g.status === filters.status);
-  if (filters.actor) gates = gates.filter((g) => g.actor === filters.actor);
-  if (filters.reviewer) gates = gates.filter((g) => g.reviewer === filters.reviewer);
-  if (filters.scope) gates = gates.filter((g) => g.scope === filters.scope);
-  if (filters.project) gates = gates.filter((g) => g.project === filters.project);
-  if (filters.refId) gates = gates.filter((g) => g.refId === filters.refId);
-  return gates.sort((a, b) => (b.requestedAt || b.ts).localeCompare(a.requestedAt || a.ts));
-}
 
-function appendApprovalGateEvent(memoryDir, event) {
-  const gatesFile = path.join(memoryDir, "gates", "approvals.jsonl");
-  ensureDir(path.dirname(gatesFile));
-  const normalized = {
-    type: "approval.gate",
-    gateId: event.gateId || crypto.randomBytes(8).toString("hex"),
-    status: event.status,
-    scope: event.scope || "operation",
-    actor: event.actor || "",
-    reviewer: event.reviewer || "human",
-    project: event.project || "",
-    operation: event.operation || "",
-    refId: event.refId || "",
-    refType: event.refType || "",
-    reason: event.reason || "",
-    requestedAt: event.requestedAt || event.ts || new Date().toISOString(),
-    decidedAt: event.decidedAt || "",
-    decisionNote: event.decisionNote || "",
-    evidence: event.evidence || [],
-    expiresAt: event.expiresAt || "",
-    ts: event.ts || new Date().toISOString(),
-    isFinal: ["approved", "rejected", "waived"].includes(event.status)
-  };
-  appendJsonl(gatesFile, normalized);
-  return normalized;
-}
 
 
 // Permission policy layer (P0: capability permission matrix)
 
 
-function readPolicyRules(memoryDir) {
-  const file = getPolicyRulesFile(memoryDir);
-  const events = readEvents(file).filter((event) => String(event.type || "") === "policy.rule" && event.id);
-  const byId = new Map();
-  for (const event of events) {
-    byId.set(event.id, event);
-  }
-  // Tombstones (decision === "__removed__") drop the rule.
-  return Array.from(byId.values())
-    .filter((rule) => rule.decision !== "__removed__")
-    .sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || "")));
-}
 
 function normalizePolicyRule(rule) {
   const operation = String(rule.operation || "").trim();
@@ -7035,51 +6537,8 @@ function resolvePermission(memoryDir, { actor = "*", actorRoles = [], project = 
   return { decision: "allow", reason: "No policy restricts this operation", matchedRule: null };
 }
 
-function rebuildEventSourcedProjections(memoryDir) {
-  bootstrapEntityEventsFromProjection(memoryDir, getTaskEventStoreDefinition());
-  bootstrapEntityEventsFromProjection(memoryDir, getProjectEventStoreDefinition());
-  bootstrapEntityEventsFromProjection(memoryDir, getWorkflowEventStoreDefinition());
-  const tasks = materializeEntityProjection(memoryDir, getTaskEventStoreDefinition());
-  const projects = materializeEntityProjection(memoryDir, getProjectEventStoreDefinition());
-  const workflows = materializeEntityProjection(memoryDir, getWorkflowEventStoreDefinition());
-  return {
-    tasks: tasks.length,
-    projects: projects.length,
-    workflows: workflows.length
-  };
-}
 
-function createProject({ id, name, displayName, status, type, description, metadata, aliases, resources }) {
-  const now = new Date().toISOString();
-  return normalizeProject({
-    id,
-    name,
-    displayName: displayName || name,
-    status: status || "active",
-    type: type || "",
-    description: description || "",
-    metadata: isPlainObject(metadata) ? metadata : {},
-    aliases: Array.isArray(aliases) ? aliases : [],
-    resources: isPlainObject(resources) ? resources : {},
-    createdAt: now,
-    updatedAt: now
-  });
-}
 
-function updateProject(memoryDir, id, updater) {
-  const projects = readProjects(memoryDir);
-  const index = findProjectIndex(projects, id);
-  if (index === -1) {
-    throw new Error(`Project not found: ${id}`);
-  }
-  const updated = normalizeProject({
-    ...updater(projects[index]),
-    updatedAt: new Date().toISOString()
-  });
-  return appendEntityRecord(memoryDir, getProjectEventStoreDefinition(), updated, {
-    reason: "project:update"
-  });
-}
 
 
 
@@ -7102,10 +6561,6 @@ function isProjectVisible(project) {
 }
 
 
-function findProject(projects, query) {
-  const index = findProjectIndex(projects, query);
-  return index === -1 ? null : projects[index];
-}
 
 
 
@@ -7167,112 +6622,8 @@ function getSeedProjects() {
   ].map(normalizeProject);
 }
 
-function createWorkflow({ title, createdBy, project, priority, planner, executor, reviewer, observer, plan, acceptance, qualityGate, githubLinks }) {
-  const now = new Date().toISOString();
-  const cleanTitle = String(title || "").trim();
-  return {
-    id: createId(`workflow:${cleanTitle}:${createdBy}:${project}`),
-    createdAt: now,
-    updatedAt: now,
-    completedAt: "",
-    createdBy: String(createdBy || "manual"),
-    status: "open",
-    priority: normalizePriority(priority),
-    project: String(project || ""),
-    title: cleanTitle,
-    planner: normalizeWorkflowRole(planner),
-    executor: normalizeWorkflowRole(executor),
-    reviewer: normalizeWorkflowRole(reviewer),
-    observer: normalizeWorkflowRole(observer),
-    plan: String(plan || ""),
-    acceptance: String(acceptance || ""),
-    qualityGate: normalizeQualityGate(qualityGate),
-    risks: [],
-    results: [],
-    reviews: [],
-    linkedTasks: [],
-    linkedRadio: [],
-    githubLinks: normalizeGithubLinks(githubLinks),
-    notes: []
-  };
-}
 
-function autoCreateWorkflowNodes(memoryDir, workflow) {
-  // Phase 4: Auto-create initial nodes for planner/executor/reviewer when workflow is created
-  const nodes = [];
 
-  // Roles are arrays, take first element if present
-  const plannerActor = Array.isArray(workflow.planner) && workflow.planner.length > 0 ? workflow.planner[0] : workflow.planner;
-  const executorActor = Array.isArray(workflow.executor) && workflow.executor.length > 0 ? workflow.executor[0] : workflow.executor;
-  const reviewerActor = Array.isArray(workflow.reviewer) && workflow.reviewer.length > 0 ? workflow.reviewer[0] : workflow.reviewer;
-
-  if (plannerActor) {
-    nodes.push({
-      slug: "plan",
-      label: "Planning phase",
-      role: "planner",
-      actor: plannerActor,
-      status: "running", // planner starts immediately
-      isRequired: true
-    });
-  }
-
-  if (executorActor) {
-    nodes.push({
-      slug: "exec",
-      label: "Execution phase",
-      role: "executor",
-      actor: executorActor,
-      status: "queued", // executor waits for plan
-      isRequired: true
-    });
-  }
-
-  if (reviewerActor) {
-    nodes.push({
-      slug: "review",
-      label: "Review phase",
-      role: "reviewer",
-      actor: reviewerActor,
-      status: "queued", // reviewer waits for execution
-      isRequired: !workflow.qualityGate?.reviewOptional // required unless marked optional
-    });
-  }
-
-  // Create node events
-  for (const node of nodes) {
-    appendWorkflowNodeEvent(memoryDir, {
-      type: "workflow.node",
-      workflowId: workflow.id,
-      nodeId: `${workflow.id}:${node.slug}`,
-      slug: node.slug,
-      label: node.label,
-      role: node.role,
-      actor: node.actor,
-      status: node.status,
-      ts: new Date().toISOString(),
-      note: "Auto-created by workflow creation",
-      isRequired: node.isRequired,
-      input: {},
-      output: {},
-      error: ""
-    });
-  }
-
-  return nodes.length;
-}
-
-function updateWorkflow(memoryDir, id, updater) {
-  const workflows = readWorkflows(memoryDir);
-  const index = findWorkflowIndex(workflows, id);
-  if (index === -1) {
-    throw new Error(`Workflow not found: ${id}`);
-  }
-  const updated = normalizeWorkflow(updater(workflows[index]));
-  return appendEntityRecord(memoryDir, getWorkflowEventStoreDefinition(), updated, {
-    reason: "workflow:update"
-  });
-}
 
 
 function spawnWorkflowTasks(memoryDir, workflow) {
@@ -7331,99 +6682,23 @@ function notifyWorkflowRoles(memoryDir, workflow) {
 
 
 
-function createTask({ title, description, handoff, createdBy, project, priority, qualityGate }) {
-  const now = new Date().toISOString();
-  const cleanTitle = String(title || "").trim();
-  const cleanPriority = normalizePriority(priority);
-  return {
-    id: createId(`task:${cleanTitle}:${createdBy}:${project}`),
-    createdAt: now,
-    updatedAt: now,
-    completedAt: "",
-    createdBy: String(createdBy || "manual"),
-    assignee: "",
-    status: "open",
-    priority: cleanPriority,
-    project: String(project || ""),
-    title: cleanTitle,
-    description: String(description || ""),
-    handoff: String(handoff || ""),
-    qualityGate: normalizeQualityGate(qualityGate),
-    notes: []
-  };
-}
-
-function updateTask(memoryDir, id, updater) {
-  const tasks = readTasks(memoryDir);
-  const index = findTaskIndex(tasks, id);
-  if (index === -1) {
-    throw new Error(`Task not found: ${id}`);
-  }
-  const updated = normalizeTask(updater(tasks[index]));
-  return appendEntityRecord(memoryDir, getTaskEventStoreDefinition(), updated, {
-    reason: "task:update"
-  });
-}
 
 
 
 
 
 
-function assertTaskStatus(status) {
-  if (!isTaskStatus(status)) {
-    throw new Error(`Invalid task status: ${status}`);
-  }
-}
 
-function assertWorkflowStatus(status) {
-  if (!isWorkflowStatus(status)) {
-    throw new Error(`Invalid workflow status: ${status}`);
-  }
-}
+
 
 
 
 // Session Handoff Functions
-function readSessions(memoryDir) {
-  const file = path.join(memoryDir, "context", "sessions.jsonl");
-  return readEvents(file);
-}
 
 
-function readUnreadReceipts(memoryDir) {
-  return readEvents(path.join(memoryDir, "state", "unread.jsonl"));
-}
 
-function appendUnreadReceipt(memoryDir, receipt) {
-  appendJsonl(path.join(memoryDir, "state", "unread.jsonl"), {
-    id: createId(`unread:${receipt.itemId}:${receipt.actor}:${Date.now()}`),
-    ts: new Date().toISOString(),
-    ...receipt
-  });
-}
 
-function writeSessions(memoryDir, sessions) {
-  const file = path.join(memoryDir, "context", "sessions.jsonl");
-  ensureDir(path.dirname(file));
-  writeFileAtomic(file, sessions.map((s) => JSON.stringify(s)).join("\n") + (sessions.length ? "\n" : ""), "utf8");
-}
 
-function createSession({ title, createdBy, project, participants, context, artifacts }) {
-  return {
-    id: createId(`session:${title}:${createdBy}:${Date.now()}`),
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    lastActive: new Date().toISOString(),
-    createdBy: createdBy || "unknown",
-    project: project || "",
-    title: title || "Untitled Session",
-    participants: participants || [],
-    context: context || "",
-    artifacts: artifacts || [],
-    metadata: {}
-  };
-}
 
 function updateSession(memoryDir, sessionId, updates) {
   const sessions = readSessions(memoryDir);
@@ -7456,55 +6731,10 @@ function getActiveSessions(memoryDir, maxAgeMs = 3600000) {
 }
 
 // RPC Functions
-function createRpcRequest({ from, to, method, params, timeout }) {
-  return {
-    id: createId(`rpc:${from}:${to}:${method}:${Date.now()}`),
-    createdAt: new Date().toISOString(),
-    from: from || "unknown",
-    to: to || "unknown",
-    method: method || "",
-    params: params || {},
-    timeout: Number(timeout || 30000),
-    status: "pending"
-  };
-}
 
-function writeRpcRequest(memoryDir, request) {
-  const file = path.join(memoryDir, "rpc", "requests", `${request.id}.json`);
-  ensureDir(path.dirname(file));
-  writeFileAtomic(file, JSON.stringify(request, null, 2) + "\n", "utf8");
-}
 
-function readRpcRequest(memoryDir, requestId) {
-  const file = path.join(memoryDir, "rpc", "requests", `${requestId}.json`);
-  if (!fs.existsSync(file)) {
-    return null;
-  }
-  return readJson(file);
-}
 
-function writeRpcResult(memoryDir, requestId, result) {
-  const resultData = {
-    id: createId(`rpc-result:${requestId}:${Date.now()}`),
-    requestId,
-    createdAt: new Date().toISOString(),
-    success: result.success !== false,
-    data: result.data || null,
-    error: result.error || null
-  };
-  const file = path.join(memoryDir, "rpc", "results", `${requestId}.json`);
-  ensureDir(path.dirname(file));
-  writeFileAtomic(file, JSON.stringify(resultData, null, 2) + "\n", "utf8");
-  return resultData;
-}
 
-function readRpcResult(memoryDir, requestId) {
-  const file = path.join(memoryDir, "rpc", "results", `${requestId}.json`);
-  if (!fs.existsSync(file)) {
-    return null;
-  }
-  return readJson(file);
-}
 
 function waitForRpcResult(memoryDir, requestId, timeoutMs = 30000) {
   const started = Date.now();
@@ -7519,33 +6749,9 @@ function waitForRpcResult(memoryDir, requestId, timeoutMs = 30000) {
 }
 
 // Notification Bus Functions
-function createNotification({ severity, title, message, actionUrl, channels, from, project }) {
-  return {
-    id: createId(`notification:${severity}:${Date.now()}`),
-    createdAt: new Date().toISOString(),
-    severity: normalizeSeverity(severity),
-    title: title || "",
-    message: message || "",
-    actionUrl: actionUrl || "",
-    channels: channels || [],
-    from: from || "unknown",
-    project: project || "",
-    status: "pending",
-    deliveredTo: []
-  };
-}
 
 
-function writeNotification(memoryDir, notification) {
-  const file = path.join(memoryDir, "notifications", "notifications.jsonl");
-  ensureDir(path.dirname(file));
-  appendJsonl(file, notification);
-}
 
-function readNotifications(memoryDir) {
-  const file = path.join(memoryDir, "notifications", "notifications.jsonl");
-  return readEvents(file);
-}
 
 function getPendingNotifications(memoryDir) {
   return readNotifications(memoryDir).filter((n) => n.status === "pending");
@@ -7676,52 +6882,11 @@ function searchMemoriesForContext(memoryDir, query, project, limit = 10) {
   }
 }
 
-function writeContextPack(memoryDir, pack) {
-  const file = path.join(memoryDir, "context", "packs", `${pack.id}.json`);
-  ensureDir(path.dirname(file));
-  writeFileAtomic(file, JSON.stringify(pack, null, 2) + "\n", "utf8");
-  return file;
-}
 
-function readContextPack(memoryDir, packId) {
-  const file = path.join(memoryDir, "context", "packs", `${packId}.json`);
-  if (!fs.existsSync(file)) {
-    return null;
-  }
-  return readJson(file);
-}
 
 // Scheduler Queue Functions
-function createDispatchQueueEntry({ taskId, workflowId, radioId, tool, priority, timeout, maxRetries }) {
-  return {
-    id: createId(`queue:${tool}:${Date.now()}`),
-    createdAt: new Date().toISOString(),
-    taskId: taskId || "",
-    workflowId: workflowId || "",
-    radioId: radioId || "",
-    tool: tool || "",
-    priority: normalizePriority(priority || "normal"),
-    timeout: Number(timeout || 30000),
-    maxRetries: Number(maxRetries || 3),
-    status: "queued",
-    startedAt: "",
-    completedAt: "",
-    attempts: 0,
-    lastAttemptAt: "",
-    lastError: ""
-  };
-}
 
-function readDispatchQueue(memoryDir) {
-  const file = path.join(memoryDir, "dispatch", "queue.jsonl");
-  return readEvents(file);
-}
 
-function writeDispatchQueueEntry(memoryDir, entry) {
-  const file = path.join(memoryDir, "dispatch", "queue.jsonl");
-  ensureDir(path.dirname(file));
-  appendJsonl(file, entry);
-}
 
 function updateDispatchQueueEntry(memoryDir, entryId, updates) {
   const file = path.join(memoryDir, "dispatch", "queue.jsonl");
@@ -7821,13 +6986,6 @@ function recipeListLocations(memoryDir) {
 
 
 
-function mergeQualityGates(...sources) {
-  const merged = {};
-  for (const source of sources) {
-    Object.assign(merged, normalizeQualityGate(source));
-  }
-  return merged;
-}
 
 function validateQualityGateFields(source, label) {
   if (!isPlainObject(source)) {
@@ -7885,90 +7043,11 @@ function validateQualityGateFields(source, label) {
 }
 
 
-function validateVerifyCommand(command, label) {
-  if (typeof command === "string") {
-    return command.trim()
-      ? { valid: true }
-      : { valid: false, error: `${label} must be a non-empty command string` };
-  }
-  if (!isPlainObject(command)) {
-    return { valid: false, error: `${label} must be a command string or object` };
-  }
-  const hasCommandTarget = ["id", "source", "command"].some((field) => (
-    typeof command[field] === "string" && command[field].trim()
-  ));
-  if (!hasCommandTarget) {
-    return { valid: false, error: `${label} must define id, source, or command` };
-  }
-  if (hasOwnField(command, "args") && !Array.isArray(command.args)) {
-    return { valid: false, error: `${label}.args must be an array` };
-  }
-  if (hasOwnField(command, "timeoutMs") && (!Number.isInteger(command.timeoutMs) || command.timeoutMs <= 0)) {
-    return { valid: false, error: `${label}.timeoutMs must be a positive integer` };
-  }
-  if (hasOwnField(command, "required") && typeof command.required !== "boolean") {
-    return { valid: false, error: `${label}.required must be a boolean` };
-  }
-  return { valid: true };
-}
 
 
 
 
-function validateMinimalImplementation(source, label) {
-  if (!isPlainObject(source)) {
-    return { valid: false, error: `${label} must be an object` };
-  }
-  if (hasOwnField(source, "enabled") && typeof source.enabled !== "boolean") {
-    return { valid: false, error: `${label}.enabled must be a boolean` };
-  }
-  if (hasOwnField(source, "principles")) {
-    if (!Array.isArray(source.principles) || source.principles.some((item) => typeof item !== "string" || item.trim() === "")) {
-      return { valid: false, error: `${label}.principles must be an array of non-empty strings` };
-    }
-  }
-  if (hasOwnField(source, "forbiddenPatterns")) {
-    if (!Array.isArray(source.forbiddenPatterns) || source.forbiddenPatterns.some((item) => typeof item !== "string" || item.trim() === "")) {
-      return { valid: false, error: `${label}.forbiddenPatterns must be an array of non-empty strings` };
-    }
-  }
-  if (hasOwnField(source, "maxNewFiles") && (!Number.isInteger(source.maxNewFiles) || source.maxNewFiles < 0)) {
-    return { valid: false, error: `${label}.maxNewFiles must be a non-negative integer` };
-  }
-  if (hasOwnField(source, "maxLinesPerFile") && (!Number.isInteger(source.maxLinesPerFile) || source.maxLinesPerFile < 0)) {
-    return { valid: false, error: `${label}.maxLinesPerFile must be a non-negative integer` };
-  }
-  return { valid: true };
-}
 
-function validateDependencyBudget(source, label) {
-  if (!isPlainObject(source)) {
-    return { valid: false, error: `${label} must be an object` };
-  }
-  if (hasOwnField(source, "enabled") && typeof source.enabled !== "boolean") {
-    return { valid: false, error: `${label}.enabled must be a boolean` };
-  }
-  if (hasOwnField(source, "maxNewDependencies") && (!Number.isInteger(source.maxNewDependencies) || source.maxNewDependencies < 0)) {
-    return { valid: false, error: `${label}.maxNewDependencies must be a non-negative integer` };
-  }
-  if (hasOwnField(source, "maxTotalSizeMB") && (!Number.isInteger(source.maxTotalSizeMB) || source.maxTotalSizeMB < 0)) {
-    return { valid: false, error: `${label}.maxTotalSizeMB must be a non-negative integer` };
-  }
-  if (hasOwnField(source, "allowedScopes")) {
-    if (!Array.isArray(source.allowedScopes) || source.allowedScopes.some((item) => typeof item !== "string" || item.trim() === "")) {
-      return { valid: false, error: `${label}.allowedScopes must be an array of non-empty strings` };
-    }
-  }
-  if (hasOwnField(source, "forbiddenPackages")) {
-    if (!Array.isArray(source.forbiddenPackages) || source.forbiddenPackages.some((item) => typeof item !== "string" || item.trim() === "")) {
-      return { valid: false, error: `${label}.forbiddenPackages must be an array of non-empty strings` };
-    }
-  }
-  if (hasOwnField(source, "requireJustification") && typeof source.requireJustification !== "boolean") {
-    return { valid: false, error: `${label}.requireJustification must be a boolean` };
-  }
-  return { valid: true };
-}
 
 
 function validateQualityGate(source, label) {
@@ -8287,19 +7366,6 @@ function normalizeTaskSpecVerify(verify) {
 
 
 
-function summarizeTaskSpec(task) {
-  return {
-    id: task.id,
-    title: task.title,
-    command: selectPlatformCommand(task),
-    args: task.args,
-    cwd: task.cwd,
-    hasVerify: task.verify.length > 0,
-    ports: task.ports,
-    resources: task.resources,
-    logs: task.logs
-  };
-}
 
 
 function runTaskSpec(task, { projectRoot, runVerify = true, allowOutsideCwd = false } = {}) {
@@ -8399,31 +7465,7 @@ function runTaskSpecProcess(commandSpec, { projectRoot, phase, inherit = {}, all
 }
 
 
-function writeTaskSpecProcessLogs(projectRoot, logs, completed) {
-  const written = {};
-  for (const [stream, text] of [
-    ["stdout", completed.stdout],
-    ["stderr", completed.stderr]
-  ]) {
-    const relativeLogPath = logs?.[stream] || "";
-    if (!relativeLogPath) {
-      continue;
-    }
-    const file = resolveInside(projectRoot, relativeLogPath);
-    ensureDir(path.dirname(file));
-    writeFileAtomic(file, String(text || ""), "utf8");
-    written[stream] = path.relative(projectRoot, file).replace(/\\/g, "/");
-  }
-  return written;
-}
 
-function resolveTaskSpecCwd(projectRoot, cwd, allowOutsideCwd) {
-  const resolved = path.resolve(projectRoot, cwd || ".");
-  if (!allowOutsideCwd) {
-    resolveInside(projectRoot, path.relative(projectRoot, resolved) || ".");
-  }
-  return resolved;
-}
 
 
 
@@ -8443,9 +7485,6 @@ function normalizeMemoryMetadata(metadata = {}, fallback = {}) {
 
 
 
-function parseListOption(value) {
-  return normalizeList(value);
-}
 
 function normalizeMemoryRefs(refs = {}, fallback = {}) {
   const source = isPlainObject(refs) ? refs : {};
@@ -8472,18 +7511,6 @@ function normalizeMemoryRefs(refs = {}, fallback = {}) {
 
 
 
-function normalizeRefValues(value) {
-  if (Array.isArray(value)) {
-    return [...new Set(value.flatMap((item) => normalizeRefValues(item)))];
-  }
-  if (value === undefined || value === null || value === "") {
-    return [];
-  }
-  if (isPlainObject(value)) {
-    return Object.values(value).flatMap((item) => normalizeRefValues(item));
-  }
-  return [String(value).trim()].filter(Boolean);
-}
 
 function flattenMemoryRefs(refs = {}) {
   if (!isPlainObject(refs)) {
@@ -8517,36 +7544,8 @@ function parseMemoryFilters(argv) {
   };
 }
 
-function parseMemoryTagFilters(argv) {
-  return normalizeList([
-    getOption(argv, "--tag"),
-    getOption(argv, "--tags")
-  ]);
-}
 
 
-function formatMemoryFilterSummary(filters = {}) {
-  const parts = [];
-  if (filters.project) {
-    parts.push(`project=${normalizeMemoryProject(filters.project)}`);
-  }
-  if (filters.tags?.length) {
-    parts.push(`tags=${filters.tags.join(",")}`);
-  }
-  if (filters.thread) {
-    parts.push(`thread=${normalizeRefToken(filters.thread)}`);
-  }
-  if (filters.taskId) {
-    parts.push(`taskId=${normalizeRefToken(filters.taskId)}`);
-  }
-  if (filters.workflowId) {
-    parts.push(`workflowId=${normalizeRefToken(filters.workflowId)}`);
-  }
-  if (filters.radioId) {
-    parts.push(`radioId=${normalizeRefToken(filters.radioId)}`);
-  }
-  return parts.join(" ");
-}
 
 function filterMemoryRecords(records, filters = {}) {
   return records
@@ -8559,14 +7558,6 @@ function filterMemoryRecords(records, filters = {}) {
     .filter((record) => matchesMemoryRef(record, "radioId", filters.radioId));
 }
 
-function matchesMemoryTags(memory, queryTags = []) {
-  const requested = normalizeList(queryTags);
-  if (requested.length === 0) {
-    return true;
-  }
-  const candidates = normalizeList(memory.tags?.length ? memory.tags : memory.metadata?.tags);
-  return requested.every((tag) => candidates.includes(tag));
-}
 
 function matchesMemoryRef(memory, key, query) {
   if (!query) {
@@ -8617,68 +7608,7 @@ function touchMemoryAccess(record, accessedAt = new Date().toISOString()) {
   return applyMemoryAccessFields({ ...record, metadata }, access);
 }
 
-function getMemoryAccessStats(memory = {}) {
-  const lifecycle = isPlainObject(memory.metadata?.lifecycle) ? memory.metadata.lifecycle : {};
-  const lifecycleAccess = isPlainObject(lifecycle.access) ? lifecycle.access : {};
-  const accessCountValue = firstDefinedValue(
-    memory.accessCount,
-    memory.metadata?.accessCount,
-    lifecycleAccess.accessCount,
-    lifecycleAccess.count
-  );
-  const firstAccessedAt = normalizeMemoryAccessTimestamp(firstDefinedValue(
-    memory.firstAccessedAt,
-    memory.metadata?.firstAccessedAt,
-    lifecycleAccess.firstAccessedAt
-  ));
-  const lastAccessedAt = normalizeMemoryAccessTimestamp(firstDefinedValue(
-    memory.lastAccessedAt,
-    memory.metadata?.lastAccessedAt,
-    lifecycleAccess.lastAccessedAt
-  ));
-  const hasAccessTelemetry = [
-    memory.accessCount,
-    memory.lastAccessedAt,
-    memory.firstAccessedAt,
-    memory.metadata?.accessCount,
-    memory.metadata?.lastAccessedAt,
-    memory.metadata?.firstAccessedAt,
-    lifecycleAccess.accessCount,
-    lifecycleAccess.count,
-    lifecycleAccess.lastAccessedAt,
-    lifecycleAccess.firstAccessedAt
-  ].some((value) => value !== undefined && value !== null && value !== "");
 
-  return {
-    accessCount: normalizeMemoryAccessCount(accessCountValue),
-    firstAccessedAt,
-    lastAccessedAt,
-    hasAccessTelemetry
-  };
-}
-
-function mergeMemoryAccessMetadata(metadata = {}, access = {}, derived = {}) {
-  if (!access.hasAccessTelemetry) {
-    return metadata;
-  }
-  const lifecycle = isPlainObject(metadata.lifecycle) ? metadata.lifecycle : {};
-  const lifecycleAccess = isPlainObject(lifecycle.access) ? lifecycle.access : {};
-  return {
-    ...metadata,
-    lifecycle: {
-      ...lifecycle,
-      access: {
-        ...lifecycleAccess,
-        accessCount: access.accessCount,
-        count: access.accessCount,
-        ...(access.firstAccessedAt ? { firstAccessedAt: access.firstAccessedAt } : {}),
-        ...(access.lastAccessedAt ? { lastAccessedAt: access.lastAccessedAt } : {}),
-        ...(derived.heat !== undefined ? { heat: Number(derived.heat || 0) } : {}),
-        ...(derived.stalePenalty !== undefined ? { stalePenalty: Number(derived.stalePenalty || 0) } : {})
-      }
-    }
-  };
-}
 
 
 
@@ -8754,41 +7684,7 @@ function buildMemoryIndex(memories, config) {
   };
 }
 
-function readMemoryLifecycleOperations(memoryDir) {
-  return readEvents(path.join(memoryDir, "memories", "operations.jsonl"));
-}
 
-function applyMemoryLifecycleOperations(records, operations, getIdentityKeys) {
-  const lookup = new Map();
-  for (const record of records) {
-    for (const key of getIdentityKeys(record)) lookup.set(normalizeSupersedeToken(key), record);
-  }
-  const overlays = new Map();
-  for (const operation of [...operations].sort((a, b) => String(a.ts || "").localeCompare(String(b.ts || "")))) {
-    const target = lookup.get(normalizeSupersedeToken(operation.target?.recordId));
-    if (!target) continue;
-    const key = getIdentityKeys(target)[0];
-    if (!key) continue;
-    const current = overlays.get(key) || {};
-    let state = operation.patch?.lifecycle?.state || current.state || "active";
-    if ((operation.action === "pin" || operation.action === "review") && current.state !== "revoked") state = "active";
-    if (operation.action === "supersede") state = "superseded";
-    if (operation.action === "revoke") state = "revoked";
-    if (operation.action === "archive") state = "archived";
-    overlays.set(key, {
-      ...current,
-      state,
-      reason: operation.reason || current.reason || "",
-      reviewedAt: operation.action === "review" ? operation.ts : current.reviewedAt,
-      supersededBy: operation.refs?.supersededBy || current.supersededBy || []
-    });
-  }
-  return records.map((record) => {
-    const overlay = overlays.get(getIdentityKeys(record)[0]);
-    const lifecycle = { ...(record.metadata?.lifecycle || {}), ...(overlay || {}), state: overlay?.state || record.metadata?.lifecycle?.state || "active" };
-    return { ...record, lifecycle, metadata: { ...(record.metadata || {}), lifecycle } };
-  });
-}
 
 
 function enrichMemory(memory, ordinal, total) {
@@ -8934,18 +7830,6 @@ function getMemoryIdentityKeys(record) {
     .filter(Boolean);
 }
 
-function normalizeSupersedeRefs(value) {
-  if (Array.isArray(value)) {
-    return [...new Set(value.flatMap(normalizeSupersedeRefs))];
-  }
-  if (isPlainObject(value)) {
-    return normalizeSupersedeRefs(Object.values(value));
-  }
-  return String(value || "")
-    .split(",")
-    .map(normalizeSupersedeToken)
-    .filter(Boolean);
-}
 
 
 function renderMemorySnapshot(index, config, options = {}) {
@@ -9054,41 +7938,11 @@ function selectStartupMemoryRecords(records = [], _config = {}) {
     .slice(0, STARTUP_MEMORY_LIMIT);
 }
 
-function isStartupMemoryRecord(record) {
-  const tags = normalizeList(record.tags?.length ? record.tags : record.metadata?.tags);
-  const scope = normalizeMemoryScope(record.scope || record.metadata?.scope || "");
-  const kind = normalizeMemoryKind(record.kind || record.metadata?.kind || "note");
-  const text = String(record.text || "");
-  if (tags.some((tag) => ["startup", "bootstrap", "boot", "agent-startup", "critical", "pinned"].includes(tag))) {
-    return true;
-  }
-  if (["startup", "bootstrap", "agent-startup"].includes(scope)) {
-    return true;
-  }
-  if (!["preference", "workflow", "correction", "project", "lesson", "reference"].includes(kind)) {
-    return false;
-  }
-  return /RTK\.md|AGENTS\.md|CLAUDE\.md|GEMINI\.md|@include|@引用|Shared AI Memory|Shared Agent Radio|Shared Task List|Shared Workflows|ai-memory-hub search|inbox\/events\.jsonl|memories\/ledger\.jsonl|MEMORY\.md|共享记忆|共同记忆|启动|启动关键|指令/i.test(text);
-}
 
 function getMemoryRecordStableKey(record) {
   return getMemoryPrimaryKey(record) || record.id || record.localEventId || record.text || "";
 }
 
-function resolveSnapshotLimits(config = {}) {
-  const snapshotLimit = readPositiveInteger(config.sync?.snapshotLimit, 120);
-  const explicitCoreLimit = hasExplicitSyncKey(config, "coreLimit");
-  const explicitRecentLimit = hasExplicitSyncKey(config, "recentLimit");
-  return {
-    snapshotLimit,
-    coreLimit: explicitCoreLimit
-      ? readPositiveInteger(config.sync.coreLimit, 30)
-      : Math.max(10, Math.round(snapshotLimit * 0.25)),
-    recentLimit: explicitRecentLimit
-      ? readPositiveInteger(config.sync.recentLimit, 18)
-      : Math.max(5, Math.round(snapshotLimit * 0.15))
-  };
-}
 
 
 
@@ -9438,17 +8292,6 @@ function buildMemoryHealthRepairPlan(analysis) {
 }
 
 
-function summarizeHealthAnalysisForRepair(analysis) {
-  return {
-    score: analysis.score,
-    status: analysis.status,
-    totalRecords: analysis.totalRecords,
-    qualityRecords: analysis.qualityRecords,
-    duplicateRecords: analysis.duplicateRecords,
-    corruptedRecords: analysis.corruptedRecords.length,
-    storageDisplay: formatBytes(analysis.storage.totalBytes)
-  };
-}
 
 function applyMemoryHealthRepairPlan(ledger, plan) {
   const now = new Date().toISOString();
@@ -9606,17 +8449,6 @@ function recoverMemoryEventFromRawText(rawText) {
 }
 
 
-function parseJsonObjectCandidate(text) {
-  if (!text.startsWith("{") || !text.endsWith("}")) {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(text);
-    return isPlainObject(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
-}
 
 function parseLooseJsonMemoryEvent(text) {
   if (!text.startsWith("{")) {
@@ -9666,9 +8498,6 @@ function extractLooseJsonStringField(text, field) {
   return "";
 }
 
-function sanitizeLedgerText(value) {
-  return sanitizeDisplayText(value).trim();
-}
 
 function findDuplicateMemoryGroups(records) {
   const groups = new Map();
@@ -9692,12 +8521,6 @@ function findDuplicateMemoryGroups(records) {
     .sort((a, b) => b.count - a.count || a.example.localeCompare(b.example));
 }
 
-function normalizeDuplicateMemoryText(text) {
-  return normalizeSearchText(text)
-    .replace(/[^\p{L}\p{N}\u4e00-\u9fff]+/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
 
 function isCorruptedMemoryRecord(record) {
   if (isMemoryHealthExcluded(record)) {
@@ -9710,30 +8533,6 @@ function isCorruptedMemoryRecord(record) {
 }
 
 
-function getMemoryStorageSummary(memoryDir) {
-  const items = [
-    ["MEMORY.md", path.join(memoryDir, "MEMORY.md")],
-    ["INDEX.md", path.join(memoryDir, "INDEX.md")],
-    ["memories/ledger.jsonl", path.join(memoryDir, "memories", "ledger.jsonl")],
-    ["memories/index.json", path.join(memoryDir, "memories", "index.json")],
-    ["inbox/events.jsonl", path.join(memoryDir, "inbox", "events.jsonl")],
-    ["radio/messages.jsonl", path.join(memoryDir, "radio", "messages.jsonl")],
-    ["tasks/tasks.jsonl", path.join(memoryDir, "tasks", "tasks.jsonl")],
-    ["workflows/workflows.jsonl", path.join(memoryDir, "workflows", "workflows.jsonl")],
-    ["backups/", path.join(memoryDir, "backups")]
-  ].map(([label, target]) => ({
-    label,
-    bytes: getPathSize(target)
-  }));
-  const ledgerBytes = items.find((item) => item.label === "memories/ledger.jsonl")?.bytes || 0;
-  const backupsBytes = items.find((item) => item.label === "backups/")?.bytes || 0;
-  return {
-    totalBytes: getPathSize(memoryDir),
-    ledgerBytes,
-    backupsBytes,
-    items
-  };
-}
 
 
 
@@ -9771,9 +8570,6 @@ function containsCorruptionMarker(value) {
 }
 
 
-function sanitizeInlineText(value) {
-  return sanitizeDisplayText(value).replace(/\s+/g, " ").trim();
-}
 
 
 function searchMemories(records, query) {
@@ -9893,35 +8689,7 @@ function isOperationalRadioMemory(memory, text) {
 
 
 
-function inferTopics(memory) {
-  const tags = normalizeList(memory.tags?.length ? memory.tags : memory.metadata?.tags);
-  const text = `${memory.text || ""} ${memory.project || memory.metadata?.project || ""} ${tags.join(" ")}`.toLowerCase();
-  const topics = [];
-  const rules = [
-    ["ai-memory-hub", /ai-memory|shared memory|memory hub|agent radio|opencode|mimocode|mimo code|grok|xai|qclaw|coze|扣子|claude|codex|gemini|共享记忆|本地记忆/],
-    ["game", /game|unity|mahjong|match|西游|麻将|小游戏|策划|关卡|体力|广告|分享/],
-    ["wechat-mini-game", /wechat|微信|小游戏|wx\.|sendgift|红包|开放能力/],
-    ["lark-feishu", /lark|feishu|飞书|多维表格|任务|文档|lark-cli/],
-    ["git", /git|github|gitee|commit|提交/],
-    ["team", /team|member|role|团队|成员|pm|planner|dev|art/],
-    ["automation", /automation|daemon|watcher|script|自动|脚本|后台|签到/],
-    ["docs", /readme|doc|文档|prd|gdd|策划文档/],
-    ["security", /secret|password|token|key|合规|隐私|上传|ignore|gitignore/]
-  ];
-  for (const [topic, pattern] of rules) {
-    if (pattern.test(text)) topics.push(topic);
-  }
-  return [...new Set(topics)];
-}
 
-function extractKeywords(text) {
-  const normalized = normalizeSearchText(text);
-  const latin = normalized.match(/[a-z0-9][a-z0-9_.-]{1,}/g) || [];
-  const cjk = normalized.match(/[\u4e00-\u9fff]{2,}/g) || [];
-  const ngrams = extractCjkNgrams(normalized);
-  const stop = new Set(["the", "and", "for", "with", "when", "this", "that", "into", "from", "should", "memory", "local"]);
-  return [...new Set([...latin, ...cjk, ...ngrams].filter((term) => term && !stop.has(term)).slice(0, 120))];
-}
 
 function extractSearchTerms(text) {
   const normalized = normalizeSearchText(text);
@@ -9932,64 +8700,14 @@ function extractSearchTerms(text) {
 }
 
 
-function extractCompactVariants(text) {
-  const normalized = normalizeSearchText(text);
-  if (!normalized) return [];
-  const compact = normalized.replace(/[\s`~!@#$%^&*()\-_=+\[\]{}\\|;:'",<.>/?。，、；：！？（）【】《》“”‘’]+/g, "");
-  return compact && compact !== normalized ? [compact] : [];
-}
 
 
 
 
 
-function archiveInbox(memoryDir, events) {
-  if (events.length === 0) {
-    return;
-  }
-  const archiveName = `events-${new Date().toISOString().replace(/[:.]/g, "-")}.jsonl`;
-  const archivePath = path.join(memoryDir, "synced", archiveName);
-  writeFileAtomic(archivePath, events.map((event) => JSON.stringify(event)).join("\n") + "\n", "utf8");
-}
-
-function writeInboxEvents(inboxPath, events) {
-  ensureDir(path.dirname(inboxPath));
-  writeFileAtomic(inboxPath, events.map((event) => JSON.stringify(event)).join("\n") + (events.length ? "\n" : ""), "utf8");
-}
 
 
-function backupHub(memoryDir, reason, options = {}) {
-  const createdAt = (options.now instanceof Date ? options.now : new Date()).toISOString();
-  const stamp = createdAt.replace(/[:.]/g, "-");
-  const safeReason = String(reason || "manual").replace(/[^A-Za-z0-9_.-]+/g, "-").slice(0, 48) || "manual";
-  const backupDir = path.join(memoryDir, "backups", `${stamp}-${safeReason}`);
-  ensureDir(backupDir);
 
-  const files = getBackupFileCatalog(memoryDir);
-  const copied = [];
-  for (const file of files) {
-    if (fs.existsSync(file.target)) {
-      fs.copyFileSync(file.target, path.join(backupDir, file.name));
-      copied.push(file.name);
-    }
-  }
-
-  const manifest = {
-    id: createId(`backup:${createdAt}:${reason}:${backupDir}`),
-    createdAt,
-    reason,
-    dir: backupDir,
-    trigger: options.trigger || "",
-    retention: {
-      tier: options.retentionTier || inferBackupRetentionTier(reason),
-      key: options.retentionKey || "",
-      policy: options.retentionPolicy || ""
-    },
-    files: copied
-  };
-  writeJson(path.join(backupDir, "manifest.json"), manifest);
-  return manifest;
-}
 
 function getBackupDetail(memoryDir, name) {
   const backupDir = resolveBackupDirectory(memoryDir, name);
@@ -10130,26 +8848,7 @@ function describeBackupFile(memoryDir, backupDir, name, spec) {
   };
 }
 
-function resolveBackupDirectory(memoryDir, name) {
-  const rawName = String(name || "").trim();
-  if (!rawName || rawName.includes("/") || rawName.includes("\\") || rawName === "." || rawName === "..") {
-    throw new Error("A valid backup name is required.");
-  }
-  const backupsRoot = path.resolve(memoryDir, "backups");
-  const backupDir = path.resolve(backupsRoot, rawName);
-  if (!isPathInsideDirectory(backupDir, backupsRoot)) {
-    throw new Error("Backup path is outside backups directory.");
-  }
-  if (!fs.existsSync(backupDir) || !fs.statSync(backupDir).isDirectory()) {
-    throw new Error(`Backup not found: ${rawName}`);
-  }
-  return backupDir;
-}
 
-function readBackupManifest(backupDir) {
-  const manifestPath = path.join(backupDir, "manifest.json");
-  return fs.existsSync(manifestPath) ? readJsonSafe(manifestPath, {}) : {};
-}
 
 
 function getBackupFilePreview(file) {
@@ -10622,20 +9321,7 @@ function getGitHubBackupScheduleStatus(github = getGitHubBackupConfig()) {
   return result;
 }
 
-function getGitHubBackupExportFiles(memoryDir, github) {
-  const include = github.include.length ? github.include : getBackupFileCatalog(memoryDir).map((file) => file.name);
-  const exclude = github.exclude || [];
-  return getBackupFileCatalog(memoryDir)
-    .filter((file) => fs.existsSync(file.target))
-    .filter((file) => matchesAnyBackupPattern(file.name, include))
-    .filter((file) => !matchesAnyBackupPattern(file.name, exclude));
-}
 
-function getDefaultGitHubBackupInclude(memoryDir) {
-  return getBackupFileCatalog(memoryDir)
-    .map((file) => file.name)
-    .filter((name) => name !== "config.json");
-}
 
 function exportGitHubBackupSnapshot(memoryDir, repoDir, files, { reason, startedAt, remoteUrl, branch }) {
   const root = path.resolve(repoDir);
@@ -10751,24 +9437,7 @@ function updateGitHubBackupScheduleState(config, patch) {
 
 
 
-function assertSafeGitHubBackupRepoDir(memoryDir, repoDir) {
-  const memoryRoot = path.resolve(memoryDir);
-  const repoRoot = path.resolve(repoDir);
-  if (repoRoot === memoryRoot || isPathInsideDirectory(repoRoot, memoryRoot)) {
-    throw new Error("GitHub backup repoDir must be outside the memoryDir to avoid recursive backup.");
-  }
-  if (repoRoot === path.parse(repoRoot).root) {
-    throw new Error("GitHub backup repoDir cannot be a filesystem root.");
-  }
-}
 
-function ensureSafeChildPath(target, root) {
-  const resolvedTarget = path.resolve(target);
-  const resolvedRoot = path.resolve(root);
-  if (resolvedTarget !== resolvedRoot && !isPathInsideDirectory(resolvedTarget, resolvedRoot)) {
-    throw new Error(`Refusing to write outside expected directory: ${target}`);
-  }
-}
 
 function runGitCommand(repoDir, args, options = {}) {
   const git = resolveGitProcessCommand();
@@ -10951,63 +9620,12 @@ function listBackupDirectories(memoryDir) {
     .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
 }
 
-function planBackupRetention(backups, { daily = 7, weekly = 4, preSync = 20, prePull = 20 } = {}) {
-  const keep = new Map();
-  const markKeep = (backup, reason) => {
-    if (!backup || keep.has(backup.name)) return;
-    keep.set(backup.name, { ...backup, retention: "keep", retentionReason: reason });
-  };
-  const sorted = [...backups].sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
-  markKeep(sorted[0], "latest");
-
-  markProtectedBackups(sorted, markKeep);
-  markTieredBackups(sorted, {
-    tier: "daily",
-    limit: daily,
-    keyForBackup: (backup) => backup.retentionKey || formatBackupDay(backup.createdAt),
-    label: "daily"
-  }, markKeep);
-  markTieredBackups(sorted, {
-    tier: "weekly",
-    limit: weekly,
-    keyForBackup: (backup) => backup.retentionKey || getIsoWeekKey(backup.createdAt),
-    label: "weekly"
-  }, markKeep);
-  markTieredBackups(sorted, {
-    tier: "pre-sync",
-    limit: preSync,
-    keyForBackup: (backup) => backup.name,
-    label: "pre-sync"
-  }, markKeep);
-  markTieredBackups(sorted, {
-    tier: "pre-pull",
-    limit: prePull,
-    keyForBackup: (backup) => backup.name,
-    label: "pre-pull"
-  }, markKeep);
-
-  const keepList = sorted.map((backup) => keep.get(backup.name)).filter(Boolean);
-  const prune = sorted
-    .filter((backup) => !keep.has(backup.name))
-    .map((backup) => ({ ...backup, retention: "prune", retentionReason: "outside retention policy" }));
-  return {
-    backups: [...keepList, ...prune].sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || ""))),
-    keep: keepList,
-    prune
-  };
-}
 
 
 
 
 
 
-function inferBackupRetentionKey(tier, createdAt) {
-  if (tier === "daily") return formatBackupDay(createdAt);
-  if (tier === "weekly") return getIsoWeekKey(createdAt);
-  if (tier === "pre-sync") return createdAtRetentionKey(createdAt);
-  return "";
-}
 
 
 
@@ -11133,30 +9751,8 @@ function describeLock(lockPath, staleMs) {
   };
 }
 
-function readLockFile(lockPath) {
-  if (!fs.existsSync(lockPath)) {
-    return {};
-  }
-  try {
-    return readJson(lockPath);
-  } catch (error) {
-    return { parseError: error.message || String(error) };
-  }
-}
 
-function readLockEvents(memoryDir) {
-  return readEvents(path.join(memoryDir, "state", "lock-events.jsonl"));
-}
 
-function appendLockEvent(lockPath, payload) {
-  const memoryDir = path.resolve(lockPath, "..", "..");
-  appendJsonl(path.join(memoryDir, "state", "lock-events.jsonl"), {
-    id: createId(`lock:${payload.type}:${payload.owner || ""}:${Date.now()}`),
-    ts: new Date().toISOString(),
-    path: lockPath,
-    ...payload
-  });
-}
 
 
 
@@ -11179,58 +9775,11 @@ function normalizeMemoryEvent(event) {
   };
 }
 
-function getMemoryEventSkipReason(normalizedEvent) {
-  if (!normalizedEvent.text) {
-    return "missing text";
-  }
-  if (looksSensitive(normalizedEvent.text)) {
-    return "looks sensitive";
-  }
-  return "";
-}
-
-function readEventsWithLocations(file) {
-  if (!fs.existsSync(file)) {
-    return [];
-  }
-  return fs.readFileSync(file, "utf8")
-    .split(/\r?\n/)
-    .map((line, index) => ({ line, lineNumber: index + 1 }))
-    .filter((entry) => entry.line.trim())
-    .map((entry) => ({
-      file,
-      lineNumber: entry.lineNumber,
-      event: parseJsonlLine(entry.line, file, entry.lineNumber)
-    }));
-}
 
 
 
 
-function createRadioMessage({ from, to, type, text, thread, replyTo, project }) {
-  const cleanText = String(text || "").trim();
-  return {
-    id: createId(`radio:${from}:${to}:${type}:${cleanText}`),
-    ts: new Date().toISOString(),
-    from: String(from || "unknown"),
-    to: String(to || "all"),
-    type: String(type || "note"),
-    text: cleanText,
-    thread: String(thread || ""),
-    replyTo: String(replyTo || ""),
-    project: String(project || ""),
-    deliveryState: "pending",
-    deliveryUpdatedAt: "",
-    dispatchId: "",
-    threadKey: "",
-    attempt: 0,
-    maxRetries: 0,
-    nextRetryAt: "",
-    sessionId: "",
-    lastError: "",
-    promoted: false
-  };
-}
+
 
 function isCorruptedRadioMessage(message) {
   return String(message.from || "").toLowerCase() === "raw" ||
@@ -11405,9 +9954,6 @@ function appendIfMissing(file, snippet, marker) {
 
 
 
-function readTemplate(name) {
-  return fs.readFileSync(path.join(projectRoot(), "templates", name), "utf8");
-}
 
 function renderInstallSnippet(target, memoryDir) {
   return renderTemplate(target.template, buildInstallTemplateValues(target.tool, memoryDir));
@@ -11432,79 +9978,14 @@ function commandExists(commandName) {
   return resolveCommandPaths(commandName).length > 0;
 }
 
-function resolveCommandPaths(commandName) {
-  const name = String(commandName || "").trim();
-  if (!name) {
-    return [];
-  }
-  if (path.isAbsolute(name) || /[\\/]/.test(name)) {
-    return fs.existsSync(name) ? [path.resolve(name)] : [];
-  }
-  if (process.platform === "win32") {
-    const result = spawnSync("where.exe", [name], {
-      encoding: "utf8",
-      windowsHide: true
-    });
-    if (result.status !== 0) {
-      return [];
-    }
-    return String(result.stdout || "")
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean);
-  }
-  // Test harnesses and cross-platform launchers may provide a Windows-style
-  // PATH while running under Node on macOS/Linux. Resolve those shims without
-  // requiring the host shell to understand the foreign separator.
-  const foreignPath = String(process.env.PATH || "")
-    .split(/[;:]/)
-    .filter(Boolean);
-  const foreignMatches = [];
-  for (const directory of foreignPath) {
-    for (const suffix of ["", ".cmd", ".exe"]) {
-      const candidate = path.join(directory, `${name}${suffix}`);
-      if (fs.existsSync(candidate) && !foreignMatches.includes(candidate)) {
-        foreignMatches.push(candidate);
-      }
-    }
-  }
-  if (foreignMatches.length) return foreignMatches;
-  const result = spawnSync("sh", ["-c", `command -v ${shellQuote(name)}`], {
-    encoding: "utf8",
-    windowsHide: true
-  });
-  if (result.status !== 0) {
-    return [];
-  }
-  return String(result.stdout || "")
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-}
 
 function choosePreferredCommandPath(paths) {
   return [...new Set((paths || []).filter(Boolean))]
     .sort((a, b) => commandPathPriority(a) - commandPathPriority(b))[0] || "";
 }
 
-function commandPathPriority(file) {
-  const kind = classifyCommandPath(file);
-  if (kind === "executable") return 0;
-  if (kind === "native") return process.platform === "win32" ? 30 : 5;
-  if (kind === "cmd-shim") return 10;
-  if (kind === "cmd-script") return 12;
-  if (kind === "powershell-shim") return 90;
-  return 50;
-}
 
 
-function shouldUseShellForCommand(file) {
-  if (process.platform !== "win32") {
-    return false;
-  }
-  const kind = classifyCommandPath(file);
-  return kind === "cmd-shim" || kind === "cmd-script";
-}
 
 
 

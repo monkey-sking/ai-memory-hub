@@ -863,3 +863,62 @@ export function removeToolDeclaration(memoryDir, tool) {
   writeFileAtomic(file, remaining.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
   return true;
 }
+
+export function writeToolDeclaration(memoryDir, declaration) {
+  const file = getToolDeclarationsFile(memoryDir);
+  ensureDir(path.dirname(file));
+  const existing = readToolDeclarations(memoryDir);
+  const name = normalizeToolName(declaration.tool);
+  const updated = existing.filter((entry) => normalizeToolName(entry.tool) !== name);
+  updated.push(declaration);
+  writeFileAtomic(file, updated.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+  return declaration;
+}
+
+export function acquireLock(lockPath, owner, staleMs) {
+  const started = Date.now();
+  while (Date.now() - started < staleMs) {
+    try {
+      const fd = fs.openSync(lockPath, "wx");
+      const payload = {
+        owner,
+        pid: process.pid,
+        createdAt: new Date().toISOString(),
+        host: os.hostname(),
+        cwd: process.cwd(),
+        staleMs
+      };
+      fs.writeFileSync(fd, JSON.stringify(payload, null, 2));
+      fs.closeSync(fd);
+      appendLockEvent(lockPath, {
+        type: "acquired",
+        owner,
+        pid: process.pid,
+        host: os.hostname()
+      });
+      return;
+    } catch (error) {
+      if (error.code !== "EEXIST") {
+        throw error;
+      }
+      if (isLockStale(lockPath, staleMs)) {
+        try {
+          const staleInfo = readLockFile(lockPath);
+          fs.unlinkSync(lockPath);
+          appendLockEvent(lockPath, {
+            type: "stale-reaped",
+            owner,
+            pid: process.pid,
+            staleLock: staleInfo
+          });
+          continue;
+        } catch {
+          // Another process may have removed it first; retry.
+        }
+      }
+      sleep(100);
+    }
+  }
+  const status = describeLock(lockPath, staleMs);
+  throw new Error(`Memory hub lock timeout at ${lockPath} (owner=${status.owner || "unknown"}, pid=${status.pid || "unknown"}, ageMs=${status.ageMs ?? "unknown"}, stale=${status.stale ? "yes" : "no"})`);
+}

@@ -1,10 +1,13 @@
-import { createId, hasOwnField, isPlainObject } from "./cli.js";
-import { normalizeGithubLinks } from "../github-links.js";
-import { normalizeAdversarialVerifier, normalizeReviewDimensions } from "../review-config.js";
+// 从 src/index.js 下沉的通用工具函数（v3.0 重构 P0-2）。
+// 这些函数不依赖 index.js 内部的任何其他符号，可安全复用。
+
 import { appendEntityRecord, bootstrapEntityEventsFromProjection, materializeEntityProjection } from "./entity-store.js";
-import { readProjects, readTasks, readWorkflows } from "./entity-repo.js";
+import { createId, hasOwnField, isPlainObject } from "./cli.js";
 import { findProjectIndex } from "./util.js";
 import { findTaskIndex, findWorkflowIndex } from "./entity-index.js";
+import { normalizeAdversarialVerifier, normalizeReviewDimensions } from "../review-config.js";
+import { normalizeGithubLinks } from "../github-links.js";
+import { readProjects, readTasks, readWorkflows } from "./entity-repo.js";
 
 // src/lib/entity-models.js
 // Entity model layer for AI Memory Hub.
@@ -620,4 +623,24 @@ export function mergeQualityGates(...sources) {
     Object.assign(merged, normalizeQualityGate(source));
   }
   return merged;
+}
+
+export function getSeedProjects() {
+  return [
+    {
+      id: "ai-memory-hub",
+      name: "AI Memory Hub",
+      displayName: "AI Memory Hub",
+      status: "active",
+      type: "tool",
+      description: "本地优先的多AI工具共享记忆中心",
+      metadata: {},
+      aliases: [],
+      resources: {
+        repo: "https://github.com/<owner>/ai-memory-hub"
+      },
+      createdAt: "2026-06-01T00:00:00Z",
+      updatedAt: "2026-06-11T12:00:00Z"
+    }
+  ].map(normalizeProject);
 }

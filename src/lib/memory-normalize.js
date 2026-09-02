@@ -1,6 +1,7 @@
 // 从 src/index.js 下沉的通用工具函数（v3.0 重构 P0-2）。
 // 这些函数不依赖 index.js 内部的任何其他符号，可安全复用。
 
+import os from "node:os";
 import { getOption, isPlainObject } from "./cli.js";
 import { mergeMemoryAccessMetadata, normalizeRefValues } from "./entity-factory.js";
 import { sanitizeInlineText } from "./format.js";
@@ -514,4 +515,39 @@ export function getMemoryIdentityKeys(record) {
   ]
     .map(normalizeSupersedeToken)
     .filter(Boolean);
+}
+
+export function normalizeMemoryMetadata(metadata = {}, fallback = {}) {
+  const normalized = { ...metadata };
+  normalized.kind = normalizeMemoryKind(normalized.kind || normalized.type || fallback.kind || fallback.type || "note");
+  normalized.project = normalizeMemoryProject(normalized.project || fallback.project || "");
+  normalized.tags = normalizeList(normalized.tags?.length ? normalized.tags : fallback.tags);
+  normalized.scope = normalizeMemoryScope(normalized.scope || fallback.scope || "");
+  normalized.refs = normalizeMemoryRefs(normalized.refs || normalized.references || {}, { ...fallback, ...normalized });
+  normalized.confidence = normalizeConfidence(normalized.confidence ?? fallback.confidence);
+  normalized.device = normalized.device || fallback.device || os.hostname();
+  return normalized;
+}
+
+export function recordMemoryAccess(ledger, results, accessedAt = new Date().toISOString()) {
+  const resultKeys = new Set(results.flatMap((result) => getMemoryIdentityKeys(result)));
+  if (resultKeys.size === 0) {
+    return { ledger, updated: 0 };
+  }
+
+  let updated = 0;
+  const updatedLedger = ledger.map((record) => {
+    const matched = getMemoryIdentityKeys(record).some((key) => resultKeys.has(key));
+    if (!matched) {
+      return record;
+    }
+    updated++;
+    return touchMemoryAccess(record, accessedAt);
+  });
+
+  return { ledger: updatedLedger, updated };
+}
+
+export function getMemoryPrimaryKey(record) {
+  return getMemoryIdentityKeys(record)[0] || "";
 }

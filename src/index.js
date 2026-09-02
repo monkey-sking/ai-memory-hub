@@ -95,11 +95,11 @@ import { memoryCommand } from "./commands/memory.js";
 const memoryCommandDeps = { buildMemoryIndex, ensureHub, isMemoryLifecycleVisible, loadConfig, normalizeMemoryMetadata, normalizeSupersedeToken, readLedger, rebuildMemoryOutputs, runAutomaticBackupStrategy, searchCommand, searchCommandDeps, snapshotCommand, withHubLock };
 import { sqliteCommand } from "./commands/sqlite.js";
 import { ensureDir, readJson, readJsonSafe, writeJson, createId, getOption, hasOption, hasFlag, parsePositiveIntegerOption, positionalArgs, countJsonlFiles, isPlainObject, hasOwnField } from "./lib/cli.js";
-import { readEvents, parseJsonlLine, countJsonlLines, readToolDeclarations, readModelsCache, writeModelsCache, readRadioCursor, writeRadioCursor, readAgents, readRoles, readTeams, readClaudeSessionState, readDispatchLog, readDispatchRuns, appendDispatchRunRecord, appendDispatchLog, readRelayStatus, resolveGitConflictsInFile, writeLedger, readApprovalGates, appendApprovalGateEvent, readPolicyRules, readSessions, readUnreadReceipts, appendUnreadReceipt, writeSessions, writeRpcRequest, readRpcRequest, writeRpcResult, readRpcResult, writeNotification, readNotifications, writeContextPack, readContextPack, readDispatchQueue, writeDispatchQueueEntry, readMemoryLifecycleOperations, archiveInbox, writeInboxEvents, readBackupManifest, readLockFile, readLockEvents, appendLockEvent, readEventsWithLocations, readAgentById, readRoleById, readTeamById, resolveRelayThreadKeys, findLatestRelayStatusEntry, readLatestDispatchRunByThread, readLatestRelayStatusByThread, readLatestRelayStatusBySource, updateSession, getActiveSessions, getPendingNotifications, getQueuedEntries, getRunningEntries, getFailedEntries, buildRunnerArgs, writeClaudeSessionState, countRecentRelayOscillation, writeAgent, writeRole, writeTeam, createDispatchRunId, removePolicyRule, updateNotificationStatus, updateDispatchQueueEntry, releaseLock, describeLock, waitForRpcResult, touchAgentStatus, parseRunnerOutput, isLockStale, removeToolDeclaration } from "./lib/io.js";
+import { readEvents, parseJsonlLine, countJsonlLines, readToolDeclarations, readModelsCache, writeModelsCache, readRadioCursor, writeRadioCursor, readAgents, readRoles, readTeams, readClaudeSessionState, readDispatchLog, readDispatchRuns, appendDispatchRunRecord, appendDispatchLog, readRelayStatus, resolveGitConflictsInFile, writeLedger, readApprovalGates, appendApprovalGateEvent, readPolicyRules, readSessions, readUnreadReceipts, appendUnreadReceipt, writeSessions, writeRpcRequest, readRpcRequest, writeRpcResult, readRpcResult, writeNotification, readNotifications, writeContextPack, readContextPack, readDispatchQueue, writeDispatchQueueEntry, readMemoryLifecycleOperations, archiveInbox, writeInboxEvents, readBackupManifest, readLockFile, readLockEvents, appendLockEvent, readEventsWithLocations, readAgentById, readRoleById, readTeamById, resolveRelayThreadKeys, findLatestRelayStatusEntry, readLatestDispatchRunByThread, readLatestRelayStatusByThread, readLatestRelayStatusBySource, updateSession, getActiveSessions, getPendingNotifications, getQueuedEntries, getRunningEntries, getFailedEntries, buildRunnerArgs, writeClaudeSessionState, countRecentRelayOscillation, writeAgent, writeRole, writeTeam, createDispatchRunId, removePolicyRule, updateNotificationStatus, updateDispatchQueueEntry, releaseLock, describeLock, waitForRpcResult, touchAgentStatus, parseRunnerOutput, isLockStale, removeToolDeclaration, writeToolDeclaration, acquireLock } from "./lib/io.js";
 import { getEntityEventsFile, getEntityProjectionFile, readEntityEvents, bootstrapEntityEventsFromProjection, writeEntityRecords, appendEntityRecord, deleteEntityRecord, appendEntityEvents, createEntityEvent, replayEntityEvents, materializeEntityProjection, isEntityRecordNewerOrSame } from "./lib/entity-store.js";
-import { PROJECT_STATUSES, RECIPE_GATE_STRING_ARRAY_FIELDS, RECIPE_GATE_FIELDS, extractQualityGate, normalizeQualityGate, normalizeVerifyCommand, normalizeNonNegativeInteger, normalizeMinimalImplementation, normalizeDependencyBudget, normalizePriority, normalizeDispatchWorktreeMetadata, normalizeWorkflowRole, parseProjectListOption, uniqueStringList, isTaskStatus, isWorkflowStatus, normalizeRecipeMetadata, normalizeRecipeStepMetadata, normalizeProjectStatus, normalizeProjectResources, normalizeProject, normalizeWorkflow, normalizeTask, normalizePrompt, getTaskEventStoreDefinition, getProjectEventStoreDefinition, getWorkflowEventStoreDefinition, getPromptEventStoreDefinition, rebuildEventSourcedProjections, updateProject, updateWorkflow, updateTask, assertTaskStatus, assertWorkflowStatus, mergeQualityGates } from "./lib/entity-models.js";
+import { PROJECT_STATUSES, RECIPE_GATE_STRING_ARRAY_FIELDS, RECIPE_GATE_FIELDS, extractQualityGate, normalizeQualityGate, normalizeVerifyCommand, normalizeNonNegativeInteger, normalizeMinimalImplementation, normalizeDependencyBudget, normalizePriority, normalizeDispatchWorktreeMetadata, normalizeWorkflowRole, parseProjectListOption, uniqueStringList, isTaskStatus, isWorkflowStatus, normalizeRecipeMetadata, normalizeRecipeStepMetadata, normalizeProjectStatus, normalizeProjectResources, normalizeProject, normalizeWorkflow, normalizeTask, normalizePrompt, getTaskEventStoreDefinition, getProjectEventStoreDefinition, getWorkflowEventStoreDefinition, getPromptEventStoreDefinition, rebuildEventSourcedProjections, updateProject, updateWorkflow, updateTask, assertTaskStatus, assertWorkflowStatus, mergeQualityGates, getSeedProjects } from "./lib/entity-models.js";
 import { projectRoot } from "./lib/paths.js";
-import { POLICY_OPERATIONS, APP_NAME, DEFAULT_DISPATCH_ACK_TIMEOUT_MS, ASYNC_CALL_STATES, summarizeWorkflowLinkedTaskDelivery, isDispatchSourceComplete, isValidAsyncCallState } from "./lib/constants.js";
+import { POLICY_OPERATIONS, APP_NAME, DEFAULT_DISPATCH_ACK_TIMEOUT_MS, ASYNC_CALL_STATES, summarizeWorkflowLinkedTaskDelivery, isDispatchSourceComplete, isValidAsyncCallState, isRelayTimedOut } from "./lib/constants.js";
 import { MODEL_CACHE_STALE_MS } from "./lib/constants.js";
 import { promptCommand } from "./commands/prompt.js";
 import { workflowNodeCommand } from "./commands/workflow-node.js";
@@ -140,7 +140,7 @@ import { listRelatedEntities, readRelations, recordMemoryRelations, recordRelati
 import { auditMemories } from "./memory-audit.js";
 import { parseRunnerModelList, semanticSearch, checkProcessLiveness, getContentType, readRequestJson, findProjectIndex, expandSynonyms, scanBackupFilesForSecrets, getRelayTimeoutBaseMs, renderDispatchWorktree, createHealthRepairAction, getPathSize, extractCjkNgrams, getBackupFileCatalog, markTieredBackups, parseCliArgs, parseDeclaredList, parseProgressPercent, isJobCheckpointed, getCheckpointStats, renderProjectRegistryReadme, extractSharedSkillLayerVersion, renderEmptyBootstrapSnapshot, sleep, sharedSkillLayerActionLabel, summarizeDir, releaseStaleClaim, inspectSharedMemoryInstructions, getDirectResolveCandidates, normalizeCandidatePath, getPageOptions, findProject, autoCreateWorkflowNodes, summarizeTaskSpec, writeTaskSpecProcessLogs, resolveTaskSpecCwd, getMemoryStorageSummary } from "./lib/util.js";
 import { extractInstructionIncludes, normalizeSeverity, formatTopCounts, formatPercent, formatBytes, sanitizeDisplayText, getMemoryAgeDays, inferScope, normalizeSearchText, countBy, sortByImportance, titleCase, looksSensitive, formatEventLocation, extractSection, extractSectionBeforeAny, renderTemplate, trimOutput, summarizeText, textMentionsResolveQuery, summarizeHealthAnalysisForRepair, sanitizeLedgerText, normalizeDuplicateMemoryText, sanitizeInlineText, extractKeywords, extractCompactVariants, getMemoryEventSkipReason, extractLooseJsonStringField, formatMemoryRecordPointer, truncateText, extractSearchTerms, parseLooseJsonMemoryEvent, findDuplicateMemoryGroups } from "./lib/format.js";
-import { normalizeMemoryKind, normalizeMemoryProject, normalizeMemoryScope, normalizeList, firstDefinedRef, hasMemoryFilters, normalizeRefToken, normalizeConfidence, applyMemoryAccessFields, normalizeMemoryAccessCount, normalizeMemoryAccessTimestamp, firstDefinedValue, getDaysSinceTimestamp, isMemoryLifecycleVisible, normalizeSupersedeToken, hasExplicitSyncKey, readPositiveInteger, isMemoryHealthExcluded, formatMemoryHealthRepairPlan, sanitizeRawJsonCandidate, getMemoryGrowthTrend, chooseMemoryLayer, parseListOption, parseMemoryTagFilters, formatMemoryFilterSummary, matchesMemoryTags, getMemoryAccessStats, applyMemoryLifecycleOperations, normalizeSupersedeRefs, isStartupMemoryRecord, resolveSnapshotLimits, inferTopics, normalizeMemoryRefs, flattenMemoryRefs, formatMemoryRefs, matchesMemoryRef, touchMemoryAccess, getMemorySupersedesRefs, isOperationalRadioMemory, printMemorySearchResults, filterMemoryRecords, getMemoryIdentityKeys } from "./lib/memory-normalize.js";
+import { normalizeMemoryKind, normalizeMemoryProject, normalizeMemoryScope, normalizeList, firstDefinedRef, hasMemoryFilters, normalizeRefToken, normalizeConfidence, applyMemoryAccessFields, normalizeMemoryAccessCount, normalizeMemoryAccessTimestamp, firstDefinedValue, getDaysSinceTimestamp, isMemoryLifecycleVisible, normalizeSupersedeToken, hasExplicitSyncKey, readPositiveInteger, isMemoryHealthExcluded, formatMemoryHealthRepairPlan, sanitizeRawJsonCandidate, getMemoryGrowthTrend, chooseMemoryLayer, parseListOption, parseMemoryTagFilters, formatMemoryFilterSummary, matchesMemoryTags, getMemoryAccessStats, applyMemoryLifecycleOperations, normalizeSupersedeRefs, isStartupMemoryRecord, resolveSnapshotLimits, inferTopics, normalizeMemoryRefs, flattenMemoryRefs, formatMemoryRefs, matchesMemoryRef, touchMemoryAccess, getMemorySupersedesRefs, isOperationalRadioMemory, printMemorySearchResults, filterMemoryRecords, getMemoryIdentityKeys, normalizeMemoryMetadata, recordMemoryAccess, getMemoryPrimaryKey } from "./lib/memory-normalize.js";
 import { createDispatchRecordMutex, isClaimStale, shouldPersistDispatchReport, isDispatchableRadioMessage, isClosedDispatchSourceState, buildTaskDispatchText, buildWorkflowDispatchText, findRecipeStepTask, normalizeToolName, safeGitPathSegment, isKnownGeminiWarning, stripExistingModelArgs, getDispatchThreadKey, formatDispatchVerifyCommand, getDispatchRunStatus, getDispatchRunVerificationResult, getAsyncCallStateMeta, getDispatchSourceKey, getRelaySourceKey, dispatchJobFromTask, dispatchJobFromWorkflow, dispatchJobFromRelayEntry, shouldDispatchJob, buildDispatchWorktreeBranch, buildDispatchWorktreeSlug, nextRelayAttempt, normalizeRunnerStderr } from "./lib/dispatch.js";
 import { sendHtml, sendPlain, sendJson, sendErrorEnvelope, parsePageParam, getSafeStaticRelativePath, readTextIfExists } from "./lib/http.js";
 import { getToolDeclarationsFile, getModelsCacheFile, getRadioCursorFile, getAgentRegistryFile, getRoleRegistryFile, getTeamRegistryFile, getPolicyRulesFile } from "./lib/registry-paths.js";
@@ -920,16 +920,6 @@ function readToolDeclarationByTool(memoryDir, tool) {
 }
 
 
-function writeToolDeclaration(memoryDir, declaration) {
-  const file = getToolDeclarationsFile(memoryDir);
-  ensureDir(path.dirname(file));
-  const existing = readToolDeclarations(memoryDir);
-  const name = normalizeToolName(declaration.tool);
-  const updated = existing.filter((entry) => normalizeToolName(entry.tool) !== name);
-  updated.push(declaration);
-  writeFileAtomic(file, updated.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
-  return declaration;
-}
 
 
 
@@ -2122,22 +2112,6 @@ function markTimedOutRelayStatuses(memoryDir, { to = "", project = "", now = Dat
   return results;
 }
 
-function isRelayTimedOut(entry, now = Date.now()) {
-  if (!entry || ![
-    ASYNC_CALL_STATES.DISPATCHED,
-    ASYNC_CALL_STATES.ACKED,
-    ASYNC_CALL_STATES.PROGRESS,
-    ASYNC_CALL_STATES.RETRYING
-  ].includes(entry.state || "")) {
-    return false;
-  }
-  const timeoutMs = Number(entry.ackTimeout || DEFAULT_DISPATCH_ACK_TIMEOUT_MS);
-  if (timeoutMs <= 0) {
-    return false;
-  }
-  const baseMs = getRelayTimeoutBaseMs(entry);
-  return Number.isFinite(baseMs) && baseMs + timeoutMs <= now;
-}
 
 
 function applyDispatchOutcome(memoryDir, job, result, relayState, { responseMessage = null, statusMessage = null } = {}) {
@@ -5922,25 +5896,6 @@ function mergeSeedProjects(projects) {
   return merged;
 }
 
-function getSeedProjects() {
-  return [
-    {
-      id: "ai-memory-hub",
-      name: "AI Memory Hub",
-      displayName: "AI Memory Hub",
-      status: "active",
-      type: "tool",
-      description: "本地优先的多AI工具共享记忆中心",
-      metadata: {},
-      aliases: [],
-      resources: {
-        repo: "https://github.com/<owner>/ai-memory-hub"
-      },
-      createdAt: "2026-06-01T00:00:00Z",
-      updatedAt: "2026-06-11T12:00:00Z"
-    }
-  ].map(normalizeProject);
-}
 
 
 
@@ -6693,17 +6648,6 @@ function runTaskSpecProcess(commandSpec, { projectRoot, phase, inherit = {}, all
 
 
 
-function normalizeMemoryMetadata(metadata = {}, fallback = {}) {
-  const normalized = { ...metadata };
-  normalized.kind = normalizeMemoryKind(normalized.kind || normalized.type || fallback.kind || fallback.type || "note");
-  normalized.project = normalizeMemoryProject(normalized.project || fallback.project || "");
-  normalized.tags = normalizeList(normalized.tags?.length ? normalized.tags : fallback.tags);
-  normalized.scope = normalizeMemoryScope(normalized.scope || fallback.scope || "");
-  normalized.refs = normalizeMemoryRefs(normalized.refs || normalized.references || {}, { ...fallback, ...normalized });
-  normalized.confidence = normalizeConfidence(normalized.confidence ?? fallback.confidence);
-  normalized.device = normalized.device || fallback.device || os.hostname();
-  return normalized;
-}
 
 
 
@@ -6735,24 +6679,6 @@ function parseMemoryFilters(argv) {
 
 
 
-function recordMemoryAccess(ledger, results, accessedAt = new Date().toISOString()) {
-  const resultKeys = new Set(results.flatMap((result) => getMemoryIdentityKeys(result)));
-  if (resultKeys.size === 0) {
-    return { ledger, updated: 0 };
-  }
-
-  let updated = 0;
-  const updatedLedger = ledger.map((record) => {
-    const matched = getMemoryIdentityKeys(record).some((key) => resultKeys.has(key));
-    if (!matched) {
-      return record;
-    }
-    updated++;
-    return touchMemoryAccess(record, accessedAt);
-  });
-
-  return { ledger: updatedLedger, updated };
-}
 
 
 
@@ -6956,9 +6882,6 @@ function applyMemorySupersedeState(record, supersededBy) {
 }
 
 
-function getMemoryPrimaryKey(record) {
-  return getMemoryIdentityKeys(record)[0] || "";
-}
 
 
 
@@ -8646,53 +8569,6 @@ function withHubLock(memoryDir, owner, fn, staleMs = 120000) {
   }
 }
 
-function acquireLock(lockPath, owner, staleMs) {
-  const started = Date.now();
-  while (Date.now() - started < staleMs) {
-    try {
-      const fd = fs.openSync(lockPath, "wx");
-      const payload = {
-        owner,
-        pid: process.pid,
-        createdAt: new Date().toISOString(),
-        host: os.hostname(),
-        cwd: process.cwd(),
-        staleMs
-      };
-      fs.writeFileSync(fd, JSON.stringify(payload, null, 2));
-      fs.closeSync(fd);
-      appendLockEvent(lockPath, {
-        type: "acquired",
-        owner,
-        pid: process.pid,
-        host: os.hostname()
-      });
-      return;
-    } catch (error) {
-      if (error.code !== "EEXIST") {
-        throw error;
-      }
-      if (isLockStale(lockPath, staleMs)) {
-        try {
-          const staleInfo = readLockFile(lockPath);
-          fs.unlinkSync(lockPath);
-          appendLockEvent(lockPath, {
-            type: "stale-reaped",
-            owner,
-            pid: process.pid,
-            staleLock: staleInfo
-          });
-          continue;
-        } catch {
-          // Another process may have removed it first; retry.
-        }
-      }
-      sleep(100);
-    }
-  }
-  const status = describeLock(lockPath, staleMs);
-  throw new Error(`Memory hub lock timeout at ${lockPath} (owner=${status.owner || "unknown"}, pid=${status.pid || "unknown"}, ageMs=${status.ageMs ?? "unknown"}, stale=${status.stale ? "yes" : "no"})`);
-}
 
 
 

@@ -1,6 +1,8 @@
 // 从 src/index.js 下沉的通用工具函数（v3.0 重构 P0-2）。
 // 这些函数不依赖 index.js 内部的任何其他符号，可安全复用。
 
+import { getRelayTimeoutBaseMs } from "./util.js";
+
 export const POLICY_OPERATIONS = [
   "read-memory", "write-memory", "send-radio", "claim-task", "dispatch",
   "modify-files", "run-tests", "install-dependencies", "push", "delete",
@@ -81,4 +83,21 @@ export function isDispatchSourceComplete(source) {
 
 export function isValidAsyncCallState(state) {
   return Object.values(ASYNC_CALL_STATES).includes(state);
+}
+
+export function isRelayTimedOut(entry, now = Date.now()) {
+  if (!entry || ![
+    ASYNC_CALL_STATES.DISPATCHED,
+    ASYNC_CALL_STATES.ACKED,
+    ASYNC_CALL_STATES.PROGRESS,
+    ASYNC_CALL_STATES.RETRYING
+  ].includes(entry.state || "")) {
+    return false;
+  }
+  const timeoutMs = Number(entry.ackTimeout || DEFAULT_DISPATCH_ACK_TIMEOUT_MS);
+  if (timeoutMs <= 0) {
+    return false;
+  }
+  const baseMs = getRelayTimeoutBaseMs(entry);
+  return Number.isFinite(baseMs) && baseMs + timeoutMs <= now;
 }

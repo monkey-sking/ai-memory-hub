@@ -4,19 +4,19 @@
 > 横切依赖走 deps 注入，共享常量下沉 `src/lib/constants.js`。
 > 本文档是唯一进度落点，任何 runner（codex / claude / gemini / antigravity / opencode / mimocode）接手前先读这里。
 
-## 当前进度（2026-09-02 实测，HEAD=`d7d881d`）
+## 当前进度（2026-09-02 实测，HEAD=`a3ae4d0`）
 
 | 指标 | 数值 |
 |---|---|
 | index.js 起始行数 | 14,778 |
-| 当前行数 | **4,627**（已减 10,151 行） |
+| 当前行数 | **4,483**（已减 10,295 行） |
 | 已迁出命令族群 | 26 个 |
 | src/commands 模块数 | 36 个（含 app.js，共约 6,728 行） |
-| src/lib 模块数 | 29 个（新增 daemon-state/skill-store/github-backup/dispatch-pool/dispatch-run/runner-core/radio-messages/config/dispatch-retry.js，共约 6,400 行） |
-| index.js 残留 | 约 29 个 `*Command` 函数、96 个顶层 function |
-| 已推送提交 | 到 `d7d881d`（工作区干净） |
+| src/lib 模块数 | 30 个（新增 daemon-state/skill-store/github-backup/dispatch-pool/dispatch-run/runner-core/radio-messages/config/dispatch-retry/policy.js，共约 6,550 行） |
+| index.js 残留 | 约 29 个 `*Command` 函数、88 个顶层 function |
+| 已推送提交 | 到 `a3ae4d0`（工作区干净） |
 
-> 按 P0-2 的目标（降到 ~3,000 行）算，整体完成度约 **93%**（行数口径）。
+> 按 P0-2 的目标（降到 ~3,000 行）算，整体完成度约 **96%**（行数口径）。
 > 第五批（`e626917`）把文件级 IO 助手、entity 工厂、tools 检测下沉，index.js 破万；
 > 第六~十六批持续按主题下沉叶子函数，index.js 从 9,999 降至 7,530；
 > 第十七批整块下沉 task-spec 子系统（连续 10 个函数 + 2 常量）并收敛到 src/lib/task-spec.js，
@@ -100,6 +100,22 @@
 > 故选先沉其被最多消费的 retry 决策核心（同第23/25批拔 hub 策略），为大簇进一步下沉铺路。
 > index.js 作调用方 import 回 9 个；getRelayFailureStateWithOscillation 依赖 DISPATCH_OSCILLATION_THRESHOLD +
 > countRecentRelayOscillation 仍留 index，不受影响。index.js 降至 4,627（94%）。
+> **P0-2 第二十八批（`a3ae4d0`）** 下沉 policy 决策层到 `src/lib/policy.js`（5 个 POLICY_* 常量
+> POLICY_DECISIONS/POLICY_SCOPES/POLICY_SCOPE_BREADTH/POLICY_DESTRUCTIVE_OPERATIONS/POLICY_DEFAULT_SEED
+> + 5 个 policy 决策函数 normalizePolicyRule/appendPolicyRule/seedDefaultPolicyRules/policyScopeMatches/
+> resolvePermission，149 行）。**纯自包含簇**（外依赖全落已沉 cli createId/ensureDir、io readPolicyRules、
+> event-writer appendJsonl、registry-paths getPolicyRulesFile、entity-index policyActorMatches/
+> policyRuleSpecificity、constants POLICY_OPERATIONS + node path），无 index 内部符号 → 直连 import。
+> ⚠️ 下沉陷阱：appendJsonl 并非 io.js 导出而是 io.js 从 `../event-writer.js` re-import 的，新模块须从
+> event-writer.js 直连 import 而非 io.js。policy 决策层是 dispatch 编排大簇（prepareDispatchJobForRun/
+> executeDispatchRetry 经 resolvePermission）+ policy 命令 + dashboard policy 界面（appCommandDeps）的
+> 共享 hub，先沉它解开多簇对 policy 符号的 index 内部依赖。index.js 作调用方 import 回 6 个仍被外部
+> 使用的符号（POLICY_DECISIONS/POLICY_SCOPES[供 appCommandDeps line 502]/appendPolicyRule/policyScopeMatches/
+> resolvePermission/seedDefaultPolicyRules[供 policyCommandDeps + dispatch 编排 resolvePermission@1431]），
+> normalizePolicyRule 无块外引用不外发。policyCommandDeps/appCommandDeps 注入契约零改动。四步验证 + CLI
+> help/status + policy 运行时单测 16 例（seed=12/idempotent/resolvePermission allow·destructive-ask·custom-deny
+> 全过）+ policy CLI check dispatch→allow + dispatch --dry-run + app HTTP /api/policy 12 条规则全绿 +
+> check:public 全绿。index.js 4,627→4,483（96%）。
 > 
 > 注：叶子函数清单每批后已变化，接手前请重跑 `find-leaf-functions.mjs` 拿当前值，别照抄本文档旧数字。
 > （第二十二批已证实：原以为会形成 `util→dispatch→entity-models→util` 循环而不敢下沉的
@@ -144,6 +160,7 @@
 | `e549460` | P0-2 第二十五批：下沉 radio message I/O + 归一化族到 `src/lib/radio-messages.js`（8 符号：CORRUPTION_MARKER_PATTERN + containsCorruptionMarker + isCorruptedRadioMessage + readRadioMessages + normalizeRadioMessage + recoverEmbeddedJsonMessage + updateRadioMessage + getUnreadRadioMessages，约 84 行）。该族是所有 relay/radio dispatch 状态机簇（appendRelayStatus/updateDispatchSourceState/dispatch 重试编排）的共享地基；find-clusters 复核（113 非叶子→23 自洽簇、0 非自洽）显示多数簇仍经 index 内部 hub（loadConfig/defaultConfig/resolveMemoryDir + radio reader），故选先沉 radio reader 地基（同第 23 批 runner-core 先沉共享地基策略）。**纯自包含簇**（外依赖全落 io.js readEvents/readRadioCursor + cli.js createId/ensureDir/isPlainObject + entity-models.js normalizeDispatchWorktreeMetadata + ../atomic-write.js writeFileAtomic + node path + 本簇内部共享损坏标记），无 index 内部符号 → 直连 import。index.js 作调用方 import 回 5 个仍被外部使用的符号（containsCorruptionMarker/isCorruptedRadioMessage/readRadioMessages/updateRadioMessage/getUnreadRadioMessages），normalizeRadioMessage/recoverEmbeddedJsonMessage/CORRUPTION_MARKER_PATTERN 无块外引用不外发；radioCommandDeps 等 *Deps 引用不变，注入契约零改动。四步验证 + CLI help/status/radio 冒烟 + radio-messages 运行时单测 7 例（损坏标记/归一化恢复 JSON/read/update/isCorrupted 全过）+ check:public 全绿。index.js 4,907→4,825 | ✅ 已推送 |
 | `0bed1d6` | P0-2 第二十六批：下沉配置主干到 `src/lib/config.js`（resolveMemoryDir + defaultConfig + loadConfig + 6 配置常量 MEMORY_DIR_ENV/DEFAULT_MEMORY_DIR/DEFAULT_CONFIG_PATH/DEFAULT_GITHUB_BACKUP_REMOTE/DEFAULT_GITHUB_BACKUP_REPO_DIR/DEFAULT_GITHUB_BACKUP_TASK_NAME，162 行）。该主干是全系统最被消费的共享核心（loadConfig 全代码库 ~224 处引用，几乎所有命令模块/dashboard 组件都经 deps 注入它），是剩余大簇（dispatch 重试编排/memory-health/startup）的最后 hub。**纯自包含簇**（外依赖全落 node 内置 + 已沉 lib cli getOption/readJson/writeJson、backup getDefaultGitHubBackupInclude、entity-models ensureHub + dashboard settings defaultDashboardShortcuts），无 index 内部符号 → 直连 import。resolveMemoryDir 默认参从 index 的 rawArgs 改为 process.argv.slice(2)（等价）。index.js 作调用方 import 回 4 个仍被外部使用的符号（loadConfig/resolveMemoryDir/defaultConfig/DEFAULT_GITHUB_BACKUP_TASK_NAME[供 initGithubBackupDeps]），其余 5 常量无 index 引用不外发；initGithubBackupDeps/initDispatchPoolDeps 注入契约零改动。四步验证 + CLI help/status/sync/init/detect/snapshot/pack/checkpoint 冒烟 + config 运行时单测 8 例（resolveMemoryDir env/argv、defaultConfig schema、loadConfig 建/合并全过）+ check:public 全绿。index.js 4,824→4,687 | ✅ 已推送 |
 | `d7d881d` | P0-2 第二十七批：下沉 dispatch-retry 状态决策核心到 `src/lib/dispatch-retry.js`（DEFAULT_DISPATCH_MAX_RETRIES 常量 + 8 个 retry-decision 纯函数 normalizeDispatchRetryLimit/computeNextRetryAt/getRelayFailureState/getDispatchJobMaxRetries/isSharedStateOnlyTool/shouldRetryJob/isRelayRetryDue/isRelayRetryRunnable，71 行）。**纯自包含簇**（外依赖全落已沉 constants[ASYNC_CALL_STATES]/entity-models[normalizeNonNegativeInteger]/runner-core[getRunnerProfile]），无 index 内部符号 → 直连 import。index.js 作调用方 import 回全部 9 符号（仍被留 index 的 relay/radio dispatch 状态机大簇 prepareDispatchJobForRun/processDispatchJobResult/executeDispatchRetry/markTimedOutRelayStatuses/buildRetryDispatchJobs + appendRelayStatus 调用）；dispatchCommandDeps 注入契约零改动（normalizeDispatchRetryLimit 仍经 index 注入 commands/dispatch.js）。⚠️ 原拟下沉「dispatch-retry 编排大簇」经 find-clusters 证实并非干净自包含簇（与 policy resolvePermission/memory-health 重叠互锁、共享 index 内部 hub，属架构级决策待拍板）→ 改先沉其被最多消费的 retry 决策核心（同第23/25批拔 hub 策略）。getRelayFailureStateWithOscillation 依赖 DISPATCH_OSCILLATION_THRESHOLD + countRecentRelayOscillation 仍留 index，不受影响。四步验证 + CLI help/status/dispatch --dry-run 冒烟 + dispatch-retry 运行时单测 14 例全过 + check:public 全绿。index.js 4,686→4,627 | ✅ 已推送 |
+| `a3ae4d0` | P0-2 第二十八批：下沉 policy 决策层到 `src/lib/policy.js`（5 个 POLICY_* 常量 POLICY_DECISIONS/POLICY_SCOPES/POLICY_SCOPE_BREADTH/POLICY_DESTRUCTIVE_OPERATIONS/POLICY_DEFAULT_SEED + 5 个 policy 决策函数 normalizePolicyRule/appendPolicyRule/seedDefaultPolicyRules/policyScopeMatches/resolvePermission，149 行）。该簇是 dispatch 编排大簇（prepareDispatchJobForRun/executeDispatchRetry 经 resolvePermission）与 memory-health 互锁的关键共享 hub，也是 policy 命令 + dashboard policy 界面（appCommandDeps）的消费对象。**纯自包含簇**（外依赖全落已沉 cli createId/ensureDir、io readPolicyRules、event-writer appendJsonl、registry-paths getPolicyRulesFile、entity-index policyActorMatches/policyRuleSpecificity、constants POLICY_OPERATIONS + node path），无 index 内部符号 → 直连 import。⚠️ appendJsonl 非 io.js 导出而是 io.js 从 ../event-writer.js re-import，新模块须从 event-writer 直连 import。index.js import 回 6 个仍被外部使用的符号（POLICY_DECISIONS/POLICY_SCOPES[供 appCommandDeps]/appendPolicyRule/policyScopeMatches/resolvePermission/seedDefaultPolicyRules[供 policyCommandDeps + dispatch 编排]），normalizePolicyRule 不外发；policyCommandDeps/appCommandDeps 契约零改动。四步验证 + policy 运行时单测 16 例 + policy CLI check dispatch→allow + app HTTP /api/policy 12 规则全绿 + check:public 全绿。index.js 4,627→4,483 | ✅ 已推送 |
 
 ## 后续任务（按优先级）
 

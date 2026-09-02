@@ -6,7 +6,9 @@ import os from "node:os";
 import path from "node:path";
 import { execSync } from "node:child_process";
 import { normalizeToolName } from "./dispatch.js";
+import { getSafeStaticRelativePath } from "./http.js";
 import { projectRoot } from "./paths.js";
+import { getContentType } from "./util.js";
 
 export function readDiscoveredModels(memoryDir, tool) {
   const cacheFile = path.join(memoryDir, "state", "tool-models.json");
@@ -420,4 +422,82 @@ export function getInstructionIncludeFiles(memoryDir) {
 export function getInstallTargetForTool(memoryDir, toolName, installTargets) {
   const targets = installTargets || getInstallTargets(memoryDir);
   return targets.find((target) => target.tool === toolName) || null;
+}
+
+export function sendStaticFile(res, pathname) {
+  const publicDir = getDashboardStaticRoot();
+  const relativePath = getSafeStaticRelativePath(pathname);
+  if (!relativePath) {
+    res.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("Forbidden");
+    return;
+  }
+  const filePath = path.join(publicDir, relativePath);
+  const normalizedFilePath = path.resolve(filePath);
+  const normalizedPublicDir = path.resolve(publicDir);
+
+  if (!normalizedFilePath.startsWith(normalizedPublicDir + path.sep) && normalizedFilePath !== normalizedPublicDir) {
+    res.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("Forbidden");
+    return;
+  }
+
+  if (!fs.existsSync(normalizedFilePath) || !fs.statSync(normalizedFilePath).isFile()) {
+    res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("Not Found");
+    return;
+  }
+
+  const ext = path.extname(normalizedFilePath);
+  const contentTypeMap = {
+    ".css": "text/css; charset=utf-8",
+    ".js": "application/javascript; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
+    ".svg": "image/svg+xml",
+    ".html": "text/html; charset=utf-8",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".ico": "image/x-icon",
+    ".webp": "image/webp",
+    ".woff": "font/woff",
+    ".woff2": "font/woff2"
+  };
+
+  res.writeHead(200, {
+    "Content-Type": contentTypeMap[ext] || "text/plain",
+    "Cache-Control": "public, max-age=3600"
+  });
+  fs.createReadStream(normalizedFilePath).pipe(res);
+}
+
+export function sendStaticAsset(res, pathname) {
+  const publicDir = getDashboardStaticRoot();
+  const relativePath = getSafeStaticRelativePath(pathname);
+  if (!relativePath) {
+    res.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("Forbidden");
+    return;
+  }
+  const assetPath = path.join(publicDir, relativePath);
+  const assetsRoot = path.join(publicDir, "assets");
+  const normalizedAssetPath = path.resolve(assetPath);
+  const normalizedAssetsRoot = path.resolve(assetsRoot);
+
+  if (!normalizedAssetPath.startsWith(normalizedAssetsRoot + path.sep) && normalizedAssetPath !== normalizedAssetsRoot) {
+    res.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("Forbidden");
+    return;
+  }
+  if (!fs.existsSync(normalizedAssetPath) || !fs.statSync(normalizedAssetPath).isFile()) {
+    res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("Not found");
+    return;
+  }
+  res.writeHead(200, {
+    "Content-Type": getContentType(normalizedAssetPath),
+    "Cache-Control": "public, max-age=31536000, immutable"
+  });
+  fs.createReadStream(normalizedAssetPath).pipe(res);
 }

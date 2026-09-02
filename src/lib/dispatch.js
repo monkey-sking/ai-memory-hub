@@ -2,6 +2,7 @@
 // 这些函数不依赖 index.js 内部的任何其他符号，可安全复用。
 
 import { resolveAgentTarget } from "../agent-wake.js";
+import { normalizeQualityGate } from "./entity-models.js";
 
 export function createDispatchRecordMutex() {
   let chain = Promise.resolve();
@@ -277,4 +278,52 @@ export function isDirectDispatchRadioMessage(message, to = "") {
   }
   const requested = resolveAgentTarget(to || "").tool;
   return requested ? target.tool === requested : true;
+}
+
+export function renderDispatchQualityGate(job) {
+  const gate = normalizeQualityGate(job?.qualityGate || {});
+  const lines = [];
+  if (job?.recipe?.name) {
+    lines.push(`- Recipe: ${job.recipe.name}${job.recipe.version ? `@${job.recipe.version}` : ""}`);
+  }
+  if (job?.recipeStep?.id) {
+    const deps = Array.isArray(job.recipeStep.dependsOn) && job.recipeStep.dependsOn.length > 0
+      ? `; depends on ${job.recipeStep.dependsOn.join(", ")}`
+      : "";
+    lines.push(`- Recipe step: ${job.recipeStep.id}${job.recipeStep.role ? ` (${job.recipeStep.role})` : ""}${deps}`);
+  }
+  if (typeof gate.reviewRequired === "boolean") {
+    lines.push(`- Review required: ${gate.reviewRequired ? "yes" : "no"}`);
+  }
+  if (Number.isInteger(gate.maxRepairAttempts)) {
+    lines.push(`- Max repair attempts: ${gate.maxRepairAttempts}`);
+  }
+  if (Array.isArray(gate.stopWhen) && gate.stopWhen.length > 0) {
+    lines.push(`- Stop when: ${gate.stopWhen.join("; ")}`);
+  }
+  if (Array.isArray(gate.allowedActions) && gate.allowedActions.length > 0) {
+    lines.push(`- Allowed actions: ${gate.allowedActions.join("; ")}`);
+  }
+  if (Array.isArray(gate.forbiddenActions) && gate.forbiddenActions.length > 0) {
+    lines.push(`- Forbidden actions: ${gate.forbiddenActions.join("; ")}`);
+  }
+  if (Array.isArray(gate.reviewDimensions) && gate.reviewDimensions.length > 0) {
+    lines.push(`- Review dimensions: ${gate.reviewDimensions.join("; ")}`);
+  }
+  if (gate.adversarialVerifier?.enabled) {
+    lines.push("- Adversarial verifier: enabled; actively try to find a counterexample before reporting success.");
+    if (gate.adversarialVerifier.checks.length > 0) {
+      lines.push(`- Adversarial checks: ${gate.adversarialVerifier.checks.join("; ")}`);
+    }
+  }
+  if (Array.isArray(gate.verifyCommands) && gate.verifyCommands.length > 0) {
+    lines.push("- Verification commands:");
+    for (const command of gate.verifyCommands) {
+      lines.push(`  - ${formatDispatchVerifyCommand(command)}`);
+    }
+  }
+  if (lines.length > 0) {
+    lines.push("- If a stop condition or forbidden action is required, stop and write a task note instead of proceeding.");
+  }
+  return lines;
 }

@@ -2,7 +2,6 @@
 // 这些函数不依赖 index.js 内部的任何其他符号，可安全复用。
 
 import path from "node:path";
-import { readEvents } from "./io.js";
 import {
   bootstrapEntityEventsFromProjection,
   readEntityEvents,
@@ -13,12 +12,16 @@ import {
   normalizeTask,
   normalizeWorkflow,
   normalizeProject,
+  updateWorkflow,
   getTaskEventStoreDefinition,
   getWorkflowEventStoreDefinition,
   getProjectEventStoreDefinition
 } from "./entity-models.js";
 import { isClosedDispatchSourceState } from "./dispatch.js";
-import { isRadioTargetingClosedSession } from "./io.js";
+import { isRadioTargetingClosedSession, readEvents } from "./io.js";
+import { createTaskNote } from "./entity-index.js";
+import { summarizeWorkflowLinkedTaskDelivery } from "./constants.js";
+import { createTask, createRadioMessage } from "./entity-factory.js";
 import { ensureDir } from "./cli.js";
 import { appendJsonl } from "../event-writer.js";
 
@@ -211,4 +214,103 @@ export function isRadioLinkedToClosedSource(memoryDir, message) {
   }
   return readWorkflows(memoryDir)
     .some((workflow) => refSet.has(workflow.id) && isClosedDispatchSourceState(workflow.status || workflow.deliveryState));
+}
+
+export function syncLinkedWorkflowDeliveryState(memoryDir, task, patch = {}) {
+  if (!task?.id) {
+    return [];
+  }
+  const workflows = readWorkflows(memoryDir).filter((workflow) => (workflow.linkedTasks || []).includes(task.id));
+  if (workflows.length === 0) {
+    return [];
+  }
+  const tasks = readTasks(memoryDir);
+  const updated = [];
+  for (const workflow of workflows) {
+    const aggregate = summarizeWorkflowLinkedTaskDelivery(workflow, tasks, patch);
+    const next = updateWorkflow(memoryDir, workflow.id, (current) => {
+      const notes = [...(current.notes || [])];
+      if (patch.noteText && !notes.some((note) => note.text === patch.noteText)) {
+        notes.push(createTaskNote("ai-memory-hub", patch.noteText));
+      }
+      return {
+        ...current,
+        updatedAt: new Date().toISOString(),
+        deliveryState: aggregate.deliveryState,
+        deliveryUpdatedAt: new Date().toISOString(),
+        dispatchId: patch.dispatchId || current.dispatchId || "",
+        threadKey: patch.threadKey || current.threadKey || "",
+        attempt: Number(patch.attempt || current.attempt || 0),
+        maxRetries: Number(patch.maxRetries || current.maxRetries || 0),
+        nextRetryAt: aggregate.nextRetryAt || patch.nextRetryAt || current.nextRetryAt || "",
+        sessionId: patch.sessionId || current.sessionId || "",
+        lastError: aggregate.lastError || patch.lastError || "",
+        progressPercent: aggregate.progressPercent,
+        progressStatus: aggregate.progressStatus,
+        progressAt: aggregate.progressAt || current.progressAt || "",
+        progressBy: aggregate.progressBy || current.progressBy || "",
+        responseRadioId: patch.responseRadioId || current.responseRadioId || "",
+        statusRadioId: patch.statusRadioId || current.statusRadioId || "",
+        dispatchReportPath: patch.dispatchReportPath || current.dispatchReportPath || "",
+        worktree: patch.worktree || current.worktree || null,
+        notes
+      };
+    });
+    updated.push(next);
+  }
+  return updated;
+}
+
+export function spawnWorkflowTasks(memoryDir, workflow) {
+  const tasks = readTasks(memoryDir);
+  const linkedTasks = [];
+  for (const [role, assignees] of Object.entries({
+    planner: workflow.planner,
+    executor: workflow.executor,
+    reviewer: workflow.reviewer,
+    observer: workflow.observer
+  })) {
+    for (const assignee of assignees || []) {
+      const task = {
+        ...createTask({
+          title: `[workflow:${workflow.id}] ${role}: ${workflow.title}`,
+          description: workflow.plan || workflow.acceptance || "",
+          handoff: `Workflow ${workflow.id}; role=${role}`,
+          createdBy: workflow.createdBy,
+          project: workflow.project,
+          priority: workflow.priority,
+          qualityGate: workflow.qualityGate
+        }),
+        assignee,
+        status: "claimed"
+      };
+      tasks.push(task);
+      linkedTasks.push(task.id);
+    }
+  }
+  writeTasks(memoryDir, tasks);
+  updateWorkflow(memoryDir, workflow.id, (current) => ({ ...current, linkedTasks }));
+}
+
+export function notifyWorkflowRoles(memoryDir, workflow) {
+  const recipients = new Set([
+    ...(workflow.planner || []),
+    ...(workflow.executor || []),
+    ...(workflow.reviewer || []),
+    ...(workflow.observer || [])
+  ].filter(Boolean));
+  const linkedRadio = [];
+  for (const to of recipients) {
+    const message = createRadioMessage({
+      from: workflow.createdBy,
+      to,
+      type: "handoff",
+      text: `[workflow:${workflow.id}] ${workflow.title}`,
+      thread: workflow.id,
+      project: workflow.project
+    });
+    appendJsonl(path.join(memoryDir, "radio", "messages.jsonl"), message);
+    linkedRadio.push(message.id);
+  }
+  updateWorkflow(memoryDir, workflow.id, (current) => ({ ...current, linkedRadio }));
 }

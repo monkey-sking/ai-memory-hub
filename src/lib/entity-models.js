@@ -1,13 +1,16 @@
 // 从 src/index.js 下沉的通用工具函数（v3.0 重构 P0-2）。
 // 这些函数不依赖 index.js 内部的任何其他符号，可安全复用。
 
+import fs from "node:fs";
+import path from "node:path";
 import { appendEntityRecord, bootstrapEntityEventsFromProjection, materializeEntityProjection } from "./entity-store.js";
-import { createId, hasOwnField, isPlainObject } from "./cli.js";
-import { findProjectIndex } from "./util.js";
+import { createId, hasOwnField, isPlainObject, ensureDir, getOption } from "./cli.js";
+import { findProjectIndex, renderEmptyBootstrapSnapshot, renderProjectRegistryReadme } from "./util.js";
 import { findTaskIndex, findWorkflowIndex } from "./entity-index.js";
 import { normalizeAdversarialVerifier, normalizeReviewDimensions } from "../review-config.js";
 import { normalizeGithubLinks } from "../github-links.js";
-import { readProjects, readTasks, readWorkflows } from "./entity-repo.js";
+import { readProjects, readTasks, readWorkflows, getProjectsFile, writeProjects } from "./entity-repo.js";
+import { writeFileAtomic } from "../atomic-write.js";
 
 // src/lib/entity-models.js
 // Entity model layer for AI Memory Hub.
@@ -655,4 +658,74 @@ export function mergeSeedProjects(projects) {
     }
   }
   return merged;
+}
+
+export function parseProjectResourceOptions(argv) {
+  const resources = {};
+  for (const key of ["feishu", "repo", "docs"]) {
+    const value = getOption(argv, `--${key}`);
+    if (value !== "") {
+      resources[key] = key === "docs" ? parseProjectListOption(value) : value;
+    }
+  }
+  for (let index = 0; index < argv.length; index += 1) {
+    if (argv[index] !== "--resource") {
+      continue;
+    }
+    const raw = argv[index + 1] || "";
+    const equals = raw.indexOf("=");
+    if (equals > 0) {
+      const key = raw.slice(0, equals).trim();
+      const value = raw.slice(equals + 1).trim();
+      if (key && value) {
+        resources[key] = value;
+      }
+    }
+  }
+  return resources;
+}
+
+export function ensureHub(memoryDir) {
+  for (const dir of [
+    memoryDir,
+    path.join(memoryDir, "inbox"),
+    path.join(memoryDir, "synced"),
+    path.join(memoryDir, "memories"),
+    path.join(memoryDir, "radio"),
+    path.join(memoryDir, "tasks"),
+    path.join(memoryDir, "workflows"),
+    path.join(memoryDir, "projects"),
+    path.join(memoryDir, "prompts"),
+    path.join(memoryDir, "tools"),
+    path.join(memoryDir, "backups"),
+    path.join(memoryDir, "locks"),
+    path.join(memoryDir, "state")
+  ]) {
+    ensureDir(dir);
+  }
+
+  const profilePath = path.join(memoryDir, "profile.md");
+  if (!fs.existsSync(profilePath)) {
+    writeFileAtomic(profilePath, "# Profile\n\nAdd stable user preferences here.\n", "utf8");
+  }
+
+  const memoryPath = path.join(memoryDir, "MEMORY.md");
+  if (!fs.existsSync(memoryPath)) {
+    writeFileAtomic(memoryPath, "# Shared AI Memory\n\nNo local memories indexed yet.\n", "utf8");
+  }
+
+  const bootstrapPath = path.join(memoryDir, "BOOTSTRAP.md");
+  if (!fs.existsSync(bootstrapPath)) {
+    writeFileAtomic(bootstrapPath, renderEmptyBootstrapSnapshot(memoryDir), "utf8");
+  }
+
+  const projectsFile = getProjectsFile(memoryDir);
+  if (!fs.existsSync(projectsFile)) {
+    writeProjects(memoryDir, getSeedProjects());
+  }
+
+  const projectsReadmePath = path.join(memoryDir, "projects", "README.md");
+  if (!fs.existsSync(projectsReadmePath)) {
+    writeFileAtomic(projectsReadmePath, renderProjectRegistryReadme(), "utf8");
+  }
 }

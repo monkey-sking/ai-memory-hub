@@ -97,8 +97,8 @@ import { sqliteCommand } from "./commands/sqlite.js";
 import { ensureDir, readJson, readJsonSafe, writeJson, createId, getOption, hasOption, hasFlag, parsePositiveIntegerOption, positionalArgs, countJsonlFiles, isPlainObject, hasOwnField } from "./lib/cli.js";
 import { readEvents, parseJsonlLine, countJsonlLines, readToolDeclarations, readModelsCache, writeModelsCache, readRadioCursor, writeRadioCursor, readAgents, readRoles, readTeams, readClaudeSessionState, readDispatchLog, readDispatchRuns, appendDispatchRunRecord, appendDispatchLog, readRelayStatus, resolveGitConflictsInFile, writeLedger, readApprovalGates, appendApprovalGateEvent, readPolicyRules, readSessions, readUnreadReceipts, appendUnreadReceipt, writeSessions, writeRpcRequest, readRpcRequest, writeRpcResult, readRpcResult, writeNotification, readNotifications, writeContextPack, readContextPack, readDispatchQueue, writeDispatchQueueEntry, readMemoryLifecycleOperations, archiveInbox, writeInboxEvents, readBackupManifest, readLockFile, readLockEvents, appendLockEvent, readEventsWithLocations, readAgentById, readRoleById, readTeamById, resolveRelayThreadKeys, findLatestRelayStatusEntry, readLatestDispatchRunByThread, readLatestRelayStatusByThread, readLatestRelayStatusBySource, updateSession, getActiveSessions, getPendingNotifications, getQueuedEntries, getRunningEntries, getFailedEntries, buildRunnerArgs, writeClaudeSessionState, countRecentRelayOscillation, writeAgent, writeRole, writeTeam, createDispatchRunId, removePolicyRule, updateNotificationStatus, updateDispatchQueueEntry, releaseLock, describeLock, waitForRpcResult, touchAgentStatus, parseRunnerOutput, isLockStale, removeToolDeclaration, writeToolDeclaration, acquireLock, readToolDeclarationByTool, withHubLock, resolveCredentialEnvironment, isRadioTargetingClosedSession, buildRecentRelayStatusView } from "./lib/io.js";
 import { getEntityEventsFile, getEntityProjectionFile, readEntityEvents, bootstrapEntityEventsFromProjection, writeEntityRecords, appendEntityRecord, deleteEntityRecord, appendEntityEvents, createEntityEvent, replayEntityEvents, materializeEntityProjection, isEntityRecordNewerOrSame } from "./lib/entity-store.js";
-import { PROJECT_STATUSES, RECIPE_GATE_STRING_ARRAY_FIELDS, RECIPE_GATE_FIELDS, extractQualityGate, normalizeQualityGate, normalizeVerifyCommand, normalizeNonNegativeInteger, normalizeMinimalImplementation, normalizeDependencyBudget, normalizePriority, normalizeDispatchWorktreeMetadata, normalizeWorkflowRole, parseProjectListOption, uniqueStringList, isTaskStatus, isWorkflowStatus, normalizeRecipeMetadata, normalizeRecipeStepMetadata, normalizeProjectStatus, normalizeProjectResources, normalizeProject, normalizeWorkflow, normalizeTask, normalizePrompt, getTaskEventStoreDefinition, getProjectEventStoreDefinition, getWorkflowEventStoreDefinition, getPromptEventStoreDefinition, rebuildEventSourcedProjections, updateProject, updateWorkflow, updateTask, assertTaskStatus, assertWorkflowStatus, mergeQualityGates, getSeedProjects, mergeSeedProjects } from "./lib/entity-models.js";
-import { projectRoot, recipeReadLocations, recipeListLocations } from "./lib/paths.js";
+import { PROJECT_STATUSES, RECIPE_GATE_STRING_ARRAY_FIELDS, RECIPE_GATE_FIELDS, extractQualityGate, normalizeQualityGate, normalizeVerifyCommand, normalizeNonNegativeInteger, normalizeMinimalImplementation, normalizeDependencyBudget, normalizePriority, normalizeDispatchWorktreeMetadata, normalizeWorkflowRole, parseProjectListOption, uniqueStringList, isTaskStatus, isWorkflowStatus, normalizeRecipeMetadata, normalizeRecipeStepMetadata, normalizeProjectStatus, normalizeProjectResources, normalizeProject, normalizeWorkflow, normalizeTask, normalizePrompt, getTaskEventStoreDefinition, getProjectEventStoreDefinition, getWorkflowEventStoreDefinition, getPromptEventStoreDefinition, rebuildEventSourcedProjections, updateProject, updateWorkflow, updateTask, assertTaskStatus, assertWorkflowStatus, mergeQualityGates, getSeedProjects, mergeSeedProjects, parseProjectResourceOptions, ensureHub } from "./lib/entity-models.js";
+import { projectRoot, recipeReadLocations, recipeListLocations, readRecipe, listRecipes } from "./lib/paths.js";
 import { POLICY_OPERATIONS, APP_NAME, DEFAULT_DISPATCH_ACK_TIMEOUT_MS, ASYNC_CALL_STATES, summarizeWorkflowLinkedTaskDelivery, isDispatchSourceComplete, isValidAsyncCallState, isRelayTimedOut, isRelayRetryCandidate, areTaskRecipeDependenciesSatisfied } from "./lib/constants.js";
 import { MODEL_CACHE_STALE_MS } from "./lib/constants.js";
 import { promptCommand } from "./commands/prompt.js";
@@ -140,18 +140,18 @@ import { listRelatedEntities, readRelations, recordMemoryRelations, recordRelati
 import { auditMemories } from "./memory-audit.js";
 import { parseRunnerModelList, semanticSearch, checkProcessLiveness, getContentType, readRequestJson, findProjectIndex, expandSynonyms, scanBackupFilesForSecrets, getRelayTimeoutBaseMs, renderDispatchWorktree, createHealthRepairAction, getPathSize, extractCjkNgrams, getBackupFileCatalog, markTieredBackups, parseCliArgs, parseDeclaredList, parseProgressPercent, isJobCheckpointed, getCheckpointStats, renderProjectRegistryReadme, extractSharedSkillLayerVersion, renderEmptyBootstrapSnapshot, sleep, sharedSkillLayerActionLabel, summarizeDir, releaseStaleClaim, inspectSharedMemoryInstructions, getDirectResolveCandidates, normalizeCandidatePath, getPageOptions, findProject, autoCreateWorkflowNodes, summarizeTaskSpec, writeTaskSpecProcessLogs, resolveTaskSpecCwd, getMemoryStorageSummary, hasSharedMemoryInstructions } from "./lib/util.js";
 import { extractInstructionIncludes, normalizeSeverity, formatTopCounts, formatPercent, formatBytes, sanitizeDisplayText, getMemoryAgeDays, inferScope, normalizeSearchText, countBy, sortByImportance, titleCase, looksSensitive, formatEventLocation, extractSection, extractSectionBeforeAny, renderTemplate, trimOutput, summarizeText, textMentionsResolveQuery, summarizeHealthAnalysisForRepair, sanitizeLedgerText, normalizeDuplicateMemoryText, sanitizeInlineText, extractKeywords, extractCompactVariants, getMemoryEventSkipReason, extractLooseJsonStringField, formatMemoryRecordPointer, truncateText, extractSearchTerms, parseLooseJsonMemoryEvent, findDuplicateMemoryGroups, getBackupFilePreview } from "./lib/format.js";
-import { normalizeMemoryKind, normalizeMemoryProject, normalizeMemoryScope, normalizeList, firstDefinedRef, hasMemoryFilters, normalizeRefToken, normalizeConfidence, applyMemoryAccessFields, normalizeMemoryAccessCount, normalizeMemoryAccessTimestamp, firstDefinedValue, getDaysSinceTimestamp, isMemoryLifecycleVisible, normalizeSupersedeToken, hasExplicitSyncKey, readPositiveInteger, isMemoryHealthExcluded, formatMemoryHealthRepairPlan, sanitizeRawJsonCandidate, getMemoryGrowthTrend, chooseMemoryLayer, parseListOption, parseMemoryTagFilters, formatMemoryFilterSummary, matchesMemoryTags, getMemoryAccessStats, applyMemoryLifecycleOperations, normalizeSupersedeRefs, isStartupMemoryRecord, resolveSnapshotLimits, inferTopics, normalizeMemoryRefs, flattenMemoryRefs, formatMemoryRefs, matchesMemoryRef, touchMemoryAccess, getMemorySupersedesRefs, isOperationalRadioMemory, printMemorySearchResults, filterMemoryRecords, getMemoryIdentityKeys, normalizeMemoryMetadata, recordMemoryAccess, getMemoryPrimaryKey, buildMemorySupersededBy, applyMemorySupersedeState, getMemoryRecordStableKey, markDuplicateLedgerRecordSuperseded, normalizeMemoryEvent, renderMemoryLine, recoverMemoryEventFromRawText, parseMemoryFilters, readLedger, renderIndexMarkdown } from "./lib/memory-normalize.js";
-import { createDispatchRecordMutex, isClaimStale, shouldPersistDispatchReport, isDispatchableRadioMessage, isClosedDispatchSourceState, buildTaskDispatchText, buildWorkflowDispatchText, findRecipeStepTask, normalizeToolName, safeGitPathSegment, isKnownGeminiWarning, stripExistingModelArgs, getDispatchThreadKey, formatDispatchVerifyCommand, getDispatchRunStatus, getDispatchRunVerificationResult, getAsyncCallStateMeta, getDispatchSourceKey, getRelaySourceKey, dispatchJobFromTask, dispatchJobFromWorkflow, dispatchJobFromRelayEntry, shouldDispatchJob, buildDispatchWorktreeBranch, buildDispatchWorktreeSlug, nextRelayAttempt, normalizeRunnerStderr, isDirectDispatchRadioMessage } from "./lib/dispatch.js";
+import { normalizeMemoryKind, normalizeMemoryProject, normalizeMemoryScope, normalizeList, firstDefinedRef, hasMemoryFilters, normalizeRefToken, normalizeConfidence, applyMemoryAccessFields, normalizeMemoryAccessCount, normalizeMemoryAccessTimestamp, firstDefinedValue, getDaysSinceTimestamp, isMemoryLifecycleVisible, normalizeSupersedeToken, hasExplicitSyncKey, readPositiveInteger, isMemoryHealthExcluded, formatMemoryHealthRepairPlan, sanitizeRawJsonCandidate, getMemoryGrowthTrend, chooseMemoryLayer, parseListOption, parseMemoryTagFilters, formatMemoryFilterSummary, matchesMemoryTags, getMemoryAccessStats, applyMemoryLifecycleOperations, normalizeSupersedeRefs, isStartupMemoryRecord, resolveSnapshotLimits, inferTopics, normalizeMemoryRefs, flattenMemoryRefs, formatMemoryRefs, matchesMemoryRef, touchMemoryAccess, getMemorySupersedesRefs, isOperationalRadioMemory, printMemorySearchResults, filterMemoryRecords, getMemoryIdentityKeys, normalizeMemoryMetadata, recordMemoryAccess, getMemoryPrimaryKey, buildMemorySupersededBy, applyMemorySupersedeState, getMemoryRecordStableKey, markDuplicateLedgerRecordSuperseded, normalizeMemoryEvent, renderMemoryLine, recoverMemoryEventFromRawText, parseMemoryFilters, readLedger, renderIndexMarkdown, searchMemories, searchMemoriesForContext } from "./lib/memory-normalize.js";
+import { createDispatchRecordMutex, isClaimStale, shouldPersistDispatchReport, isDispatchableRadioMessage, isClosedDispatchSourceState, buildTaskDispatchText, buildWorkflowDispatchText, findRecipeStepTask, normalizeToolName, safeGitPathSegment, isKnownGeminiWarning, stripExistingModelArgs, getDispatchThreadKey, formatDispatchVerifyCommand, getDispatchRunStatus, getDispatchRunVerificationResult, getAsyncCallStateMeta, getDispatchSourceKey, getRelaySourceKey, dispatchJobFromTask, dispatchJobFromWorkflow, dispatchJobFromRelayEntry, shouldDispatchJob, buildDispatchWorktreeBranch, buildDispatchWorktreeSlug, nextRelayAttempt, normalizeRunnerStderr, isDirectDispatchRadioMessage, renderDispatchQualityGate } from "./lib/dispatch.js";
 import { sendHtml, sendPlain, sendJson, sendErrorEnvelope, parsePageParam, getSafeStaticRelativePath, readTextIfExists } from "./lib/http.js";
 import { getToolDeclarationsFile, getModelsCacheFile, getRadioCursorFile, getAgentRegistryFile, getRoleRegistryFile, getTeamRegistryFile, getPolicyRulesFile } from "./lib/registry-paths.js";
 import { quoteWindowsCmdArg, escapeForWindowsCmd, quoteWindowsCommandArg, quoteShellArg, classifyCommandPath, shellQuote, getRunnerDoctorWarnings, runGit, resolveCommandPaths, commandPathPriority, shouldUseShellForCommand, buildWindowsCmdLine, resolveGitProcessCommand, commandExists, choosePreferredCommandPath, resolveRunnerCommand, buildRunnerInvocation, runProcess, runGitCommand, collectDispatchWorktreeReviewMetadata, ensureGitIdentity, inspectDashboardWorktree, resolveGitRepositoryRoot, snapshotDashboardWorktree } from "./lib/shell.js";
 import { normalizeResolveQuery, extractFilesystemPathCandidates, resolvePossiblyHomePath, pathMatchesResolveQuery } from "./lib/resolve.js";
 import { normalizeTaskSpecEnv, normalizeStringArray, normalizeTaskSpecList, normalizeTaskSpecLogs, selectPlatformCommand, getTaskSpecProcessStatus, resolveInside } from "./lib/task-spec.js";
 import { policyActorMatches, policyRuleSpecificity, isHiddenProjectId, findWorkflowIndex, findTaskIndex, createTaskNote, getNotificationChannels } from "./lib/entity-index.js";
-import { getFileHash, getGitHubBackupUploadWarnings, normalizeBackupPatternList, matchesAnyBackupPattern, normalizeScheduleTime, resolveConfiguredPath, extractListValue, renderGitHubBackupReadme, markProtectedBackups, parseBackupTimestampFromName, inferBackupReasonFromName, inferBackupRetentionTier, createdAtRetentionKey, formatBackupDay, getIsoWeekKey, isPathInsideDirectory, countBackupDirs, backupHub, resolveBackupDirectory, getGitHubBackupExportFiles, getDefaultGitHubBackupInclude, assertSafeGitHubBackupRepoDir, ensureSafeChildPath, planBackupRetention, inferBackupRetentionKey, assertSafeDispatchWorktreeRoot, ensureGitHubBackupRepo, describeBackupFile } from "./lib/backup.js";
-import { relayFailureFingerprint, createSkillDelta, createProject, createWorkflow, createTask, createSession, createRpcRequest, createNotification, createDispatchQueueEntry, validateVerifyCommand, validateMinimalImplementation, validateDependencyBudget, normalizeRefValues, mergeMemoryAccessMetadata, parseJsonObjectCandidate, createRadioMessage } from "./lib/entity-factory.js";
-import { readDiscoveredModels, detectVSCodeEnhanced, getDashboardStaticRoot, readTemplate, getLocalInstallTargets, getInstallTargets, renderDashboard, getInstructionIncludeFiles, getInstallTargetForTool } from "./lib/tools-detect.js";
-import { isRadioLinkedToClosedSource } from "./lib/entity-repo.js";
+import { getFileHash, getGitHubBackupUploadWarnings, normalizeBackupPatternList, matchesAnyBackupPattern, normalizeScheduleTime, resolveConfiguredPath, extractListValue, renderGitHubBackupReadme, markProtectedBackups, parseBackupTimestampFromName, inferBackupReasonFromName, inferBackupRetentionTier, createdAtRetentionKey, formatBackupDay, getIsoWeekKey, isPathInsideDirectory, countBackupDirs, backupHub, resolveBackupDirectory, getGitHubBackupExportFiles, getDefaultGitHubBackupInclude, assertSafeGitHubBackupRepoDir, ensureSafeChildPath, planBackupRetention, inferBackupRetentionKey, assertSafeDispatchWorktreeRoot, ensureGitHubBackupRepo, describeBackupFile, listBackupFiles, listBackupDirectories, buildBackupRestorePlan, hasBackupForRetentionKey, getBackupSummary, pruneBackups, deleteBackups, getBackupDetail, createScheduledBackupIfDue, exportGitHubBackupSnapshot } from "./lib/backup.js";
+import { relayFailureFingerprint, createSkillDelta, createProject, createWorkflow, createTask, createSession, createRpcRequest, createNotification, createDispatchQueueEntry, validateVerifyCommand, validateMinimalImplementation, validateDependencyBudget, normalizeRefValues, mergeMemoryAccessMetadata, parseJsonObjectCandidate, createRadioMessage, validateQualityGateFields, validateQualityGate, validateRecipe } from "./lib/entity-factory.js";
+import { readDiscoveredModels, detectVSCodeEnhanced, getDashboardStaticRoot, readTemplate, getLocalInstallTargets, getInstallTargets, renderDashboard, getInstructionIncludeFiles, getInstallTargetForTool, sendStaticFile, sendStaticAsset } from "./lib/tools-detect.js";
+import { isRadioLinkedToClosedSource, syncLinkedWorkflowDeliveryState, spawnWorkflowTasks, notifyWorkflowRoles } from "./lib/entity-repo.js";
 import {
   normalizeAdversarialVerifier,
   normalizeReviewDimensions,
@@ -2120,50 +2120,6 @@ function applyDispatchOutcome(memoryDir, job, result, relayState, { responseMess
   return updatedTask;
 }
 
-function syncLinkedWorkflowDeliveryState(memoryDir, task, patch = {}) {
-  if (!task?.id) {
-    return [];
-  }
-  const workflows = readWorkflows(memoryDir).filter((workflow) => (workflow.linkedTasks || []).includes(task.id));
-  if (workflows.length === 0) {
-    return [];
-  }
-  const tasks = readTasks(memoryDir);
-  const updated = [];
-  for (const workflow of workflows) {
-    const aggregate = summarizeWorkflowLinkedTaskDelivery(workflow, tasks, patch);
-    const next = updateWorkflow(memoryDir, workflow.id, (current) => {
-      const notes = [...(current.notes || [])];
-      if (patch.noteText && !notes.some((note) => note.text === patch.noteText)) {
-        notes.push(createTaskNote("ai-memory-hub", patch.noteText));
-      }
-      return {
-        ...current,
-        updatedAt: new Date().toISOString(),
-        deliveryState: aggregate.deliveryState,
-        deliveryUpdatedAt: new Date().toISOString(),
-        dispatchId: patch.dispatchId || current.dispatchId || "",
-        threadKey: patch.threadKey || current.threadKey || "",
-        attempt: Number(patch.attempt || current.attempt || 0),
-        maxRetries: Number(patch.maxRetries || current.maxRetries || 0),
-        nextRetryAt: aggregate.nextRetryAt || patch.nextRetryAt || current.nextRetryAt || "",
-        sessionId: patch.sessionId || current.sessionId || "",
-        lastError: aggregate.lastError || patch.lastError || "",
-        progressPercent: aggregate.progressPercent,
-        progressStatus: aggregate.progressStatus,
-        progressAt: aggregate.progressAt || current.progressAt || "",
-        progressBy: aggregate.progressBy || current.progressBy || "",
-        responseRadioId: patch.responseRadioId || current.responseRadioId || "",
-        statusRadioId: patch.statusRadioId || current.statusRadioId || "",
-        dispatchReportPath: patch.dispatchReportPath || current.dispatchReportPath || "",
-        worktree: patch.worktree || current.worktree || null,
-        notes
-      };
-    });
-    updated.push(next);
-  }
-  return updated;
-}
 
 
 function writeDispatchReportIfUseful(memoryDir, job, result, relayState) {
@@ -2864,53 +2820,6 @@ async function invokeRunnerCommandAsync(runner, args = [], input = "", timeoutMs
 
 
 
-function renderDispatchQualityGate(job) {
-  const gate = normalizeQualityGate(job?.qualityGate || {});
-  const lines = [];
-  if (job?.recipe?.name) {
-    lines.push(`- Recipe: ${job.recipe.name}${job.recipe.version ? `@${job.recipe.version}` : ""}`);
-  }
-  if (job?.recipeStep?.id) {
-    const deps = Array.isArray(job.recipeStep.dependsOn) && job.recipeStep.dependsOn.length > 0
-      ? `; depends on ${job.recipeStep.dependsOn.join(", ")}`
-      : "";
-    lines.push(`- Recipe step: ${job.recipeStep.id}${job.recipeStep.role ? ` (${job.recipeStep.role})` : ""}${deps}`);
-  }
-  if (typeof gate.reviewRequired === "boolean") {
-    lines.push(`- Review required: ${gate.reviewRequired ? "yes" : "no"}`);
-  }
-  if (Number.isInteger(gate.maxRepairAttempts)) {
-    lines.push(`- Max repair attempts: ${gate.maxRepairAttempts}`);
-  }
-  if (Array.isArray(gate.stopWhen) && gate.stopWhen.length > 0) {
-    lines.push(`- Stop when: ${gate.stopWhen.join("; ")}`);
-  }
-  if (Array.isArray(gate.allowedActions) && gate.allowedActions.length > 0) {
-    lines.push(`- Allowed actions: ${gate.allowedActions.join("; ")}`);
-  }
-  if (Array.isArray(gate.forbiddenActions) && gate.forbiddenActions.length > 0) {
-    lines.push(`- Forbidden actions: ${gate.forbiddenActions.join("; ")}`);
-  }
-  if (Array.isArray(gate.reviewDimensions) && gate.reviewDimensions.length > 0) {
-    lines.push(`- Review dimensions: ${gate.reviewDimensions.join("; ")}`);
-  }
-  if (gate.adversarialVerifier?.enabled) {
-    lines.push("- Adversarial verifier: enabled; actively try to find a counterexample before reporting success.");
-    if (gate.adversarialVerifier.checks.length > 0) {
-      lines.push(`- Adversarial checks: ${gate.adversarialVerifier.checks.join("; ")}`);
-    }
-  }
-  if (Array.isArray(gate.verifyCommands) && gate.verifyCommands.length > 0) {
-    lines.push("- Verification commands:");
-    for (const command of gate.verifyCommands) {
-      lines.push(`  - ${formatDispatchVerifyCommand(command)}`);
-    }
-  }
-  if (lines.length > 0) {
-    lines.push("- If a stop condition or forbidden action is required, stop and write a task note instead of proceeding.");
-  }
-  return lines;
-}
 
 
 
@@ -4850,50 +4759,6 @@ function defaultConfig(memoryDir) {
   };
 }
 
-function ensureHub(memoryDir) {
-  for (const dir of [
-    memoryDir,
-    path.join(memoryDir, "inbox"),
-    path.join(memoryDir, "synced"),
-    path.join(memoryDir, "memories"),
-    path.join(memoryDir, "radio"),
-    path.join(memoryDir, "tasks"),
-    path.join(memoryDir, "workflows"),
-    path.join(memoryDir, "projects"),
-    path.join(memoryDir, "prompts"),
-    path.join(memoryDir, "tools"),
-    path.join(memoryDir, "backups"),
-    path.join(memoryDir, "locks"),
-    path.join(memoryDir, "state")
-  ]) {
-    ensureDir(dir);
-  }
-
-  const profilePath = path.join(memoryDir, "profile.md");
-  if (!fs.existsSync(profilePath)) {
-    writeFileAtomic(profilePath, "# Profile\n\nAdd stable user preferences here.\n", "utf8");
-  }
-
-  const memoryPath = path.join(memoryDir, "MEMORY.md");
-  if (!fs.existsSync(memoryPath)) {
-    writeFileAtomic(memoryPath, "# Shared AI Memory\n\nNo local memories indexed yet.\n", "utf8");
-  }
-
-  const bootstrapPath = path.join(memoryDir, "BOOTSTRAP.md");
-  if (!fs.existsSync(bootstrapPath)) {
-    writeFileAtomic(bootstrapPath, renderEmptyBootstrapSnapshot(memoryDir), "utf8");
-  }
-
-  const projectsFile = getProjectsFile(memoryDir);
-  if (!fs.existsSync(projectsFile)) {
-    writeProjects(memoryDir, getSeedProjects());
-  }
-
-  const projectsReadmePath = path.join(memoryDir, "projects", "README.md");
-  if (!fs.existsSync(projectsReadmePath)) {
-    writeFileAtomic(projectsReadmePath, renderProjectRegistryReadme(), "utf8");
-  }
-}
 
 
 function loadConfig() {
@@ -5351,53 +5216,6 @@ function analyzeInstructionIncludes(config, options = {}) {
 
 
 
-function sendStaticFile(res, pathname) {
-  const publicDir = getDashboardStaticRoot();
-  const relativePath = getSafeStaticRelativePath(pathname);
-  if (!relativePath) {
-    res.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" });
-    res.end("Forbidden");
-    return;
-  }
-  const filePath = path.join(publicDir, relativePath);
-  const normalizedFilePath = path.resolve(filePath);
-  const normalizedPublicDir = path.resolve(publicDir);
-
-  if (!normalizedFilePath.startsWith(normalizedPublicDir + path.sep) && normalizedFilePath !== normalizedPublicDir) {
-    res.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" });
-    res.end("Forbidden");
-    return;
-  }
-
-  if (!fs.existsSync(normalizedFilePath) || !fs.statSync(normalizedFilePath).isFile()) {
-    res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
-    res.end("Not Found");
-    return;
-  }
-
-  const ext = path.extname(normalizedFilePath);
-  const contentTypeMap = {
-    ".css": "text/css; charset=utf-8",
-    ".js": "application/javascript; charset=utf-8",
-    ".json": "application/json; charset=utf-8",
-    ".svg": "image/svg+xml",
-    ".html": "text/html; charset=utf-8",
-    ".png": "image/png",
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".gif": "image/gif",
-    ".ico": "image/x-icon",
-    ".webp": "image/webp",
-    ".woff": "font/woff",
-    ".woff2": "font/woff2"
-  };
-
-  res.writeHead(200, {
-    "Content-Type": contentTypeMap[ext] || "text/plain",
-    "Cache-Control": "public, max-age=3600"
-  });
-  fs.createReadStream(normalizedFilePath).pipe(res);
-}
 
 
 
@@ -5443,35 +5261,6 @@ function getRequestMetricsSnapshot() {
 
 
 
-function sendStaticAsset(res, pathname) {
-  const publicDir = getDashboardStaticRoot();
-  const relativePath = getSafeStaticRelativePath(pathname);
-  if (!relativePath) {
-    res.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" });
-    res.end("Forbidden");
-    return;
-  }
-  const assetPath = path.join(publicDir, relativePath);
-  const assetsRoot = path.join(publicDir, "assets");
-  const normalizedAssetPath = path.resolve(assetPath);
-  const normalizedAssetsRoot = path.resolve(assetsRoot);
-
-  if (!normalizedAssetPath.startsWith(normalizedAssetsRoot + path.sep) && normalizedAssetPath !== normalizedAssetsRoot) {
-    res.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" });
-    res.end("Forbidden");
-    return;
-  }
-  if (!fs.existsSync(normalizedAssetPath) || !fs.statSync(normalizedAssetPath).isFile()) {
-    res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
-    res.end("Not found");
-    return;
-  }
-  res.writeHead(200, {
-    "Content-Type": getContentType(normalizedAssetPath),
-    "Cache-Control": "public, max-age=31536000, immutable"
-  });
-  fs.createReadStream(normalizedAssetPath).pipe(res);
-}
 
 
 
@@ -5648,30 +5437,6 @@ function isProjectVisible(project) {
 
 
 
-function parseProjectResourceOptions(argv) {
-  const resources = {};
-  for (const key of ["feishu", "repo", "docs"]) {
-    const value = getOption(argv, `--${key}`);
-    if (value !== "") {
-      resources[key] = key === "docs" ? parseProjectListOption(value) : value;
-    }
-  }
-  for (let index = 0; index < argv.length; index += 1) {
-    if (argv[index] !== "--resource") {
-      continue;
-    }
-    const raw = argv[index + 1] || "";
-    const equals = raw.indexOf("=");
-    if (equals > 0) {
-      const key = raw.slice(0, equals).trim();
-      const value = raw.slice(equals + 1).trim();
-      if (key && value) {
-        resources[key] = value;
-      }
-    }
-  }
-  return resources;
-}
 
 
 
@@ -5680,59 +5445,7 @@ function parseProjectResourceOptions(argv) {
 
 
 
-function spawnWorkflowTasks(memoryDir, workflow) {
-  const tasks = readTasks(memoryDir);
-  const linkedTasks = [];
-  for (const [role, assignees] of Object.entries({
-    planner: workflow.planner,
-    executor: workflow.executor,
-    reviewer: workflow.reviewer,
-    observer: workflow.observer
-  })) {
-    for (const assignee of assignees || []) {
-      const task = {
-        ...createTask({
-          title: `[workflow:${workflow.id}] ${role}: ${workflow.title}`,
-          description: workflow.plan || workflow.acceptance || "",
-          handoff: `Workflow ${workflow.id}; role=${role}`,
-          createdBy: workflow.createdBy,
-          project: workflow.project,
-          priority: workflow.priority,
-          qualityGate: workflow.qualityGate
-        }),
-        assignee,
-        status: "claimed"
-      };
-      tasks.push(task);
-      linkedTasks.push(task.id);
-    }
-  }
-  writeTasks(memoryDir, tasks);
-  updateWorkflow(memoryDir, workflow.id, (current) => ({ ...current, linkedTasks }));
-}
 
-function notifyWorkflowRoles(memoryDir, workflow) {
-  const recipients = new Set([
-    ...(workflow.planner || []),
-    ...(workflow.executor || []),
-    ...(workflow.reviewer || []),
-    ...(workflow.observer || [])
-  ].filter(Boolean));
-  const linkedRadio = [];
-  for (const to of recipients) {
-    const message = createRadioMessage({
-      from: workflow.createdBy,
-      to,
-      type: "handoff",
-      text: `[workflow:${workflow.id}] ${workflow.title}`,
-      thread: workflow.id,
-      project: workflow.project
-    });
-    appendJsonl(path.join(memoryDir, "radio", "messages.jsonl"), message);
-    linkedRadio.push(message.id);
-  }
-  updateWorkflow(memoryDir, workflow.id, (current) => ({ ...current, linkedRadio }));
-}
 
 
 
@@ -5840,43 +5553,6 @@ function createContextPack({ taskId, workflowId, project, query }) {
   return pack;
 }
 
-function searchMemoriesForContext(memoryDir, query, project, limit = 10) {
-  try {
-    // 原实现读 INDEX.md 再交给 parseIndexFile —— 但 INDEX.md 只有统计与
-    // top N 主题/项目/标签，不含任何记忆条目，而 parseIndexFile 在代码库里
-    // 从来就不存在（a657fc9 引入的疏漏）。整段被 try/catch 包住，所以只是
-    // 静默返回空数组：context pack 永远搜不到记忆，看不到任何报错。
-    // 改成读结构化索引 memories/index.json 的 records，字段与 searchMemories
-    // 期望的 text / kind / source / project / tags 完全对齐。
-    const indexPath = path.join(memoryDir, "memories", "index.json");
-    if (!fs.existsSync(indexPath)) {
-      return [];
-    }
-
-    const records = readJson(indexPath).records || [];
-    const projectRecords = project ? records.filter((r) => r.project === project) : records;
-
-    if (!query) {
-      return projectRecords.slice(0, limit).map((r) => ({
-        text: r.text,
-        kind: r.kind,
-        source: r.source,
-        project: r.project
-      }));
-    }
-
-    const scored = searchMemories(projectRecords, query);
-    return scored.slice(0, limit).map((r) => ({
-      text: r.text,
-      kind: r.kind,
-      source: r.source,
-      project: r.project,
-      score: r.score
-    }));
-  } catch (error) {
-    return [];
-  }
-}
 
 
 
@@ -5889,104 +5565,6 @@ function searchMemoriesForContext(memoryDir, query, project, limit = 10) {
 
 
 // Workflow Recipe Functions
-function readRecipe(memoryDir, recipeName) {
-  for (const location of recipeReadLocations(memoryDir)) {
-    const file = path.join(location.dir, `${recipeName}.json`);
-    if (fs.existsSync(file)) {
-      return readJson(file);
-    }
-  }
-  return null;
-}
-
-function listRecipes(memoryDir) {
-  const recipes = new Map();
-  for (const location of recipeListLocations(memoryDir)) {
-    if (!fs.existsSync(location.dir)) {
-      continue;
-    }
-    const files = fs.readdirSync(location.dir).filter((f) => f.endsWith(".json"));
-    for (const file of files) {
-      try {
-        const recipe = readJson(path.join(location.dir, file));
-        const name = recipe.name || path.basename(file, ".json");
-        recipes.set(name, {
-          name,
-          title: recipe.title,
-          description: recipe.description,
-          version: recipe.version,
-          source: location.source,
-          roles: Object.keys(recipe.roles || {}),
-          steps: (recipe.steps || []).length
-        });
-      } catch {
-        // Skip malformed recipes; recipe validate reports details for explicit names.
-      }
-    }
-  }
-  return Array.from(recipes.values()).sort((a, b) => a.name.localeCompare(b.name));
-}
-
-
-
-
-
-
-
-function validateQualityGateFields(source, label) {
-  if (!isPlainObject(source)) {
-    return { valid: false, error: `${label} must be an object` };
-  }
-  if (hasOwnField(source, "verifyCommands")) {
-    if (!Array.isArray(source.verifyCommands)) {
-      return { valid: false, error: `${label}.verifyCommands must be an array` };
-    }
-    for (const [index, command] of source.verifyCommands.entries()) {
-      const validation = validateVerifyCommand(command, `${label}.verifyCommands[${index}]`);
-      if (!validation.valid) {
-        return validation;
-      }
-    }
-  }
-  for (const field of RECIPE_GATE_STRING_ARRAY_FIELDS) {
-    if (hasOwnField(source, field)) {
-      if (!Array.isArray(source[field]) || source[field].some((item) => typeof item !== "string" || item.trim() === "")) {
-        return { valid: false, error: `${label}.${field} must be an array of non-empty strings` };
-      }
-    }
-  }
-  if (hasOwnField(source, "reviewDimensions")) {
-    const validation = validateReviewDimensions(source.reviewDimensions);
-    if (!validation.valid) {
-      return { valid: false, error: `${label}.${validation.error}` };
-    }
-  }
-  if (hasOwnField(source, "reviewRequired") && typeof source.reviewRequired !== "boolean") {
-    return { valid: false, error: `${label}.reviewRequired must be a boolean` };
-  }
-  if (hasOwnField(source, "maxRepairAttempts") && (!Number.isInteger(source.maxRepairAttempts) || source.maxRepairAttempts < 0)) {
-    return { valid: false, error: `${label}.maxRepairAttempts must be a non-negative integer` };
-  }
-  if (hasOwnField(source, "minimalImplementation")) {
-    const validation = validateMinimalImplementation(source.minimalImplementation, `${label}.minimalImplementation`);
-    if (!validation.valid) {
-      return validation;
-    }
-  }
-  if (hasOwnField(source, "dependencyBudget")) {
-    const validation = validateDependencyBudget(source.dependencyBudget, `${label}.dependencyBudget`);
-    if (!validation.valid) {
-      return validation;
-    }
-  }
-  if (hasOwnField(source, "adversarialVerifier")) {
-    const validation = validateAdversarialVerifier(source.adversarialVerifier);
-    if (!validation.valid) {
-      return { valid: false, error: `${label}.${validation.error}` };
-    }
-  }
-  return { valid: true };
-}
 
 
 
@@ -5996,82 +5574,15 @@ function validateQualityGateFields(source, label) {
 
 
 
-function validateQualityGate(source, label) {
-  if (!isPlainObject(source)) {
-    return { valid: true };
-  }
-  for (const containerField of ["qualityGate", "gates"]) {
-    if (hasOwnField(source, containerField)) {
-      const validation = validateQualityGateFields(source[containerField], `${label}.${containerField}`);
-      if (!validation.valid) {
-        return validation;
-      }
-    }
-  }
-  const directFields = {};
-  for (const field of RECIPE_GATE_FIELDS) {
-    if (hasOwnField(source, field)) {
-      directFields[field] = source[field];
-    }
-  }
-  if (Object.keys(directFields).length > 0) {
-    const validation = validateQualityGateFields(directFields, label);
-    if (!validation.valid) {
-      return validation;
-    }
-  }
-  return { valid: true };
-}
 
-function validateRecipe(recipe) {
-  if (!recipe.name || !recipe.title) {
-    return { valid: false, error: "Recipe must have name and title" };
-  }
 
-  if (!recipe.roles || Object.keys(recipe.roles).length === 0) {
-    return { valid: false, error: "Recipe must define at least one role" };
-  }
 
-  if (!recipe.steps || recipe.steps.length === 0) {
-    return { valid: false, error: "Recipe must have at least one step" };
-  }
 
-  const recipeGateValidation = validateQualityGate(recipe, "Recipe");
-  if (!recipeGateValidation.valid) {
-    return recipeGateValidation;
-  }
 
-  // Check all step roles are defined
-  for (const step of recipe.steps) {
-    if (!step.id || !step.task) {
-      return { valid: false, error: "Recipe steps must have id and task" };
-    }
-    if (!recipe.roles[step.role]) {
-      return { valid: false, error: `Step ${step.id} references undefined role: ${step.role}` };
-    }
-    if (step.dependsOn && (!Array.isArray(step.dependsOn) || step.dependsOn.some((depId) => typeof depId !== "string" || depId.trim() === ""))) {
-      return { valid: false, error: `Step ${step.id} dependsOn must be an array of non-empty strings` };
-    }
-    const stepGateValidation = validateQualityGate(step, `Step ${step.id}`);
-    if (!stepGateValidation.valid) {
-      return stepGateValidation;
-    }
-  }
 
-  // Check dependsOn references exist
-  for (const step of recipe.steps) {
-    if (step.dependsOn) {
-      for (const depId of step.dependsOn) {
-        const depExists = recipe.steps.some((s) => s.id === depId);
-        if (!depExists) {
-          return { valid: false, error: `Step ${step.id} depends on non-existent step: ${depId}` };
-        }
-      }
-    }
-  }
 
-  return { valid: true };
-}
+
+
 
 function createWorkflowFromRecipe(memoryDir, recipeName, toolMapping, variables) {
   const recipe = readRecipe(memoryDir, recipeName);
@@ -7146,78 +6657,6 @@ function containsCorruptionMarker(value) {
 
 
 
-function searchMemories(records, query) {
-  const queryTerms = extractKeywords(query);
-  const queryNgrams = extractSearchTerms(query);
-  const queryNormalized = normalizeSearchText(query);
-  return records
-    .map((memory) => {
-      const text = String(memory.text || "");
-      const haystack = new Set([
-        ...extractKeywords(text),
-        ...(memory.keywords || []),
-        ...(memory.topics || []),
-        memory.source || "",
-        memory.kind || memory.metadata?.kind || "",
-        memory.project || memory.metadata?.project || "",
-        memory.scope || "",
-        ...(memory.tags || memory.metadata?.tags || []),
-        ...flattenMemoryRefs(memory.refs || memory.metadata?.refs)
-      ]);
-      const searchTerms = new Set([
-        ...extractSearchTerms(text),
-        ...extractSearchTerms((memory.topics || []).join(" ")),
-        ...extractSearchTerms(memory.source || ""),
-        ...extractSearchTerms(memory.kind || memory.metadata?.kind || ""),
-        ...extractSearchTerms(memory.project || memory.metadata?.project || ""),
-        ...extractSearchTerms(memory.scope || ""),
-        ...extractSearchTerms((memory.tags || memory.metadata?.tags || []).join(" ")),
-        ...extractSearchTerms(flattenMemoryRefs(memory.refs || memory.metadata?.refs).join(" "))
-      ]);
-      const normalizedText = normalizeSearchText(text);
-      const normalizedJoinedKeywords = normalizeSearchText([
-        ...haystack,
-        ...searchTerms
-      ].join(" "));
-      let score = 0;
-      const expandedTerms = expandSynonyms(queryTerms);
-      for (const term of expandedTerms) {
-        if (haystack.has(term)) {
-          score += 4;
-        } else if (searchTerms.has(term)) {
-          score += 3;
-        } else if (normalizedText.includes(normalizeSearchText(term))) {
-          score += 2;
-        }
-      }
-      for (const term of queryNgrams) {
-        if (!term) continue;
-        if (searchTerms.has(term)) {
-          score += term.length >= 4 ? 2.5 : 1.5;
-        } else if (normalizedText.includes(term) || normalizedJoinedKeywords.includes(term)) {
-          score += term.length >= 4 ? 2 : 1;
-        }
-      }
-      if (queryNormalized && normalizedText.includes(queryNormalized)) {
-        score += queryNormalized.length >= 6 ? 8 : 5;
-      } else if (queryNormalized && normalizedJoinedKeywords.includes(queryNormalized)) {
-        score += 3;
-      }
-      for (const topic of memory.topics || []) {
-        for (const term of expandedTerms) {
-          if (topic.includes(term) || term.includes(topic)) {
-            score += 5;
-          }
-        }
-      }
-      score += Number(memory.importance || 0) / 100;
-      score += Number(memory.accessHeat || 0) / 50;
-      score -= Number(memory.staleAccessPenalty || 0) / 50;
-      return { ...memory, score };
-    })
-    .filter((memory) => memory.score > 0)
-    .sort((a, b) => b.score - a.score);
-}
 
 
 function scoreImportance(memory, topics, ordinal, total, access = {}) {
@@ -7266,19 +6705,6 @@ function isStaleOperationalRadioMemory(memory, text) {
 
 
 
-function getBackupDetail(memoryDir, name) {
-  const backupDir = resolveBackupDirectory(memoryDir, name);
-  const backup = listBackupDirectories(memoryDir).find((item) => item.name === path.basename(backupDir)) || null;
-  const manifest = readBackupManifest(backupDir);
-  const restore = buildBackupRestorePlan(memoryDir, name);
-  return {
-    ok: true,
-    backup,
-    manifest,
-    files: listBackupFiles(memoryDir, name),
-    restore
-  };
-}
 
 function restoreBackup(memoryDir, name, { apply = false, confirm = "" } = {}) {
   const plan = buildBackupRestorePlan(memoryDir, name);
@@ -7334,46 +6760,7 @@ function restoreBackup(memoryDir, name, { apply = false, confirm = "" } = {}) {
   };
 }
 
-function buildBackupRestorePlan(memoryDir, name) {
-  const backupDir = resolveBackupDirectory(memoryDir, name);
-  const files = listBackupFiles(memoryDir, name).filter((file) => file.restorable);
-  const changed = files.filter((file) => file.status !== "unchanged");
-  return {
-    name: path.basename(backupDir),
-    generatedAt: new Date().toISOString(),
-    requiresConfirmation: "RESTORE",
-    destructive: changed.some((file) => file.status === "different"),
-    summary: {
-      total: files.length,
-      changed: changed.length,
-      missingCurrent: files.filter((file) => file.status === "missing-current").length,
-      different: files.filter((file) => file.status === "different").length,
-      unchanged: files.filter((file) => file.status === "unchanged").length,
-      bytes: changed.reduce((sum, file) => sum + file.bytes, 0),
-      display: formatBytes(changed.reduce((sum, file) => sum + file.bytes, 0))
-    },
-    files: files.map((file) => ({
-      name: file.name,
-      kind: file.kind,
-      bytes: file.bytes,
-      display: file.display,
-      currentPath: file.currentPath,
-      currentExists: file.currentExists,
-      currentDisplay: file.currentDisplay,
-      status: file.status,
-      restorable: file.restorable
-    }))
-  };
-}
 
-function listBackupFiles(memoryDir, name) {
-  const backupDir = resolveBackupDirectory(memoryDir, name);
-  const catalog = new Map(getBackupFileCatalog(memoryDir).map((file) => [file.name, file]));
-  return fs.readdirSync(backupDir, { withFileTypes: true })
-    .filter((entry) => entry.isFile())
-    .map((entry) => describeBackupFile(memoryDir, backupDir, entry.name, catalog.get(entry.name)))
-    .sort((a, b) => Number(b.restorable) - Number(a.restorable) || a.name.localeCompare(b.name));
-}
 
 
 
@@ -7445,22 +6832,7 @@ function runAutomaticBackupStrategy(config, { trigger = "sync", includePreSync =
   return result;
 }
 
-function createScheduledBackupIfDue(memoryDir, { now, trigger, tier, key, reason, policy }) {
-  if (!key || hasBackupForRetentionKey(memoryDir, tier, key)) {
-    return null;
-  }
-  return backupHub(memoryDir, reason, {
-    now,
-    trigger,
-    retentionTier: tier,
-    retentionKey: key,
-    retentionPolicy: policy
-  });
-}
 
-function hasBackupForRetentionKey(memoryDir, tier, key) {
-  return listBackupDirectories(memoryDir).some((backup) => backup.retentionTier === tier && backup.retentionKey === key);
-}
 
 function getBackupRetentionConfig(config = {}) {
   const defaults = defaultConfig(config.memoryDir || resolveMemoryDir()).sync.backupRetention;
@@ -7838,56 +7210,6 @@ function getGitHubBackupScheduleStatus(github = getGitHubBackupConfig()) {
 
 
 
-function exportGitHubBackupSnapshot(memoryDir, repoDir, files, { reason, startedAt, remoteUrl, branch }) {
-  const root = path.resolve(repoDir);
-  const snapshotDir = path.join(root, "snapshot");
-  ensureSafeChildPath(snapshotDir, root);
-  ensureDir(snapshotDir);
-  const manifestPath = path.join(root, "manifest.json");
-  const readmePath = path.join(root, "README.md");
-  const existingManifest = readJsonSafe(manifestPath, {});
-
-  const copied = [];
-  for (const file of files) {
-    const target = path.join(snapshotDir, file.name);
-    ensureSafeChildPath(target, snapshotDir);
-    fs.copyFileSync(file.target, target);
-    copied.push({
-      name: file.name,
-      kind: file.kind,
-      bytes: fs.statSync(target).size,
-      sha256: getFileHash(target)
-    });
-  }
-
-  for (const file of getBackupFileCatalog(memoryDir)) {
-    if (!copied.some((item) => item.name === file.name)) {
-      const stale = path.join(snapshotDir, file.name);
-      if (fs.existsSync(stale) && fs.statSync(stale).isFile()) {
-        fs.unlinkSync(stale);
-      }
-    }
-  }
-
-  const previousFiles = Array.isArray(existingManifest.files) ? existingManifest.files : [];
-  const snapshotChanged = JSON.stringify(previousFiles) !== JSON.stringify(copied);
-  const manifest = {
-    generatedAt: startedAt.toISOString(),
-    reason,
-    source: "ai-memory-hub",
-    remoteConfigured: Boolean(remoteUrl),
-    branch,
-    files: copied
-  };
-  if (snapshotChanged || !fs.existsSync(manifestPath) || !fs.existsSync(readmePath)) {
-    writeJson(manifestPath, manifest);
-    writeFileAtomic(readmePath, renderGitHubBackupReadme(manifest), "utf8");
-  }
-  return {
-    manifest: snapshotChanged || !existingManifest.generatedAt ? manifest : existingManifest,
-    files: copied.map((file) => file.name)
-  };
-}
 
 
 
@@ -7946,131 +7268,12 @@ function buildGitHubBackupScheduledTaskCommand(memoryDir) {
 
 
 
-function getBackupSummary(memoryDir, { limit = 50, daily = 7, weekly = 4, preSync = 20, prePull = 20, pruneAfterSync = true } = {}) {
-  const backups = listBackupDirectories(memoryDir);
-  const retention = planBackupRetention(backups, { daily, weekly, preSync, prePull });
-  const retentionByName = new Map(retention.backups.map((item) => [item.name, item]));
-  return {
-    dir: path.join(memoryDir, "backups"),
-    count: backups.length,
-    totalBytes: backups.reduce((sum, backup) => sum + backup.bytes, 0),
-    totalDisplay: formatBytes(backups.reduce((sum, backup) => sum + backup.bytes, 0)),
-    policy: {
-      daily,
-      weekly,
-      preSync,
-      prePull,
-      pruneAfterSync,
-      note: "Manual backups are protected; daily, weekly, pre-sync, and pre-pull backups are pruned only inside backups/."
-    },
-    retention: {
-      keep: retention.keep.length,
-      prune: retention.prune.length,
-      pruneBytes: retention.prune.reduce((sum, backup) => sum + backup.bytes, 0),
-      pruneDisplay: formatBytes(retention.prune.reduce((sum, backup) => sum + backup.bytes, 0))
-    },
-    backups: backups.slice(0, limit).map((backup) => ({
-      ...backup,
-      retention: retentionByName.get(backup.name)?.retention || "prune",
-      retentionReason: retentionByName.get(backup.name)?.retentionReason || "outside retention policy"
-    }))
-  };
-}
 
-function pruneBackups(memoryDir, { apply = false, daily = 7, weekly = 4, preSync = 20, prePull = 20 } = {}) {
-  const backups = listBackupDirectories(memoryDir);
-  const retention = planBackupRetention(backups, { daily, weekly, preSync, prePull });
-  const backupsRoot = path.resolve(memoryDir, "backups");
-  const pruned = [];
-  if (apply) {
-    for (const backup of retention.prune) {
-      const target = path.resolve(backup.dir);
-      if (!isPathInsideDirectory(target, backupsRoot)) {
-        throw new Error(`Refusing to prune backup outside backups dir: ${backup.dir}`);
-      }
-      fs.rmSync(target, { recursive: true, force: true });
-      pruned.push(backup);
-    }
-  }
-  return {
-    apply,
-    policy: { daily, weekly, preSync, prePull },
-    total: backups.length,
-    keep: retention.keep.length,
-    prune: retention.prune.length,
-    pruneBytes: retention.prune.reduce((sum, backup) => sum + backup.bytes, 0),
-    pruneDisplay: formatBytes(retention.prune.reduce((sum, backup) => sum + backup.bytes, 0)),
-    pruned: pruned.map((backup) => backup.name),
-    candidates: retention.prune.map((backup) => ({
-      name: backup.name,
-      createdAt: backup.createdAt,
-      reason: backup.reason,
-      bytes: backup.bytes,
-      display: backup.display,
-      retentionReason: backup.retentionReason
-    }))
-  };
-}
 
 // Delete an explicit set of backups by name (the dashboard "bulk delete"
 // feature). Distinct from pruneDashboardBackups, which is retention-policy
 // driven. Same safety model: every target must resolve inside <memoryDir>/backups.
-function deleteBackups(memoryDir, { names = [], apply = false } = {}) {
-  const backupsRoot = path.resolve(memoryDir, "backups");
-  const existing = listBackupDirectories(memoryDir);
-  const byName = new Map(existing.map((backup) => [backup.name, backup]));
-  const deleted = [];
-  const missing = [];
-  for (const name of names) {
-    const backup = byName.get(name);
-    if (!backup) {
-      missing.push(name);
-      continue;
-    }
-    const target = path.resolve(backup.dir);
-    if (!isPathInsideDirectory(target, backupsRoot)) {
-      throw new Error(`Refusing to delete backup outside backups dir: ${name}`);
-    }
-    if (apply) {
-      fs.rmSync(target, { recursive: true, force: true });
-      deleted.push(name);
-    }
-  }
-  return { apply, requested: names.length, deleted, missing };
-}
 
-function listBackupDirectories(memoryDir) {
-  const dir = path.join(memoryDir, "backups");
-  if (!fs.existsSync(dir)) {
-    return [];
-  }
-  return fs.readdirSync(dir, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => {
-      const backupDir = path.join(dir, entry.name);
-      const manifestPath = path.join(backupDir, "manifest.json");
-      const manifest = fs.existsSync(manifestPath) ? readJsonSafe(manifestPath) : {};
-      const stat = fs.statSync(backupDir);
-      const createdAt = manifest.createdAt || parseBackupTimestampFromName(entry.name) || stat.mtime.toISOString();
-      const reason = manifest.reason || inferBackupReasonFromName(entry.name);
-      const retentionTier = manifest.retention?.tier || inferBackupRetentionTier(reason);
-      const bytes = getPathSize(backupDir);
-      return {
-        name: entry.name,
-        dir: backupDir,
-        createdAt,
-        reason,
-        retentionTier,
-        retentionKey: manifest.retention?.key || inferBackupRetentionKey(retentionTier, createdAt),
-        retentionPolicy: manifest.retention?.policy || "",
-        files: Array.isArray(manifest.files) ? manifest.files : [],
-        bytes,
-        display: formatBytes(bytes),
-        manifest: Boolean(manifest.createdAt)
-      };
-    })
-    .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
-}
 
 
 

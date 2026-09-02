@@ -5,10 +5,12 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { createId, ensureDir, writeJson } from "./cli.js";
+import { createId, ensureDir, readJsonSafe, writeJson } from "./cli.js";
 import { ensureGitIdentity, runGitCommand } from "./shell.js";
-import { getBackupFileCatalog, markTieredBackups } from "./util.js";
 import { formatBytes, getBackupFilePreview } from "./format.js";
+import { getBackupFileCatalog, getPathSize, markTieredBackups } from "./util.js";
+import { readBackupManifest } from "./io.js";
+import { writeFileAtomic } from "../atomic-write.js";
 
 export function getFileHash(file) {
   if (!fs.existsSync(file) || !fs.statSync(file).isFile()) {
@@ -350,5 +352,251 @@ export function describeBackupFile(memoryDir, backupDir, name, spec) {
     currentDisplay: formatBytes(currentBytes),
     status,
     preview: getBackupFilePreview(backupFile)
+  };
+}
+
+export function listBackupFiles(memoryDir, name) {
+  const backupDir = resolveBackupDirectory(memoryDir, name);
+  const catalog = new Map(getBackupFileCatalog(memoryDir).map((file) => [file.name, file]));
+  return fs.readdirSync(backupDir, { withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => describeBackupFile(memoryDir, backupDir, entry.name, catalog.get(entry.name)))
+    .sort((a, b) => Number(b.restorable) - Number(a.restorable) || a.name.localeCompare(b.name));
+}
+
+export function listBackupDirectories(memoryDir) {
+  const dir = path.join(memoryDir, "backups");
+  if (!fs.existsSync(dir)) {
+    return [];
+  }
+  return fs.readdirSync(dir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => {
+      const backupDir = path.join(dir, entry.name);
+      const manifestPath = path.join(backupDir, "manifest.json");
+      const manifest = fs.existsSync(manifestPath) ? readJsonSafe(manifestPath) : {};
+      const stat = fs.statSync(backupDir);
+      const createdAt = manifest.createdAt || parseBackupTimestampFromName(entry.name) || stat.mtime.toISOString();
+      const reason = manifest.reason || inferBackupReasonFromName(entry.name);
+      const retentionTier = manifest.retention?.tier || inferBackupRetentionTier(reason);
+      const bytes = getPathSize(backupDir);
+      return {
+        name: entry.name,
+        dir: backupDir,
+        createdAt,
+        reason,
+        retentionTier,
+        retentionKey: manifest.retention?.key || inferBackupRetentionKey(retentionTier, createdAt),
+        retentionPolicy: manifest.retention?.policy || "",
+        files: Array.isArray(manifest.files) ? manifest.files : [],
+        bytes,
+        display: formatBytes(bytes),
+        manifest: Boolean(manifest.createdAt)
+      };
+    })
+    .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+}
+
+export function buildBackupRestorePlan(memoryDir, name) {
+  const backupDir = resolveBackupDirectory(memoryDir, name);
+  const files = listBackupFiles(memoryDir, name).filter((file) => file.restorable);
+  const changed = files.filter((file) => file.status !== "unchanged");
+  return {
+    name: path.basename(backupDir),
+    generatedAt: new Date().toISOString(),
+    requiresConfirmation: "RESTORE",
+    destructive: changed.some((file) => file.status === "different"),
+    summary: {
+      total: files.length,
+      changed: changed.length,
+      missingCurrent: files.filter((file) => file.status === "missing-current").length,
+      different: files.filter((file) => file.status === "different").length,
+      unchanged: files.filter((file) => file.status === "unchanged").length,
+      bytes: changed.reduce((sum, file) => sum + file.bytes, 0),
+      display: formatBytes(changed.reduce((sum, file) => sum + file.bytes, 0))
+    },
+    files: files.map((file) => ({
+      name: file.name,
+      kind: file.kind,
+      bytes: file.bytes,
+      display: file.display,
+      currentPath: file.currentPath,
+      currentExists: file.currentExists,
+      currentDisplay: file.currentDisplay,
+      status: file.status,
+      restorable: file.restorable
+    }))
+  };
+}
+
+export function hasBackupForRetentionKey(memoryDir, tier, key) {
+  return listBackupDirectories(memoryDir).some((backup) => backup.retentionTier === tier && backup.retentionKey === key);
+}
+
+export function getBackupSummary(memoryDir, { limit = 50, daily = 7, weekly = 4, preSync = 20, prePull = 20, pruneAfterSync = true } = {}) {
+  const backups = listBackupDirectories(memoryDir);
+  const retention = planBackupRetention(backups, { daily, weekly, preSync, prePull });
+  const retentionByName = new Map(retention.backups.map((item) => [item.name, item]));
+  return {
+    dir: path.join(memoryDir, "backups"),
+    count: backups.length,
+    totalBytes: backups.reduce((sum, backup) => sum + backup.bytes, 0),
+    totalDisplay: formatBytes(backups.reduce((sum, backup) => sum + backup.bytes, 0)),
+    policy: {
+      daily,
+      weekly,
+      preSync,
+      prePull,
+      pruneAfterSync,
+      note: "Manual backups are protected; daily, weekly, pre-sync, and pre-pull backups are pruned only inside backups/."
+    },
+    retention: {
+      keep: retention.keep.length,
+      prune: retention.prune.length,
+      pruneBytes: retention.prune.reduce((sum, backup) => sum + backup.bytes, 0),
+      pruneDisplay: formatBytes(retention.prune.reduce((sum, backup) => sum + backup.bytes, 0))
+    },
+    backups: backups.slice(0, limit).map((backup) => ({
+      ...backup,
+      retention: retentionByName.get(backup.name)?.retention || "prune",
+      retentionReason: retentionByName.get(backup.name)?.retentionReason || "outside retention policy"
+    }))
+  };
+}
+
+export function pruneBackups(memoryDir, { apply = false, daily = 7, weekly = 4, preSync = 20, prePull = 20 } = {}) {
+  const backups = listBackupDirectories(memoryDir);
+  const retention = planBackupRetention(backups, { daily, weekly, preSync, prePull });
+  const backupsRoot = path.resolve(memoryDir, "backups");
+  const pruned = [];
+  if (apply) {
+    for (const backup of retention.prune) {
+      const target = path.resolve(backup.dir);
+      if (!isPathInsideDirectory(target, backupsRoot)) {
+        throw new Error(`Refusing to prune backup outside backups dir: ${backup.dir}`);
+      }
+      fs.rmSync(target, { recursive: true, force: true });
+      pruned.push(backup);
+    }
+  }
+  return {
+    apply,
+    policy: { daily, weekly, preSync, prePull },
+    total: backups.length,
+    keep: retention.keep.length,
+    prune: retention.prune.length,
+    pruneBytes: retention.prune.reduce((sum, backup) => sum + backup.bytes, 0),
+    pruneDisplay: formatBytes(retention.prune.reduce((sum, backup) => sum + backup.bytes, 0)),
+    pruned: pruned.map((backup) => backup.name),
+    candidates: retention.prune.map((backup) => ({
+      name: backup.name,
+      createdAt: backup.createdAt,
+      reason: backup.reason,
+      bytes: backup.bytes,
+      display: backup.display,
+      retentionReason: backup.retentionReason
+    }))
+  };
+}
+
+export function deleteBackups(memoryDir, { names = [], apply = false } = {}) {
+  const backupsRoot = path.resolve(memoryDir, "backups");
+  const existing = listBackupDirectories(memoryDir);
+  const byName = new Map(existing.map((backup) => [backup.name, backup]));
+  const deleted = [];
+  const missing = [];
+  for (const name of names) {
+    const backup = byName.get(name);
+    if (!backup) {
+      missing.push(name);
+      continue;
+    }
+    const target = path.resolve(backup.dir);
+    if (!isPathInsideDirectory(target, backupsRoot)) {
+      throw new Error(`Refusing to delete backup outside backups dir: ${name}`);
+    }
+    if (apply) {
+      fs.rmSync(target, { recursive: true, force: true });
+      deleted.push(name);
+    }
+  }
+  return { apply, requested: names.length, deleted, missing };
+}
+
+export function getBackupDetail(memoryDir, name) {
+  const backupDir = resolveBackupDirectory(memoryDir, name);
+  const backup = listBackupDirectories(memoryDir).find((item) => item.name === path.basename(backupDir)) || null;
+  const manifest = readBackupManifest(backupDir);
+  const restore = buildBackupRestorePlan(memoryDir, name);
+  return {
+    ok: true,
+    backup,
+    manifest,
+    files: listBackupFiles(memoryDir, name),
+    restore
+  };
+}
+
+export function createScheduledBackupIfDue(memoryDir, { now, trigger, tier, key, reason, policy }) {
+  if (!key || hasBackupForRetentionKey(memoryDir, tier, key)) {
+    return null;
+  }
+  return backupHub(memoryDir, reason, {
+    now,
+    trigger,
+    retentionTier: tier,
+    retentionKey: key,
+    retentionPolicy: policy
+  });
+}
+
+export function exportGitHubBackupSnapshot(memoryDir, repoDir, files, { reason, startedAt, remoteUrl, branch }) {
+  const root = path.resolve(repoDir);
+  const snapshotDir = path.join(root, "snapshot");
+  ensureSafeChildPath(snapshotDir, root);
+  ensureDir(snapshotDir);
+  const manifestPath = path.join(root, "manifest.json");
+  const readmePath = path.join(root, "README.md");
+  const existingManifest = readJsonSafe(manifestPath, {});
+
+  const copied = [];
+  for (const file of files) {
+    const target = path.join(snapshotDir, file.name);
+    ensureSafeChildPath(target, snapshotDir);
+    fs.copyFileSync(file.target, target);
+    copied.push({
+      name: file.name,
+      kind: file.kind,
+      bytes: fs.statSync(target).size,
+      sha256: getFileHash(target)
+    });
+  }
+
+  for (const file of getBackupFileCatalog(memoryDir)) {
+    if (!copied.some((item) => item.name === file.name)) {
+      const stale = path.join(snapshotDir, file.name);
+      if (fs.existsSync(stale) && fs.statSync(stale).isFile()) {
+        fs.unlinkSync(stale);
+      }
+    }
+  }
+
+  const previousFiles = Array.isArray(existingManifest.files) ? existingManifest.files : [];
+  const snapshotChanged = JSON.stringify(previousFiles) !== JSON.stringify(copied);
+  const manifest = {
+    generatedAt: startedAt.toISOString(),
+    reason,
+    source: "ai-memory-hub",
+    remoteConfigured: Boolean(remoteUrl),
+    branch,
+    files: copied
+  };
+  if (snapshotChanged || !fs.existsSync(manifestPath) || !fs.existsSync(readmePath)) {
+    writeJson(manifestPath, manifest);
+    writeFileAtomic(readmePath, renderGitHubBackupReadme(manifest), "utf8");
+  }
+  return {
+    manifest: snapshotChanged || !existingManifest.generatedAt ? manifest : existingManifest,
+    files: copied.map((file) => file.name)
   };
 }

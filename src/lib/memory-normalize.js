@@ -1,12 +1,14 @@
 // 从 src/index.js 下沉的通用工具函数（v3.0 重构 P0-2）。
 // 这些函数不依赖 index.js 内部的任何其他符号，可安全复用。
 
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { getOption, isPlainObject, createId } from "./cli.js";
+import { expandSynonyms } from "./util.js";
+import { getOption, isPlainObject, createId, readJson } from "./cli.js";
 import { mergeMemoryAccessMetadata, normalizeRefValues, parseJsonObjectCandidate } from "./entity-factory.js";
 import { readEvents } from "./io.js";
-import { sanitizeInlineText, parseLooseJsonMemoryEvent, sanitizeLedgerText, sortByImportance, titleCase } from "./format.js";
+import { sanitizeInlineText, parseLooseJsonMemoryEvent, sanitizeLedgerText, sortByImportance, titleCase, extractKeywords, normalizeSearchText, extractSearchTerms } from "./format.js";
 
 export function normalizeMemoryKind(kind) {
   const clean = String(kind || "note").trim().toLowerCase().replace(/[^a-z0-9_.-]+/g, "-");
@@ -769,4 +771,115 @@ export function renderIndexMarkdown(index) {
     lines.push("");
   }
   return lines.join("\n");
+}
+
+export function searchMemories(records, query) {
+  const queryTerms = extractKeywords(query);
+  const queryNgrams = extractSearchTerms(query);
+  const queryNormalized = normalizeSearchText(query);
+  return records
+    .map((memory) => {
+      const text = String(memory.text || "");
+      const haystack = new Set([
+        ...extractKeywords(text),
+        ...(memory.keywords || []),
+        ...(memory.topics || []),
+        memory.source || "",
+        memory.kind || memory.metadata?.kind || "",
+        memory.project || memory.metadata?.project || "",
+        memory.scope || "",
+        ...(memory.tags || memory.metadata?.tags || []),
+        ...flattenMemoryRefs(memory.refs || memory.metadata?.refs)
+      ]);
+      const searchTerms = new Set([
+        ...extractSearchTerms(text),
+        ...extractSearchTerms((memory.topics || []).join(" ")),
+        ...extractSearchTerms(memory.source || ""),
+        ...extractSearchTerms(memory.kind || memory.metadata?.kind || ""),
+        ...extractSearchTerms(memory.project || memory.metadata?.project || ""),
+        ...extractSearchTerms(memory.scope || ""),
+        ...extractSearchTerms((memory.tags || memory.metadata?.tags || []).join(" ")),
+        ...extractSearchTerms(flattenMemoryRefs(memory.refs || memory.metadata?.refs).join(" "))
+      ]);
+      const normalizedText = normalizeSearchText(text);
+      const normalizedJoinedKeywords = normalizeSearchText([
+        ...haystack,
+        ...searchTerms
+      ].join(" "));
+      let score = 0;
+      const expandedTerms = expandSynonyms(queryTerms);
+      for (const term of expandedTerms) {
+        if (haystack.has(term)) {
+          score += 4;
+        } else if (searchTerms.has(term)) {
+          score += 3;
+        } else if (normalizedText.includes(normalizeSearchText(term))) {
+          score += 2;
+        }
+      }
+      for (const term of queryNgrams) {
+        if (!term) continue;
+        if (searchTerms.has(term)) {
+          score += term.length >= 4 ? 2.5 : 1.5;
+        } else if (normalizedText.includes(term) || normalizedJoinedKeywords.includes(term)) {
+          score += term.length >= 4 ? 2 : 1;
+        }
+      }
+      if (queryNormalized && normalizedText.includes(queryNormalized)) {
+        score += queryNormalized.length >= 6 ? 8 : 5;
+      } else if (queryNormalized && normalizedJoinedKeywords.includes(queryNormalized)) {
+        score += 3;
+      }
+      for (const topic of memory.topics || []) {
+        for (const term of expandedTerms) {
+          if (topic.includes(term) || term.includes(topic)) {
+            score += 5;
+          }
+        }
+      }
+      score += Number(memory.importance || 0) / 100;
+      score += Number(memory.accessHeat || 0) / 50;
+      score -= Number(memory.staleAccessPenalty || 0) / 50;
+      return { ...memory, score };
+    })
+    .filter((memory) => memory.score > 0)
+    .sort((a, b) => b.score - a.score);
+}
+
+export function searchMemoriesForContext(memoryDir, query, project, limit = 10) {
+  try {
+    // 原实现读 INDEX.md 再交给 parseIndexFile —— 但 INDEX.md 只有统计与
+    // top N 主题/项目/标签，不含任何记忆条目，而 parseIndexFile 在代码库里
+    // 从来就不存在（a657fc9 引入的疏漏）。整段被 try/catch 包住，所以只是
+    // 静默返回空数组：context pack 永远搜不到记忆，看不到任何报错。
+    // 改成读结构化索引 memories/index.json 的 records，字段与 searchMemories
+    // 期望的 text / kind / source / project / tags 完全对齐。
+    const indexPath = path.join(memoryDir, "memories", "index.json");
+    if (!fs.existsSync(indexPath)) {
+      return [];
+    }
+
+    const records = readJson(indexPath).records || [];
+    const projectRecords = project ? records.filter((r) => r.project === project) : records;
+
+    if (!query) {
+      return projectRecords.slice(0, limit).map((r) => ({
+        text: r.text,
+        kind: r.kind,
+        source: r.source,
+        project: r.project
+      }));
+    }
+
+    const scored = searchMemories(projectRecords, query);
+    return scored.slice(0, limit).map((r) => ({
+      text: r.text,
+      kind: r.kind,
+      source: r.source,
+      project: r.project,
+      score: r.score
+    }));
+  } catch (error) {
+    return [];
+  }
 }

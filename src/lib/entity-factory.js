@@ -1,9 +1,11 @@
-import { createId, hasOwnField, isPlainObject } from "./cli.js";
-import { normalizePriority, normalizeProject, normalizeQualityGate, normalizeWorkflowRole } from "./entity-models.js";
-import { normalizeGithubLinks } from "../github-links.js";
-import { normalizeSeverity } from "./format.js";
 // 从 src/index.js 下沉的通用工具函数（v3.0 重构 P0-2）。
 // 这些函数不依赖 index.js 内部的任何其他符号，可安全复用。
+
+import { createId, hasOwnField, isPlainObject } from "./cli.js";
+import { normalizeGithubLinks } from "../github-links.js";
+import { normalizePriority, normalizeProject, normalizeQualityGate, normalizeWorkflowRole, RECIPE_GATE_STRING_ARRAY_FIELDS, RECIPE_GATE_FIELDS } from "./entity-models.js";
+import { normalizeSeverity } from "./format.js";
+import { validateAdversarialVerifier, validateReviewDimensions } from "../review-config.js";
 
 export function relayFailureFingerprint(exitCode, lastError) {
   const normalizedError = String(lastError || "")
@@ -322,4 +324,136 @@ export function createRadioMessage({ from, to, type, text, thread, replyTo, proj
     lastError: "",
     promoted: false
   };
+}
+
+export function validateQualityGateFields(source, label) {
+  if (!isPlainObject(source)) {
+    return { valid: false, error: `${label} must be an object` };
+  }
+  if (hasOwnField(source, "verifyCommands")) {
+    if (!Array.isArray(source.verifyCommands)) {
+      return { valid: false, error: `${label}.verifyCommands must be an array` };
+    }
+    for (const [index, command] of source.verifyCommands.entries()) {
+      const validation = validateVerifyCommand(command, `${label}.verifyCommands[${index}]`);
+      if (!validation.valid) {
+        return validation;
+      }
+    }
+  }
+  for (const field of RECIPE_GATE_STRING_ARRAY_FIELDS) {
+    if (hasOwnField(source, field)) {
+      if (!Array.isArray(source[field]) || source[field].some((item) => typeof item !== "string" || item.trim() === "")) {
+        return { valid: false, error: `${label}.${field} must be an array of non-empty strings` };
+      }
+    }
+  }
+  if (hasOwnField(source, "reviewDimensions")) {
+    const validation = validateReviewDimensions(source.reviewDimensions);
+    if (!validation.valid) {
+      return { valid: false, error: `${label}.${validation.error}` };
+    }
+  }
+  if (hasOwnField(source, "reviewRequired") && typeof source.reviewRequired !== "boolean") {
+    return { valid: false, error: `${label}.reviewRequired must be a boolean` };
+  }
+  if (hasOwnField(source, "maxRepairAttempts") && (!Number.isInteger(source.maxRepairAttempts) || source.maxRepairAttempts < 0)) {
+    return { valid: false, error: `${label}.maxRepairAttempts must be a non-negative integer` };
+  }
+  if (hasOwnField(source, "minimalImplementation")) {
+    const validation = validateMinimalImplementation(source.minimalImplementation, `${label}.minimalImplementation`);
+    if (!validation.valid) {
+      return validation;
+    }
+  }
+  if (hasOwnField(source, "dependencyBudget")) {
+    const validation = validateDependencyBudget(source.dependencyBudget, `${label}.dependencyBudget`);
+    if (!validation.valid) {
+      return validation;
+    }
+  }
+  if (hasOwnField(source, "adversarialVerifier")) {
+    const validation = validateAdversarialVerifier(source.adversarialVerifier);
+    if (!validation.valid) {
+      return { valid: false, error: `${label}.${validation.error}` };
+    }
+  }
+  return { valid: true };
+}
+
+export function validateQualityGate(source, label) {
+  if (!isPlainObject(source)) {
+    return { valid: true };
+  }
+  for (const containerField of ["qualityGate", "gates"]) {
+    if (hasOwnField(source, containerField)) {
+      const validation = validateQualityGateFields(source[containerField], `${label}.${containerField}`);
+      if (!validation.valid) {
+        return validation;
+      }
+    }
+  }
+  const directFields = {};
+  for (const field of RECIPE_GATE_FIELDS) {
+    if (hasOwnField(source, field)) {
+      directFields[field] = source[field];
+    }
+  }
+  if (Object.keys(directFields).length > 0) {
+    const validation = validateQualityGateFields(directFields, label);
+    if (!validation.valid) {
+      return validation;
+    }
+  }
+  return { valid: true };
+}
+
+export function validateRecipe(recipe) {
+  if (!recipe.name || !recipe.title) {
+    return { valid: false, error: "Recipe must have name and title" };
+  }
+
+  if (!recipe.roles || Object.keys(recipe.roles).length === 0) {
+    return { valid: false, error: "Recipe must define at least one role" };
+  }
+
+  if (!recipe.steps || recipe.steps.length === 0) {
+    return { valid: false, error: "Recipe must have at least one step" };
+  }
+
+  const recipeGateValidation = validateQualityGate(recipe, "Recipe");
+  if (!recipeGateValidation.valid) {
+    return recipeGateValidation;
+  }
+
+  // Check all step roles are defined
+  for (const step of recipe.steps) {
+    if (!step.id || !step.task) {
+      return { valid: false, error: "Recipe steps must have id and task" };
+    }
+    if (!recipe.roles[step.role]) {
+      return { valid: false, error: `Step ${step.id} references undefined role: ${step.role}` };
+    }
+    if (step.dependsOn && (!Array.isArray(step.dependsOn) || step.dependsOn.some((depId) => typeof depId !== "string" || depId.trim() === ""))) {
+      return { valid: false, error: `Step ${step.id} dependsOn must be an array of non-empty strings` };
+    }
+    const stepGateValidation = validateQualityGate(step, `Step ${step.id}`);
+    if (!stepGateValidation.valid) {
+      return stepGateValidation;
+    }
+  }
+
+  // Check dependsOn references exist
+  for (const step of recipe.steps) {
+    if (step.dependsOn) {
+      for (const depId of step.dependsOn) {
+        const depExists = recipe.steps.some((s) => s.id === depId);
+        if (!depExists) {
+          return { valid: false, error: `Step ${step.id} depends on non-existent step: ${depId}` };
+        }
+      }
+    }
+  }
+
+  return { valid: true };
 }

@@ -1,10 +1,14 @@
+// 从 src/index.js 下沉的通用工具函数（v3.0 重构 P0-2）。
+// 这些函数不依赖 index.js 内部的任何其他符号，可安全复用。
+
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { appendJsonl } from "../event-writer.js";
+import { getRelaySourceKey } from "./dispatch.js";
 import { createId, ensureDir, readJson, readJsonSafe } from "./cli.js";
 import { getAgentRegistryFile, getModelsCacheFile, getPolicyRulesFile, getRadioCursorFile, getRoleRegistryFile, getTeamRegistryFile, getToolDeclarationsFile } from "./registry-paths.js";
 import { writeFileAtomic } from "../atomic-write.js";
-import { appendJsonl } from "../event-writer.js";
 
 // Low-level JSONL file IO.
 //
@@ -428,4 +432,173 @@ export function readEventsWithLocations(file) {
       lineNumber: entry.lineNumber,
       event: parseJsonlLine(entry.line, file, entry.lineNumber)
     }));
+}
+
+export function readAgentById(memoryDir, id) {
+  const key = String(id || "").trim().toLowerCase();
+  if (!key) return null;
+  return readAgents(memoryDir).find((a) => String(a.id || "").trim().toLowerCase() === key) || null;
+}
+
+export function readRoleById(memoryDir, id) {
+  const key = String(id || "").trim().toLowerCase();
+  if (!key) return null;
+  return readRoles(memoryDir).find((r) => String(r.id || "").trim().toLowerCase() === key) || null;
+}
+
+export function readTeamById(memoryDir, id) {
+  const key = String(id || "").trim().toLowerCase();
+  if (!key) return null;
+  return readTeams(memoryDir).find((t) => String(t.id || "").trim().toLowerCase() === key) || null;
+}
+
+export function resolveRelayThreadKeys(memoryDir, { threadKey = "", thread = "", refId = "", project = "", tool = "" }) {
+  if (threadKey) {
+    return new Set([threadKey]);
+  }
+  if (!thread && !refId) {
+    return null;
+  }
+  const keys = new Set();
+  for (const entry of readRelayStatus(memoryDir)) {
+    if (thread && entry.thread === thread) {
+      if ((!project || entry.project === project) && (!tool || entry.tool === tool)) {
+        keys.add(entry.threadKey);
+      }
+    }
+    if (refId && (entry.sourceId === refId || entry.dispatchId === refId)) {
+      if ((!project || entry.project === project) && (!tool || entry.tool === tool)) {
+        keys.add(entry.threadKey);
+      }
+    }
+  }
+  return keys;
+}
+
+export function findLatestRelayStatusEntry(memoryDir, { threadKey = "", thread = "", refId = "", project = "", tool = "" }) {
+  const matches = readRelayStatus(memoryDir)
+    .filter((entry) => threadKey ? entry.threadKey === threadKey : true)
+    .filter((entry) => thread ? entry.thread === thread || entry.threadKey === thread : true)
+    .filter((entry) => refId
+      ? entry.sourceId === refId
+        || entry.dispatchId === refId
+        || entry.dispatchId === `task:${refId}`
+        || entry.dispatchId === `radio:${refId}`
+        || entry.dispatchId === `workflow:${refId}`
+      : true)
+    .filter((entry) => project ? entry.project === project : true)
+    .filter((entry) => tool ? entry.tool === tool : true)
+    .sort((a, b) => String(a.ts || a.updatedAt || "").localeCompare(String(b.ts || b.updatedAt || "")));
+  return matches.at(-1) || null;
+}
+
+export function readLatestDispatchRunByThread(memoryDir) {
+  const latest = {};
+  for (const entry of readDispatchRuns(memoryDir)) {
+    const threadKey = entry.threadKey || "";
+    if (!threadKey) {
+      continue;
+    }
+    const current = latest[threadKey];
+    const currentTs = String(current?.finishedAt || current?.startedAt || "");
+    const nextTs = String(entry.finishedAt || entry.startedAt || "");
+    if (!current || nextTs >= currentTs) {
+      latest[threadKey] = entry;
+    }
+  }
+  return latest;
+}
+
+export function readLatestRelayStatusByThread(memoryDir) {
+  const latest = {};
+  for (const entry of readRelayStatus(memoryDir)) {
+    const threadKey = entry.threadKey || "";
+    if (!threadKey) {
+      continue;
+    }
+    const current = latest[threadKey];
+    const currentTs = String(current?.ts || current?.updatedAt || "");
+    const nextTs = String(entry.ts || entry.updatedAt || "");
+    if (!current || nextTs >= currentTs) {
+      latest[threadKey] = entry;
+    }
+  }
+  return latest;
+}
+
+export function readLatestRelayStatusBySource(memoryDir) {
+  const latest = {};
+  for (const entry of readRelayStatus(memoryDir)) {
+    const sourceKey = getRelaySourceKey(entry);
+    if (!sourceKey) {
+      continue;
+    }
+    const current = latest[sourceKey];
+    const currentTs = String(current?.ts || current?.updatedAt || "");
+    const nextTs = String(entry.ts || entry.updatedAt || "");
+    if (!current || nextTs >= currentTs) {
+      latest[sourceKey] = entry;
+    }
+  }
+  return latest;
+}
+
+export function updateSession(memoryDir, sessionId, updates) {
+  const sessions = readSessions(memoryDir);
+  const updated = sessions.map((session) => {
+    if (session.id === sessionId) {
+      return {
+        ...session,
+        ...updates,
+        updatedAt: new Date().toISOString(),
+        lastActive: new Date().toISOString()
+      };
+    }
+    return session;
+  });
+  writeSessions(memoryDir, updated);
+  return updated.find((s) => s.id === sessionId);
+}
+
+export function getActiveSessions(memoryDir, maxAgeMs = 3600000) {
+  const sessions = readSessions(memoryDir);
+  const now = Date.now();
+  return sessions.filter((session) => {
+    const lastActiveMs = Date.parse(session.lastActive || session.updatedAt || "");
+    return !Number.isNaN(lastActiveMs) && (now - lastActiveMs) < maxAgeMs;
+  }).sort((a, b) => {
+    const aTime = a.lastActive || a.updatedAt || "";
+    const bTime = b.lastActive || b.updatedAt || "";
+    return bTime.localeCompare(aTime);
+  });
+}
+
+export function getPendingNotifications(memoryDir) {
+  return readNotifications(memoryDir).filter((n) => n.status === "pending");
+}
+
+export function getQueuedEntries(memoryDir) {
+  return readDispatchQueue(memoryDir)
+    .filter((e) => e.status === "queued")
+    .sort((a, b) => {
+      // Sort by priority first (urgent > high > normal > low)
+      const priorityOrder = { urgent: 0, high: 1, normal: 2, low: 3 };
+      const aPrio = priorityOrder[a.priority] || 2;
+      const bPrio = priorityOrder[b.priority] || 2;
+      if (aPrio !== bPrio) return aPrio - bPrio;
+      // Then by creation time
+      return (a.createdAt || "").localeCompare(b.createdAt || "");
+    });
+}
+
+export function getRunningEntries(memoryDir) {
+  return readDispatchQueue(memoryDir)
+    .filter((e) => e.status === "running")
+    .sort((a, b) => (a.startedAt || "").localeCompare(b.startedAt || ""));
+}
+
+export function getFailedEntries(memoryDir) {
+  return readDispatchQueue(memoryDir)
+    .filter((e) => e.status === "failed")
+    .sort((a, b) => (b.completedAt || "").localeCompare(a.completedAt || ""));
 }

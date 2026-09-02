@@ -4,6 +4,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { buildWorktreeSnapshot } from "../worktree-snapshot.js";
 
 export function quoteWindowsCmdArg(value) {
   const text = String(value ?? "");
@@ -262,4 +263,35 @@ export function ensureGitIdentity(repoDir) {
   if (!email.ok || !email.stdout.trim()) {
     runGitCommand(repoDir, ["config", "user.email", "ai-memory-hub@localhost"]);
   }
+}
+
+export function inspectDashboardWorktree(worktree) {
+  if (!worktree?.path || !fs.existsSync(worktree.path)) {
+    return { ...worktree, exists: false };
+  }
+  const reviewed = collectDispatchWorktreeReviewMetadata(worktree);
+  return {
+    ...reviewed,
+    exists: true,
+    dirty: Boolean(reviewed.hasChanges)
+  };
+}
+
+export function resolveGitRepositoryRoot(startDir) {
+  const result = runGitCommand(startDir, ["rev-parse", "--show-toplevel"]);
+  const root = result.stdout.trim();
+  if (!root) {
+    throw new Error("Unable to resolve git repository root for isolated dispatch worktree.");
+  }
+  return path.resolve(root);
+}
+
+export function snapshotDashboardWorktree(worktree) {
+  if (!worktree?.path || !fs.existsSync(worktree.path)) {
+    return buildWorktreeSnapshot(worktree, { exists: false });
+  }
+  return buildWorktreeSnapshot(worktree, {
+    exists: true,
+    runGit: (command) => runGitCommand(worktree.path, command.split(" "), { allowFailure: true }).stdout
+  });
 }

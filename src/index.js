@@ -144,11 +144,11 @@ import { normalizeMemoryKind, normalizeMemoryProject, normalizeMemoryScope, norm
 import { createDispatchRecordMutex, isClaimStale, shouldPersistDispatchReport, isDispatchableRadioMessage, isClosedDispatchSourceState, buildTaskDispatchText, buildWorkflowDispatchText, findRecipeStepTask, normalizeToolName, safeGitPathSegment, isKnownGeminiWarning, stripExistingModelArgs, getDispatchThreadKey, formatDispatchVerifyCommand, getDispatchRunStatus, getDispatchRunVerificationResult, getAsyncCallStateMeta, getDispatchSourceKey, getRelaySourceKey, dispatchJobFromTask, dispatchJobFromWorkflow, dispatchJobFromRelayEntry, shouldDispatchJob, buildDispatchWorktreeBranch, buildDispatchWorktreeSlug, nextRelayAttempt, normalizeRunnerStderr, isDirectDispatchRadioMessage } from "./lib/dispatch.js";
 import { sendHtml, sendPlain, sendJson, sendErrorEnvelope, parsePageParam, getSafeStaticRelativePath, readTextIfExists } from "./lib/http.js";
 import { getToolDeclarationsFile, getModelsCacheFile, getRadioCursorFile, getAgentRegistryFile, getRoleRegistryFile, getTeamRegistryFile, getPolicyRulesFile } from "./lib/registry-paths.js";
-import { quoteWindowsCmdArg, escapeForWindowsCmd, quoteWindowsCommandArg, quoteShellArg, classifyCommandPath, shellQuote, getRunnerDoctorWarnings, runGit, resolveCommandPaths, commandPathPriority, shouldUseShellForCommand, buildWindowsCmdLine, resolveGitProcessCommand, commandExists, choosePreferredCommandPath, resolveRunnerCommand, buildRunnerInvocation, runProcess, runGitCommand, collectDispatchWorktreeReviewMetadata, ensureGitIdentity } from "./lib/shell.js";
+import { quoteWindowsCmdArg, escapeForWindowsCmd, quoteWindowsCommandArg, quoteShellArg, classifyCommandPath, shellQuote, getRunnerDoctorWarnings, runGit, resolveCommandPaths, commandPathPriority, shouldUseShellForCommand, buildWindowsCmdLine, resolveGitProcessCommand, commandExists, choosePreferredCommandPath, resolveRunnerCommand, buildRunnerInvocation, runProcess, runGitCommand, collectDispatchWorktreeReviewMetadata, ensureGitIdentity, inspectDashboardWorktree, resolveGitRepositoryRoot, snapshotDashboardWorktree } from "./lib/shell.js";
 import { normalizeResolveQuery, extractFilesystemPathCandidates, resolvePossiblyHomePath, pathMatchesResolveQuery } from "./lib/resolve.js";
 import { normalizeTaskSpecEnv, normalizeStringArray, normalizeTaskSpecList, normalizeTaskSpecLogs, selectPlatformCommand, getTaskSpecProcessStatus, resolveInside } from "./lib/task-spec.js";
 import { policyActorMatches, policyRuleSpecificity, isHiddenProjectId, findWorkflowIndex, findTaskIndex, createTaskNote, getNotificationChannels } from "./lib/entity-index.js";
-import { getFileHash, getGitHubBackupUploadWarnings, normalizeBackupPatternList, matchesAnyBackupPattern, normalizeScheduleTime, resolveConfiguredPath, extractListValue, renderGitHubBackupReadme, markProtectedBackups, parseBackupTimestampFromName, inferBackupReasonFromName, inferBackupRetentionTier, createdAtRetentionKey, formatBackupDay, getIsoWeekKey, isPathInsideDirectory, countBackupDirs, backupHub, resolveBackupDirectory, getGitHubBackupExportFiles, getDefaultGitHubBackupInclude, assertSafeGitHubBackupRepoDir, ensureSafeChildPath, planBackupRetention, inferBackupRetentionKey, assertSafeDispatchWorktreeRoot } from "./lib/backup.js";
+import { getFileHash, getGitHubBackupUploadWarnings, normalizeBackupPatternList, matchesAnyBackupPattern, normalizeScheduleTime, resolveConfiguredPath, extractListValue, renderGitHubBackupReadme, markProtectedBackups, parseBackupTimestampFromName, inferBackupReasonFromName, inferBackupRetentionTier, createdAtRetentionKey, formatBackupDay, getIsoWeekKey, isPathInsideDirectory, countBackupDirs, backupHub, resolveBackupDirectory, getGitHubBackupExportFiles, getDefaultGitHubBackupInclude, assertSafeGitHubBackupRepoDir, ensureSafeChildPath, planBackupRetention, inferBackupRetentionKey, assertSafeDispatchWorktreeRoot, ensureGitHubBackupRepo, describeBackupFile } from "./lib/backup.js";
 import { relayFailureFingerprint, createSkillDelta, createProject, createWorkflow, createTask, createSession, createRpcRequest, createNotification, createDispatchQueueEntry, validateVerifyCommand, validateMinimalImplementation, validateDependencyBudget, normalizeRefValues, mergeMemoryAccessMetadata, parseJsonObjectCandidate, createRadioMessage } from "./lib/entity-factory.js";
 import { readDiscoveredModels, detectVSCodeEnhanced, getDashboardStaticRoot, readTemplate, getLocalInstallTargets, getInstallTargets, renderDashboard, getInstructionIncludeFiles, getInstallTargetForTool } from "./lib/tools-detect.js";
 import { isRadioLinkedToClosedSource } from "./lib/entity-repo.js";
@@ -2507,37 +2507,9 @@ function prepareDispatchWorktree(job, { root = "" } = {}) {
 }
 
 
-function inspectDashboardWorktree(worktree) {
-  if (!worktree?.path || !fs.existsSync(worktree.path)) {
-    return { ...worktree, exists: false };
-  }
-  const reviewed = collectDispatchWorktreeReviewMetadata(worktree);
-  return {
-    ...reviewed,
-    exists: true,
-    dirty: Boolean(reviewed.hasChanges)
-  };
-}
-
-function snapshotDashboardWorktree(worktree) {
-  if (!worktree?.path || !fs.existsSync(worktree.path)) {
-    return buildWorktreeSnapshot(worktree, { exists: false });
-  }
-  return buildWorktreeSnapshot(worktree, {
-    exists: true,
-    runGit: (command) => runGitCommand(worktree.path, command.split(" "), { allowFailure: true }).stdout
-  });
-}
 
 
-function resolveGitRepositoryRoot(startDir) {
-  const result = runGitCommand(startDir, ["rev-parse", "--show-toplevel"]);
-  const root = result.stdout.trim();
-  if (!root) {
-    throw new Error("Unable to resolve git repository root for isolated dispatch worktree.");
-  }
-  return path.resolve(root);
-}
+
 
 function resolveDispatchWorktreeRoot(repoRoot, rootOption = "") {
   const raw = String(rootOption || DEFAULT_DISPATCH_WORKTREE_DIR).trim();
@@ -7403,35 +7375,6 @@ function listBackupFiles(memoryDir, name) {
     .sort((a, b) => Number(b.restorable) - Number(a.restorable) || a.name.localeCompare(b.name));
 }
 
-function describeBackupFile(memoryDir, backupDir, name, spec) {
-  const backupFile = path.join(backupDir, name);
-  const backupStat = fs.statSync(backupFile);
-  const currentExists = Boolean(spec && fs.existsSync(spec.target));
-  const currentBytes = currentExists ? fs.statSync(spec.target).size : 0;
-  const backupHash = getFileHash(backupFile);
-  const currentHash = currentExists ? getFileHash(spec.target) : "";
-  const status = !spec
-    ? "browse-only"
-    : !currentExists
-      ? "missing-current"
-      : backupHash === currentHash
-        ? "unchanged"
-        : "different";
-  return {
-    name,
-    kind: spec?.kind || "metadata",
-    bytes: backupStat.size,
-    display: formatBytes(backupStat.size),
-    modifiedAt: backupStat.mtime.toISOString(),
-    restorable: Boolean(spec),
-    currentPath: spec ? path.relative(memoryDir, spec.target).replace(/\\/g, "/") : "",
-    currentExists,
-    currentBytes,
-    currentDisplay: formatBytes(currentBytes),
-    status,
-    preview: getBackupFilePreview(backupFile)
-  };
-}
 
 
 
@@ -7946,22 +7889,6 @@ function exportGitHubBackupSnapshot(memoryDir, repoDir, files, { reason, started
   };
 }
 
-function ensureGitHubBackupRepo(github) {
-  ensureDir(github.repoDir);
-  if (!fs.existsSync(path.join(github.repoDir, ".git"))) {
-    runGitCommand(github.repoDir, ["init"]);
-  }
-  ensureGitIdentity(github.repoDir);
-  runGitCommand(github.repoDir, ["checkout", "-B", github.branch]);
-  if (github.remoteUrl) {
-    const existingRemote = runGitCommand(github.repoDir, ["remote", "get-url", "origin"], { allowFailure: true });
-    if (existingRemote.ok) {
-      runGitCommand(github.repoDir, ["remote", "set-url", "origin", github.remoteUrl]);
-    } else {
-      runGitCommand(github.repoDir, ["remote", "add", "origin", github.remoteUrl]);
-    }
-  }
-}
 
 
 

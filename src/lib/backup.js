@@ -6,7 +6,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createId, ensureDir, writeJson } from "./cli.js";
+import { ensureGitIdentity, runGitCommand } from "./shell.js";
 import { getBackupFileCatalog, markTieredBackups } from "./util.js";
+import { formatBytes, getBackupFilePreview } from "./format.js";
 
 export function getFileHash(file) {
   if (!fs.existsSync(file) || !fs.statSync(file).isFile()) {
@@ -302,4 +304,51 @@ export function assertSafeDispatchWorktreeRoot(repoRoot, worktreeRoot) {
   if (resolvedRoot === gitDir || isPathInsideDirectory(resolvedRoot, gitDir)) {
     throw new Error("Dispatch worktree root cannot be inside the repository .git directory.");
   }
+}
+
+export function ensureGitHubBackupRepo(github) {
+  ensureDir(github.repoDir);
+  if (!fs.existsSync(path.join(github.repoDir, ".git"))) {
+    runGitCommand(github.repoDir, ["init"]);
+  }
+  ensureGitIdentity(github.repoDir);
+  runGitCommand(github.repoDir, ["checkout", "-B", github.branch]);
+  if (github.remoteUrl) {
+    const existingRemote = runGitCommand(github.repoDir, ["remote", "get-url", "origin"], { allowFailure: true });
+    if (existingRemote.ok) {
+      runGitCommand(github.repoDir, ["remote", "set-url", "origin", github.remoteUrl]);
+    } else {
+      runGitCommand(github.repoDir, ["remote", "add", "origin", github.remoteUrl]);
+    }
+  }
+}
+
+export function describeBackupFile(memoryDir, backupDir, name, spec) {
+  const backupFile = path.join(backupDir, name);
+  const backupStat = fs.statSync(backupFile);
+  const currentExists = Boolean(spec && fs.existsSync(spec.target));
+  const currentBytes = currentExists ? fs.statSync(spec.target).size : 0;
+  const backupHash = getFileHash(backupFile);
+  const currentHash = currentExists ? getFileHash(spec.target) : "";
+  const status = !spec
+    ? "browse-only"
+    : !currentExists
+      ? "missing-current"
+      : backupHash === currentHash
+        ? "unchanged"
+        : "different";
+  return {
+    name,
+    kind: spec?.kind || "metadata",
+    bytes: backupStat.size,
+    display: formatBytes(backupStat.size),
+    modifiedAt: backupStat.mtime.toISOString(),
+    restorable: Boolean(spec),
+    currentPath: spec ? path.relative(memoryDir, spec.target).replace(/\\/g, "/") : "",
+    currentExists,
+    currentBytes,
+    currentDisplay: formatBytes(currentBytes),
+    status,
+    preview: getBackupFilePreview(backupFile)
+  };
 }

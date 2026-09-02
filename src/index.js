@@ -30,7 +30,6 @@ import { createDashboardWorktreesApi } from "./dashboard/worktrees-api.js";
 import { createDashboardCollaborationApi } from "./dashboard/collaboration.js";
 import { buildExecutionAdapters } from "./execution-adapters.js";
 import { buildWorktreeSnapshot } from "./worktree-snapshot.js";
-import { evaluateDaemonHeartbeat } from "./daemon-health.js";
 import { appendJsonl } from "./event-writer.js";
 import { eventsCommand } from "./commands/events.js";
 import { modelsCommand } from "./commands/models.js";
@@ -148,6 +147,7 @@ import { getToolDeclarationsFile, getModelsCacheFile, getRadioCursorFile, getAge
 import { quoteWindowsCmdArg, escapeForWindowsCmd, quoteWindowsCommandArg, quoteShellArg, classifyCommandPath, shellQuote, getRunnerDoctorWarnings, runGit, resolveCommandPaths, commandPathPriority, shouldUseShellForCommand, buildWindowsCmdLine, resolveGitProcessCommand, commandExists, choosePreferredCommandPath, resolveRunnerCommand, buildRunnerInvocation, runProcess, runGitCommand, collectDispatchWorktreeReviewMetadata, ensureGitIdentity, inspectDashboardWorktree, resolveGitRepositoryRoot, snapshotDashboardWorktree } from "./lib/shell.js";
 import { normalizeResolveQuery, extractFilesystemPathCandidates, resolvePossiblyHomePath, pathMatchesResolveQuery } from "./lib/resolve.js";
 import { resolveInside, loadTaskSpecContext, resolveTaskSpecFile, resolveTaskSpecFromArgs, validateTaskSpecDocument, runTaskSpec, summarizeTaskSpec, resolveTaskSpecCwd } from "./lib/task-spec.js";
+import { buildDaemonStatus, clearDaemonPid, readDaemonHeartbeat, checkDaemonHeartbeat, writeDaemonHeartbeat, writeDaemonPid, writeDaemonStatus } from "./lib/daemon-state.js";
 import { policyActorMatches, policyRuleSpecificity, isHiddenProjectId, findWorkflowIndex, findTaskIndex, createTaskNote, getNotificationChannels } from "./lib/entity-index.js";
 import { getFileHash, getGitHubBackupUploadWarnings, normalizeBackupPatternList, matchesAnyBackupPattern, normalizeScheduleTime, resolveConfiguredPath, extractListValue, renderGitHubBackupReadme, markProtectedBackups, parseBackupTimestampFromName, inferBackupReasonFromName, inferBackupRetentionTier, createdAtRetentionKey, formatBackupDay, getIsoWeekKey, isPathInsideDirectory, countBackupDirs, backupHub, resolveBackupDirectory, getGitHubBackupExportFiles, getDefaultGitHubBackupInclude, assertSafeGitHubBackupRepoDir, ensureSafeChildPath, planBackupRetention, inferBackupRetentionKey, assertSafeDispatchWorktreeRoot, ensureGitHubBackupRepo, describeBackupFile, listBackupFiles, listBackupDirectories, buildBackupRestorePlan, hasBackupForRetentionKey, getBackupSummary, pruneBackups, deleteBackups, getBackupDetail, createScheduledBackupIfDue, exportGitHubBackupSnapshot } from "./lib/backup.js";
 import { relayFailureFingerprint, createSkillDelta, createProject, createWorkflow, createTask, createSession, createRpcRequest, createNotification, createDispatchQueueEntry, validateVerifyCommand, validateMinimalImplementation, validateDependencyBudget, normalizeRefValues, mergeMemoryAccessMetadata, parseJsonObjectCandidate, createRadioMessage, validateQualityGateFields, validateQualityGate, validateRecipe } from "./lib/entity-factory.js";
@@ -248,11 +248,7 @@ const PROJECT_VISIBLE_STATUSES = ["active", "paused", "planning"];
 const RESEARCH_REPORTS_DIR = "research-reports";
 const DISPATCH_RUNS_DIR = "dispatch-runs";
 const DEFAULT_DISPATCH_WORKTREE_DIR = ".ai-worktrees";
-const DAEMON_PID_FILE = "daemon.pid";
-const DAEMON_STATUS_FILE = "daemon-status.json";
 const LOOP_CHECKPOINT_FILE = "loop-checkpoint.json";
-const DAEMON_HEARTBEAT_FILE = "daemon-heartbeat.json";
-const DAEMON_HEARTBEAT_STALE_MS = 30000; // 30 seconds without heartbeat = stale
 const SKILL_DELTA_FILE = "skill-deltas.jsonl";
 const SKILL_CANDIDATE_FILE = "skill-candidates.jsonl";
 const TOOL_CAPABILITY_REGISTRY_VERSION = 1;
@@ -3568,117 +3564,6 @@ function writeLoopCheckpoint(memoryDir, checkpoint) {
 
 
 
-function buildDaemonStatus(memoryDir) {
-  const paths = getDaemonStatePaths(memoryDir);
-  const status = readDaemonStatus(memoryDir);
-  const pidFromFile = readDaemonPid(memoryDir);
-  const pidFromStatus = Number(status.pid || 0);
-  const pid = pidFromFile || (Number.isInteger(pidFromStatus) && pidFromStatus > 0 ? pidFromStatus : null);
-  const liveness = checkProcessLiveness(pid);
-  const declaredActive = ["starting", "running", "stopping"].includes(status.state || "") || (pidFromFile && !status.state);
-  const running = Boolean(pid && declaredActive && liveness.running);
-  const state = status.state === "invalid"
-    ? "invalid"
-    : running
-      ? (status.state || "running")
-      : status.state === "stopped"
-        ? "stopped"
-        : pid
-          ? "stale"
-          : "not_running";
-
-  return {
-    state,
-    running,
-    stalePid: Boolean(pid && !running),
-    pid,
-    pidFile: paths.pidFile,
-    statusFile: paths.statusFile,
-    liveness,
-    status
-  };
-}
-
-function getDaemonStatePaths(memoryDir) {
-  return {
-    pidFile: path.join(memoryDir, "state", DAEMON_PID_FILE),
-    statusFile: path.join(memoryDir, "state", DAEMON_STATUS_FILE)
-  };
-}
-
-function readDaemonPid(memoryDir) {
-  const text = readTextIfExists(getDaemonStatePaths(memoryDir).pidFile).trim();
-  const pid = Number(text);
-  return Number.isInteger(pid) && pid > 0 ? pid : null;
-}
-
-function writeDaemonPid(memoryDir, pid) {
-  const paths = getDaemonStatePaths(memoryDir);
-  ensureDir(path.dirname(paths.pidFile));
-  writeFileAtomic(paths.pidFile, `${pid}\n`, "utf8");
-}
-
-function clearDaemonPid(memoryDir, pid) {
-  const paths = getDaemonStatePaths(memoryDir);
-  const currentPid = readDaemonPid(memoryDir);
-  if (currentPid === pid && fs.existsSync(paths.pidFile)) {
-    fs.unlinkSync(paths.pidFile);
-  }
-}
-
-function writeDaemonHeartbeat(memoryDir, data) {
-  const filePath = path.join(memoryDir, "state", DAEMON_HEARTBEAT_FILE);
-  ensureDir(path.dirname(filePath));
-  writeFileAtomic(filePath, JSON.stringify({
-    ...data,
-    ts: new Date().toISOString()
-  }, null, 2), "utf8");
-}
-
-function readDaemonHeartbeat(memoryDir) {
-  const filePath = path.join(memoryDir, "state", DAEMON_HEARTBEAT_FILE);
-  if (!fs.existsSync(filePath)) return null;
-  try {
-    return JSON.parse(fs.readFileSync(filePath, "utf8"));
-  } catch {
-    return null;
-  }
-}
-
-function checkDaemonHeartbeat(memoryDir) {
-  const heartbeat = readDaemonHeartbeat(memoryDir);
-  const processAlive = heartbeat?.pid ? checkProcessLiveness(heartbeat.pid).running : true;
-  return evaluateDaemonHeartbeat({
-    heartbeat,
-    staleMs: DAEMON_HEARTBEAT_STALE_MS,
-    processAlive
-  });
-}
-
-function readDaemonStatus(memoryDir) {
-  const file = getDaemonStatePaths(memoryDir).statusFile;
-  if (!fs.existsSync(file)) {
-    return {};
-  }
-  try {
-    return readJson(file);
-  } catch (error) {
-    return {
-      state: "invalid",
-      error: error.message || String(error)
-    };
-  }
-}
-
-function writeDaemonStatus(memoryDir, patch) {
-  const paths = getDaemonStatePaths(memoryDir);
-  const existing = readDaemonStatus(memoryDir);
-  writeJson(paths.statusFile, {
-    ...existing,
-    ...patch,
-    updatedAt: new Date().toISOString()
-  });
-}
 
 function installCommand(argv) {
   const tool = getOption(argv, "--tool") || "all";

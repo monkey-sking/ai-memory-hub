@@ -4,21 +4,23 @@
 > 横切依赖走 deps 注入，共享常量下沉 `src/lib/constants.js`。
 > 本文档是唯一进度落点，任何 runner（codex / claude / gemini / antigravity / opencode / mimocode）接手前先读这里。
 
-## 当前进度（2026-09-02 实测，HEAD=`f9db559`）
+## 当前进度（2026-09-02 实测，HEAD=`fb670fd`）
 
 | 指标 | 数值 |
 |---|---|
 | index.js 起始行数 | 14,778 |
-| 当前行数 | **7,530**（已减 7,248 行） |
+| 当前行数 | **7,249**（已减 7,529 行） |
 | 已迁出命令族群 | 25 个 |
 | src/commands 模块数 | 35 个（共 5,675 行） |
 | src/lib 模块数 | 20 个（共 4,294 行） |
 | index.js 残留 | 30 个 `*Command` 函数、181 个顶层 function |
-| 已推送提交 | 到 `f9db559`（工作区干净） |
+| 已推送提交 | 到 `fb670fd`（工作区干净） |
 
-> 按 P0-2 的目标（降到 ~3,000 行）算，整体完成度约 **80%**（行数口径）。
+> 按 P0-2 的目标（降到 ~3,000 行）算，整体完成度约 **81%**（行数口径）。
 > 第五批（`e626917`）把文件级 IO 助手、entity 工厂、tools 检测下沉，index.js 破万；
-> 第六~十六批持续按主题下沉叶子函数，index.js 已从 9,999 降至 7,530。
+> 第六~十六批持续按主题下沉叶子函数，index.js 从 9,999 降至 7,530；
+> 第十七批整块下沉 task-spec 子系统（连续 10 个函数 + 2 常量）并收敛到 src/lib/task-spec.js，
+> 同时把 util.js 里错放的 3 个 task-spec runner 助手迁入，消除 util↔task-spec 循环，index.js 降至 7,249。
 > 剩余大头仍是 appCommand（~986 行）与非叶子共享函数（含 renderDispatchPrompt 等）。
 >
 > 好消息：经 AST 扫描，index.js 现有叶子函数**不依赖内部符号**的已基本沉完（仅剩
@@ -52,6 +54,7 @@
 | `0b1ec71` | P0-2 第六批：下沉 4 个 IO 助手（index.js 9,999→9,845） | ✅ 已推送 |
 | （第七~十五批见工作区记忆 .workbuddy/memory/2026-09-02.md，index.js 从 9,845 降至 8,327） | — | ✅ 已推送 |
 | `f9db559` | P0-2 第十六批：下沉 17 个叶子函数（backup/paths/tools-detect/memory-normalize/entity-*/dispatch），index.js 8,327→7,530，修复 sink 工具对 entity-repo 多行 import 的破坏 | ✅ 已推送 |
+| `fb670fd` | P0-2 第十七批：整块下沉 task-spec 子系统（10 函数 + 2 常量）到 `src/lib/task-spec.js`；把 util.js 错放的 summarizeTaskSpec/writeTaskSpecProcessLogs/resolveTaskSpecCwd 迁入收敛，消除 util↔task-spec 循环；顺带修 util.js 预存 bug（getDirectResolveCandidates 调用未导入 projectRoot）；index.js 7,530→7,249 | ✅ 已推送 |
 
 ## 后续任务（按优先级）
 
@@ -69,7 +72,11 @@
 - **现状**：index.js 剩余主体是共享工具函数（format、validate、fs 助手等），不属于任何命令族群。
 - **已下沉**：前四批累计 94 个 + 第五批 `e626917` 把大量文件级 IO 助手、entity 工厂、tools 检测
   下沉到 `src/lib/io.js`（40+ 个）、新建 `entity-factory.js` / `tools-detect.js`，index.js 净减 1,519 行。
-- **剩余**：待复扫。原 AST 扫描为 201 个叶子函数（约 1,989 行），前五批已吃掉大部分，
+  第六~十六批按主题下沉叶子函数；第十七批 `fb670fd` 验证了**真实簇下沉**：task-spec 子系统
+  （连续 5684-5922 的 10 个函数 + 2 常量）整体迁到 `src/lib/task-spec.js`，其全部依赖
+  （cli/shell/format）本就已在 lib 中，是内聚自包含的簇 —— 说明非叶子函数**不必逐簇找工具证明**，
+  只要某簇全部依赖都已在 lib 就整体可沉。
+- **剩余**：待复扫。原 AST 扫描为 201 个叶子函数（约 1,989 行），前几批已吃掉大部分，
   剩下的需重跑 `find-leaf-functions.mjs` 拿准确清单，别照抄本文档的旧数字。
   非叶子函数（依赖其他内部符号的，如 `analyzeMemoryHealth`、`syncIndexedEvents`、`appCommand`）
   需先拆分依赖或走 deps 注入

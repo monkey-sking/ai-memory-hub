@@ -14,7 +14,7 @@
 //
 // 只 export 被 index.js 或其它命令消费的 5 个符号；其余 7 个为模块内部函数。
 //   export: buildMemoryIndex / renderMemorySnapshot / renderBootstrapSnapshot
-//           resolveReference / analyzeInstructionIncludes
+//           resolveReference / analyzeInstructionIncludes / rebuildMemoryOutputs
 //   内部:   enrichMemory / selectStartupMemoryRecords / scoreImportance
 //           scoreMemoryAccessHeat / scoreStaleMemoryAccessPenalty
 //           getStaleWorkingContextPenalty / isStaleOperationalRadioMemory
@@ -56,6 +56,7 @@ import {
   normalizeMemoryRefs,
   normalizeMemoryScope,
   readLedger,
+  renderIndexMarkdown,
   renderMemoryLine,
   resolveSnapshotLimits
 } from "./memory-normalize.js";
@@ -66,6 +67,8 @@ import {
   resolvePossiblyHomePath
 } from "./resolve.js";
 import { getInstructionIncludeFiles } from "./tools-detect.js";
+import { writeFileAtomic } from "../atomic-write.js";
+import { writeJson } from "./cli.js";
 import { getDirectResolveCandidates, normalizeCandidatePath } from "./util.js";
 
 // 打分与快照限额常量：仅本模块使用。
@@ -435,4 +438,16 @@ export function analyzeInstructionIncludes(config, options = {}) {
   }
   diagnostics.ok = diagnostics.missing.length === 0;
   return diagnostics;
+}
+
+// 重建 memory 输出文件（MEMORY.md / BOOTSTRAP.md / INDEX.md / memories/index.json）。
+// 原为 index.js 内部 hub —— 被 merge/search/memory CommandDeps 注入，且被 syncIndexedEvents /
+// restoreBackup / runMemoryHealthRepair 调用。第 32 批先把它拔到本模块（主题同属 memory 输出），
+// 以解开 memory-health 簇对它的 index 内部依赖（「先拔 hub」节奏）。
+export function rebuildMemoryOutputs(config, ledger) {
+  const index = buildMemoryIndex(ledger, config);
+  writeFileAtomic(path.join(config.memoryDir, "MEMORY.md"), renderMemorySnapshot(index, config), "utf8");
+  writeFileAtomic(path.join(config.memoryDir, "BOOTSTRAP.md"), renderBootstrapSnapshot(index, config), "utf8");
+  writeFileAtomic(path.join(config.memoryDir, "INDEX.md"), renderIndexMarkdown(index), "utf8");
+  writeJson(path.join(config.memoryDir, "memories", "index.json"), index);
 }

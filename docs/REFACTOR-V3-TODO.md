@@ -4,26 +4,27 @@
 > 横切依赖走 deps 注入，共享常量下沉 `src/lib/constants.js`。
 > 本文档是唯一进度落点，任何 runner（codex / claude / gemini / antigravity / opencode / mimocode）接手前先读这里。
 
-## 当前进度（2026-09-08 实测，HEAD=`9a9fcb1`）
+## 当前进度（2026-09-08 实测，HEAD=`d93a450`）
 
 | 指标 | 数值 |
 |---|---|
 | index.js 起始行数 | 14,778 |
-| 当前行数 | **2,287**（已减 12,491 行） |
+| 当前行数 | **1,951**（已减 12,827 行） |
 | 已迁出命令族群 | 26 个 |
 | src/commands 模块数 | 36 个（含 app.js，共约 6,728 行） |
-| src/lib 模块数 | 35 个（新增 daemon-state/skill-store/github-backup/dispatch-pool/dispatch-run/runner-core/radio-messages/config/dispatch-retry/policy/relay-status/dispatch-orchestration/memory-index/memory-health/tool-detection.js，共约 8,900 行） |
-| index.js 残留 | 22 个 `*Command` 函数、47 个顶层 function、67 个顶层 const/let（含 32 个 `*Deps` 注入对象） |
-| 已推送提交 | 到 `9a9fcb1`（工作区干净，未提交 `.workbuddy-ai/`） |
+| src/lib 模块数 | 36 个（新增 daemon-state/skill-store/github-backup/dispatch-pool/dispatch-run/runner-core/radio-messages/config/dispatch-retry/policy/relay-status/dispatch-orchestration/memory-index/memory-health/tool-detection/sync-status.js，共约 9,300 行） |
+| index.js 残留 | 21 个 `*Command` 函数、40 个顶层 function、66 个顶层 const/let（含 32 个 `*Deps` 注入对象） |
+| 已推送提交 | 到 `d93a450`（工作区干净，未提交 `.workbuddy-ai/`） |
 
-> ## 🎉 **P0-2 目标已超额达成**（`fdeed56` 越线，`9a9fcb1` 继续收敛）
+> ## 🎉 **P0-2 目标已大幅超额达成**（`fdeed56` 越线，后续持续收敛）
 >
-> 按 P0-2 的目标（降到 ~3,000 行）算，整体完成度 **106.4%**（行数口径）——
-> **index.js 2,287 行，比目标少 713 行**，自 14,778 行起累计减 12,491 行。
+> 按 P0-2 的目标（降到 ~3,000 行）算，整体完成度 **118.5%**（行数口径）——
+> **index.js 1,951 行，比目标少 1,049 行**，自 14,778 行起累计减 12,827 行。
 > 达标路径：第 30 批（dispatch 编排层，破 3,600）→ 第 31 批（memory-index，3,171）
-> → 第 32 批（memory-health，2,725，越线）→ 第 33 批（tool-detection，2,287）。
+> → 第 32 批（memory-health，2,725，越线）→ 第 33 批（tool-detection，2,287）
+> → 第 34 批（sync-status，1,951）。
 >
-> 后续不再以「降到 3,000 行」为硬指标，转为**按主题收敛剩余三组**（见下方「剩余」段），
+> 后续不再以「降到 3,000 行」为硬指标，转为**按主题收敛剩余两组**（见下方「剩余」段），
 > 目标是让 index.js 只剩「命令装配 + deps 注入 + main 入口」三层职责。
 > 第五批（`e626917`）把文件级 IO 助手、entity 工厂、tools 检测下沉，index.js 破万；
 > 第六~十六批持续按主题下沉叶子函数，index.js 从 9,999 降至 7,530；
@@ -222,6 +223,27 @@
 > app HTTP 冒烟（/api/tools 返回 total=39 / detected=10 / skillLayer=7）+ check:public 全绿。
 > index.js 2,725→2,287（106.4%）。安全说明：install / init --all 均只跑 dry-run，未写入真实工具配置。
 >
+> **P0-2 第三十四批（`d93a450`）**下沉 sync/status/record/doctor 四个命令核到
+> `src/lib/sync-status.js`（412 行 = 6 导出 + 2 模块内部辅助 + 1 常量）。
+> 命令核 4：syncIndexedEvents 117 / getStatusObject 77 / recordCommand 62 /
+> inspectRunnerTool 51；随迁辅助 2（经核对仅本簇消费）runRunnerProbe 16 /
+> readLockStatus 15；另随迁 isProjectVisible 3 与常量 PROJECT_VISIBLE_STATUSES
+> —— 这两个各有 1 处簇外消费（index.js:1781 / index.js:286），**按「跨调用点符号迁出后
+> 须回灌 import」原则**随迁并回灌，比 init 注入干净。
+> ⚠️ **本簇不是纯自包含，有 2 个 index 内部符号须 init 注入**：
+> ① `dashboardTools`（index.js:346 的 createDashboardToolsApi 工厂对象）另有
+> dashboardRealtime / dashboardActions / appCommandDeps / capabilities 共 4 处簇外消费，
+> 不能随簇迁；② `runAutomaticBackupStrategy` 属 backup/update 簇，另有 memoryCommandDeps
+> 消费，**待该簇下沉后可改为直连 import**（第 35 批后回头清理）。
+> initSyncStatusDeps 置于 dashboardTools 的 const 定义之后（TDZ：const 不提升）。
+> ★ **依赖清单延续第 33 批的脚本化做法，并补一道「逐符号校验真实导出文件」**
+> —— 48 个符号全部在其假定模块中查到 export 才生成 import，同时堵住「漏符号」（第 31/32 批）
+> 与「猜错模块」（第 28 批）两类坑。check-undefined --all 首轮通过，零漏零错。
+> 验证：record 写入成功 + sync 正确索引 1 条 + status 结构完整（projects.visible=1 证明
+> isProjectVisible 回灌正常、lock 对象证明 readLockStatus 正常、toolSummary 证明
+> dashboardTools 注入正常）+ doctor 中 6 个工具实际执行 runRunnerProbe 并回真实版本号
+> + HTTP 冒烟 5 端点全 200 + check:public 全绿。index.js 2,287→1,951（118.5%）。
+>
 > 注：叶子函数清单每批后已变化，接手前请重跑 `find-leaf-functions.mjs` 拿当前值，别照抄本文档旧数字。
 > （第二十二批已证实：原以为会形成 `util→dispatch→entity-models→util` 循环而不敢下沉的
 > `renderDispatchPrompt` / `renderCompactDispatchPrompt`，经 AST 复查实为 leaf 函数 ——
@@ -269,7 +291,8 @@
 | `96a9ca8` | P0-2 第二十九批：下沉 relay-status 写侧状态机到 `src/lib/relay-status.js`（5 函数 appendRelayStatus/findDispatchOrigin/appendDispatchResponseMessage/appendDispatchStatusMessage/updateDispatchSourceState，195 行）。该簇是 dispatch 编排大簇（executeDispatch/executeDispatchRetry/processDispatchJobResult/markTimedOutRelayStatuses/applyDispatchOutcome/prepareDispatchJobForRun 全经其写 relay-status.jsonl + 回执 response/status 消息）与 dispatch 命令（dispatchCommandDeps）的共享写侧。find-leaf-functions 复核确认 5 函数均已 leaf（依赖全落已沉 lib），为 policy 下沉后首个可直连 import 的写侧地基。**纯自包含簇**（外依赖全落已沉 constants ASYNC_CALL_STATES、cli createId、dispatch getDispatchThreadKey、dispatch-retry normalizeDispatchRetryLimit、entity-factory createRadioMessage、format trimOutput/summarizeText、radio-messages read/updateRadioMessage、entity-models updateTask/updateWorkflow、entity-repo readTasks/readWorkflows/syncLinkedWorkflowDeliveryState、event-writer appendJsonl + node path），无 index 内部符号 → 直连 import。index.js import 回全部 5 符号（仍被留 index 的 dispatch 编排大簇 + dispatchCommandDeps 继续消费），注入契约零改动。⚠️ 纪律重申：删除点空行整理只准局部、逐删除点处理，**绝不做全文件/大区间空行折叠**（本批初版脚本误全局折叠，`git checkout` 回滚后改用严格局部删除 + 逐点 Edit 收紧）。四步验证 + relay-status 运行时单测 8 例（relay-status 落盘/responder 回执 origin/updateDispatchSourceState patch radio）+ dispatch CLI 冒烟（job 构建 + relayState 读取正常）+ check:public 全绿。index.js 4,483→4,328 | ✅ 已推送 |
 | `03a515b` | P0-2 第三十批（**里程碑**）：整簇下沉 dispatch 编排层到 `src/lib/dispatch-orchestration.js`（11 函数 771 行 + 2 簇私有常量 RESEARCH_REPORTS_DIR/DISPATCH_OSCILLATION_THRESHOLD，模块共 792 行）。簇内容：prepareDispatchJobForRun/processDispatchJobResult/executeDispatch/executeDispatchRetry/markTimedOutRelayStatuses/applyDispatchOutcome/writeDispatchReportIfUseful/buildDispatchJobs/buildRetryDispatchJobs/rebuildDispatchJobFromRelay/getRelayFailureStateWithOscillation。第 28 批 policy + 第 29 批 relay-status 写侧接力把它的 index 内部依赖逐个拔净，至此只引用簇内函数 + 已沉 lib → **直连 import，无 init 注入**。整簇下沉而非拆分（拆开会让 index.js 重新 import 并接线同一调用图）。只 export 3 个被外部消费的符号（executeDispatch/executeDispatchRetry/rebuildDispatchJobFromRelay，供 dispatchCommandDeps/daemonCommandDeps/connectCommandDeps/dashboard deps），其余 8 个为模块内部函数不外发，各 *Deps 契约零改动。函数体经脚本提取原区间拼装**逐字迁移零改写**。⚠️ 两处新教训：① column0 `}` 定位须严格判 `== "}"`，多行签名结尾 `}) {` 也以 `}` 开头，误判把 231 行 executeDispatchRetry 截成 10 行；② 删除常量须一并检查其上方说明注释，否则成孤儿注释（Oscillation 注释已随常量迁走）。四步验证 + 编排簇运行时单测 8 例（job 构建/rebuild/超时清扫 1→2）+ dispatch CLI 端到端（radio job 识别 runnable + relayState pending）+ app HTTP 冒烟（health + /api/dispatch/pool + dashboard 均 200）+ check:public 全绿。index.js 4,328→3,550（首破 3,600 关，98%） | ✅ 已推送 |
 | `daf73da` | P0-2 第三十一批：下沉 memory 索引/富化/快照/打分/引用解析层到 `src/lib/memory-index.js`（12 函数 380 行 + 8 个仅本簇消费的常量，模块共 438 行）：buildMemoryIndex/enrichMemory/renderMemorySnapshot/renderBootstrapSnapshot/selectStartupMemoryRecords/scoreImportance/scoreMemoryAccessHeat/scoreStaleMemoryAccessPenalty/getStaleWorkingContextPenalty/isStaleOperationalRadioMemory/resolveReference/analyzeInstructionIncludes。**纯自包含簇**（41 个外依赖全落已沉 lib：memory-normalize 24 / format 8 / resolve 4 / entity-factory 2 / io·tools-detect·util 各 1 + node fs、path），无 index 内部符号 → 直连 import，无 init 注入。随迁 8 常量（STALE_OPERATIONAL_RADIO_AFTER_DAYS/OPERATIONAL_RADIO_DECAY_RATE_PER_DAY/MEMORY_ACCESS_RECENT_DAYS/MEMORY_ACCESS_STALE_AFTER_DAYS/MEMORY_ACCESS_STALE_DECAY_RATE_PER_DAY/MEMORY_ACCESS_MAX_HEAT/MEMORY_ACCESS_MAX_STALE_PENALTY/STARTUP_MEMORY_LIMIT），经 grep 核对均无簇外引用；相邻 TOOL_DETECTION_CACHE_TTL_MS 属 tool 检测簇保留未动。只 export 5 个被外部消费的符号，其余 7 个为模块内部函数；各 *Deps 契约零改动。本簇是 memory-health 簇地基之一（analyzeMemoryHealth 经 analyzeInstructionIncludes 依赖它），延续第 28/29/30 批「先拔 hub」节奏。⚠️ 新教训：**人工枚举依赖会漏符号**（漏 resolveReference 闭包内的 normalizeCandidatePath，靠 check-undefined.mjs --all 捕获后补 util.js import）—— 依赖清单必须走工具校验，不能靠人工枚举收敛。四步验证 + CLI 全链路（record→sync→index→snapshot→search→resolve→health）全通（三个 .md 产物正常生成、health 100/100、打分渲染 score=75/45 与公式吻合）+ app HTTP 冒烟（/api/health、/api/memory、/api/search 全 200）+ check:public 全绿。index.js 3,550→3,171（98.5%，距 3,000 行目标仅差 171 行） | ✅ 已推送 |
-| `fdeed56` | P0-2 第三十二批（**里程碑：P0-2 目标超额达成**）：下沉 memory-health 诊断/修复簇到 `src/lib/memory-health.js`（481 行，9 符号）+ 把 hub 函数 rebuildMemoryOutputs 先行拔到 `src/lib/memory-index.js`。下沉符号：export `dashboardHealth`（createDashboardHealthApi 的 11 行对象字面量，供 appCommandDeps + healthCommand）与 `runMemoryHealthRepair`（供 appCommandDeps + healthRepairCommand）；内部 7 个 analyzeMemoryHealth/renderMemoryHealthReport/buildMemoryHealthRepairPlan/applyMemoryHealthRepairPlan/chooseDuplicateKeeper/repairCorruptedLedgerRecord/isCorruptedMemoryRecord。**关键难点：依赖闭环** —— dashboardHealth 依赖 analyzeMemoryHealth + renderMemoryHealthReport，runMemoryHealthRepair 又依赖 dashboardHealth，三者互咬（第 31 批已记为卡点）。两条解法（均可复用）：① **工厂对象随簇迁入** —— dashboardHealth 只是对象字面量，9 个参数中仅 2 个属本簇、余 7 个全在已沉 lib，随簇迁入后环就地解开（这是工厂对象类 hub 的通用解法）；② **先拔 hub** —— rebuildMemoryOutputs 本就依赖 buildMemoryIndex/renderMemorySnapshot/renderBootstrapSnapshot，归 memory-index 更合理，先拔过去后本模块再从 memory-index import。memory-index.js 补 3 个 import（renderIndexMarkdown/writeFileAtomic/writeJson）并新增 export rebuildMemoryOutputs；index.js import 回 dashboardHealth + runMemoryHealthRepair，各 *Deps 契约零改动。⚠️ 本批再次印证第 31 批教训：memory-health.js:175 用 path.join 却缺 `import path from "node:path"`，靠 check-undefined --all 捕获后补 —— 「人工枚举依赖漏符号」连续两批出现，import 清单必须走工具校验。四步验证 + CLI 全链路（record→sync→index→snapshot→search）全通（三 .md 产物正常、snapshot score=75）+ health 100/100 + health repair dry-run 与 --apply 均 ok:true 且 before/plan 结构完整（证明修复编排经 rebuildMemoryOutputs 正常）+ app HTTP 冒烟（/api/health 返回正确健康报告，证明 dashboardHealth 经 appCommandDeps 注入正常）+ check:public 全绿。**index.js 3,171→2,725，首次突破 ~3,000 行目标，完成度 102.3%** | ✅ 已推送 |
+| `fdeed56` | P0-2 第三十二批（**里程碑：P0-2 目标超额达成**）：下沉 memory-health 诊断/修复簇到 `src/lib/memory-health.js`（481 行，9 符号）+ 把 hub 函数 rebuildMemoryOutputs 先行拔到 `src/lib/memory-index.js`。下沉符号：export `dashboardHealth`（createDashboardHealthApi 的 11 行对象字面量，供 appCommandDeps + healthCommand）与 `runMemoryHealthRepair`（供 appCommandDeps + healthRepairCommand）；内部 7 个 analyzeMemoryHealth/renderMemoryHealthReport/buildMemoryHealthRepairPlan/applyMemoryHealthRepairPlan/chooseDuplicateKeeper/repairCorruptedLedgerRecord/isCorruptedMemoryRecord。**关键难点：依赖闭环** —— dashboardHealth 依赖 analyzeMemoryHealth + renderMemoryHealthReport，runMemoryHealthRepair 又依赖 dashboardHealth，三者互咬（第 31 批已记为卡点）。两条解法（均可复用）：① **工厂对象随簇迁入** —— dashboardHealth 只是对象字面量，9 个参数中仅 2 个属本簇、余 7 个全在已沉 lib，随簇迁入后环就地解开（这是工厂对象类 hub 的通用解法）；② **先拔 hub** —— rebuildMemoryOutputs 本就依赖 buildMemoryIndex/renderMemorySnapshot/renderBootstrapSnapshot，归 memory-index 更合理，先拔过去后本模块再从 memory-index import。memory-index.js 补 3 个 import（renderIndexMarkdown/writeFileAtomic/writeJson）并新增 export rebuildMemoryOutputs；index.js import 回 dashboardHealth + runMemoryHealthRepair，各 *Deps 契约零改动。⚠️ 本批再次印证第 31 批教训：memory-health.js:175 用 path.join 却缺 `import path from "node:path"`，靠 check-undefined --all 捕获后补 —— 「人工枚举依赖漏符号」连续两批出现，import 清单必须走工具校验。四步验证 + CLI 全链路（record→sync→index→snapshot→search）全通（三 .md 产物正常、snapshot score=75）+ health 100/100 + health repair dry-run 与 --apply 均 ok:true 且 before/plan 结构完整（证明修复编排经 rebuildMemoryOutputs 正常）+ app HTTP 冒烟（/api/health 返回正确健康报告，证明 dashboardHealth 经 appCommandDeps 注入正常）+ check:public 全绿。**index.js 2,725→2,287，完成度 106.4%** | ✅ 已推送 |
+| 34 | `d93a450` | sync/status/record/doctor 命令核 → `src/lib/sync-status.js`（412 行 = 6 函数 + 1 常量 + 2 模块内部辅助） | **index.js 2,287→1,951，完成度 118.5%** | ✅ 已推送 |
 | `9a9fcb1` | P0-2 第三十三批：下沉 tool 检测与共享技能层安装簇到 `src/lib/tool-detection.js`（487 行 = 10 函数 + 4 常量 + 1 单例）。函数：detectTools 219 / appendIfMissing 53 / enrichToolConnection 47 / syncSharedSkillLayer 39 / initAllTools 33 / getCachedDetectedTools 13 / buildInstallTemplateValues 11 / refreshDetectedTools 5 / invalidateToolDetectionCache 5 / renderInstallSnippet 3。**纯自包含簇**（14 个外依赖全落已沉 lib：tools-detect 4 / format 3 / util 3 / cli·config·dispatch·runner-core·atomic-write 各 1 + node 内置 fs、os、path），无 index 内部符号 → 直连 import，无 init 注入。随迁 4 常量（TOOL_DETECTION_CACHE_TTL_MS / SHARED_SKILL_LAYER_VERSION / SHARED_SKILL_LAYER_MARKER / SHARED_SKILL_LAYER_MARKER_PREFIX，核对均无簇外引用）+ 1 单例 toolDetectionCache。⚠️ 两点：① SHARED_SKILL_LAYER_MARKER 是 dead const（无任何使用）但依赖 SHARED_SKILL_LAYER_VERSION，按「dead const 随其依赖常量组迁走」原则随迁，否则留 index 破引用；② toolDetectionCache 是模块级单例，三个读写它的函数必须同在本模块才能共享同一 module 实例，故整簇同迁不可拆。只 export 8 个被 index.js 消费的符号（供 connectCommandDeps / dashboardTools / dashboardActions / appCommandDeps / initCommand / detectCommand / installCommand / getStatusObject），buildInstallTemplateValues 与 enrichToolConnection 为模块内部函数。★ **依赖清单改用脚本解析**（从 index.js 的 import 映射反查每符号导出模块），check-undefined --all 首轮即通过、零漏符号 —— 对比第 31 批漏 normalizeCandidatePath、第 32 批漏 path，验证「import 清单必须走工具校验」的正确做法。四步验证 + detect 正常识别本机工具 + install 预览正确渲染完整共享技能层 snippet + init --all 检测到 10 个已安装工具 / 13 个适配器并正确列出 dry-run 目标 + status 返回 tools 数组 + app HTTP 冒烟（/api/health、/api/tools、/api/memory、/api/metrics 全 200，/api/tools 返回 total=39 / detected=10 / skillLayer=7）+ check:public 全绿。安全说明：install / init --all 均只跑 dry-run（不带 --apply），未写入任何真实工具配置。index.js 2,725→2,287（106.4%） | ✅ 已推送 |
 
 ## 后续任务（按优先级）
@@ -312,23 +335,21 @@
   （命令单入口用 *CommandDeps 解构，lib 多导出簇用 init 注入）。
   第二十二批 `b4ca9a0` 把 dispatch 单任务执行链（含 renderDispatchPrompt 两函数）整簇下沉，
   dispatch-pool 也改直连 import，dispatch 执行层与 index.js 彻底解耦。
-- **剩余**（2026-09-08 复扫，`9a9fcb1`，index.js 2,287 行 / 114 个顶层符号）：
-  主体集中在 18 个 ≥25 行的符号（小计 1,031 行），可分三组：
-  1. **sync / status / record / doctor 命令核**（~307 行）✅ **当前首选第 34 批目标**：
-     syncIndexedEvents 117 / getStatusObject 77 / recordCommand 62 / inspectRunnerTool 51。
-     ⚠️ 注意：getStatusObject 依赖 `dashboardTools`（index.js 工厂对象）与
-     `isProjectVisible` / `readLockStatus`；inspectRunnerTool 依赖 `runRunnerProbe` ——
-     开工前先确认这些是否为 index 内部符号。
-  2. **backup / update 簇**（~215 行）：runAutomaticBackupStrategy 64 / performUpdate 55 /
-     restoreBackup 53 / checkForUpdates 43。
-  3. **context / recipe 簇**（~162 行）：createWorkflowFromRecipe 95 / createContextPack 67。
-  另有 `main`（139 行，程序入口，保留）+ 22 个 `*Command` 薄封装 + 32 个 `*Deps` 注入对象
+- **剩余**（2026-09-08 复扫，`d93a450`，index.js 1,951 行 / 106 个顶层符号）：
+  主体集中在 14 个 ≥25 行的符号（小计 724 行），可分两组：
+  1. **backup / update 簇**（~215 行）✅ **当前首选第 35 批目标**：
+     runAutomaticBackupStrategy 64 / performUpdate 55 / restoreBackup 53 / checkForUpdates 43。
+     💡 **额外收益**：本簇下沉后，可回头把第 34 批 `sync-status.js` 里 init 注入的
+     `runAutomaticBackupStrategy` 改为直连 import，**减少一处注入**。
+  2. **context / recipe 簇**（~162 行）：createWorkflowFromRecipe 95 / createContextPack 67。
+  另有 `main`（139 行，程序入口，保留）+ 21 个 `*Command` 薄封装 + 32 个 `*Deps` 注入对象
   （dashboardActions 33 / appCommandDeps 29 等）。
   具体清单以重跑 `find-leaf-functions.mjs` + `find-clusters.mjs` 为准，别照抄本文档旧数字。
   > 注：dispatch 重试编排 / dispatch 执行链 / dispatch 编排层 / policy / relay-status /
-  > memory-index / memory-health / **tool-detection** 均已下沉完毕（第 22/27/28/29/30/31/32/33 批），
-  > 本段早期版本关于它们的描述已作废。**P0-2 的 ~3,000 行目标已在 `fdeed56` 超额达成，
-  > 后续批次不再以行数为硬指标，而是按上述三组做主题收敛。**
+  > memory-index / memory-health / tool-detection / **sync-status** 均已下沉完毕
+  > （第 22/27/28/29/30/31/32/33/34 批），本段早期版本关于它们的描述已作废。
+  > **P0-2 的 ~3,000 行目标已在 `fdeed56` 超额达成，后续批次不再以行数为硬指标，
+  > 而是按上述两组做主题收敛。**
 - **分组原则**（第四批起的约定）：**按主题建模块，别再往 util.js 里堆**。
   util.js 已经在变成新的杂物抽屉，新函数优先归到 http / shell / backup / resolve /
   task-spec / entity-index / registry-paths 等主题模块，没有合适主题才进 util.js。

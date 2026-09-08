@@ -259,24 +259,40 @@ export function taskStatusCommand(argv, deps) {
   const id = getOption(argv, "--id") || positionalArgs(argv)[0] || "";
   const status = getOption(argv, "--status") || positionalArgs(argv)[1] || "";
   const by = getOption(argv, "--by") || getOption(argv, "--from") || "manual";
+  const code = getOption(argv, "--code") || "";
+  const message = getOption(argv, "--message") || "";
   if (!id || !status) {
-    throw new Error("Usage: ai-memory-hub task status --id <task-id> --status <open|claimed|in_progress|blocked|needs_verification|done|cancelled> [--by codex]");
+    throw new Error("Usage: ai-memory-hub task status --id <task-id> --status <open|claimed|in_progress|blocked|needs_verification|done|cancelled> [--code <lower-kebab-code> --message <human-readable> --by codex]");
   }
   deps.assertTaskStatus(status);
+  if (status === "blocked" && code && !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(code)) {
+    throw new Error(`Invalid --code '${code}'. Goal BlockReason code must be lower-kebab-case (e.g. quota-exceeded, upstream-down).`);
+  }
   const config = deps.loadConfig();
   deps.ensureHub(config.memoryDir);
   return deps.withHubLock(config.memoryDir, "task-status", () => {
-    const task = deps.updateTask(config.memoryDir, id, (current) => ({
-      ...current,
-      status,
-      assignee: current.assignee || by,
-      updatedAt: new Date().toISOString(),
-      completedAt: status === "done" ? new Date().toISOString() : current.completedAt || "",
-      notes: [
-        ...(current.notes || []),
-        deps.createTaskNote(by, `Status changed to ${status}.`)
-      ]
-    }));
+    const task = deps.updateTask(config.memoryDir, id, (current) => {
+      const next = {
+        ...current,
+        status,
+        assignee: current.assignee || by,
+        updatedAt: new Date().toISOString(),
+        completedAt: status === "done" ? new Date().toISOString() : current.completedAt || "",
+        notes: [
+          ...(current.notes || []),
+          deps.createTaskNote(by, `Status changed to ${status}.`)
+        ]
+      };
+      // Goal BlockReason machine-code: attach only for blocked, only when a
+      // code is given; clear it whenever leaving blocked so a stale reason can
+      // never ride along on a resumed task.
+      if (status === "blocked" && code) {
+        next.blockReason = { code, message };
+      } else if (status !== "blocked") {
+        delete next.blockReason;
+      }
+      return next;
+    });
     console.log(JSON.stringify(task, null, 2));
   }, config.sync.lockStaleMs);
 }

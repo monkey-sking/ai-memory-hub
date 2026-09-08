@@ -492,6 +492,21 @@ export function normalizeTask(task) {
   if (Array.isArray(task.evaluationSignals)) {
     normalized.evaluationSignals = task.evaluationSignals;
   }
+  // Goal BlockReason machine-code: lower-kebab-case code + human-readable
+  // message dual-field. Only materializes when status is blocked AND a code is
+  // present, so a task can never carry a blockReason with a non-blocked status.
+  const rawReason = task.blockReason || {};
+  const blockCode = typeof rawReason.code === "string" ? rawReason.code.trim() : "";
+  if (status === "blocked" && blockCode && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(blockCode)) {
+    normalized.blockReason = {
+      code: blockCode,
+      message: typeof rawReason.message === "string" ? rawReason.message.trim() : "",
+    };
+  } else if (isPlainObject(task.blockReason)) {
+    // Preserve the raw object verbatim for forward-compat (older writers that
+    // emitted a non-blocked blockReason), but never validate-block it.
+    normalized.blockReason = task.blockReason;
+  }
   return normalized;
 }
 

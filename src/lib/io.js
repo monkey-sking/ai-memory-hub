@@ -414,14 +414,33 @@ export function readLockEvents(memoryDir) {
   return readEvents(path.join(memoryDir, "state", "lock-events.jsonl"));
 }
 
+// 锁事件日志只用于诊断，但它是 append-only 的——不裁剪就会无上限增长。
+// 保留最近 LOCK_EVENT_RETENTION 条，超过 RETENTION + SLACK 才回写一次，
+// 避免每加一次锁就重写整个文件。
+const LOCK_EVENT_RETENTION = 500;
+const LOCK_EVENT_TRIM_SLACK = 100;
+
+function trimJsonlTail(file, maxLines, keepLines) {
+  try {
+    if (!fs.existsSync(file)) return;
+    const lines = fs.readFileSync(file, "utf8").split("\n").filter(Boolean);
+    if (lines.length <= maxLines) return;
+    writeFileAtomic(file, `${lines.slice(lines.length - keepLines).join("\n")}\n`, "utf8");
+  } catch {
+    // 裁剪失败不能让加锁跟着失败：日志是诊断用途，丢几条无所谓。
+  }
+}
+
 export function appendLockEvent(lockPath, payload) {
   const memoryDir = path.resolve(lockPath, "..", "..");
-  appendJsonl(path.join(memoryDir, "state", "lock-events.jsonl"), {
+  const lockEventsFile = path.join(memoryDir, "state", "lock-events.jsonl");
+  appendJsonl(lockEventsFile, {
     id: createId(`lock:${payload.type}:${payload.owner || ""}:${Date.now()}`),
     ts: new Date().toISOString(),
     path: lockPath,
     ...payload
   });
+  trimJsonlTail(lockEventsFile, LOCK_EVENT_RETENTION + LOCK_EVENT_TRIM_SLACK, LOCK_EVENT_RETENTION);
 }
 
 export function readEventsWithLocations(file) {

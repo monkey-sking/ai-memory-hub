@@ -52,6 +52,7 @@ CHERRY_STUDIO.md
 # Personal machine state — must never be committed or uploaded.
 .workbuddy/
 **/.workbuddy/
+**/.workbuddy-ai/
 
 # dashboard-next build / verify artifacts (not source)
 dashboard-next/.build-verify/

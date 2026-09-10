@@ -73,6 +73,8 @@ import { connectCommand } from "./commands/connect.js";
 const connectCommandDeps = { createRadioMessage, createTask, summarizeText, get dashboardTools() { return dashboardTools; }, detectTools, ensureHub, executeDispatch, getInstallTargetForTool, loadConfig, renderInstallSnippet, syncSharedSkillLayer, withHubLock };
 import { searchCommand } from "./commands/search.js";
 const searchCommandDeps = { buildMemoryIndex, ensureHub, filterMemoryRecords, getMemoryIdentityKeys, hasMemoryFilters, isMemoryLifecycleVisible, loadConfig, normalizeSupersedeToken, parseMemoryFilters, printMemorySearchResults, readLedger, rebuildMemoryOutputs, recordMemoryAccess, searchMemories, searchMemoriesForContext, semanticSearch, withHubLock, writeLedger };
+import { captureCommand, runCaptureScan } from "./commands/capture.js";
+const captureCommandDeps = { ensureHub, loadConfig, searchMemoriesForContext, syncCommand };
 import { queueCommand } from "./commands/queue.js";
 const queueCommandDeps = { createDispatchQueueEntry, ensureHub, getFailedEntries, getQueuedEntries, getRunningEntries, loadConfig, readDispatchQueue, updateDispatchQueueEntry, writeDispatchQueueEntry };
 import { skillCandidateCommand, skillCommand, skillDeltaCommand } from "./commands/skill.js";
@@ -606,6 +608,8 @@ async function main() {
       return eventsCommand(rest, { loadConfig, ensureHub, hasFlag, getOption, positionalArgs, memoryStore, fs });
     case "search":
       return searchCommand(rest, searchCommandDeps);
+    case "capture":
+      return captureCommand(rest, captureCommandDeps);
     case "snapshot":
       return snapshotCommand(rest);
     case "resolve":
@@ -1172,12 +1176,21 @@ function pullCommand() {
 
 function watchCommand(argv) {
   const intervalMs = Number(getOption(argv, "--interval-ms") || 30000);
+  const captureEnabled = hasFlag(argv, "--capture");
+  const captureLimit = getOption(argv, "--capture-limit") || "50";
   const config = loadConfig();
   ensureHub(config.memoryDir);
 
-  console.log(`Watching ${path.join(config.memoryDir, "inbox")} every ${intervalMs}ms. Press Ctrl+C to stop.`);
+  console.log(`Watching ${path.join(config.memoryDir, "inbox")} every ${intervalMs}ms${captureEnabled ? " (auto-capture on)" : ""}. Press Ctrl+C to stop.`);
   const tick = () => {
     try {
+      if (captureEnabled) {
+        // 静默扫描：只有真的抓到新 turn 才出声，否则周期任务会刷屏。
+        const result = runCaptureScan(["scan", "--sync", "--limit", captureLimit], captureCommandDeps);
+        if (result.eventsWritten > 0) {
+          console.log(`[watch] captured ${result.eventsWritten} turn(s) from ${result.scannedFiles} file(s).`);
+        }
+      }
       const inboxPath = path.join(config.memoryDir, "inbox", "events.jsonl");
       const events = readEvents(inboxPath);
       if (events.length > 0) {

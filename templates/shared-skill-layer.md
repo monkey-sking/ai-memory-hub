@@ -20,6 +20,18 @@ This adapter implements the same AI Memory Hub workflow contract for `{{TOOL}}`.
 - Never edit `{{MEMORY_DIR}}/memories/ledger.jsonl` or `{{MEMORY_DIR}}/MEMORY.md` directly.
 - After writing a durable event, run `ai-memory-hub sync` when command execution is available.
 
+### Auto-Captured Turns and Recall
+
+- AMH captures completed conversation turns from local transcripts automatically (`ai-memory-hub capture scan --sync`). You do **not** need to record routine work; `record` is for durable facts, not a work log.
+- At session start, or before answering a question that depends on prior work, recall first:
+
+```bash
+ai-memory-hub capture recall "<what this task is about>" --limit 5
+```
+
+- Treat recalled lines as historical context only. The user's current request always wins.
+- Captured turns are stored with `kind=turn` and stay in the archive layer, so they do not crowd out curated memory.
+
 ### Automatic Context Associations
 
 - When the context is known, include it in the event metadata so AMH can create relations automatically:

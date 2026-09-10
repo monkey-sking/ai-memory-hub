@@ -14,6 +14,7 @@ Commands:
   models     Show or refresh the model catalog for each tool (pulled from the provider where supported).
   status     Show hub and tool status.
   record     Append a local memory event.
+  capture    Auto-capture conversation turns from local AI tool transcripts, or recall them.
   radio      Send, list, and promote cross-agent radio messages.
   sync       Index pending inbox events into the local memory ledger.
   index      Rebuild MEMORY.md, INDEX.md, and the structured local index.
@@ -64,6 +65,11 @@ Examples:
   ${APP_NAME} init --all --apply
   ${APP_NAME} record "User prefers concise answers." --source codex --kind preference
   ${APP_NAME} record "Project memory with tags." --source codex --kind project --project ai-memory-hub --tags schema,memos --confidence 0.8
+  ${APP_NAME} capture sources
+  ${APP_NAME} capture scan --tool codex --limit 50 --sync
+  ${APP_NAME} capture scan --dry-run --limit 10
+  ${APP_NAME} capture recall "how did we fix the release signing issue" --limit 5
+  ${APP_NAME} watch --capture --interval-ms 300000
   ${APP_NAME} radio send "Please review the latest implementation." --from codex --to claude --type review
   ${APP_NAME} radio list --limit 10
   ${APP_NAME} radio promote --id <message-id>

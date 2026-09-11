@@ -116,13 +116,23 @@ export function inferBackupReasonFromName(name) {
   return String(name || "").replace(/^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z-?/, "") || "manual";
 }
 
+/**
+ * 备份 reason → 保留层级。
+ *
+ * ⚠️ 这里的默认分支是**关键设计点**：未知 reason 一律归到 `ad-hoc`（有上限），
+ * 而不是 `manual`（受保护、永不清理）。早期版本把未知 reason 全归 `manual`，
+ * 结果每次 `health repair` / `capture repair` 自动产生的安全快照都被当成
+ * 用户手动备份永久保留 —— 备份目录只增不减（实测堆到 100MB）。
+ * 只有**真的**是用户手动发起的（reason 为空或字面量 "manual"）才受保护。
+ */
 export function inferBackupRetentionTier(reason) {
   const value = String(reason || "").toLowerCase();
   if (value.startsWith("pre-sync")) return "pre-sync";
   if (value.startsWith("daily")) return "daily";
   if (value.startsWith("weekly")) return "weekly";
   if (value.startsWith("pre-pull")) return "pre-pull";
-  return "manual";
+  if (!value || value === "manual") return "manual";
+  return "ad-hoc";
 }
 
 export function createdAtRetentionKey(value) {
@@ -244,7 +254,7 @@ export function ensureSafeChildPath(target, root) {
   }
 }
 
-export function planBackupRetention(backups, { daily = 7, weekly = 4, preSync = 20, prePull = 20 } = {}) {
+export function planBackupRetention(backups, { daily = 7, weekly = 4, preSync = 5, prePull = 5, adHoc = 10 } = {}) {
   const keep = new Map();
   const markKeep = (backup, reason) => {
     if (!backup || keep.has(backup.name)) return;
@@ -277,6 +287,14 @@ export function planBackupRetention(backups, { daily = 7, weekly = 4, preSync = 
     limit: prePull,
     keyForBackup: (backup) => backup.name,
     label: "pre-pull"
+  }, markKeep);
+  // 自动安全快照（pre-health-repair / pre-capture-repair / pre-restore 等）：
+  // 不是用户手动备份，但也要有个上限，否则每次自动修复都留一份、永远不回收。
+  markTieredBackups(sorted, {
+    tier: "ad-hoc",
+    limit: adHoc,
+    keyForBackup: (backup) => backup.name,
+    label: "ad-hoc"
   }, markKeep);
 
   const keepList = sorted.map((backup) => keep.get(backup.name)).filter(Boolean);
@@ -433,9 +451,9 @@ export function hasBackupForRetentionKey(memoryDir, tier, key) {
   return listBackupDirectories(memoryDir).some((backup) => backup.retentionTier === tier && backup.retentionKey === key);
 }
 
-export function getBackupSummary(memoryDir, { limit = 50, daily = 7, weekly = 4, preSync = 20, prePull = 20, pruneAfterSync = true } = {}) {
+export function getBackupSummary(memoryDir, { limit = 50, daily = 7, weekly = 4, preSync = 5, prePull = 5, adHoc = 10, pruneAfterSync = true } = {}) {
   const backups = listBackupDirectories(memoryDir);
-  const retention = planBackupRetention(backups, { daily, weekly, preSync, prePull });
+  const retention = planBackupRetention(backups, { daily, weekly, preSync, prePull, adHoc });
   const retentionByName = new Map(retention.backups.map((item) => [item.name, item]));
   return {
     dir: path.join(memoryDir, "backups"),
@@ -447,8 +465,9 @@ export function getBackupSummary(memoryDir, { limit = 50, daily = 7, weekly = 4,
       weekly,
       preSync,
       prePull,
+      adHoc,
       pruneAfterSync,
-      note: "Manual backups are protected; daily, weekly, pre-sync, and pre-pull backups are pruned only inside backups/."
+      note: "User-initiated (manual) backups are protected; daily, weekly, pre-sync, pre-pull, and ad-hoc automatic snapshots are pruned only inside backups/."
     },
     retention: {
       keep: retention.keep.length,
@@ -464,9 +483,9 @@ export function getBackupSummary(memoryDir, { limit = 50, daily = 7, weekly = 4,
   };
 }
 
-export function pruneBackups(memoryDir, { apply = false, daily = 7, weekly = 4, preSync = 20, prePull = 20 } = {}) {
+export function pruneBackups(memoryDir, { apply = false, daily = 7, weekly = 4, preSync = 5, prePull = 5, adHoc = 10 } = {}) {
   const backups = listBackupDirectories(memoryDir);
-  const retention = planBackupRetention(backups, { daily, weekly, preSync, prePull });
+  const retention = planBackupRetention(backups, { daily, weekly, preSync, prePull, adHoc });
   const backupsRoot = path.resolve(memoryDir, "backups");
   const pruned = [];
   if (apply) {
@@ -481,7 +500,7 @@ export function pruneBackups(memoryDir, { apply = false, daily = 7, weekly = 4, 
   }
   return {
     apply,
-    policy: { daily, weekly, preSync, prePull },
+    policy: { daily, weekly, preSync, prePull, adHoc },
     total: backups.length,
     keep: retention.keep.length,
     prune: retention.prune.length,

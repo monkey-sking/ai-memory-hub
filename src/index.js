@@ -1913,7 +1913,8 @@ function getBackupRetentionConfig(config = {}) {
     daily: readPositiveInteger(raw.daily, defaults.daily),
     weekly: readPositiveInteger(raw.weekly, defaults.weekly),
     preSync: readPositiveInteger(raw.preSync ?? raw.pre_sync, defaults.preSync),
-    prePull: readPositiveInteger(raw.prePull ?? raw.pre_pull, defaults.prePull || 20),
+    prePull: readPositiveInteger(raw.prePull ?? raw.pre_pull, defaults.prePull || 5),
+    adHoc: readPositiveInteger(raw.adHoc ?? raw.ad_hoc, defaults.adHoc || 10),
     pruneAfterSync: raw.pruneAfterSync !== false
   };
 }

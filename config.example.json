@@ -7,7 +7,9 @@
     "backupRetention": {
       "daily": 7,
       "weekly": 4,
-      "preSync": 20,
+      "preSync": 5,
+      "prePull": 5,
+      "adHoc": 10,
       "pruneAfterSync": true
     }
   },

@@ -43,8 +43,14 @@ export function defaultConfig(memoryDir) {
       backupRetention: {
         daily: 7,
         weekly: 4,
-        preSync: 20,
-        prePull: 20,
+        // 每次 sync / pull 前都留一份，但一份就是整个 hub 的完整拷贝（实测 5-6MB）。
+        // 留 20 份 = 每次同步白白囤 100MB+，而它们只是顺序安全网，5 份足够；
+        // 更长的历史由 daily / weekly 提供。
+        preSync: 5,
+        prePull: 5,
+        // 自动安全快照（pre-health-repair / pre-capture-repair / pre-restore 等）
+        // 的保留数。这些不是用户手动备份，必须有上限。
+        adHoc: 10,
         pruneAfterSync: true
       }
     },

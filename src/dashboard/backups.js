@@ -67,10 +67,11 @@ export function createDashboardBackupsApi({
     const daily = Number.isInteger(Number(body.daily)) && Number(body.daily) > 0 ? Number(body.daily) : retention.daily;
     const weekly = Number.isInteger(Number(body.weekly)) && Number(body.weekly) > 0 ? Number(body.weekly) : retention.weekly;
     const preSync = Number.isInteger(Number(body.preSync)) && Number(body.preSync) > 0 ? Number(body.preSync) : retention.preSync;
+    const adHoc = Number.isInteger(Number(body.adHoc)) && Number(body.adHoc) > 0 ? Number(body.adHoc) : retention.adHoc;
     const apply = Boolean(body.apply);
     const result = apply
-      ? withHubLock(config.memoryDir, "backup-prune", () => pruneBackups(config.memoryDir, { apply, daily, weekly, preSync }), config.sync.lockStaleMs)
-      : pruneBackups(config.memoryDir, { apply, daily, weekly, preSync });
+      ? withHubLock(config.memoryDir, "backup-prune", () => pruneBackups(config.memoryDir, { apply, daily, weekly, preSync, adHoc }), config.sync.lockStaleMs)
+      : pruneBackups(config.memoryDir, { apply, daily, weekly, preSync, adHoc });
     return { ok: true, ...result, backups: getDashboardBackups(config) };
   }
 

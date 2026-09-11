@@ -1265,7 +1265,7 @@ data backups.
 ai-memory-hub backup [--reason <text>]
 ai-memory-hub backup --reason "before-major-refactor"
 ai-memory-hub backup list --limit 20
-ai-memory-hub backup prune --daily 7 --weekly 4 --pre-sync 20 [--apply]
+ai-memory-hub backup prune --daily 7 --weekly 4 --pre-sync 5 --pre-pull 5 --ad-hoc 10 [--apply]
 
 # GitHub data backup configuration and execution
 ai-memory-hub backup status

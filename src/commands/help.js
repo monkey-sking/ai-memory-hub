@@ -130,7 +130,7 @@ Examples:
   ${APP_NAME} pull
   ${APP_NAME} backup --reason manual
   ${APP_NAME} backup list --limit 20
-  ${APP_NAME} backup prune --daily 7 --weekly 4 --pre-sync 20 --apply
+  ${APP_NAME} backup prune --daily 7 --weekly 4 --pre-sync 5 --apply
   ${APP_NAME} backup status
   ${APP_NAME} backup run --no-push
   ${APP_NAME} watch --interval-ms 30000

@@ -74,7 +74,7 @@ const connectCommandDeps = { createRadioMessage, createTask, summarizeText, get 
 import { searchCommand } from "./commands/search.js";
 const searchCommandDeps = { buildMemoryIndex, ensureHub, filterMemoryRecords, getMemoryIdentityKeys, hasMemoryFilters, isMemoryLifecycleVisible, loadConfig, normalizeSupersedeToken, parseMemoryFilters, printMemorySearchResults, readLedger, rebuildMemoryOutputs, recordMemoryAccess, searchMemories, searchMemoriesForContext, semanticSearch, withHubLock, writeLedger };
 import { captureCommand, runCaptureScan } from "./commands/capture.js";
-const captureCommandDeps = { ensureHub, loadConfig, searchMemoriesForContext, syncCommand };
+const captureCommandDeps = { backupHub, ensureHub, loadConfig, readLedger, rebuildMemoryOutputs, searchMemoriesForContext, syncCommand, writeLedger };
 import { queueCommand } from "./commands/queue.js";
 const queueCommandDeps = { createDispatchQueueEntry, ensureHub, getFailedEntries, getQueuedEntries, getRunningEntries, loadConfig, readDispatchQueue, updateDispatchQueueEntry, writeDispatchQueueEntry };
 import { skillCandidateCommand, skillCommand, skillDeltaCommand } from "./commands/skill.js";

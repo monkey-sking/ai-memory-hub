@@ -143,37 +143,61 @@ const SECRET_PATTERNS = [
   /(?:Bearer|Authorization:\s*Bearer)\s+[A-Za-z0-9._-]{20,}/gi
 ];
 
+// 工具注入的上下文块：出现在真人请求**之前**，剥掉后剩下的才是请求本身
+// （实测 WorkBuddy 的结构是「ambient 块 + `## My request:` + 真人请求」）。
+// 单独导出常量：捕获时清洗要用，修复历史脏记录时也要用同一份清单——
+// 两边不同步的话，修完的库会被下一轮扫描重新污染。
+export const INJECTED_BLOCK_TAGS = [
+  "system-reminder",
+  "identity_context",
+  "INSTRUCTIONS",
+  "local-command-caveat",
+  "ADDITIONAL_METADATA",
+  "USER_SETTINGS_CHANGE",
+  "system_instruction",
+  "environment_context",
+  "in-app-browser-context",
+  "in-app-browser-state"
+];
+
+/** 这条文本里出现了哪些注入块（体检 / 修复历史记录时用）。 */
+export function detectInjectedBlocks(text) {
+  const value = String(text || "");
+  const found = INJECTED_BLOCK_TAGS.filter((tag) => value.includes(`<${tag}`));
+  if (value.includes("<codex_delegation")) found.push("codex_delegation");
+  return found;
+}
+
+/**
+ * 剥掉所有工具注入块，只留真人写的内容。
+ *
+ * 与 cleanCaptureText 分开：本函数只做「结构剥离」，不碰脱敏与空白压缩。
+ * 修复历史记录时必须用它——对整条已入库文本再跑一次 cleanCaptureText，
+ * 会把助手回复里的换行与代码块一并压平，改动面远超需要修的注入块。
+ */
+export function stripInjectedBlocks(text) {
+  if (!text) return "";
+  let out = String(text);
+  out = unwrapTagBlock(out, "USER_REQUEST");
+  out = unwrapTagBlock(out, "user_query");
+  for (const tag of INJECTED_BLOCK_TAGS) out = stripTagBlock(out, tag);
+  // codex_delegation 是 harness 的转交信封，但 <input> 里装的是**真人写的任务**，
+  // 整块删掉会丢内容 —— 只拆信封留下 payload。
+  out = unwrapDelegationBlock(out);
+  // 客户端用这行标记真人请求的起点，它本身不是请求内容。
+  out = out.replace(/^\s*##\s*My request:\s*/i, "");
+  return out;
+}
+
 /** 脱敏并压缩空白。捕获进记忆库的文本一律先过这一层。 */
 export function cleanCaptureText(text) {
   if (!text) return "";
   let out = String(text);
   out = out.replace(/```[\s\S]*?```/g, (block) => block.slice(0, 400));
-  out = unwrapTagBlock(out, "USER_REQUEST");
-  out = unwrapTagBlock(out, "user_query");
-  for (const tag of [
-    "system-reminder",
-    "identity_context",
-    "INSTRUCTIONS",
-    "local-command-caveat",
-    "ADDITIONAL_METADATA",
-    "USER_SETTINGS_CHANGE",
-    "system_instruction",
-    "environment_context",
-    // 交互客户端注入的环境块：出现在真人请求**之前**，剥掉后剩下的才是请求本身
-    // （实测 WorkBuddy 的结构是「ambient 块 + `## My request:` + 真人请求」）。
-    "in-app-browser-context",
-    "in-app-browser-state"
-  ]) {
-    out = stripTagBlock(out, tag);
-  }
-  // codex_delegation 是 harness 的转交信封，但 <input> 里装的是**真人写的任务**，
-  // 整块删掉会丢内容 —— 只拆信封留下 payload。
-  out = unwrapDelegationBlock(out);
+  out = stripInjectedBlocks(out);
   // 大段 base64 内联载荷（图片/附件）直接替换成占位符。
   out = out.replace(/data:[a-z]+\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=]+/gi, "[inline-data]");
   out = out.replace(/\b[A-Za-z0-9+/]{200,}={0,2}\b/g, "[blob]");
-  // 交互客户端在注入块之后用这行标记真人请求的起点，它本身不是请求内容。
-  out = out.replace(/^\s*##\s*My request:\s*/i, "");
   for (const pattern of SECRET_PATTERNS) out = out.replace(pattern, "[redacted]");
   out = out.replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n");
   return out.trim();

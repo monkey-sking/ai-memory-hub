@@ -22,16 +22,20 @@ import {
 import {
   CAPTURE_SOURCE_DEFS,
   assignTurnIds,
+  detectInjectedBlocks,
   findCaptureFiles,
   listCaptureTools,
   parseCaptureFile,
-  renderTurnText
+  renderTurnText,
+  stripInjectedBlocks
 } from "../lib/capture-sources.js";
 
 const DEFAULT_SCAN_LIMIT = 200;
 const DEFAULT_RECALL_LIMIT = 8;
 // 召回是给 agent 注入上下文用的，单条必须短——否则几条就把上下文窗口吃满。
 const RECALL_TEXT_LIMIT = 320;
+// 修复计划里最多回显多少条样本（全量回显会把输出淹掉）。
+const REPAIR_SAMPLE_LIMIT = 10;
 
 function resolveTools(argv) {
   const requested = getOption(argv, "--tool") || getOption(argv, "--source") || "";
@@ -56,7 +60,8 @@ export function captureCommand(argv, deps) {
   if (action === "status") return captureStatusCommand(rest, deps);
   if (action === "reset") return captureResetCommand(rest, deps);
   if (action === "recall") return captureRecallCommand(rest, deps);
-  throw new Error("Usage: ai-memory-hub capture <scan|sources|status|reset|recall> [options]");
+  if (action === "repair") return captureRepairCommand(rest, deps);
+  throw new Error("Usage: ai-memory-hub capture <scan|sources|status|reset|recall|repair> [options]");
 }
 
 /** 列出本机各源的 transcript 文件数量，便于判断能不能扫到东西。 */
@@ -274,4 +279,107 @@ export function captureRecallCommand(argv, deps) {
   lines.push("");
   lines.push("<!-- /amh-recall -->");
   console.log(lines.join("\n"));
+}
+
+// ─── 修复历史记录 ───
+
+/** 剥离后顺手把块留下的空白残渣收干净（已入库文本本身已归一化，这里只是收尾）。 */
+function normalizeRepairedText(text) {
+  return String(text || "").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function buildCaptureRepairPlan(ledger) {
+  const entries = [];
+  const unresolved = [];
+  const byBlock = {};
+  for (const record of ledger) {
+    const before = String(record?.text || "");
+    if (!before) continue;
+    const blocks = detectInjectedBlocks(before);
+    if (blocks.length === 0) continue;
+    const after = normalizeRepairedText(stripInjectedBlocks(before));
+    for (const block of blocks) byBlock[block] = (byBlock[block] || 0) + 1;
+    if (!after || after === before) {
+      // 修不动就如实报出来，别静默跳过。两种来源：① 标签没闭合的脏记录；
+      // ② 正文里只是**提到**了标签名（例如助手回复在解释 `<INSTRUCTIONS>`），
+      // 那是误报，剥离函数本来就不该动它。都要人看一眼再决定。
+      unresolved.push({ id: record.id, blocks });
+      continue;
+    }
+    entries.push({ id: record.id, blocks, before, after });
+  }
+  return { entries, unresolved, byBlock };
+}
+
+function applyCaptureRepairPlan(ledger, plan) {
+  const now = new Date().toISOString();
+  const byId = new Map(plan.entries.map((entry) => [entry.id, entry]));
+  let updated = 0;
+  const next = ledger.map((record) => {
+    const entry = byId.get(record?.id);
+    if (!entry) return record;
+    updated += 1;
+    // 只改 text：sync 的去重键是 localEventId，动 id 会导致同一条重复入账。
+    return { ...record, text: entry.after, repairedAt: now, repairedBlocks: entry.blocks };
+  });
+  return { ledger: next, updated };
+}
+
+function countPolluted(ledger) {
+  return ledger.filter((record) => detectInjectedBlocks(record?.text || "").length > 0).length;
+}
+
+/**
+ * 修复历史记录里被注入块污染的正文。
+ *
+ * 背景：早期的噪声过滤漏了 ambient 注入块，导致已入库记录的正文以工具注入的
+ * 环境状态开头，真人请求被挤到后面。修复用与捕获同一份剥离逻辑（stripInjectedBlocks），
+ * 两边共享 INJECTED_BLOCK_TAGS，不会出现「修完又被下一轮扫描污染」。
+ *
+ * 与 `health repair` 同款约定：默认只出计划，`--apply` 才落盘，落盘前自动备份。
+ */
+export function captureRepairCommand(argv, deps) {
+  const config = deps.loadConfig();
+  deps.ensureHub(config.memoryDir);
+  const apply = hasFlag(argv, "--apply");
+
+  const ledger = deps.readLedger(config.memoryDir);
+  const plan = buildCaptureRepairPlan(ledger);
+
+  const result = {
+    ok: true,
+    apply,
+    memoryDir: config.memoryDir,
+    scannedRecords: ledger.length,
+    pollutedRecords: plan.entries.length + plan.unresolved.length,
+    repairable: plan.entries.length,
+    unresolved: plan.unresolved,
+    byBlock: plan.byBlock,
+    samples: plan.entries.slice(0, REPAIR_SAMPLE_LIMIT).map((entry) => ({
+      id: entry.id,
+      blocks: entry.blocks,
+      before: entry.before.slice(0, 140),
+      after: entry.after.slice(0, 140)
+    })),
+    backup: null,
+    applied: { ledgerRecordsUpdated: 0 },
+    after: null
+  };
+
+  if (!apply || plan.entries.length === 0) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  const backup = deps.backupHub(config.memoryDir, "pre-capture-repair");
+  const applied = applyCaptureRepairPlan(ledger, plan);
+  deps.writeLedger(config.memoryDir, applied.ledger);
+  deps.rebuildMemoryOutputs(config, applied.ledger);
+
+  console.log(JSON.stringify({
+    ...result,
+    backup,
+    applied: { ledgerRecordsUpdated: applied.updated },
+    after: { pollutedRecords: countPolluted(deps.readLedger(config.memoryDir)) }
+  }, null, 2));
 }

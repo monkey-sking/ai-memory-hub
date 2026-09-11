@@ -54,13 +54,29 @@ id 稳定 → `sync` 的 `knownIds` 去重生效 → 重复扫描不会重复入
    `daemon|guardian|subagent|triage|cron|scheduler|harness|background` 的整段跳过。
    用拒绝式匹配而非白名单，新的交互客户端不会被误杀。
 2. **工具注入的上下文块**：`system-reminder`、`identity_context`、`INSTRUCTIONS`、
-   `environment_context`、`<recommended_plugins>` 等整块剥离。
+   `environment_context`、`<recommended_plugins>`、`in-app-browser-context` 等整块剥离。
 3. **机器生成的伪用户请求**：`TRANSCRIPT DELTA START`、AMH 自己的派工样板
    （`__AI_MEMORY_THREAD__`）、多 agent harness 的定时唤醒与消息通知、角色设定式
    系统提示词（"You are X's ..."）。
 4. **脱敏**：API key / token / 大段 base64 内联载荷替换成占位符。
 
 规则刻意只匹配通用句式，不写具体产品名或频道名。
+
+**注入块的两种处理方式**，别搞混：
+
+- **剥离**（`stripTagBlock`）：块内容纯粹是机器的环境状态，整块删掉。但要**只删块、
+  不删整条** —— 实测 WorkBuddy 的结构是「ambient 块 + `## My request:` + 真人请求」，
+  块只是前导，真人请求在后面，整条丢弃会把人说的话一起丢掉。
+- **拆信封**（`unwrapDelegationBlock`）：codex 的 `<codex_delegation>` 是 harness 信封，
+  但 `<input>` 里装的是真人写的任务，只留 payload、丢掉信封与 `<source_thread_id>`。
+
+⚠️ **踩过的坑（2026-09-11）**：strip 清单漏了 `in-app-browser-context`，导致真实库里
+614 条记录有 39 条正文以环境状态开头。教训是**新注入块会随客户端迭代出现**，
+清单不是一次写死的；体检要定期做（见下方 `capture repair`）。
+
+另外 `MIN_TURN_TEXT_LENGTH` 按**码元**算，中文信息密度高，「进行下消融实验」只有 7 个
+码元却是完整请求。阈值定 8 会误杀（该问题被前导块撑长掩盖过，剥离块之后才暴露），
+现取 4，仍能挡住「好的」「继续」。
 
 ### 落库位置
 
@@ -76,7 +92,23 @@ amh capture scan --tool codex --limit 50 --sync  # 抓 50 条并直接入账本
 amh capture status                               # 各源水印进度
 amh capture reset --tool codex                   # 清空某源水印，下次全量重扫
 amh capture recall "发布签名问题怎么修的" --limit 5
+amh capture repair                               # 体检：已入库记录里有没有注入块残留
+amh capture repair --apply                       # 按同一份剥离逻辑重写 text（落盘前自动备份）
 ```
+
+### 修复历史记录（`capture repair`）
+
+噪声过滤的清单会随客户端迭代而变，**新注入块漏掉的那段时间里落库的记录是脏的**。
+`capture repair` 用与捕获同一份 `stripInjectedBlocks` 重写这些记录的 `text`，
+两边共享 `INJECTED_BLOCK_TAGS` 常量，不会出现「修完又被下一轮扫描重新污染」。
+
+- 默认只出计划（`repairable` / `unresolved` / `byBlock` 分布 + 样本），`--apply` 才落盘。
+- 落盘前自动 `backupHub(memoryDir, "pre-capture-repair")`。
+- **只改 `text`，不动 `id` / `localEventId`**：sync 的去重键是 `localEventId`，
+  改键会让同一条重复入账。
+- `unresolved` 是不该静默跳过的两种记录：① 标签没闭合的脏记录；
+  ② 正文只是**提到**了标签名（如助手回复在解释 `<INSTRUCTIONS>`）——那是误报，
+  剥离函数本来就要求闭合标签，不会动它。都要人看一眼再决定。
 
 `recall` 是捕获的对侧——Memmy 在 `turn.start` 注入召回上下文，光有捕获没有召回记忆
 还是死的。输出是一段带 `<!-- amh-recall -->` 标记的 markdown，单条截断到 320 字符，
@@ -110,5 +142,6 @@ daemon 是派工循环，不适合塞这个逻辑，所以挂在 watch 上。
 | --- | --- |
 | `src/lib/capture-sources.js` | 源定义、文件发现、各工具适配器、文本清洗与噪声过滤 |
 | `src/lib/capture-state.js` | 水印状态读写（size / mtime / consumed） |
-| `src/commands/capture.js` | 命令簇：scan / sources / status / reset / recall |
-| `tests/capture-sources.test.mjs` | 单测 |
+| `src/commands/capture.js` | 命令簇：scan / sources / status / reset / recall / repair |
+| `tests/capture-sources.test.mjs` | 清洗 / 噪声过滤 / 水印单测 |
+| `tests/capture-repair.test.mjs` | repair 的预览-应用-幂等闭环（起临时 hub 跑真 CLI） |

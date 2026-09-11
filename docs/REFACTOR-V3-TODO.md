@@ -348,6 +348,22 @@
   > 注：dispatch 重试编排 / dispatch 执行链 / dispatch 编排层 / policy / relay-status /
   > memory-index / memory-health / tool-detection / **sync-status** 均已下沉完毕
   > （第 22/27/28/29/30/31/32/33/34 批），本段早期版本关于它们的描述已作废。
+- **第 35 批复扫结论（2026-09-11，index.js 1,970 行）：不做，理由如下。**
+  重跑 `find-leaf-functions.mjs --deps | find-clusters.mjs`（18 个非叶子 → 7 个连通簇）：
+  - 上表第 1 组「backup / update 簇」**不是一个可整搬的单元**。它落在这个连通簇里：
+    `capabilitiesCommand, checkForUpdates, checkpointCommand, healthCommand, main,
+    metricsCommand, performUpdate, readLoopCheckpoint, reviewCommand, updateCommand,
+    watchCommand, writeLoopCheckpoint`（12 函数）。
+    簇里有 `main` —— CLI 入口派发器，**永远不可能下沉**，所以整簇无解（自洽簇判定要求
+    簇内成员的全部 index.js 内部依赖都在簇内，而 `main` 的依赖面就是整个 index.js）。
+  - 真正自洽、可单独下沉的只有 6 个**单函数簇**：
+    `runAutomaticBackupStrategy` / `refreshModelsIfStale` / `getRequestMetricsSnapshot` /
+    `recordRequestMetric` / `resetDispatchRunState` / `getClaimTtlMs`。
+    它们大多是 5–20 行的取值/计数助手，且**已被 `*Deps` 注入消费**（如 task.js 就吃 `getClaimTtlMs`），
+    下沉只把「注入」换成「import」，行数与耦合都不减，收益接近零，风险却是真实的 import 面变动。
+  - 因此：P0-2 的体积目标（index.js ≤ 3,000 行）**已超额 34% 达成**，第 35 批属可选抛光，
+    无功能收益 —— 记为「评估后不做」。**若将来真要做，也只做上面 6 个单函数簇，逐个人工搬，
+    不要试图拆那个 12 函数连通簇。**
   > **P0-2 的 ~3,000 行目标已在 `fdeed56` 超额达成，后续批次不再以行数为硬指标，
   > 而是按上述两组做主题收敛。**
 - **分组原则**（第四批起的约定）：**按主题建模块，别再往 util.js 里堆**。

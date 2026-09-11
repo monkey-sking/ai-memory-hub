@@ -110,6 +110,8 @@ import { POLICY_DECISIONS, POLICY_SCOPES, appendPolicyRule, policyScopeMatches, 
 import { promptCommand } from "./commands/prompt.js";
 import { workflowNodeCommand } from "./commands/workflow-node.js";
 import { taskCommand, taskSpecCommand } from "./commands/task.js";
+import { compactCommand } from "./commands/compact.js";
+const compactCommandDeps = { backupHub, ensureHub, loadConfig };
 const taskCommandDeps = { appendSkillCandidates, assertTaskStatus, createRadioMessage, createTask, createTaskNote, ensureHub, findTaskIndex, getClaimTtlMs, isClaimStale, loadConfig, loadTaskSpecContext, releaseStaleClaim, resolveTaskSpecFromArgs, runTaskSpec, summarizeTaskSpec, touchAgentStatus, updateTask, validateTaskSpecDocument, withHubLock };
 import {
   readTasks, writeTasks, readWorkflows, writeWorkflows, readProjects, writeProjects,
@@ -610,6 +612,9 @@ async function main() {
       return searchCommand(rest, searchCommandDeps);
     case "capture":
       return captureCommand(rest, captureCommandDeps);
+    case "compact":
+    case "gc":
+      return compactCommand(rest, compactCommandDeps);
     case "snapshot":
       return snapshotCommand(rest);
     case "resolve":

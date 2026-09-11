@@ -15,6 +15,7 @@ Commands:
   status     Show hub and tool status.
   record     Append a local memory event.
   capture    Auto-capture conversation turns from local AI tool transcripts, or recall/repair/schedule them.
+  compact    Fold superseded entity events out of the tasks/projects/workflows logs (dry-run by default).
   radio      Send, list, and promote cross-agent radio messages.
   sync       Index pending inbox events into the local memory ledger.
   index      Rebuild MEMORY.md, INDEX.md, and the structured local index.
@@ -74,6 +75,9 @@ Examples:
   ${APP_NAME} capture schedule status
   ${APP_NAME} capture schedule install --interval-minutes 15 --apply
   ${APP_NAME} watch --capture --interval-ms 300000
+  ${APP_NAME} compact
+  ${APP_NAME} compact --entity task --apply
+  ${APP_NAME} compact --apply --auto --no-backup
   ${APP_NAME} radio send "Please review the latest implementation." --from codex --to claude --type review
   ${APP_NAME} radio list --limit 10
   ${APP_NAME} radio promote --id <message-id>

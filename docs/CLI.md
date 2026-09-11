@@ -1255,6 +1255,29 @@ with `ai-memory-hub detect` or `ai-memory-hub doctor --tool <tool-name>`.
 The install preview reports `new`, `missing`, `stale`, `current`, or `malformed`
 for the managed block. A malformed block is left untouched for manual repair.
 
+### `compact`
+
+Fold superseded events out of the entity event logs (`tasks` / `projects` /
+`workflows` / `prompts`). Mutating an entity appends a **full snapshot** of the
+record, so a task edited 48 times stores 48 complete copies of itself — growth
+is O(n²) and every `backup` copies it. `compact` keeps only the event that
+decides each entity's current state and archives the rest (gzipped).
+
+```bash
+ai-memory-hub compact                          # dry run — reports, writes nothing
+ai-memory-hub compact --entity task            # task|project|workflow|prompt|all
+ai-memory-hub compact --apply                  # write; takes a pre-compact backup first
+ai-memory-hub compact --apply --auto           # only fold logs over 1MiB (idempotent)
+ai-memory-hub compact --apply --auto --no-backup   # recommended for a timer
+ai-memory-hub gc                               # alias for compact
+```
+
+The fold refuses to write unless the projection replayed from the folded log is
+byte-identical — including record order — to the projection replayed from the
+original, so `task list` output cannot shuffle. A second run is a no-op.
+See `docs/event-compaction.md` for the guarantees, the marker protocol, and how
+to verify or roll back.
+
 ### `backup`
 
 Create local hub backups, inspect/prune retention, and manage optional GitHub

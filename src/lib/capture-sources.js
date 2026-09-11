@@ -19,7 +19,10 @@ import path from "node:path";
 // 单条文本上限：用户请求留得多、助手回复留得少，与 Memmy 的 4000/2000 一致。
 const USER_TEXT_LIMIT = 4000;
 const ASSISTANT_TEXT_LIMIT = 2000;
-const MIN_TURN_TEXT_LENGTH = 8;
+// 长度按**码元**算，而中文信息密度远高于英文：一句「进行下消融实验」只有 7 个码元
+// 却是完整的真实请求。阈值 8 会把它误杀（剥离注入块后才暴露出来，此前被前导块撑长
+// 掩盖了）。取 4 仍能挡住「好的」「继续」这类无信息量的应答。
+const MIN_TURN_TEXT_LENGTH = 4;
 
 // 单文件超过这个体积就跳过，避免把内存吃满。
 const MAX_FILE_BYTES = 16 * 1024 * 1024;
@@ -117,6 +120,19 @@ function unwrapTagBlock(text, tag) {
   return `${match[1]}\n${rest}`;
 }
 
+/**
+ * 拆 codex 的转交信封：`<codex_delegation>` 是 harness 包的信封，但 `<input>`
+ * 里装的是**真人写的任务**。所以只留 payload，丢掉信封与 <source_thread_id>。
+ * 单独写而不是复用 unwrapTagBlock：<input> 是 HTML 通用标签，全局解包会误伤
+ * 正文里真的出现 HTML 的场景，这里限定在信封内部才处理。
+ */
+function unwrapDelegationBlock(text) {
+  if (!text || !text.includes("<codex_delegation")) return text;
+  const match = text.match(/<input>([\s\S]*?)<\/input>/i);
+  const rest = text.replace(/<codex_delegation[\s\S]*?<\/codex_delegation>/gi, " ");
+  return `${match ? match[1] : ""}\n${rest}`;
+}
+
 const SECRET_PATTERNS = [
   /sk-[A-Za-z0-9_-]{20,}/g,
   /ghp_[A-Za-z0-9]{20,}/g,
@@ -142,13 +158,22 @@ export function cleanCaptureText(text) {
     "ADDITIONAL_METADATA",
     "USER_SETTINGS_CHANGE",
     "system_instruction",
-    "environment_context"
+    "environment_context",
+    // 交互客户端注入的环境块：出现在真人请求**之前**，剥掉后剩下的才是请求本身
+    // （实测 WorkBuddy 的结构是「ambient 块 + `## My request:` + 真人请求」）。
+    "in-app-browser-context",
+    "in-app-browser-state"
   ]) {
     out = stripTagBlock(out, tag);
   }
+  // codex_delegation 是 harness 的转交信封，但 <input> 里装的是**真人写的任务**，
+  // 整块删掉会丢内容 —— 只拆信封留下 payload。
+  out = unwrapDelegationBlock(out);
   // 大段 base64 内联载荷（图片/附件）直接替换成占位符。
   out = out.replace(/data:[a-z]+\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=]+/gi, "[inline-data]");
   out = out.replace(/\b[A-Za-z0-9+/]{200,}={0,2}\b/g, "[blob]");
+  // 交互客户端在注入块之后用这行标记真人请求的起点，它本身不是请求内容。
+  out = out.replace(/^\s*##\s*My request:\s*/i, "");
   for (const pattern of SECRET_PATTERNS) out = out.replace(pattern, "[redacted]");
   out = out.replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n");
   return out.trim();

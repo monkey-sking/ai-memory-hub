@@ -48,6 +48,59 @@ test("cleanCaptureText unwraps user_query instead of dropping it", () => {
   assert.equal(cleanCaptureText("<user_query>你接入下 AMH</user_query>").trim(), "你接入下 AMH");
 });
 
+test("cleanCaptureText keeps the real request that follows an ambient UI block", () => {
+  // 实测结构：交互客户端把环境块注在真人请求**之前**，再用 `## My request:` 标记起点。
+  // 只剥环境块、并把后面的请求留下——整条丢弃会丢掉真人说的话。
+  const text = [
+    '<in-app-browser-context source="ambient-ui-state">',
+    "This block is automatically supplied ambient UI state, not part of the user's request.",
+    "# In app browser:",
+    "- Current URL: file:///x/index.html",
+    "</in-app-browser-context>",
+    "",
+    "## My request:",
+    "进行下消融实验"
+  ].join("\n");
+  const cleaned = cleanCaptureText(text);
+  assert.equal(cleaned, "进行下消融实验");
+  assert.ok(!cleaned.includes("ambient-ui-state"));
+  assert.ok(!cleaned.includes("## My request"));
+});
+
+test("an ambient block with no human request behind it is dropped entirely", () => {
+  const text = [
+    '<in-app-browser-context source="ambient-ui-state">',
+    "The user has the in-app browser open with 1 tab.",
+    "</in-app-browser-context>"
+  ].join("\n");
+  const cleaned = cleanCaptureText(text);
+  assert.equal(cleaned, "");
+  assert.equal(isCaptureWorthy(cleaned), false);
+});
+
+test("cleanCaptureText unwraps the codex delegation envelope but keeps its payload", () => {
+  // 信封是 harness 生成的，但 <input> 里装的是真人写的任务，不能一起丢。
+  const text = [
+    "<codex_delegation>",
+    "  <source_thread_id>01a0458b-ed3a-7062-b770-dc8c6070c7ef</source_thread_id>",
+    "  <input>在 /repo 直接实现用户需求，保留当前所有未提交改动</input>",
+    "</codex_delegation>"
+  ].join("\n");
+  const cleaned = cleanCaptureText(text);
+  assert.equal(cleaned, "在 /repo 直接实现用户需求，保留当前所有未提交改动");
+  assert.ok(!cleaned.includes("source_thread_id"));
+  assert.ok(!cleaned.includes("codex_delegation"));
+});
+
+test("short but complete Chinese requests survive the length gate", () => {
+  // 阈值按码元算，中文信息密度高：7 个字就是一句完整请求，不能按英文的直觉砍掉。
+  assert.equal(isCaptureWorthy("进行下消融实验"), true);
+  assert.equal(isCaptureWorthy("修复登录超时"), true);
+  // 但仍然要挡住没有信息量的应答。
+  assert.equal(isCaptureWorthy("好的"), false);
+  assert.equal(isCaptureWorthy("继续"), false);
+});
+
 test("isCaptureWorthy rejects dispatch boilerplate, system prompts, and harness noise", () => {
   assert.equal(isCaptureWorthy("__AI_MEMORY_THREAD__: claude:aion:abc"), false);
   assert.equal(isCaptureWorthy("<local-command-caveat>Caveat</local-command-caveat>"), false);

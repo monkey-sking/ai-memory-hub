@@ -391,10 +391,14 @@
 - 首次运行即扫出 4 个真实死引用（3 个 v3.0 误删的 dispatch job 构造器 + 1 个从未存在的
   `parseIndexFile`），全部修复于 `8ad6104`。那 26 处告警的 triage 到此闭环，不必再捞旧脚本。
 
-### P2-2：抽取脚本 extract_group.mjs 已知问题
-- 属性键误判已修（`(?![\\w$(:])`），如再遇误判按同样思路补排除
-- 传参格式：`node .workbuddy/refactor-tools/extract_group.mjs "<前缀>:<输出文件>"`，前缀为命令名前缀（如 `models:src/commands/models.js`）
-- ⚠️ 同样没入库（`.workbuddy/` 被 gitignore）。要继续用，**先移出 `.workbuddy/` 再提交**。
+### P2-2：~~抽取脚本 extract_group.mjs 已知问题~~ → 已作废
+
+- **2026-09-11 核实：该脚本不存在，且从未入库过。** 它当年写在被 `.gitignore` 排除的
+  `.workbuddy/refactor-tools/` 下，本机该目录已不存在，任何 runner 都拿不到它。
+- **别再找它，也别照它设计新的**：入库的重构工具已经够用（见下一节六个脚本）。
+  「抽命令族群」目前是 **AST 工具定簇 + 人工搬运** 的流程，没有一键脚本。
+  命令族的搬法在各批次记录里有模板：`xCommand(argv, deps)` + index.js 侧
+  `const xCommandDeps = { ... }`，函数体逐字迁移、调用点零改动。
 
 ## 重构工具（均在 scripts/refactor/，已入库）
 
@@ -484,15 +488,20 @@ index.js 一万多行、几百个函数，冒烟测试覆盖不全。
 # 2. 同步仓库
 git pull --rebase origin main
 
-# 3. 抽取新族群（如适用）
-#    注意：extract_group.mjs 没入库（.workbuddy/ 被 gitignore），
-#    新版 runner 大概率跑不到，需先找原作者要或自己重写
-node .workbuddy/refactor-tools/extract_group.mjs "xxx:src/commands/xxx.js"
+# 3. 找目标：先扫叶子函数，再看哪些能组成自洽簇
+#    （acorn 不在项目依赖里；本机 dashboard-next/node_modules 下有一份）
+NODE_PATH=dashboard-next/node_modules node scripts/refactor/find-leaf-functions.mjs --deps \
+  | node scripts/refactor/find-clusters.mjs
+#    需要 acorn 的两个脚本都在跑之前清掉 NODE_OPTIONS（见下方「跑测试」条）
 
-# 4. 四件套验证（缺一不可）
+# 4. 下沉（可选自动化；项目内模块的 import 要补，用 fix-imports 反查）
+NODE_PATH=dashboard-next/node_modules node scripts/refactor/sink-functions.mjs <函数名...> [--to lib/other.js]
+NODE_PATH=dashboard-next/node_modules node scripts/refactor/fix-imports.mjs
+
+# 5. 四件套验证（缺一不可）
 node --check src/index.js && node --check src/commands/xxx.js   # 语法
 node scripts/refactor/check-deps.mjs                           # deps 注入完整性
-NODE_PATH=... node scripts/refactor/check-undefined.mjs --all   # 未声明引用（下沉后必跑）
+NODE_PATH=dashboard-next/node_modules node scripts/refactor/check-undefined.mjs --all   # 未声明引用（下沉后必跑）
 node src/index.js <该族群的命令>                                # 运行时
 # HTTP 冒烟（动了 appCommand / 任何 dashboard 相关代码时必做）
 node src/index.js app --port 38790 &
@@ -500,8 +509,21 @@ curl -s -o /dev/null -w "%{http_code}\n" http://localhost:38790/api/health
 curl -s -o /dev/null -w "%{http_code}\n" http://localhost:38790/api/tasks
 pkill -f "src/index.js app"
 
-# 5. 提交 + 推送（产出后立即 push 防丢失）
+# 6. 提交 + 推送（产出后立即 push 防丢失）
 git add <显式路径> && git commit -m "refactor(commands): ..." && git push origin main
+```
+
+> **⚠️ `extract_group.mjs` 已经不存在了**（2026-09-11 核实：它当年写在被 gitignore 的
+> `.workbuddy/refactor-tools/` 下，从未入库，本机该目录已不存在）。**别再去找它。**
+> 入库的工具是上面这六个：`find-leaf-functions` / `find-clusters` / `sink-functions` /
+> `fix-imports` / `check-deps` / `check-undefined`，都在 `scripts/refactor/` 下。
+> 抽命令族群目前是「用 AST 工具定簇 + 人工搬运」的流程，没有一键脚本。
+
+**⚠️ 跑任何 node 命令前先清 `NODE_OPTIONS`**（WorkBuddy 会预注入一个 fs shim，
+把每次 fs 调用拖慢约 90 倍，测试会大面积超时）：
+
+```bash
+NODE_OPTIONS= node --test --test-timeout=60000
 ```
 
 **⚠️ 提交前先 `git status` 看清楚**：本仓库是多人（多 agent）共享工作区，

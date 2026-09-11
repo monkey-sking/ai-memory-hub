@@ -16,7 +16,12 @@
 //                                  另有 4 处簇外消费（dashboardActions / appCommandDeps /
 //                                  capabilities 相关），故不能随簇迁。
 //   runAutomaticBackupStrategy  —— 属 backup/update 簇（index.js:2146），另有
-//                                  memoryCommandDeps 消费；待该簇下沉后可改为直连 import。
+//                                  memoryCommandDeps 消费。⚠️ 这个注入**要长期保留**：
+//                                  2026-09-11 复核 `find-clusters` 证实该簇与 `main` 等
+//                                  共 12 个函数处在同一连通簇里，而 main 是 CLI 入口
+//                                  （依赖面即整个 index.js），永不可能下沉 —— 整簇无解，
+//                                  第 35 批已判定「不做」（见 docs/REFACTOR-V3-TODO.md）。
+//                                  别再指望「该簇下沉后改直连 import」。
 //   ⚠️ initSyncStatusDeps 必须在 dashboardTools 的 const 定义之后调用（TDZ：const 不提升）。
 //
 // 导出策略：export 被 index.js 消费的 6 个符号 ——

@@ -116,7 +116,34 @@ amh capture repair --apply                       # 按同一份剥离逻辑重�
 
 ## 让它真正自动
 
-`watch` 加了 `--capture`：
+**光有 `capture` 命令不算自动化**——命令得有人敲。这一步才是把 capture 从「有这功能」
+变成「记忆真的自己长」的关键。
+
+### 推荐：launchd 定时任务（macOS）
+
+```bash
+amh capture schedule status                                  # 装了没、间隔多少
+amh capture schedule install --interval-minutes 15           # 预览 plist，不落盘
+amh capture schedule install --interval-minutes 15 --apply    # 真正安装
+amh capture schedule uninstall                                # 卸载
+```
+
+装的是一个 LaunchAgent（label `com.ai-memory-hub.capture`），每 15 分钟拉起一次
+`capture scan --limit 50 --sync`，日志 `/tmp/ai-memory-hub-capture.log`。
+`RunAtLoad` 打开，登录即启。
+
+为什么不用常驻 `watch --capture`：那要维持一个长活进程（KeepAlive、崩溃重启、日志轮转），
+而捕获本身是**幂等的短任务**（全量扫描实测 1.5 秒），用 `StartInterval` 定时拉起更简单也更稳。
+
+⚠️ **`launchctl bootstrap` 在受限环境里会失败**（报 `Bootstrap failed: 5: Input/output error`）：
+launchd 域的写入被沙箱挡住。此时 plist 已就位，**下次登录会由 `~/Library/LaunchAgents/`
+自动加载**；要立刻生效就在自己的终端里跑：
+
+```bash
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.ai-memory-hub.capture.plist
+```
+
+### 备选：前台常驻
 
 ```bash
 amh watch --capture --interval-ms 300000
@@ -142,6 +169,7 @@ daemon 是派工循环，不适合塞这个逻辑，所以挂在 watch 上。
 | --- | --- |
 | `src/lib/capture-sources.js` | 源定义、文件发现、各工具适配器、文本清洗与噪声过滤 |
 | `src/lib/capture-state.js` | 水印状态读写（size / mtime / consumed） |
-| `src/commands/capture.js` | 命令簇：scan / sources / status / reset / recall / repair |
+| `src/commands/capture.js` | 命令簇：scan / sources / status / reset / recall / repair / schedule |
 | `tests/capture-sources.test.mjs` | 清洗 / 噪声过滤 / 水印单测 |
 | `tests/capture-repair.test.mjs` | repair 的预览-应用-幂等闭环（起临时 hub 跑真 CLI） |
+| `tests/capture-schedule.test.mjs` | 定时任务的 plist 生成单测 |

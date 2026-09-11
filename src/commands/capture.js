@@ -9,6 +9,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { appendJsonl } from "../event-writer.js";
 import { getOption, hasFlag, parsePositiveIntegerOption, positionalArgs } from "../lib/cli.js";
 import {
@@ -36,6 +37,10 @@ const DEFAULT_RECALL_LIMIT = 8;
 const RECALL_TEXT_LIMIT = 320;
 // 修复计划里最多回显多少条样本（全量回显会把输出淹掉）。
 const REPAIR_SAMPLE_LIMIT = 10;
+// 定时捕获的默认节奏：15 分钟、每次最多 50 条。
+const DEFAULT_SCHEDULE_INTERVAL_MINUTES = 15;
+const DEFAULT_SCHEDULE_LIMIT = 50;
+const CAPTURE_SCHEDULE_LABEL = "com.ai-memory-hub.capture";
 
 function resolveTools(argv) {
   const requested = getOption(argv, "--tool") || getOption(argv, "--source") || "";
@@ -61,7 +66,8 @@ export function captureCommand(argv, deps) {
   if (action === "reset") return captureResetCommand(rest, deps);
   if (action === "recall") return captureRecallCommand(rest, deps);
   if (action === "repair") return captureRepairCommand(rest, deps);
-  throw new Error("Usage: ai-memory-hub capture <scan|sources|status|reset|recall|repair> [options]");
+  if (action === "schedule") return captureScheduleCommand(rest, deps);
+  throw new Error("Usage: ai-memory-hub capture <scan|sources|status|reset|recall|repair|schedule> [options]");
 }
 
 /** 列出本机各源的 transcript 文件数量，便于判断能不能扫到东西。 */
@@ -382,4 +388,166 @@ export function captureRepairCommand(argv, deps) {
     applied: { ledgerRecordsUpdated: applied.updated },
     after: { pollutedRecords: countPolluted(deps.readLedger(config.memoryDir)) }
   }, null, 2));
+}
+
+// ─── 定时捕获（macOS launchd）───
+
+function captureSchedulePaths() {
+  const dir = path.join(os.homedir(), "Library", "LaunchAgents");
+  return {
+    label: CAPTURE_SCHEDULE_LABEL,
+    dir,
+    plist: path.join(dir, `${CAPTURE_SCHEDULE_LABEL}.plist`),
+    log: "/tmp/ai-memory-hub-capture.log"
+  };
+}
+
+/**
+ * 定时任务怎么调起 CLI。
+ *
+ * 优先用全局启动器（brew 装的 `ai-memory-hub`，它与 dashboard 服务用的是同一个，
+ * 已有先例）；没有就退回「当前 node 解释器 + 当前入口脚本」——不写死安装路径。
+ */
+function resolveCliInvocation() {
+  const launcher = "/opt/homebrew/bin/ai-memory-hub";
+  if (fs.existsSync(launcher)) return [launcher];
+  const entry = process.argv[1];
+  return entry ? [process.execPath, entry] : [process.execPath];
+}
+
+function escapeXml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+export function buildCaptureSchedulePlist({ intervalMinutes, limit, logPath }) {
+  const command = [...resolveCliInvocation(), "capture", "scan", "--limit", String(limit), "--sync"];
+  const programArguments = command
+    .map((arg) => `\t\t<string>${escapeXml(arg)}</string>`)
+    .join("\n");
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+\t<key>Label</key>
+\t<string>${CAPTURE_SCHEDULE_LABEL}</string>
+\t<key>ProgramArguments</key>
+\t<array>
+${programArguments}
+\t</array>
+\t<key>StartInterval</key>
+\t<integer>${intervalMinutes * 60}</integer>
+\t<key>RunAtLoad</key>
+\t<true/>
+\t<key>StandardOutPath</key>
+\t<string>${escapeXml(logPath)}</string>
+\t<key>StandardErrorPath</key>
+\t<string>${escapeXml(logPath)}</string>
+\t<key>EnvironmentVariables</key>
+\t<dict>
+\t\t<key>PATH</key>
+\t\t<string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+\t</dict>
+</dict>
+</plist>
+`;
+}
+
+function launchctl(args) {
+  const result = spawnSync("launchctl", args, { encoding: "utf8" });
+  return {
+    ok: result.status === 0,
+    status: result.status,
+    stderr: (result.stderr || "").trim()
+  };
+}
+
+function readScheduledCommand(plist) {
+  try {
+    const match = fs.readFileSync(plist, "utf8").match(/<key>StartInterval<\/key>\s*<integer>(\d+)<\/integer>/);
+    return match ? Number(match[1]) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * 让 capture 真正自动化：装一个 launchd 任务，每 N 分钟扫一次并 sync。
+ *
+ * 为什么不用 `amh watch --capture`：那是个常驻进程，得靠 KeepAlive 维持，
+ * 崩了要重启、日志要轮转；而捕获本身是幂等的短任务（实测 1.5 秒），
+ * 用 launchd 的 StartInterval 定时拉起更简单也更稳。
+ */
+export function captureScheduleCommand(argv, deps) {
+  const action = argv[0] && !argv[0].startsWith("--") ? argv[0] : "status";
+  const paths = captureSchedulePaths();
+
+  if (action === "status") {
+    const installed = fs.existsSync(paths.plist);
+    console.log(JSON.stringify({
+      ok: true,
+      installed,
+      supported: process.platform === "darwin",
+      label: paths.label,
+      plistPath: paths.plist,
+      logPath: paths.log,
+      intervalMinutes: installed ? readScheduledCommand(paths.plist) / 60 : 0
+    }, null, 2));
+    return;
+  }
+
+  if (action === "install") {
+    if (process.platform !== "darwin") {
+      throw new Error("capture schedule install currently supports macOS (launchd) only.");
+    }
+    const intervalMinutes = getOption(argv, "--interval-minutes")
+      ? parsePositiveIntegerOption(getOption(argv, "--interval-minutes"), "--interval-minutes")
+      : DEFAULT_SCHEDULE_INTERVAL_MINUTES;
+    const limit = getOption(argv, "--limit")
+      ? parsePositiveIntegerOption(getOption(argv, "--limit"), "--limit")
+      : DEFAULT_SCHEDULE_LIMIT;
+    const apply = hasFlag(argv, "--apply");
+    const plist = buildCaptureSchedulePlist({ intervalMinutes, limit, logPath: paths.log });
+
+    const result = {
+      ok: true,
+      apply,
+      label: paths.label,
+      plistPath: paths.plist,
+      logPath: paths.log,
+      intervalMinutes,
+      limit
+    };
+
+    if (!apply) {
+      console.log(JSON.stringify({ ...result, plist, hint: "Re-run with --apply to install." }, null, 2));
+      return;
+    }
+
+    fs.mkdirSync(paths.dir, { recursive: true });
+    fs.writeFileSync(paths.plist, plist, "utf8");
+    // bootout 在未加载时会失败，属正常情况，不阻断流程。
+    launchctl(["bootout", `gui/${process.getuid()}/${paths.label}`]);
+    const bootstrap = launchctl(["bootstrap", `gui/${process.getuid()}`, paths.plist]);
+    console.log(JSON.stringify({
+      ...result,
+      loaded: bootstrap.ok,
+      launchctlError: bootstrap.ok ? "" : bootstrap.stderr
+    }, null, 2));
+    return;
+  }
+
+  if (action === "uninstall") {
+    launchctl(["bootout", `gui/${process.getuid()}/${paths.label}`]);
+    if (fs.existsSync(paths.plist)) {
+      fs.rmSync(paths.plist, { force: true });
+    }
+    console.log(JSON.stringify({ ok: true, uninstalled: true, label: paths.label, plistPath: paths.plist }, null, 2));
+    return;
+  }
+
+  throw new Error("Usage: ai-memory-hub capture schedule <status|install|uninstall> [--interval-minutes 15] [--limit 50] [--apply]");
 }

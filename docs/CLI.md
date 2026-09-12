@@ -144,6 +144,11 @@ metadata prefix. The FTS5 index is kept current by `record`, `sync`, and `index`
 if it ever falls more than halfway behind the ledger, search prints a warning to
 stderr pointing at `search rebuild`, because a stale index silently searches less.
 
+Records marked `superseded` are **excluded** from search and `memory snapshot`
+results, whichever way the marker was written — `memory op … supersede` sets
+`lifecycle.state = "superseded"`, while `health repair` sets `superseded: true`
+plus `metadata.lifecycle.superseded`. Both are honored.
+
 ```bash
 ai-memory-hub search rebuild   # rebuild the FTS5 index from scratch
 ai-memory-hub search status    # inspect indexed counts and lastRebuilt

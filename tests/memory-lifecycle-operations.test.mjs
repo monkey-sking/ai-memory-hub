@@ -77,3 +77,60 @@ test("memory archive lowers stale records through operations without rewriting t
     await fs.rm(dir, { recursive: true, force: true });
   }
 });
+
+// ⚠️ 回归：superseded 的**两种写法**必须都被隐藏。
+//
+// `memory op` 写的是 `lifecycle.state = "superseded"`，而 `amh health repair --apply`
+// 写的是 `superseded: true` + `metadata.lifecycle.superseded: true`，**不写 `state`**。
+// 修复前 `isMemoryLifecycleVisible` 只认前者，于是真实 hub 上 25 条被软标记的重复记录
+// （含 2026-09-08 那批「已修复」的历史重复）全部照旧出现在 search 结果里。
+// 这个用例专门覆盖 health-repair 那种写法。
+test("search hides records marked superseded without a lifecycle.state", async () => {
+  const dir = await fs.mkdtemp(path.join(repoRoot, ".tmp-amh-superseded-visibility-"));
+  try {
+    assert.equal(run(dir, ["init"]).status, 0);
+    await append(path.join(dir, "inbox", "events.jsonl"), {
+      id: "dup-keeper", ts: "2026-09-12T00:00:00.000Z", source: "codex",
+      text: "Keeper duplicate fact", metadata: { kind: "note", project: "aion" }
+    });
+    assert.equal(run(dir, ["sync"]).status, 0);
+
+    // 模拟 `amh health repair --apply` 的产物：只写 superseded 标记，**不写 lifecycle.state**。
+    const ledgerFile = path.join(dir, "memories", "ledger.jsonl");
+    const lines = (await fs.readFile(ledgerFile, "utf8")).trim().split(/\r?\n/).map(JSON.parse);
+    const keeper = lines[0];
+    const loser = {
+      ...keeper,
+      id: "dup-loser",
+      localEventId: "dup-loser",
+      text: "Loser superseded fact",
+      superseded: true,
+      supersededBy: ["dup-keeper"],
+      metadata: {
+        ...keeper.metadata,
+        superseded: true,
+        supersededBy: ["dup-keeper"],
+        lifecycle: {
+          ...(keeper.metadata?.lifecycle || {}),
+          superseded: true,
+          healthExcluded: true,
+          healthRepair: { status: "superseded-duplicate", healthExcluded: true, duplicateOf: "dup-keeper" }
+        }
+      }
+    };
+    assert.equal(loser.metadata.lifecycle.state, undefined, "regression shape: no lifecycle.state is written");
+    await fs.writeFile(ledgerFile, `${[...lines, loser].map((item) => JSON.stringify(item)).join("\n")}\n`, "utf8");
+    assert.equal(run(dir, ["index"]).status, 0);
+
+    // 用两条记录各自**不同的文本**做判据，避免「搜索本身按文本去重」造成的假通过。
+    const hidden = run(dir, ["search", "Loser superseded fact", "--limit", "10"]);
+    assert.equal(hidden.status, 0, hidden.stderr || hidden.stdout);
+    assert.doesNotMatch(hidden.stdout, /Loser superseded fact/, "a superseded record must not be searchable");
+
+    const kept = run(dir, ["search", "Keeper duplicate fact", "--limit", "10"]);
+    assert.equal(kept.status, 0, kept.stderr || kept.stdout);
+    assert.match(kept.stdout, /Keeper duplicate fact/, "the keeper must stay searchable");
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});

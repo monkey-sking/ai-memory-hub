@@ -122,8 +122,24 @@ export function getDaysSinceTimestamp(value) {
   return Math.max(0, (Date.now() - time) / 86400000);
 }
 
+/**
+ * 记录是否「活着可见」。
+ *
+ * ⚠️ 这里必须同时认 `superseded` 标记 —— 这是 2026-09-12 修掉的真实缺陷：
+ * 本函数原本**只看 `lifecycle.state` 是否等于字面量 "superseded"**，
+ * 而**所有生产者写的都是 `record.superseded = true`**：
+ *   · `applyMemorySupersedeState`（refs 声明的替代）→ `superseded` + `metadata.superseded`
+ *   · `amh health repair --apply`（重复项软标记）→ 同上 + `metadata.lifecycle.superseded`
+ * 两边写的字段**从不相交**，于是这个哨兵从未生效：真实 hub 实测 25 条 superseded
+ * 记录（含 2026-09-08 那批「已修复」的历史重复）全部照旧出现在
+ * search / memory snapshot / 语义检索里。
+ *
+ * 判据与 `memory-index.js` 的快照路径（`!item.superseded && isMemoryLifecycleVisible(item)`）
+ * 对齐；写在这里可以让所有调用点一次性生效，不必各自补哨兵。
+ */
 export function isMemoryLifecycleVisible(record) {
   const lifecycle = record.lifecycle || record.metadata?.lifecycle || {};
+  if (record.superseded || record.metadata?.superseded || lifecycle.superseded) return false;
   if (["archived", "superseded", "revoked", "stale"].includes(lifecycle.state)) return false;
   const expiresAt = record.metadata?.expiresAt || lifecycle.expiresAt;
   return !expiresAt || !Number.isFinite(Date.parse(expiresAt)) || new Date(expiresAt) >= new Date();
@@ -510,6 +526,8 @@ export function printMemorySearchResults(results, asJson = false) {
 
 export function filterMemoryRecords(records, filters = {}) {
   return records
+    // superseded 的排除由 `isMemoryLifecycleVisible` 统一负责（见其注释），
+    // 这里不要再补 `!record.superseded` —— 判据只留一处，免得再次走散。
     .filter((record) => isMemoryLifecycleVisible(record))
     .filter((record) => filters.project ? record.project === normalizeMemoryProject(filters.project) : true)
     .filter((record) => matchesMemoryTags(record, filters.tags))

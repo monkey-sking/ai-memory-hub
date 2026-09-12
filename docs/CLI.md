@@ -69,7 +69,9 @@ Synchronize inbox events to memory ledger.
 ai-memory-hub sync
 ```
 
-Processes events from `inbox/events.jsonl` and updates the memory system. It also rebuilds event-sourced task, workflow, and project projections from `tasks/events.jsonl`, `workflows/events.jsonl`, and `projects/events.jsonl`.
+Processes events from `inbox/events.jsonl` and updates the memory system. It also rebuilds event-sourced task, workflow, and project projections from `tasks/events.jsonl`, `workflows/events.jsonl`, and `projects/events.jsonl`, and rebuilds the FTS5 search index (`Rebuilt FTS5 search index: N record(s).`).
+
+The search-index rebuild runs on **both** sync paths, including the "No pending memory events." early return — that path is the common case for the periodic `capture` timer, so skipping it there would let a stale index stay stale indefinitely.
 
 ### `resolve`
 
@@ -134,6 +136,18 @@ stored in `refs.thread`, `refs.taskId`, `refs.workflowId`, and `refs.radioId`.
 It can also filter by normalized project and tags. Multiple tags are treated as
 an AND filter. Plain text search still works without any filters. If a filter is
 provided without a query, search returns the newest matching records.
+
+Search uses the FTS5 index by default (`--legacy` forces the full-ledger scan),
+so **all filters apply to both paths** and results render the same way —
+including the `project=`, `tags=`, and `[thread=… taskId=… workflowId=… radioId=…]`
+metadata prefix. The FTS5 index is kept current by `record`, `sync`, and `index`;
+if it ever falls more than halfway behind the ledger, search prints a warning to
+stderr pointing at `search rebuild`, because a stale index silently searches less.
+
+```bash
+ai-memory-hub search rebuild   # rebuild the FTS5 index from scratch
+ai-memory-hub search status    # inspect indexed counts and lastRebuilt
+```
 
 ### `memory snapshot`
 

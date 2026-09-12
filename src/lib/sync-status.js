@@ -34,7 +34,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { appendJsonl } from "../event-writer.js";
-import { createSearchDb, tokenizeChinese } from "../fts5-search.js";
+import { createSearchDb, rebuildIndex, tokenizeChinese } from "../fts5-search.js";
 import { recordMemoryRelations } from "../relations.js";
 import { countBackupDirs } from "./backup.js";
 import { countJsonlFiles, createId, getOption, positionalArgs, readJson, writeJson } from "./cli.js";
@@ -68,6 +68,42 @@ export function initSyncStatusDeps(deps) {
 
 export const PROJECT_VISIBLE_STATUSES = ["active", "paused", "planning"];
 
+/**
+ * 让 FTS5 搜索索引跟上账本。
+ *
+ * 为什么需要：`recordCommand`（`amh record`）会把新事件**增量**写进 FTS5，
+ * 但 `sync` 是直接 `appendJsonl` 进账本的，**完全不碰 FTS5** —— 于是所有经 inbox
+ * 进来的记录（尤其是 capture 抓来的全部 turn）永远进不了搜索索引。
+ *
+ * 而 `amh search` 的默认路径只要发现 FTS5 非空就直接走 FTS5 并 return，
+ * 根本到不了能搜全账本的 legacy 分支 —— 索引一旦落后就**静默**少搜。
+ *
+ * 真实 hub 实测（2026-09-12）：FTS5 只有 117 条、`lastRebuilt: "never"`，
+ * 而账本 772 条 → 默认搜索有 85% 的记忆看不见。`amh search rebuild` 后
+ * 是 892 条（memory 772 + radio 51 + task 65 + workflow 4），刚捕获的 turn 立刻排第一。
+ *
+ * 用「整体重建」而不是增量插入：重建 ~900 条实测仅 **0.09 秒**，
+ * 幂等且能顺带治好已经落后的索引，比增量补齐更简单也更安全。
+ */
+function rebuildSearchIndex(config) {
+  let db = null;
+  try {
+    db = createSearchDb(config.memoryDir);
+    return rebuildIndex(db, config.memoryDir);
+  } catch {
+    // 搜索索引重建失败不该让 sync 本身失败 —— `amh search rebuild` 随时能修。
+    return 0;
+  } finally {
+    if (db) {
+      try {
+        db.close();
+      } catch {
+        /* already closed */
+      }
+    }
+  }
+}
+
 export function syncIndexedEvents(config, dryRun, allowSensitive = false) {
   const inboxPath = path.join(config.memoryDir, "inbox", "events.jsonl");
   const eventEntries = readEventsWithLocations(inboxPath);
@@ -79,13 +115,21 @@ export function syncIndexedEvents(config, dryRun, allowSensitive = false) {
       includePreSync: events.length > 0
   });
   if (events.length === 0) {
+    let searchIndexed = 0;
     if (!dryRun) {
       rebuildMemoryOutputs(config, readLedger(config.memoryDir));
+      // 这条「无事可做」的早退路径也必须重建搜索索引：它是常态路径
+      // （capture 定时器多数轮次都扫到 0 条新 turn），漏在这里会让落后的
+      // FTS5 一直落后下去 —— 正是这个 bug 当初能长期潜伏的原因。
+      searchIndexed = rebuildSearchIndex(config);
     }
     const projections = dryRun ? null : rebuildEventSourcedProjections(config.memoryDir);
     console.log("No pending memory events.");
     if (projections) {
       console.log(`Rebuilt event-sourced projections: tasks=${projections.tasks}, workflows=${projections.workflows}, projects=${projections.projects}.`);
+    }
+    if (searchIndexed) {
+      console.log(`Rebuilt FTS5 search index: ${searchIndexed} record(s).`);
     }
     if (backupRun?.created.length) {
       console.log(`Created ${backupRun.created.length} scheduled backup(s).`);
@@ -154,11 +198,13 @@ export function syncIndexedEvents(config, dryRun, allowSensitive = false) {
     const updatedLedger = [...ledger, ...newRecords];
     rebuildMemoryOutputs(config, updatedLedger);
     const projections = rebuildEventSourcedProjections(config.memoryDir);
+    const searchIndexed = rebuildSearchIndex(config);
     writeJson(path.join(config.memoryDir, "state", "last-sync.json"), {
       syncedAt: new Date().toISOString(),
       indexed: newRecords.length,
       pending: remaining.length,
       projections,
+      searchIndexed,
       backupDir: backup?.dir || "",
       backups: backupRun
         ? {
@@ -182,6 +228,9 @@ export function syncIndexedEvents(config, dryRun, allowSensitive = false) {
     const lastSync = readJson(path.join(config.memoryDir, "state", "last-sync.json"));
     if (lastSync.projections) {
       console.log(`Rebuilt event-sourced projections: tasks=${lastSync.projections.tasks}, workflows=${lastSync.projections.workflows}, projects=${lastSync.projections.projects}.`);
+    }
+    if (lastSync.searchIndexed) {
+      console.log(`Rebuilt FTS5 search index: ${lastSync.searchIndexed} record(s).`);
     }
   }
 }

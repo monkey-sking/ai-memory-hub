@@ -481,18 +481,30 @@ export function isOperationalRadioMemory(memory, text) {
   return /status|progress|dispatch|completed|done|pass|failed|review|heartbeat|状态|进度|完成|已完成|通过|失败|审核/i.test(String(text || ""));
 }
 
+/**
+ * 单条记忆命中的人类可读行。
+ *
+ * 抽出来是为了让 **FTS5 分支和 legacy 分支渲染同一个形状** —— FTS5 是默认分支，
+ * 它原先自己内联了一段只打 `project=` 的简版渲染，导致 `--thread/--task/--workflow/
+ * --radio/--tags` 这些过滤器虽然生效了，**输出里却看不到对应的 ref**，
+ * 看起来像过滤器没起作用（真实踩过：`search --thread X` 的输出里没有 `thread=X`）。
+ */
+export function formatMemorySearchLine(item) {
+  const kind = item.metadata?.kind || "note";
+  const topics = (item.topics || []).slice(0, 4).join(",");
+  const refs = formatMemoryRefs(item.refs);
+  const project = item.project ? `project=${item.project} ` : "";
+  const tags = item.tags?.length ? `tags=${item.tags.slice(0, 5).join(",")} ` : "";
+  return `[${item.score.toFixed(2)}] ${item.source}/${kind} ${project}${tags}${topics ? `(${topics}) ` : ""}${refs ? `[${refs}] ` : ""}${item.text}`;
+}
+
 export function printMemorySearchResults(results, asJson = false) {
   if (asJson) {
     console.log(JSON.stringify(results, null, 2));
     return;
   }
   for (const item of results) {
-    const kind = item.metadata?.kind || "note";
-    const topics = (item.topics || []).slice(0, 4).join(",");
-    const refs = formatMemoryRefs(item.refs);
-    const project = item.project ? `project=${item.project} ` : "";
-    const tags = item.tags?.length ? `tags=${item.tags.slice(0, 5).join(",")} ` : "";
-    console.log(`[${item.score.toFixed(2)}] ${item.source}/${kind} ${project}${tags}${topics ? `(${topics}) ` : ""}${refs ? `[${refs}] ` : ""}${item.text}`);
+    console.log(formatMemorySearchLine(item));
   }
 }
 

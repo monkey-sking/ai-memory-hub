@@ -8,7 +8,7 @@ import http from "node:http";
 import { spawnSync, execSync, spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import nunjucks from "nunjucks";
-import { createSearchDb, rebuildIndex, searchIndex, getIndexStats, tokenizeChinese } from "./fts5-search.js";
+import { createSearchDb, rebuildIndex } from "./fts5-search.js";
 import { createDashboardActionsApi } from "./dashboard/actions.js";
 import { createDashboardBackupsApi } from "./dashboard/backups.js";
 import { createDashboardDispatchApi } from "./dashboard/dispatch.js";
@@ -72,7 +72,7 @@ const agentCommandDeps = { get dashboardAgentSessions() { return dashboardAgentS
 import { connectCommand } from "./commands/connect.js";
 const connectCommandDeps = { createRadioMessage, createTask, summarizeText, get dashboardTools() { return dashboardTools; }, detectTools, ensureHub, executeDispatch, getInstallTargetForTool, loadConfig, renderInstallSnippet, syncSharedSkillLayer, withHubLock };
 import { searchCommand } from "./commands/search.js";
-const searchCommandDeps = { buildMemoryIndex, ensureHub, filterMemoryRecords, getMemoryIdentityKeys, hasMemoryFilters, isMemoryLifecycleVisible, loadConfig, normalizeSupersedeToken, parseMemoryFilters, printMemorySearchResults, readLedger, rebuildMemoryOutputs, recordMemoryAccess, searchMemories, searchMemoriesForContext, semanticSearch, withHubLock, writeLedger };
+const searchCommandDeps = { buildMemoryIndex, ensureHub, filterMemoryRecords, formatMemorySearchLine, getMemoryIdentityKeys, hasMemoryFilters, isMemoryLifecycleVisible, loadConfig, normalizeSupersedeToken, parseMemoryFilters, printMemorySearchResults, readLedger, rebuildMemoryOutputs, recordMemoryAccess, searchMemories, searchMemoriesForContext, semanticSearch, withHubLock, writeLedger };
 import { captureCommand, runCaptureScan } from "./commands/capture.js";
 const captureCommandDeps = { backupHub, ensureHub, loadConfig, readLedger, rebuildMemoryOutputs, searchMemoriesForContext, syncCommand, writeLedger };
 import { queueCommand } from "./commands/queue.js";
@@ -148,7 +148,7 @@ import { listRelatedEntities, readRelations, recordMemoryRelations, recordRelati
 import { auditMemories } from "./memory-audit.js";
 import { parseRunnerModelList, semanticSearch, checkProcessLiveness, getContentType, readRequestJson, findProjectIndex, expandSynonyms, scanBackupFilesForSecrets, getRelayTimeoutBaseMs, renderDispatchWorktree, createHealthRepairAction, getPathSize, extractCjkNgrams, getBackupFileCatalog, markTieredBackups, parseCliArgs, parseDeclaredList, parseProgressPercent, isJobCheckpointed, getCheckpointStats, renderProjectRegistryReadme, extractSharedSkillLayerVersion, renderEmptyBootstrapSnapshot, sleep, sharedSkillLayerActionLabel, summarizeDir, releaseStaleClaim, inspectSharedMemoryInstructions, getDirectResolveCandidates, normalizeCandidatePath, getPageOptions, findProject, autoCreateWorkflowNodes, getMemoryStorageSummary, hasSharedMemoryInstructions } from "./lib/util.js";
 import { extractInstructionIncludes, normalizeSeverity, formatTopCounts, formatPercent, formatBytes, sanitizeDisplayText, getMemoryAgeDays, inferScope, normalizeSearchText, countBy, sortByImportance, titleCase, looksSensitive, formatEventLocation, extractSection, extractSectionBeforeAny, renderTemplate, trimOutput, summarizeText, textMentionsResolveQuery, summarizeHealthAnalysisForRepair, sanitizeLedgerText, normalizeDuplicateMemoryText, sanitizeInlineText, extractKeywords, extractCompactVariants, getMemoryEventSkipReason, extractLooseJsonStringField, formatMemoryRecordPointer, truncateText, extractSearchTerms, parseLooseJsonMemoryEvent, findDuplicateMemoryGroups, getBackupFilePreview } from "./lib/format.js";
-import { normalizeMemoryKind, normalizeMemoryProject, normalizeMemoryScope, normalizeList, firstDefinedRef, hasMemoryFilters, normalizeRefToken, normalizeConfidence, applyMemoryAccessFields, normalizeMemoryAccessCount, normalizeMemoryAccessTimestamp, firstDefinedValue, getDaysSinceTimestamp, isMemoryLifecycleVisible, normalizeSupersedeToken, hasExplicitSyncKey, readPositiveInteger, isMemoryHealthExcluded, formatMemoryHealthRepairPlan, sanitizeRawJsonCandidate, getMemoryGrowthTrend, chooseMemoryLayer, parseListOption, parseMemoryTagFilters, formatMemoryFilterSummary, matchesMemoryTags, getMemoryAccessStats, applyMemoryLifecycleOperations, normalizeSupersedeRefs, isStartupMemoryRecord, resolveSnapshotLimits, inferTopics, normalizeMemoryRefs, flattenMemoryRefs, formatMemoryRefs, matchesMemoryRef, touchMemoryAccess, getMemorySupersedesRefs, isOperationalRadioMemory, printMemorySearchResults, filterMemoryRecords, getMemoryIdentityKeys, normalizeMemoryMetadata, recordMemoryAccess, getMemoryPrimaryKey, buildMemorySupersededBy, applyMemorySupersedeState, getMemoryRecordStableKey, markDuplicateLedgerRecordSuperseded, normalizeMemoryEvent, renderMemoryLine, recoverMemoryEventFromRawText, parseMemoryFilters, readLedger, renderIndexMarkdown, searchMemories, searchMemoriesForContext } from "./lib/memory-normalize.js";
+import { normalizeMemoryKind, normalizeMemoryProject, normalizeMemoryScope, normalizeList, firstDefinedRef, hasMemoryFilters, normalizeRefToken, normalizeConfidence, applyMemoryAccessFields, normalizeMemoryAccessCount, normalizeMemoryAccessTimestamp, firstDefinedValue, getDaysSinceTimestamp, isMemoryLifecycleVisible, normalizeSupersedeToken, hasExplicitSyncKey, readPositiveInteger, isMemoryHealthExcluded, formatMemoryHealthRepairPlan, sanitizeRawJsonCandidate, getMemoryGrowthTrend, chooseMemoryLayer, parseListOption, parseMemoryTagFilters, formatMemoryFilterSummary, matchesMemoryTags, getMemoryAccessStats, applyMemoryLifecycleOperations, normalizeSupersedeRefs, isStartupMemoryRecord, resolveSnapshotLimits, inferTopics, normalizeMemoryRefs, flattenMemoryRefs, formatMemoryRefs, formatMemorySearchLine, matchesMemoryRef, touchMemoryAccess, getMemorySupersedesRefs, isOperationalRadioMemory, printMemorySearchResults, filterMemoryRecords, getMemoryIdentityKeys, normalizeMemoryMetadata, recordMemoryAccess, getMemoryPrimaryKey, buildMemorySupersededBy, applyMemorySupersedeState, getMemoryRecordStableKey, markDuplicateLedgerRecordSuperseded, normalizeMemoryEvent, renderMemoryLine, recoverMemoryEventFromRawText, parseMemoryFilters, readLedger, renderIndexMarkdown, searchMemories, searchMemoriesForContext } from "./lib/memory-normalize.js";
 import { createDispatchRecordMutex, isClaimStale, shouldPersistDispatchReport, isDispatchableRadioMessage, isClosedDispatchSourceState, buildTaskDispatchText, buildWorkflowDispatchText, findRecipeStepTask, normalizeToolName, safeGitPathSegment, isKnownGeminiWarning, stripExistingModelArgs, getDispatchThreadKey, formatDispatchVerifyCommand, getDispatchRunStatus, getDispatchRunVerificationResult, getAsyncCallStateMeta, getDispatchSourceKey, getRelaySourceKey, dispatchJobFromTask, dispatchJobFromWorkflow, dispatchJobFromRelayEntry, shouldDispatchJob, buildDispatchWorktreeBranch, buildDispatchWorktreeSlug, nextRelayAttempt, normalizeRunnerStderr, isDirectDispatchRadioMessage, renderDispatchQualityGate } from "./lib/dispatch.js";
 import { sendHtml, sendPlain, sendJson, sendErrorEnvelope, parsePageParam, getSafeStaticRelativePath, readTextIfExists } from "./lib/http.js";
 import { getToolDeclarationsFile, getModelsCacheFile, getRadioCursorFile, getAgentRegistryFile, getRoleRegistryFile, getTeamRegistryFile, getPolicyRulesFile } from "./lib/registry-paths.js";
@@ -1134,6 +1134,24 @@ function indexCommand() {
     const ledger = readLedger(config.memoryDir);
     rebuildMemoryOutputs(config, ledger);
     console.log(`Rebuilt memory index for ${ledger.length} record(s).`);
+    // FTS5 搜索索引也是「结构化索引」的一部分，且 `amh search` 默认走它 ——
+    // 漏在这里重建，索引一旦落后，搜索就会静默少搜（真实踩过：117 vs 772）。
+    let db = null;
+    try {
+      db = createSearchDb(config.memoryDir);
+      const indexed = rebuildIndex(db, config.memoryDir);
+      console.log(`Rebuilt FTS5 search index for ${indexed} record(s).`);
+    } catch (err) {
+      console.error(`FTS5 search index rebuild failed: ${err.message}`);
+    } finally {
+      if (db) {
+        try {
+          db.close();
+        } catch {
+          /* already closed */
+        }
+      }
+    }
   }, config.sync.lockStaleMs);
 }
 

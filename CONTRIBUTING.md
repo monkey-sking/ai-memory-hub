@@ -92,7 +92,7 @@ ai-memory-hub/
 ├── package.json        # Project metadata
 ├── README.md          # Project overview
 ├── CHANGELOG.md       # Version history
-└── LICENSE            # MIT License
+└── LICENSE            # Apache-2.0 License
 ```
 
 ## Coding Standards
@@ -388,7 +388,7 @@ We plan to add:
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the MIT License.
+By contributing, you agree that your contributions will be licensed under the Apache License, Version 2.0.
 
 ---
 

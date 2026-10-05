@@ -1,5 +1,5 @@
 {
-  "name": "ai-memory-hub",
+  "name": "amh-hub",
   "version": "0.1.0",
   "description": "A local shared memory ledger and agent radio for multiple AI coding assistants.",
   "type": "module",
@@ -37,7 +37,7 @@
     "marvis",
     "codebuddy"
   ],
-  "license": "MIT",
+  "license": "Apache-2.0",
   "engines": {
     "node": ">=24"
   },

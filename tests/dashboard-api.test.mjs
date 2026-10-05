@@ -295,7 +295,7 @@ test("dashboard serves externalized virtual-scroll assets", async () => {
       assert.ok(scriptMatch, "dashboard HTML should load the Vite JS bundle");
       assert.ok(cssMatch, "dashboard HTML should load the Vite CSS bundle");
       assert.match(html, /<div id="root"><\/div>/);
-      assert.match(html, /href="\/favicon\.svg"/);
+      assert.match(html, /href="\/favicon\.png"/);
 
       const cssRes = await fetch(`http://127.0.0.1:${port}${cssMatch[1]}`);
       assert.equal(cssRes.status, 200);
@@ -309,9 +309,9 @@ test("dashboard serves externalized virtual-scroll assets", async () => {
       const dashboardScript = await jsRes.text();
       assert.ok(dashboardScript.length > 1000);
 
-      const faviconRes = await fetch(`http://127.0.0.1:${port}/favicon.svg`);
+      const faviconRes = await fetch(`http://127.0.0.1:${port}/favicon.png`);
       assert.equal(faviconRes.status, 200);
-      assert.match(faviconRes.headers.get("content-type") || "", /image\/svg\+xml/);
+      assert.match(faviconRes.headers.get("content-type") || "", /image\/png/);
 
       const iconRes = await fetch(`http://127.0.0.1:${port}/assets/tool-icons/codex.png`);
       assert.equal(iconRes.status, 200);
@@ -346,7 +346,7 @@ test("dashboard serves externalized virtual-scroll assets", async () => {
 
       const traversalRes = await fetch(`http://127.0.0.1:${port}/assets/%2e%2e/%2e%2e/package.json`);
       assert.notEqual(traversalRes.status, 200);
-      assert.doesNotMatch(await traversalRes.text(), /"name": "ai-memory-hub"/);
+      assert.doesNotMatch(await traversalRes.text(), /"name": "amh-hub"/);
     } finally {
       await stopServer(child);
     }

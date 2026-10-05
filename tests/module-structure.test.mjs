@@ -10,8 +10,16 @@ async function readRepoFile(relativePath) {
   return readFile(path.join(repoRoot, relativePath), "utf8");
 }
 
+async function readDashboardWiring() {
+  return [
+    await readRepoFile("src/index.js"),
+    await readRepoFile("src/commands/app.js"),
+    await readRepoFile("src/lib/memory-health.js")
+  ].join("\n");
+}
+
 test("dashboard memory API lives outside the CLI entrypoint", async () => {
-  const index = await readRepoFile("src/index.js");
+  const index = await readDashboardWiring();
   const memoryModule = await readRepoFile("src/dashboard/memory.js");
 
   assert.match(index, /from\s+["']\.\/dashboard\/memory\.js["']/);
@@ -29,7 +37,7 @@ test("dashboard memory API lives outside the CLI entrypoint", async () => {
 });
 
 test("dashboard radio read model lives outside the CLI entrypoint", async () => {
-  const index = await readRepoFile("src/index.js");
+  const index = await readDashboardWiring();
   const radioModule = await readRepoFile("src/dashboard/radio.js");
 
   assert.match(index, /from\s+["']\.\/dashboard\/radio\.js["']/);
@@ -44,7 +52,7 @@ test("dashboard radio read model lives outside the CLI entrypoint", async () => 
 });
 
 test("dashboard task read model lives outside the CLI entrypoint", async () => {
-  const index = await readRepoFile("src/index.js");
+  const index = await readDashboardWiring();
   const tasksModule = await readRepoFile("src/dashboard/tasks.js");
 
   assert.match(index, /from\s+["']\.\/dashboard\/tasks\.js["']/);
@@ -59,7 +67,7 @@ test("dashboard task read model lives outside the CLI entrypoint", async () => {
 });
 
 test("dashboard workflow API lives outside the CLI entrypoint", async () => {
-  const index = await readRepoFile("src/index.js");
+  const index = await readDashboardWiring();
   const workflowsModule = await readRepoFile("src/dashboard/workflows.js");
 
   assert.match(index, /from\s+["']\.\/dashboard\/workflows\.js["']/);
@@ -94,7 +102,7 @@ test("dashboard workflow API lives outside the CLI entrypoint", async () => {
 });
 
 test("dashboard project read model lives outside the CLI entrypoint", async () => {
-  const index = await readRepoFile("src/index.js");
+  const index = await readDashboardWiring();
   const projectsModule = await readRepoFile("src/dashboard/projects.js");
 
   assert.match(index, /from\s+["']\.\/dashboard\/projects\.js["']/);
@@ -120,7 +128,7 @@ test("dashboard project read model lives outside the CLI entrypoint", async () =
 });
 
 test("dashboard metrics read model lives outside the CLI entrypoint", async () => {
-  const index = await readRepoFile("src/index.js");
+  const index = await readDashboardWiring();
   const metricsModule = await readRepoFile("src/dashboard/metrics.js");
 
   assert.match(index, /from\s+["']\.\/dashboard\/metrics\.js["']/);
@@ -137,7 +145,7 @@ test("dashboard metrics read model lives outside the CLI entrypoint", async () =
 });
 
 test("dashboard dispatch read model lives outside the CLI entrypoint", async () => {
-  const index = await readRepoFile("src/index.js");
+  const index = await readDashboardWiring();
   const dispatchModule = await readRepoFile("src/dashboard/dispatch.js");
 
   assert.match(index, /from\s+["']\.\/dashboard\/dispatch\.js["']/);
@@ -158,15 +166,16 @@ test("dashboard dispatch read model lives outside the CLI entrypoint", async () 
 });
 
 test("dashboard tools and capabilities API lives outside the CLI entrypoint", async () => {
-  const index = await readRepoFile("src/index.js");
+  const index = await readDashboardWiring();
   const toolsModule = await readRepoFile("src/dashboard/tools.js");
 
   assert.match(index, /from\s+["']\.\/dashboard\/tools\.js["']/);
   assert.match(index, /createDashboardToolsApi\(/);
   assert.match(index, /dashboardTools\.getDashboardTools/);
   assert.match(index, /dashboardTools\.buildCapabilityRegistry/);
-  assert.match(index, /dashboardTools\.summarizeToolConnections/);
   assert.match(index, /dashboardTools\.getDashboardDetection/);
+  assert.match(await readRepoFile("src/lib/sync-status.js"), /dashboardTools\.summarizeToolConnections\(/);
+  assert.match(await readRepoFile("src/commands/connect.js"), /summarizeToolConnections\(/);
   assert.doesNotMatch(index, /function\s+getDashboardTools\(/);
   assert.doesNotMatch(index, /function\s+buildCapabilityRegistry\(/);
   assert.doesNotMatch(index, /function\s+buildToolCapabilityEntry\(/);
@@ -183,7 +192,7 @@ test("dashboard tools and capabilities API lives outside the CLI entrypoint", as
 });
 
 test("dashboard settings API lives outside the CLI entrypoint", async () => {
-  const index = await readRepoFile("src/index.js");
+  const index = await readDashboardWiring();
   const settingsModule = await readRepoFile("src/dashboard/settings.js");
 
   assert.match(index, /from\s+["']\.\/dashboard\/settings\.js["']/);
@@ -202,7 +211,7 @@ test("dashboard settings API lives outside the CLI entrypoint", async () => {
 });
 
 test("dashboard backups API lives outside the CLI entrypoint", async () => {
-  const index = await readRepoFile("src/index.js");
+  const index = await readDashboardWiring();
   const backupsModule = await readRepoFile("src/dashboard/backups.js");
 
   assert.match(index, /from\s+["']\.\/dashboard\/backups\.js["']/);
@@ -235,7 +244,7 @@ test("dashboard backups API lives outside the CLI entrypoint", async () => {
 });
 
 test("dashboard search API lives outside the CLI entrypoint", async () => {
-  const index = await readRepoFile("src/index.js");
+  const index = await readDashboardWiring();
   const searchModule = await readRepoFile("src/dashboard/search.js");
 
   assert.match(index, /from\s+["']\.\/dashboard\/search\.js["']/);
@@ -253,7 +262,7 @@ test("dashboard search API lives outside the CLI entrypoint", async () => {
 });
 
 test("dashboard health API lives outside the CLI entrypoint", async () => {
-  const index = await readRepoFile("src/index.js");
+  const index = await readDashboardWiring();
   const healthModule = await readRepoFile("src/dashboard/health.js");
 
   assert.match(index, /from\s+["']\.\/dashboard\/health\.js["']/);
@@ -270,7 +279,7 @@ test("dashboard health API lives outside the CLI entrypoint", async () => {
 });
 
 test("dashboard realtime and snapshot API lives outside the CLI entrypoint", async () => {
-  const index = await readRepoFile("src/index.js");
+  const index = await readDashboardWiring();
   const realtimeModule = await readRepoFile("src/dashboard/realtime.js");
 
   assert.match(index, /from\s+["']\.\/dashboard\/realtime\.js["']/);
@@ -297,7 +306,7 @@ test("dashboard realtime and snapshot API lives outside the CLI entrypoint", asy
 });
 
 test("dashboard action route wrappers live outside the CLI entrypoint", async () => {
-  const index = await readRepoFile("src/index.js");
+  const index = await readDashboardWiring();
   const actionsModule = await readRepoFile("src/dashboard/actions.js");
 
   assert.match(index, /from\s+["']\.\/dashboard\/actions\.js["']/);
@@ -326,4 +335,3 @@ test("dashboard action route wrappers live outside the CLI entrypoint", async ()
   assert.match(actionsModule, /export\s+function\s+createDashboardActionsApi/);
   assert.match(actionsModule, /appendIfMissing\(target\.file,\s*snippet,\s*"Shared AI Memory"\)/);
 });
-

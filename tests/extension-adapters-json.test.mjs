@@ -321,6 +321,23 @@ test("Unsupported app throws", () => {
   assert.throws(() => createAdapter({ app: "vscode", homeDir: "/tmp" }), /Unsupported app/);
 });
 
+test("writeMcp apply refuses to replace an unreadable JSON config", async () => {
+  await withTempDir(async (home) => {
+    const configPath = path.join(home, ".claude.json");
+    const original = "{ not json";
+    await fs.writeFile(configPath, original);
+    const adapter = createAdapter({ app: "claude", homeDir: home });
+    await assert.rejects(
+      () => adapter.writeMcp(
+        [{ id: "sandbox-server", kind: "mcp", managed: true, server: { type: "stdio", command: "echo" } }],
+        { apply: true }
+      ),
+      /Refusing to rewrite/
+    );
+    assert.equal(await fs.readFile(configPath, "utf8"), original);
+  });
+});
+
 test("writeMcp preview mode does not modify file", async () => {
   await withTempDir(async (home) => {
     const configPath = path.join(home, ".claude.json");

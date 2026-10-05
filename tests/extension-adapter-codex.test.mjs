@@ -224,6 +224,17 @@ key = "value"
     assert.equal(result.records.length, 0);
     assert.ok(result.diagnostics.length > 0);
     assert.equal(result.diagnostics[0].level, "error");
+
+    const configFile = path.join(codexDir, "config.toml");
+    const original = await fs.readFile(configFile, "utf8");
+    await assert.rejects(
+      () => adapter.writeMcp(
+        [{ id: "sandbox-server", kind: "mcp", managed: true, server: { type: "stdio", command: "echo" } }],
+        { apply: true }
+      ),
+      /Refusing to rewrite/
+    );
+    assert.equal(await fs.readFile(configFile, "utf8"), original);
   } finally {
     await fs.rm(home, { recursive: true, force: true });
   }

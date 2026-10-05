@@ -244,6 +244,15 @@ export function createAdapter({ app, homeDir }) {
 
     async writeMcp(records, { apply = false, managed = null } = {}) {
       const current = await this.readMcp();
+      // A failed parse yields _raw = {}. Rewriting that would erase the real file.
+      const blocking = (current.diagnostics || []).filter((item) => item.level === "error");
+      if (apply && blocking.length) {
+        const error = new Error(
+          `Refusing to rewrite ${configFile}: ${blocking.map((item) => item.message).join("; ")}`
+        );
+        error.code = "AMH_CONFIG_PARSE";
+        throw error;
+      }
       const raw = current._raw || {};
       const format = APP_CONFIGS[app].format;
 

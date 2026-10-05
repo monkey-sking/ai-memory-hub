@@ -332,41 +332,6 @@ export function appCommand(argv, deps) {
         const packages = selectProjectSkills(manifest, await listSharedSkillPackages(config.memoryDir));
         return sendJson(res, { project, result: await doctorSkillProjections(project, packages, manifest.targets.length ? manifest.targets : ["codex", "claude", "gemini", "opencode", "antigravity"]) });
       }
-      if (req.method === "GET" && url.pathname === "/api/extensions") {
-        const kind = url.searchParams.get("kind") || "mcp";
-        return sendJson(res, { extensions: await listExtensions(config.memoryDir, { kind }) });
-      }
-      if (req.method === "POST" && url.pathname === "/api/extensions/import") {
-        const body = await readRequestJson(req);
-        const apps = Array.isArray(body.apps) && body.apps.length ? body.apps : undefined;
-        const homeDir = body.homeDir || undefined;
-        return sendJson(res, { ok: true, ...(await importExtensions(config.memoryDir, { apps, homeDir })) });
-      }
-      if (req.method === "POST" && url.pathname === "/api/extensions/diff") {
-        const body = await readRequestJson(req);
-        const apps = Array.isArray(body.apps) && body.apps.length ? body.apps : undefined;
-        const homeDir = body.homeDir || undefined;
-        return sendJson(res, { ok: true, ...(await diffExtensions(config.memoryDir, { apps, homeDir })) });
-      }
-      if (req.method === "POST" && url.pathname === "/api/extensions/sync") {
-        const body = await readRequestJson(req);
-        const apps = Array.isArray(body.apps) && body.apps.length ? body.apps : undefined;
-        const homeDir = body.homeDir || undefined;
-        const apply = body.apply === true;
-        const force = body.force === true;
-        return sendJson(res, { ok: true, ...(await syncExtensions(config.memoryDir, { apps, homeDir, apply, force })) });
-      }
-      if (req.method === "POST" && url.pathname === "/api/extensions/remove") {
-        const body = await readRequestJson(req);
-        if (!body.id || typeof body.id !== "string") return sendJson(res, { error: "id is required" }, 400);
-        const apps = Array.isArray(body.apps) && body.apps.length ? body.apps : undefined;
-        const apply = body.apply === true;
-        return sendJson(res, { ok: true, ...(await removeExtensions(config.memoryDir, body.id, { apps, apply })) });
-      }
-      if (req.method === "GET" && url.pathname === "/api/extensions/status") {
-        const homeDir = url.searchParams.get("homeDir") || os.homedir();
-        return sendJson(res, { ok: true, ...(await statusExtensions(config.memoryDir, { homeDir })) });
-      }
       if (req.method === "GET" && url.pathname === "/api/metrics") {
         return sendJson(res, { ...dashboardMetrics.calculateMetrics(config.memoryDir), requests: getRequestMetricsSnapshot() });
       }
@@ -668,10 +633,6 @@ export function appCommand(argv, deps) {
           refresh: url.searchParams.get("refresh") === "1"
         }));
       }
-      if (req.method === "GET" && url.pathname === "/api/extensions") {
-        const kind = url.searchParams.get("kind") || "mcp";
-        return sendJson(res, { ok: true, records: await listExtensions(config.memoryDir, { kind }) });
-      }
       if (req.method === "POST" && url.pathname === "/api/extensions/import") {
         const body = await readRequestJson(req);
         const appParam = body.app || "";
@@ -705,7 +666,7 @@ export function appCommand(argv, deps) {
         if (kind === "skill") {
           return sendJson(res, { ok: true, ...(await removeSkillExtension(config.memoryDir, { projectRoot: body.project || process.cwd(), id: body.id })) });
         }
-        return sendJson(res, { ok: true, ...(await removeExtensions(config.memoryDir, body.id, { apps: body.apps || ["claude", "codex", "gemini", "opencode"], apply: body.apply === true })) });
+        return sendJson(res, { ok: true, ...(await removeExtensions(config.memoryDir, body.id, { apps: body.apps || ["claude", "codex", "gemini", "opencode"], homeDir: os.homedir(), apply: body.apply === true })) });
       }
       if (req.method === "GET" && url.pathname === "/api/extensions/status") {
         return sendJson(res, { ok: true, ...(await statusExtensions(config.memoryDir, { apps: ["claude", "codex", "gemini", "opencode"], homeDir: os.homedir() })) });

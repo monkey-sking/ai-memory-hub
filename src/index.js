@@ -1271,7 +1271,7 @@ async function mcpCommand(argv) {
   else if (action === "remove") {
     const id = argv[1];
     if (!id) throw new Error("Usage: ai-memory-hub mcp remove <id> [--app <client>] [--apply]");
-    console.log(JSON.stringify(await removeExtensions(config.memoryDir, id, { apps, apply: argv.includes("--apply") }), null, 2));
+    console.log(JSON.stringify(await removeExtensions(config.memoryDir, id, { apps, homeDir, apply: argv.includes("--apply") }), null, 2));
   }
   else if (action === "status") console.log(JSON.stringify(await statusExtensions(config.memoryDir, { apps, homeDir }), null, 2));
   else throw new Error("Usage: ai-memory-hub mcp list|import|diff|sync|remove|status [--app <client>] [--apply] [--force]");

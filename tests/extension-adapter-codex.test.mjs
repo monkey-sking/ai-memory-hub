@@ -411,6 +411,49 @@ command = "old-command"
   }
 });
 
+test("Codex adapter: apply leaves unrelated text untouched and skips unchanged writes", async () => {
+  const home = await tempDir();
+  try {
+    const configFile = path.join(home, ".codex", "config.toml");
+    await fs.mkdir(path.dirname(configFile), { recursive: true });
+    const original = `# keep this comment
+model = "gpt-5.4"
+
+[mcp_servers.keep]
+command = "echo"
+args = ["keep"]
+
+[notice]
+text = "do not reorder"
+`;
+    await fs.writeFile(configFile, original);
+    const adapter = createAdapter({ app: "codex", homeDir: home });
+    const unchanged = await adapter.writeMcp([], { apply: true });
+    assert.equal(unchanged.unchanged, true);
+    assert.equal(await fs.readFile(configFile, "utf8"), original);
+    assert.equal(unchanged.backup, undefined);
+
+    await adapter.writeMcp([
+      { id: "added", managed: true, server: { command: "node", args: ["added.js"] } },
+    ], { apply: true });
+    const added = await fs.readFile(configFile, "utf8");
+    assert.ok(added.startsWith(original.trimEnd()));
+    assert.match(added, /\[mcp_servers\.added\]/);
+    assert.match(added, /command = "node"/);
+
+    await adapter.writeMcp([], { apply: true, removeIds: ["keep"] });
+    const removed = await fs.readFile(configFile, "utf8");
+    assert.match(removed, /# keep this comment/);
+    assert.match(removed, /model = "gpt-5.4"/);
+    assert.match(removed, /\[notice\]/);
+    assert.match(removed, /text = "do not reorder"/);
+    assert.doesNotMatch(removed, /\[mcp_servers\.keep\]/);
+    assert.match(removed, /\[mcp_servers\.added\]/);
+  } finally {
+    await fs.rm(home, { recursive: true, force: true });
+  }
+});
+
 test("Codex adapter: skill path is ~/.agents/skills", () => {
   const home = "/test/home";
   const adapter = createAdapter({ app: "codex", homeDir: home });

@@ -258,7 +258,7 @@ async function handleRequest(msg) {
         : await syncExtensions(MEMORY_DIR, { apps, homeDir: HOME_DIR, apply: args?.apply === true, force: args?.force === true });
       return { id, result: { content: [{ type: "text", text: JSON.stringify({ ok: true, type: kind, ...result }, null, 2) }] } };
     }
-    if (name === "amh_extension_remove") return { id, result: { content: [{ type: "text", text: JSON.stringify({ ok: true, ...(await removeExtensions(MEMORY_DIR, args?.id, { apps: args?.apps, apply: args?.apply === true })) }, null, 2) }] } };
+    if (name === "amh_extension_remove") return { id, result: { content: [{ type: "text", text: JSON.stringify({ ok: true, ...(await removeExtensions(MEMORY_DIR, args?.id, { apps: args?.apps, homeDir: HOME_DIR, apply: args?.apply === true })) }, null, 2) }] } };
     if (name === "amh_extension_status") return { id, result: { content: [{ type: "text", text: JSON.stringify({ ok: true, ...(await statusExtensions(MEMORY_DIR, { apps: args?.apps, homeDir: HOME_DIR })) }, null, 2) }] } };
     if (name === "amh_skill_list") return { id, result: { content: [{ type: "text", text: JSON.stringify({ ok: true, records: await listExtensions(MEMORY_DIR, { kind: "skill" }) }, null, 2) }] } };
     if (name === "amh_skill_diff") return { id, result: { content: [{ type: "text", text: JSON.stringify({ ok: true, ...(await diffSkillExtensions(MEMORY_DIR, { projectRoot: args?.project || HOME_DIR, apps: args?.apps })) }, null, 2) }] } };

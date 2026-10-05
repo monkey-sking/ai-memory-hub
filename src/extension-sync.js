@@ -1,3 +1,4 @@
+import os from "node:os";
 import { readRegistry, upsertRecord, removeRecord, redactSecrets } from "./extension-registry.js";
 import { createAdapter } from "./extension-adapters.js";
 import { listSharedSkillPackages } from "./shared-skills.js";
@@ -107,7 +108,7 @@ export async function removeSkillExtension(_memoryDir, { projectRoot, id } = {})
   return removeProjectSkill(projectRoot || process.cwd(), id);
 }
 
-export async function removeExtensions(memoryDir, id, { apps = DEFAULT_APPS, apply = false } = {}) {
+export async function removeExtensions(memoryDir, id, { apps = DEFAULT_APPS, apply = false, homeDir } = {}) {
   const registry = await readRegistry(memoryDir);
   const record = registry.mcp?.[id];
   if (!record) {
@@ -119,14 +120,13 @@ export async function removeExtensions(memoryDir, id, { apps = DEFAULT_APPS, app
   }
   
   await removeRecord(memoryDir, "mcp", id);
+  const resolvedHome = homeDir || process.env.USERPROFILE || process.env.HOME || os.homedir();
   
   const results = [];
   for (const app of apps) {
     if (record.apps?.[app]) {
-      const adapter = createAdapter({ app, homeDir: process.env.HOME || process.env.USERPROFILE });
-      const { records } = await adapter.readMcp();
-      const filtered = records.filter(r => r.id !== id);
-      await adapter.writeMcp(filtered, { apply: true });
+      const adapter = createAdapter({ app, homeDir: resolvedHome });
+      await adapter.writeMcp([], { apply: true, removeIds: [id] });
       results.push({ app, removed: true });
     }
   }

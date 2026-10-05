@@ -221,6 +221,57 @@ test("syncExtensions apply writes files", async () => {
   });
 });
 
+test("syncExtensions apply does not rewrite an unchanged Codex config", async () => {
+  await withTempHome(async (homeDir) => {
+    await withTempDir(async (memoryDir) => {
+      const configFile = path.join(homeDir, ".codex", "config.toml");
+      await fs.mkdir(path.dirname(configFile), { recursive: true });
+      const original = `# comment stays\nmodel = "kept"\n\n[mcp_servers.local]\ncommand = "echo"\n`;
+      await fs.writeFile(configFile, original);
+      const result = await syncExtensions(memoryDir, { apps: ["codex"], homeDir, apply: true });
+      assert.equal(result.applied, true);
+      assert.equal(await fs.readFile(configFile, "utf8"), original);
+    });
+  });
+});
+
+test("removeExtensions deletes the server from the client config", async () => {
+  await withTempHome(async (homeDir) => {
+    await withTempDir(async (memoryDir) => {
+      await upsertRecord(memoryDir, {
+        id: "remove-server",
+        kind: "mcp",
+        server: { type: "stdio", command: "npx", args: ["-y", "remove"] },
+        managed: true,
+        apps: { claude: true, codex: true },
+      });
+      const claudeFile = path.join(homeDir, ".claude.json");
+      await fs.writeFile(claudeFile, JSON.stringify({
+        theme: "dark",
+        mcpServers: {
+          "remove-server": { command: "npx", args: ["-y", "remove"] },
+          keep: { command: "echo" },
+        },
+      }, null, 2));
+      const codexFile = path.join(homeDir, ".codex", "config.toml");
+      await fs.mkdir(path.dirname(codexFile), { recursive: true });
+      await fs.writeFile(codexFile, `# stay\nmodel = "kept"\n\n[mcp_servers.remove-server]\ncommand = "npx"\n\n[mcp_servers.keep]\ncommand = "echo"\n`);
+
+      const result = await removeExtensions(memoryDir, "remove-server", { apply: true, homeDir });
+      assert.equal(result.removed, true);
+      const claude = JSON.parse(await fs.readFile(claudeFile, "utf8"));
+      assert.equal(claude.theme, "dark");
+      assert.equal(claude.mcpServers.keep.command, "echo");
+      assert.equal(claude.mcpServers["remove-server"], undefined);
+      const codex = await fs.readFile(codexFile, "utf8");
+      assert.match(codex, /# stay/);
+      assert.match(codex, /model = "kept"/);
+      assert.match(codex, /\[mcp_servers\.keep\]/);
+      assert.doesNotMatch(codex, /\[mcp_servers\.remove-server\]/);
+    });
+  });
+});
+
 test("removeExtensions removes record from registry", async () => {
   await withTempDir(async (memoryDir) => {
     await upsertRecord(memoryDir, {

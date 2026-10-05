@@ -131,6 +131,79 @@ function normalizeEntry(id, raw, app) {
   };
 }
 
+function stableValue(value) {
+  if (Array.isArray(value)) return `[${value.map((item) => stableValue(item)).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableValue(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function tomlHeader(line) {
+  const match = line.trim().match(/^\[(.+)\]$/);
+  return match ? match[1].trim() : null;
+}
+
+function headerTargetsServer(header, mcpKey, id) {
+  const bases = [`${mcpKey}.${id}`, `${mcpKey}."${id}"`, `${mcpKey}.'${id}'`];
+  return bases.some((base) => header === base || header.startsWith(`${base}.`));
+}
+
+function renderTomlServer(mcpKey, id, server) {
+  const root = {};
+  const parts = [mcpKey, ...String(id).split(".")];
+  let node = root;
+  for (let index = 0; index < parts.length - 1; index += 1) {
+    node[parts[index]] = {};
+    node = node[parts[index]];
+  }
+  node[parts[parts.length - 1]] = server;
+  return stringifyToml(root).trimEnd();
+}
+
+// Replace only the changed mcp_servers tables. The rest of a Codex config stays
+// byte-for-byte, including comments and sections this parser does not model.
+function patchTomlMcpServers(original, mcpKey, previousMap, nextMap) {
+  const previous = previousMap || {};
+  const next = nextMap || {};
+  const dirty = new Set();
+  for (const id of new Set([...Object.keys(previous), ...Object.keys(next)])) {
+    if (stableValue(previous[id]) !== stableValue(next[id])) dirty.add(id);
+  }
+  if (dirty.size === 0) return original;
+
+  const newline = original.includes("\r\n") ? "\r\n" : "\n";
+  const lines = original.split(/\r?\n/);
+  if (original.endsWith("\n") || original.endsWith("\r\n")) lines.pop();
+  const kept = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const header = tomlHeader(lines[index]);
+    const id = header ? [...dirty].find((candidate) => headerTargetsServer(header, mcpKey, candidate)) : null;
+    if (!id) {
+      kept.push(lines[index]);
+      continue;
+    }
+    index += 1;
+    while (index < lines.length) {
+      const nextHeader = tomlHeader(lines[index]);
+      if (nextHeader && !headerTargetsServer(nextHeader, mcpKey, id)) break;
+      index += 1;
+    }
+    index -= 1;
+  }
+
+  let text = kept.join(newline);
+  const additions = [...dirty].filter((id) => next[id] != null).sort().map((id) => renderTomlServer(mcpKey, id, next[id]));
+  if (additions.length) {
+    if (text.length && !text.endsWith(newline)) text += newline;
+    if (text.trim().length) text += newline;
+    text += additions.join(`${newline}${newline}`) + newline;
+  } else if (text.length && !text.endsWith(newline)) {
+    text += newline;
+  }
+  return text;
+}
+
 function flattenTomlServers(value, prefix = "") {
   const out = [];
   for (const [key, child] of Object.entries(value || {})) {
@@ -242,7 +315,7 @@ export function createAdapter({ app, homeDir }) {
       };
     },
 
-    async writeMcp(records, { apply = false, managed = null } = {}) {
+    async writeMcp(records, { apply = false, managed = null, removeIds = [] } = {}) {
       const current = await this.readMcp();
       // A failed parse yields _raw = {}. Rewriting that would erase the real file.
       const blocking = (current.diagnostics || []).filter((item) => item.level === "error");
@@ -255,8 +328,10 @@ export function createAdapter({ app, homeDir }) {
       }
       const raw = current._raw || {};
       const format = APP_CONFIGS[app].format;
-
-      if (!raw[mcpKey]) raw[mcpKey] = {};
+      const previousMcp = structuredClone(raw[mcpKey] && typeof raw[mcpKey] === "object" ? raw[mcpKey] : {});
+      const nextMcp = structuredClone(previousMcp);
+      const removed = new Set(removeIds.map((id) => String(id)));
+      for (const id of removed) delete nextMcp[id];
 
       const managedSet =
         managed instanceof Set
@@ -264,10 +339,11 @@ export function createAdapter({ app, homeDir }) {
           : new Set(records.filter((r) => r.managed !== false).map((r) => r.id));
 
       for (const record of records) {
-        if (managedSet.has(record.id)) {
-          raw[mcpKey][record.id] = record.server;
+        if (managedSet.has(record.id) && !removed.has(record.id)) {
+          nextMcp[record.id] = record.server;
         }
       }
+      raw[mcpKey] = nextMcp;
 
       if (!apply) {
         return {
@@ -276,6 +352,23 @@ export function createAdapter({ app, homeDir }) {
           records,
           raw,
         };
+      }
+
+      if (stableValue(previousMcp) === stableValue(nextMcp)) {
+        return { applied: false, unchanged: true, file: configFile, records };
+      }
+
+      let original = null;
+      try {
+        original = await fs.readFile(configFile, "utf8");
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+      }
+      const content = format === "toml"
+        ? patchTomlMcpServers(original || "", mcpKey, previousMcp, nextMcp)
+        : JSON.stringify(raw, null, 2) + "\n";
+      if (original != null && content === original) {
+        return { applied: false, unchanged: true, file: configFile, records };
       }
 
       await fs.mkdir(path.dirname(configFile), { recursive: true });
@@ -287,21 +380,16 @@ export function createAdapter({ app, homeDir }) {
         `backup_${timestamp}_${baseName}`
       );
 
-      try {
-        await fs.copyFile(configFile, backupPath);
-      } catch (e) {
-        if (e.code !== "ENOENT") throw e;
-      }
+      if (original != null) await fs.copyFile(configFile, backupPath);
 
       const tmpPath = `${configFile}.${process.pid}.${timestamp}.tmp`;
-      const content = format === "toml" ? stringifyToml(raw) : JSON.stringify(raw, null, 2) + "\n";
       await fs.writeFile(tmpPath, content);
       await fs.rename(tmpPath, configFile);
 
       return {
         applied: true,
         file: configFile,
-        backup: backupPath,
+        backup: original != null ? backupPath : undefined,
         records,
       };
     },

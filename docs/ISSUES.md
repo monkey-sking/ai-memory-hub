@@ -1,4 +1,6 @@
-# AI Memory Hub - 当前问题清单
+# AI Memory Hub - 历史问题清单（2026-06-09 快照）
+
+> 这是 2026-06-09 的问题记录，不是当前待办。文中的调度超时、任务自动完成、调研结果保存、进度心跳、daemon 退出和 Web Dashboard 都已在下面的处理进展里落地。不要按文末原来的「立即修复」再做一遍。
 
 ## 处理进展（2026-06-09）
 
@@ -12,7 +14,7 @@
 - 已补测试：`npm.cmd test` / `node --test` 覆盖 dispatch 超时标记、relay metrics、progress heartbeat、runner doctor 和 daemon status。
 - 仍需后续：更完整架构文档和 Dashboard 视觉验证。
 
-## 🔴 严重问题
+## 已关闭记录
 
 ### 1. Dispatch 超时检测机制不工作
 **问题描述：**
@@ -146,16 +148,13 @@ function checkTimeouts(memoryDir) {
 
 ---
 
-## 🎯 优先级排序
+## 已关闭的优先级（勿再执行）
 
-**立即修复：**
+下面是 2026-06-09 当时的排序，对应项都已处理：
+
 1. Dispatch 超时检测机制（P0）
-
-**尽快修复：**
 2. 任务状态自动更新（P1）
 3. 调研结果持久化（P1）
-
-**可以延后：**
 4. Web Dashboard（P2）
 5. 心跳机制（P2）
 6. 其他优化（P3）

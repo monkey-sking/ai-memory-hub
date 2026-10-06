@@ -646,6 +646,8 @@ const labels = {
       applied: '已应用',
       previewOnly: '仅预览',
       syncApplied: '同步已应用',
+      syncPartial: '已写入无冲突项。这些客户端的冲突未覆盖：{apps}',
+      syncSkipped: '未覆盖这些客户端的冲突项：{apps}',
       previewComplete: '预览完成，未修改文件',
       emptySynced: '还没有同步扩展。可点击“导入全部”读取现有 MCP，Skill 请在 Skills 页面管理。'
     }
@@ -1209,6 +1211,8 @@ const labels = {
       applied: 'Applied',
       previewOnly: 'Preview only',
       syncApplied: 'Sync applied',
+      syncPartial: 'Non-conflicting entries were written. Conflicts left unchanged: {apps}',
+      syncSkipped: 'Conflicts left unchanged for: {apps}',
       previewComplete: 'Preview complete, no files modified',
       emptySynced: 'No synced extensions yet. Import MCP here; manage Skills in the Skills page.'
     }

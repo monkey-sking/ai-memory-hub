@@ -56,9 +56,9 @@ VITE_HUB_API_TARGET=http://127.0.0.1:38787 npm run dev
 ```
 
 ## 设计来源
-`../ai-memory-hub-dashboard-redesign/` 是本次 redesign 的设计规格与原型：
-- `proto-next/*.html` —— 各页高保真原型，是前端"骨子"的准绳
-- `DESIGN-SYSTEM.md` / `REDESIGN-INDEX.md` 等 —— 设计决策记录
+`../ai-memory-hub-dashboard-redesign/` 是历史设计稿，不是待实现规格。当前界面以本目录的代码为准。原型只说明当初的版式来源：
+- `proto-next/*.html` —— 各页高保真原型
+- `DESIGN-SYSTEM.md` / `REDESIGN-INDEX.md` 等 —— 当时的设计决策记录
 
 ## 提交约定
 - 以下已在 `.gitignore` 忽略，**不进仓库**：`.workbuddy/`（WorkBuddy 项目数据）、构建产物（`dist*`、`.build-verify/`）、`.env*`

@@ -169,7 +169,7 @@ export default function Extensions() {
   async function runSync() {
     setBusy(true)
     try {
-      const res = await apiPost<{ ok: boolean; applied?: boolean; changes?: DiffChange[] }>('/api/extensions/sync', {
+      const res = await apiPost<{ ok: boolean; applied?: boolean; changes?: DiffChange[]; skippedApps?: string[] }>('/api/extensions/sync', {
         app: activeApps.length === 1 ? activeApps[0] : '',
         kind: kindFilterValue === 'all' ? 'mcp' : kindFilterValue,
         apply: previewApply,
@@ -179,8 +179,13 @@ export default function Extensions() {
         setDiffChanges(asArray<DiffChange>(res.changes))
         setShowPreview(true)
       }
+      const skippedApps = asArray<string>(res.skippedApps)
       setMessageKind('info')
-      setMessage(res.applied ? copy.extensions.syncApplied : copy.extensions.previewComplete)
+      setMessage(
+        skippedApps.length
+          ? (res.applied ? copy.extensions.syncPartial : copy.extensions.syncSkipped).replace('{apps}', skippedApps.join(', '))
+          : res.applied ? copy.extensions.syncApplied : copy.extensions.previewComplete
+      )
     } catch (error) {
       fail(error)
     } finally {

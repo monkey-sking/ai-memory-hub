@@ -221,6 +221,86 @@ test("syncExtensions apply writes files", async () => {
   });
 });
 
+test("syncExtensions apply skips only conflicting entries", async () => {
+  await withTempHome(async (homeDir) => {
+    await withTempDir(async (memoryDir) => {
+      await upsertRecord(memoryDir, {
+        id: "conflict-server",
+        kind: "mcp",
+        server: { type: "stdio", command: "npx", args: ["-y", "registry-version"] },
+        managed: true,
+        apps: { claude: true },
+      });
+      await upsertRecord(memoryDir, {
+        id: "fresh-server",
+        kind: "mcp",
+        server: { type: "stdio", command: "npx", args: ["-y", "fresh"] },
+        managed: true,
+        apps: { claude: true },
+      });
+      const configFile = path.join(homeDir, ".claude.json");
+      await fs.writeFile(configFile, JSON.stringify({
+        mcpServers: {
+          "conflict-server": { type: "stdio", command: "npx", args: ["-y", "client-version"] },
+        },
+      }, null, 2));
+
+      const result = await syncExtensions(memoryDir, {
+        apps: ["claude"],
+        homeDir,
+        apply: true,
+      });
+      assert.equal(result.applied, true);
+      assert.deepEqual(result.skippedApps, ["claude"]);
+      assert.equal(result.skipped.length, 1);
+      assert.equal(result.skipped[0].id, "conflict-server");
+      const config = JSON.parse(await fs.readFile(configFile, "utf8"));
+      assert.deepEqual(config.mcpServers["conflict-server"].args, ["-y", "client-version"]);
+      assert.deepEqual(config.mcpServers["fresh-server"].args, ["-y", "fresh"]);
+
+      const forced = await syncExtensions(memoryDir, {
+        apps: ["claude"],
+        homeDir,
+        apply: true,
+        force: true,
+      });
+      assert.equal(forced.applied, true);
+      assert.deepEqual(forced.skippedApps, []);
+      const overwritten = JSON.parse(await fs.readFile(configFile, "utf8"));
+      assert.deepEqual(overwritten.mcpServers["conflict-server"].args, ["-y", "registry-version"]);
+    });
+  });
+});
+
+test("syncExtensions apply does not report success when every entry conflicts", async () => {
+  await withTempHome(async (homeDir) => {
+    await withTempDir(async (memoryDir) => {
+      await upsertRecord(memoryDir, {
+        id: "conflict-server",
+        kind: "mcp",
+        server: { type: "stdio", command: "npx", args: ["-y", "registry-version"] },
+        managed: true,
+        apps: { claude: true },
+      });
+      const configFile = path.join(homeDir, ".claude.json");
+      const original = JSON.stringify({
+        mcpServers: {
+          "conflict-server": { type: "stdio", command: "npx", args: ["-y", "client-version"] },
+        },
+      }, null, 2);
+      await fs.writeFile(configFile, original);
+      const result = await syncExtensions(memoryDir, {
+        apps: ["claude"],
+        homeDir,
+        apply: true,
+      });
+      assert.equal(result.applied, false);
+      assert.deepEqual(result.skippedApps, ["claude"]);
+      assert.equal(await fs.readFile(configFile, "utf8"), original);
+    });
+  });
+});
+
 test("syncExtensions apply does not rewrite an unchanged Codex config", async () => {
   await withTempHome(async (homeDir) => {
     await withTempDir(async (memoryDir) => {

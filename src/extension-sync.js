@@ -64,26 +64,33 @@ export async function diffExtensions(memoryDir, { apps = DEFAULT_APPS, homeDir }
 export async function syncExtensions(memoryDir, options = {}) {
   const diff = await diffExtensions(memoryDir, options);
   const registry = await readRegistry(memoryDir);
-  const result = { ...diff, applied: false, skipped: [] };
+  const result = { ...diff, applied: false, skipped: [], skippedApps: [] };
   if (!options.apply) return result;
 
+  let wrote = false;
   for (const app of options.apps || DEFAULT_APPS) {
     const registryMcp = Object.values(registry.mcp || {});
-    const records = registryMcp.filter(
+    let records = registryMcp.filter(
       (r) => r.kind === "mcp" && r.apps?.[app] !== false
     );
-    const conflicts = diff.changes.filter(
-      (c) => c.app === app && c.action === "conflict"
-    );
-    if (conflicts.length && options.force === false) {
-      result.skipped.push(...conflicts);
-      continue;
+    if (options.force !== true) {
+      const conflicts = diff.changes.filter(
+        (c) => c.app === app && c.action === "conflict"
+      );
+      if (conflicts.length) {
+        const conflictIds = new Set(conflicts.map((change) => change.id));
+        result.skipped.push(...conflicts);
+        result.skippedApps.push(app);
+        records = records.filter((record) => !conflictIds.has(record.id));
+      }
     }
+    if (!records.length) continue;
     await createAdapter({ app, homeDir: options.homeDir }).writeMcp(records, {
       apply: true,
     });
+    wrote = true;
   }
-  result.applied = true;
+  result.applied = wrote || result.skipped.length === 0;
   return result;
 }
 

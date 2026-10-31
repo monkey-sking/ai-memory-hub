@@ -1,7 +1,7 @@
 # AI Memory Hub (AMH)
 
 <!-- badges:start -->
-[![Last commit](https://img.shields.io/github/last-commit/monkey-sking/ai-memory-hub?style=flat-square)](https://github.com/monkey-sking/ai-memory-hub/commits/main) [![JavaScript](https://img.shields.io/github/languages/top/monkey-sking/ai-memory-hub?style=flat-square)](https://github.com/monkey-sking/ai-memory-hub/search?l=JavaScript) [![Stars](https://img.shields.io/github/stars/monkey-sking/ai-memory-hub?style=flat-square)](https://github.com/monkey-sking/ai-memory-hub/stargazers) [![views](https://hits.sh/github.com/monkey-sking/ai-memory-hub.svg?style=flat-square&label=views&color=0e75b6)](https://github.com/monkey-sking/ai-memory-hub) [![Forks](https://img.shields.io/github/forks/monkey-sking/ai-memory-hub?style=flat-square)](https://github.com/monkey-sking/ai-memory-hub/network/members)
+[![Last commit](https://img.shields.io/github/last-commit/monkey-sking/ai-memory-hub?style=flat-square)](https://github.com/monkey-sking/ai-memory-hub/commits/main) [![JavaScript](https://img.shields.io/github/languages/top/monkey-sking/ai-memory-hub?style=flat-square)](https://github.com/monkey-sking/ai-memory-hub/search?l=JavaScript) [![Stars](https://img.shields.io/github/stars/monkey-sking/ai-memory-hub?style=flat-square)](https://github.com/monkey-sking/ai-memory-hub/stargazers) [![Forks](https://img.shields.io/github/forks/monkey-sking/ai-memory-hub?style=flat-square)](https://github.com/monkey-sking/ai-memory-hub/network/members)
 <!-- badges:end -->
 
 **One shared memory and coordination layer for every AI coding tool you run.**

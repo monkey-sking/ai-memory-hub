@@ -152,6 +152,11 @@ export const RUNNER_PROFILES = {
     sharedStateOnly: true,
     reason: "openclaw should currently be coordinated through shared tasks/radio or gateway APIs; no verified direct prompt runner is configured"
   },
+  zcode: {
+    tool: "zcode",
+    sharedStateOnly: true,
+    reason: "zcode is an app target; use shared state or app automation rather than direct CLI dispatch"
+  },
   antigravity: {
     tool: "antigravity",
     commandCandidates: [

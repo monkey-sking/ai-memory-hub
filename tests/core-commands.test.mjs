@@ -36,11 +36,16 @@ function gitAvailable() {
 }
 
 function runCli(memoryDir, args) {
+  return runCliWithEnv(memoryDir, args);
+}
+
+function runCliWithEnv(memoryDir, args, envOverrides = {}) {
   return spawnSync(process.execPath, [cliPath, ...args], {
     cwd: repoRoot,
     env: {
       ...process.env,
-      AI_MEMORY_DIR: memoryDir
+      AI_MEMORY_DIR: memoryDir,
+      ...envOverrides
     },
     encoding: "utf8",
     windowsHide: true
@@ -1215,6 +1220,50 @@ test("install upgrades legacy adapter files and doctor reports skill layer statu
     assert.equal(doctor.tools[0].install.configured, true);
     assert.equal(doctor.tools[0].install.skillLayer, true);
     assert.equal(doctor.tools[0].install.skillLayerVersion, "1");
+  });
+});
+
+test("detects zcode as a shared-state tool and installs its adapter", async () => {
+  await withTempDir("amh-zcode-test-", async (homeDir) => {
+    const zcodeDir = path.join(homeDir, ".zcode");
+    await fs.mkdir(zcodeDir, { recursive: true });
+    const memoryDir = await fs.mkdtemp(path.join(repoRoot, ".tmp-amh-zcode-test-"));
+    try {
+      const install = runCliWithEnv(memoryDir, ["install", "--tool", "zcode", "--apply"], { HOME: homeDir });
+      assert.equal(install.status, 0, install.stderr || install.stdout);
+
+      const detect = parseJson(runCliWithEnv(memoryDir, ["detect"], { HOME: homeDir }));
+      const zcode = detect.find((tool) => tool.name === "zcode");
+      assert.equal(zcode.installed, true);
+      assert.equal(zcode.configured, true);
+      assert.equal(zcode.sharedStateOnly, true);
+      assert.equal(zcode.connectionStatus, "connected-shared-state");
+      assert.equal(path.normalize(zcode.instructionFile), path.normalize(path.join(memoryDir, "tools", "zcode-shared-memory.md")));
+    } finally {
+      await fs.rm(memoryDir, { recursive: true, force: true });
+    }
+  });
+});
+
+test("detects antigravity through its runner when config directories are absent", async () => {
+  await withTempDir("amh-antigravity-test-", async (homeDir) => {
+    const binDir = path.join(homeDir, "bin");
+    await fs.mkdir(binDir, { recursive: true });
+    const agyPath = path.join(binDir, "agy");
+    await fs.writeFile(agyPath, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+    const memoryDir = await fs.mkdtemp(path.join(repoRoot, ".tmp-amh-antigravity-test-"));
+    try {
+      const detect = parseJson(runCliWithEnv(memoryDir, ["detect"], {
+        HOME: homeDir,
+        PATH: `${binDir}${path.delimiter}${process.env.PATH}`
+      }));
+      const antigravity = detect.find((tool) => tool.name === "antigravity");
+      assert.equal(antigravity.installed, true);
+      assert.equal(antigravity.runnable, true);
+      assert.equal(antigravity.connectionStatus, "detected-unconfigured");
+    } finally {
+      await fs.rm(memoryDir, { recursive: true, force: true });
+    }
   });
 });
 

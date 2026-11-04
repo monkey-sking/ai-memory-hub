@@ -161,6 +161,11 @@ export function detectTools(memoryDir = resolveMemoryDir()) {
       dir: path.join(home, ".gemini", "antigravity")
     },
     {
+      name: "zcode",
+      kind: "app-state",
+      dir: path.join(home, ".zcode")
+    },
+    {
       name: "marvis",
       kind: "app-state",
       dir: path.join(home, "AppData", "Roaming", "Tencent", "Marvis")
@@ -320,10 +325,11 @@ export function detectTools(memoryDir = resolveMemoryDir()) {
       return enrichToolConnection(enhanced, memoryDir, installTargets);
     }
 
+    const runner = getToolRunner(check.name);
     return enrichToolConnection({
       name: check.name,
       kind: check.kind,
-      installed: fs.existsSync(check.dir),
+      installed: fs.existsSync(check.dir) || Boolean(runner.available),
       dir: check.dir,
       files: fs.existsSync(check.dir) ? summarizeDir(check.dir) : []
     }, memoryDir, installTargets);

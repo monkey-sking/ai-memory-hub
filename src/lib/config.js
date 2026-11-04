@@ -34,6 +34,7 @@ export function resolveMemoryDir(argv = process.argv.slice(2)) {
 export function defaultConfig(memoryDir) {
   return {
     memoryDir,
+    vault: { root: "" },
     sync: {
       archiveIndexedInboxItems: true,
       snapshotLimit: 120,
@@ -89,6 +90,7 @@ export function defaultConfig(memoryDir) {
       gemini: { enabled: true },
       antigravity: { enabled: true },
       antigravityCockpit: { enabled: true },
+      zcode: { enabled: true },
       marvis: { enabled: true },
       qclaw: { enabled: true },
       coze: { enabled: true },
@@ -163,6 +165,7 @@ export function loadConfig() {
     sync,
     dashboard,
     backup,
+    vault: { ...base.vault, ...(config.vault || {}) },
     tools: { ...base.tools, ...(config.tools || {}) }
   };
 }

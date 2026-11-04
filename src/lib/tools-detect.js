@@ -311,6 +311,11 @@ export function getInstallTargets(memoryDir) {
       template: readTemplate("shared-instructions.md")
     },
     {
+      tool: "zcode",
+      file: path.join(memoryDir, "tools", "zcode-shared-memory.md"),
+      template: readTemplate("shared-instructions.md")
+    },
+    {
       tool: "cc-switch",
       file: path.join(memoryDir, "tools", "cc-switch-shared-memory.md"),
       template: readTemplate("shared-instructions.md")

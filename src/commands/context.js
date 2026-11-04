@@ -1,6 +1,7 @@
 import { getOption, readJson } from "../lib/cli.js";
 import fs from "node:fs";
 import path from "node:path";
+import { resolveVaultRoot, validateVaultSources } from "../vault-context.js";
 
 // context command cluster. Cross-cutting helpers injected via deps so this
 // module never imports src/index.js (keeps the dependency graph acyclic).
@@ -32,7 +33,7 @@ export function contextCreateCommand(argv, deps) {
   const config = deps.loadConfig();
   deps.ensureHub(config.memoryDir);
 
-  const pack = deps.createContextPack({ taskId, workflowId, project, query });
+  const pack = deps.createContextPack({ taskId, workflowId, project, query, vaultRoot: getOption(argv, "--vault-root") || "" });
   const file = deps.writeContextPack(config.memoryDir, pack);
 
   console.log(JSON.stringify({ ...pack, file }, null, 2));
@@ -54,7 +55,10 @@ export function contextShowCommand(argv, deps) {
     throw new Error(`Context pack not found: ${packId}`);
   }
 
-  console.log(JSON.stringify(pack, null, 2));
+  const output = argv.includes("--check-sources")
+    ? { ...pack, knowledgeSourceChecks: validateVaultSources(resolveVaultRoot(config, getOption(argv, "--vault-root")), pack.knowledgeSources || []) }
+    : pack;
+  console.log(JSON.stringify(output, null, 2));
 }
 
 export function contextListCommand(argv, deps) {

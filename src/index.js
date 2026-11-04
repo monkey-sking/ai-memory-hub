@@ -55,6 +55,8 @@ import { worktreeCommand } from "./commands/worktree.js";
 const worktreeCommandDeps = { get dashboardWorktrees() { return dashboardWorktrees; }, ensureHub, loadConfig, runGit };
 import { contextCommand } from "./commands/context.js";
 const contextCommandDeps = { createContextPack, ensureHub, loadConfig, readContextPack, writeContextPack };
+import { vaultCommand } from "./commands/vault.js";
+import { resolveVaultRoot, searchVault } from "./vault-context.js";
 import { declareCommand } from "./commands/declare.js";
 const declareCommandDeps = { ensureHub, loadConfig, normalizeToolName, parseDeclaredList, readToolDeclarationByTool, readToolDeclarations, removeToolDeclaration, withHubLock, writeToolDeclaration };
 import { rpcCommand } from "./commands/rpc.js";
@@ -559,6 +561,8 @@ async function main() {
       return notifyCommand(rest, notifyCommandDeps);
     case "context":
       return contextCommand(rest, contextCommandDeps);
+    case "vault":
+      return vaultCommand(rest, { loadConfig });
     case "queue":
       return queueCommand(rest, queueCommandDeps);
     case "recipe":
@@ -1557,8 +1561,9 @@ function filterProjects(projects, { status = "all", includeHidden = false } = {}
 
 
 // Context Pack Functions
-function createContextPack({ taskId, workflowId, project, query }) {
-  const memoryDir = loadConfig().memoryDir;
+function createContextPack({ taskId, workflowId, project, query, vaultRoot = "" }) {
+  const config = loadConfig();
+  const memoryDir = config.memoryDir;
 
   const pack = {
     id: createId(`context:${taskId || workflowId}:${Date.now()}`),
@@ -1569,6 +1574,7 @@ function createContextPack({ taskId, workflowId, project, query }) {
     task: null,
     workflow: null,
     relevantMemories: [],
+    knowledgeSources: [],
     recentRadio: [],
     skills: [],
     relations: [],
@@ -1613,6 +1619,13 @@ function createContextPack({ taskId, workflowId, project, query }) {
     pack.relevantMemories = searchMemoriesForContext(memoryDir, searchQuery, project, 10);
     pack.skills = searchSkills(memoryDir, searchQuery).slice(0, 5);
   }
+
+  const knowledge = searchVault(resolveVaultRoot(config, vaultRoot), query || pack.task?.title || pack.workflow?.title || "");
+  pack.knowledgeSources = knowledge.sources;
+  pack.knowledgeSourceStatus = {
+    status: knowledge.status, scannedFiles: knowledge.scannedFiles,
+    skippedFiles: knowledge.skippedFiles, truncated: knowledge.truncated
+  };
 
   // Get recent radio messages for this project
   if (project) {

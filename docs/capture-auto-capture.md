@@ -152,6 +152,35 @@ amh watch --capture --interval-ms 300000
 每 5 分钟扫一次（默认 `--capture-limit 50`），抓到新 turn 才出声，否则静默。
 daemon 是派工循环，不适合塞这个逻辑，所以挂在 watch 上。
 
+## 顺带采集 Skill 使用信号
+
+`capture scan` also extracts Skill usage signals from the same local
+transcripts. This closes the missing loop between an Agent actually reading or
+invoking a Skill and AMH's usage report.
+
+Detected signals include:
+
+- `loaded` when a command reads a `<skill>/SKILL.md`;
+- `loaded` or the explicitly supplied signal when `skill usage record` is called;
+- `adopted` when `skill show` / `skill attach` or an MCP call identifies a Skill.
+
+Usage extraction has its own watermark file, `state/skill-usage-capture.json`,
+because it must scan the full transcript and cannot inherit turn capture's
+`--limit`. The state records each source file's size, mtime, extracted event
+count, and consumed count. Unchanged exhausted files are skipped; a changed
+file is re-extracted, while `recordSkillUsage` keeps the event log idempotent
+by Skill, agent, project, session, and signal.
+
+```bash
+amh capture scan --tool codex --dry-run   # preview turn and Skill usage counts
+amh capture scan --tool codex --sync      # capture turns and record Skill usage
+amh skill usage report --agent codex
+```
+
+`--dry-run` reports found Skill events but never creates the usage event file
+or advances the usage watermark. `--force` resets extraction progress without
+turning duplicate historical events into new usage entries.
+
 ## 已知取舍
 
 - **只支持有本地 transcript 的工具**：claude / codex / workbuddy / gemini。没有本地

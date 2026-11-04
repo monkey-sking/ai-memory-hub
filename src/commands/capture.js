@@ -21,6 +21,15 @@ import {
   writeCaptureState
 } from "../lib/capture-state.js";
 import {
+  getSkillUsageFileProgress,
+  readSkillUsageCaptureState,
+  recordSkillUsageFile,
+  skillUsageCaptureStatePath,
+  writeSkillUsageCaptureState
+} from "../lib/skill-usage-state.js";
+import { extractSkillUsageEventsFromFile } from "../lib/skill-usage-extract.js";
+import { recordSkillUsage } from "../skill-usage.js";
+import {
   CAPTURE_SOURCE_DEFS,
   assignTurnIds,
   detectInjectedBlocks,
@@ -206,6 +215,15 @@ export function runCaptureScan(argv, deps) {
     writeCaptureState(config.memoryDir, state);
   }
 
+  const skillUsage = runSkillUsageCapture({
+    memoryDir: config.memoryDir,
+    tools,
+    dryRun,
+    force,
+    projectOverride,
+    findCaptureFiles
+  });
+
   const result = {
     ok: true,
     dryRun,
@@ -215,6 +233,7 @@ export function runCaptureScan(argv, deps) {
     skippedUnchanged: skippedTotal,
     turnsFound: collected.length,
     eventsWritten: dryRun ? 0 : events.length,
+    skillUsage,
     perTool,
     sample: events.slice(0, 3).map((event) => ({ id: event.id, source: event.source, text: event.text.slice(0, 160) }))
   };
@@ -224,6 +243,93 @@ export function runCaptureScan(argv, deps) {
   }
 
   return result;
+}
+
+/**
+ * 从 transcript 中提取 Skill 使用信号。
+ *
+ * Turn capture 和 Skill usage 的消费进度不同：前者受 --limit 约束，后者必须
+ * 扫完整文件，否则工具调用轮次被 limit 跳过后会漏掉真实加载/采用事件。
+ */
+export function runSkillUsageCapture({
+  memoryDir,
+  tools,
+  dryRun = false,
+  force = false,
+  projectOverride = "",
+  findCaptureFiles: findFiles = findCaptureFiles
+}) {
+  const state = readSkillUsageCaptureState(memoryDir);
+  const perTool = [];
+  let eventsFound = 0;
+  let eventsRecorded = 0;
+  let duplicateEvents = 0;
+  let skippedUnchanged = 0;
+
+  for (const tool of tools) {
+    const files = findFiles(tool);
+    let toolEventsFound = 0;
+    let toolEventsRecorded = 0;
+    let toolDuplicates = 0;
+    let toolSkipped = 0;
+
+    for (const file of files) {
+      const progress = force
+        ? { consumed: 0, unchanged: false, exhausted: false }
+        : getSkillUsageFileProgress(state, tool, file.path, file);
+      if (progress.exhausted) {
+        toolSkipped += 1;
+        skippedUnchanged += 1;
+        continue;
+      }
+
+      const events = extractSkillUsageEventsFromFile(tool, file.path);
+      const start = progress.unchanged ? progress.consumed : 0;
+      const pending = events.slice(start);
+      toolEventsFound += pending.length;
+      eventsFound += pending.length;
+
+      if (!dryRun) {
+        for (const event of pending) {
+          const result = recordSkillUsage(memoryDir, {
+            ...event,
+            project: projectOverride || event.project
+          });
+          if (result.recorded) {
+            toolEventsRecorded += 1;
+            eventsRecorded += 1;
+          } else {
+            toolDuplicates += 1;
+            duplicateEvents += 1;
+          }
+        }
+      }
+
+      if (!dryRun) {
+        recordSkillUsageFile(state, tool, file.path, file, events.length, events.length);
+      }
+    }
+
+    perTool.push({
+      tool,
+      files: files.length,
+      eventsFound: toolEventsFound,
+      eventsRecorded: dryRun ? 0 : toolEventsRecorded,
+      duplicates: toolDuplicates,
+      skippedUnchanged: toolSkipped
+    });
+  }
+
+  if (!dryRun) writeSkillUsageCaptureState(memoryDir, state);
+  return {
+    stateFile: skillUsageCaptureStatePath(memoryDir),
+    filesScanned: perTool.reduce((sum, item) => sum + item.files - item.skippedUnchanged, 0),
+    skippedUnchanged,
+    eventsFound,
+    eventsRecorded: dryRun ? 0 : eventsRecorded,
+    duplicates: dryRun ? 0 : duplicateEvents,
+    perTool
+  };
 }
 
 /**

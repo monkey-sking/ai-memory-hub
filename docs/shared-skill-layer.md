@@ -93,6 +93,40 @@ variants, and true content conflicts: variants remain separated by target,
 while true conflicts require an explicit source choice.
 
 The dashboard Skill Center exposes the same scan, import, sync, and doctor operations. Credential profiles can be configured once from the Skill Center or `/api/credentials`. Secret values are protected with Windows DPAPI where available, never returned in API responses, and may be injected only into a runner invocation that explicitly references the profile.
+
+## Project Selection Model
+
+Project Skill selection has three layers:
+
+- **Skill** is the immutable executable/instructional unit in the registry.
+- **Pack** is a versioned distribution container and can contain multiple
+  Skills plus references, schemas, and other resources.
+- **Group** is a project-local logical set that can cross Packs and select
+  different members or constraints for different Agents.
+
+Direct selections and Groups live in the project manifest (`.amh/skills.json`).
+This separates *what exists* (the registry), *how it was distributed* (the
+Pack), and *what this project exposes to a target Agent* (selections and
+Groups). A high-frequency recommendation from usage statistics can influence
+which Skills are promoted into a Group, but usage alone never bypasses a
+project constraint, safety rule, or explicit user decision.
+
+```bash
+ai-memory-hub skill group set delivery \
+  --skills "release@^1.0.0,review" \
+  --target codex,claude \
+  --description "Delivery workflow" \
+  --project <path>
+ai-memory-hub skill sync --project <path> --all
+```
+
+Enabled group members are combined with enabled direct selections. A disabled
+direct selection is an explicit override that blocks a Skill for the project.
+Groups with target restrictions only affect those Agents.
+
+Oversized packages are not automatically imported. Their path and size remain
+an audit item until a human confirms their package boundary and intended
+membership.
 ### External source types
 
 The installer accepts a local Skill directory, a ZIP archive, or a Git repository URL. ZIP imports use a temporary extraction directory with traversal handled by PowerShell `Expand-Archive`; Git imports use a shallow clone and optional `--ref`. A plain directory is validated by its `SKILL.md`; a directory with `amh-pack.json` is validated as a generic multi-Skill package and its non-executable resources are preserved. AMH never executes package scripts.
@@ -118,6 +152,18 @@ AMH exposes two related but separate mechanisms:
   to Claude, Codex, Gemini, and OpenCode configuration files.
 - **Skill project projection** imports immutable Skill packages, selects them in
   a project manifest, and projects them into the selected tool Skill folders.
+
+MCP ownership is also split by layer:
+
+- **AMH** keeps the normalized registry, sanitized index, audit metadata, and
+  configuration synchronization contracts.
+- **mcp-meta** owns discovery and the smaller tool surface exposed to Agents.
+- **Magpie** remains the runtime router for model and MCP traffic.
+
+AMH's index or registry state does not make an MCP server online and does not
+replace runtime discovery or routing. Credentials, URLs, arguments, and other
+provider-specific values remain in their runtime configuration rather than
+being copied into AMH records.
 
 MCP registry examples:
 

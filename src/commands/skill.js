@@ -2,7 +2,17 @@ import { diffSkillExtensions, removeSkillExtension } from "../extension-sync.js"
 import { renderSkillMarkdown } from "../external-integrations.js";
 import { getOption, parsePositiveIntegerOption, positionalArgs } from "../lib/cli.js";
 import { doctorSkillProjections, syncSkillProjections } from "../shared-skill-materializer.js";
-import { loadProjectSkillManifest, removeProjectSkill, selectProjectSkills, setProjectSkill } from "../shared-skill-project.js";
+import {
+  disableProjectSkill,
+  loadProjectSkillManifest,
+  removeProjectSkill,
+  removeProjectSkillGroup,
+  selectProjectSkills,
+  selectProjectSkillsForTargets,
+  setProjectSkill,
+  setProjectSkillGroup,
+  setProjectSkillGroupEnabled
+} from "../shared-skill-project.js";
 import { defaultSkillRoots, scanSkillRoots } from "../shared-skill-scan.js";
 import { withPreparedSkillSource } from "../shared-skill-sources.js";
 import { findSharedSkillPackage, importSharedSkill, listSharedSkillPackages } from "../shared-skills.js";
@@ -71,7 +81,7 @@ export function skillCandidateCommand(argv, deps) {
 export async function skillCommand(argv, deps) {
   const action = argv[0] || "list";
   if (action === "--help" || action === "-h") {
-    console.log("Usage: ai-memory-hub skill list|scan|import|install|show|update|rollback|enable|disable|sync|doctor|diff|remove|gc|gc-rollback|search|attach|render|usage [--app <client>] [--all] [--apply] [--force]");
+    console.log("Usage: ai-memory-hub skill list|scan|import|install|show|group|update|rollback|enable|disable|sync|doctor|diff|remove|gc|gc-rollback|search|attach|render|usage [--app <client>] [--all] [--apply] [--force]");
     return;
   }
   const config = deps.loadConfig();
@@ -96,8 +106,7 @@ export async function skillCommand(argv, deps) {
     let manifest = null;
     if (project) {
       manifest = await setProjectSkill(project, imported.id, getOption(argv.slice(1), "--version") || imported.version);
-      const packages = selectProjectSkills(manifest, await listSharedSkillPackages(config.memoryDir));
-      synced = await syncSkillProjections(project, packages, getOption(argv.slice(1), "--tool") ? [getOption(argv.slice(1), "--tool")] : (manifest.targets.length ? manifest.targets : ["codex", "claude", "gemini", "opencode", "antigravity"]));
+      synced = await syncProjectSkillTargets(project, manifest, await listSharedSkillPackages(config.memoryDir), projectionTargets(argv.slice(1), manifest));
     }
     console.log(JSON.stringify({ imported, project: project || "", manifest, synced }, null, 2)); return;
   }
@@ -107,8 +116,7 @@ export async function skillCommand(argv, deps) {
     const imported = await withPreparedSkillSource(config.memoryDir, source, { ref: getOption(argv.slice(1), "--ref") }, (prepared) => importSharedSkill(config.memoryDir, prepared.path, { id: getOption(argv.slice(1), "--id"), version: getOption(argv.slice(1), "--version"), source: prepared.source }));
     const project = getOption(argv.slice(1), "--project");
     const manifest = project ? await setProjectSkill(project, imported.id, imported.version) : null;
-    const packages = project ? selectProjectSkills(manifest, await listSharedSkillPackages(config.memoryDir)) : [];
-    const synced = project ? await syncSkillProjections(project, packages, getOption(argv.slice(1), "--tool") ? [getOption(argv.slice(1), "--tool")] : ["codex", "claude", "gemini", "opencode", "antigravity"]) : [];
+    const synced = project ? await syncProjectSkillTargets(project, manifest, await listSharedSkillPackages(config.memoryDir), projectionTargets(argv.slice(1), manifest)) : [];
     console.log(JSON.stringify({ imported, manifest, synced }, null, 2)); return;
   }
   if (action === "rollback") {
@@ -119,8 +127,7 @@ export async function skillCommand(argv, deps) {
     const packageRecord = await findSharedSkillPackage(config.memoryDir, id, version);
     if (!packageRecord) throw new Error(`Skill package not found: ${id}@${version}`);
     const manifest = await setProjectSkill(project, id, version);
-    const packages = selectProjectSkills(manifest, await listSharedSkillPackages(config.memoryDir));
-    const synced = await syncSkillProjections(project, packages, getOption(argv.slice(1), "--tool") ? [getOption(argv.slice(1), "--tool")] : ["codex", "claude", "gemini", "opencode", "antigravity"]);
+    const synced = await syncProjectSkillTargets(project, manifest, await listSharedSkillPackages(config.memoryDir), projectionTargets(argv.slice(1), manifest));
     console.log(JSON.stringify({ package: packageRecord, manifest, synced }, null, 2)); return;
   }
   if (action === "show") {
@@ -132,18 +139,31 @@ export async function skillCommand(argv, deps) {
     const project = getOption(argv.slice(1), "--project") || process.cwd();
     const id = getOption(argv.slice(1), "--id") || argv[1] || "";
     if (!id) throw new Error(`Usage: ai-memory-hub skill ${action} <id> --project <path>`);
-    const manifest = action === "enable" ? await setProjectSkill(project, id, getOption(argv.slice(1), "--version") || "*") : await removeProjectSkill(project, id);
+    const manifest = action === "enable" ? await setProjectSkill(project, id, getOption(argv.slice(1), "--version") || "*") : await disableProjectSkill(project, id);
     console.log(JSON.stringify(manifest, null, 2)); return;
   }
+  if (action === "group") return skillGroupCommand(argv.slice(1), config.memoryDir);
   if (action === "sync" || action === "doctor") {
     const project = getOption(argv.slice(1), "--project") || process.cwd();
     const apply = argv.includes("--apply");
     const force = argv.includes("--force");
+    const targets = apps.map((item) => String(item).trim().toLowerCase());
     const manifest = await loadProjectSkillManifest(project);
-    const packages = selectProjectSkills(manifest, await listSharedSkillPackages(config.memoryDir));
-    const targets = apps;
-    const result = action === "sync" ? await syncSkillProjections(project, packages, targets) : await doctorSkillProjections(project, packages, targets);
-    console.log(JSON.stringify({ project, packages: packages.map((item) => `${item.id}@${item.version}`), targets, result, applied: apply, force }, null, 2)); return;
+    const selected = selectProjectSkillsForTargets(manifest, await listSharedSkillPackages(config.memoryDir), targets);
+    const result = [];
+    for (const target of targets) {
+      result.push(...(action === "sync"
+        ? await syncSkillProjections(project, selected[target], [target])
+        : await doctorSkillProjections(project, selected[target], [target])));
+    }
+    console.log(JSON.stringify({
+      project,
+      packages: Object.fromEntries(Object.entries(selected).map(([target, packages]) => [target, packages.map((item) => `${item.id}@${item.version}`)])),
+      targets,
+      result,
+      applied: apply,
+      force
+    }, null, 2)); return;
   }
   if (action === "diff") {
     const project = getOption(argv.slice(1), "--project") || process.cwd();
@@ -184,7 +204,77 @@ export async function skillCommand(argv, deps) {
     console.log(renderSkillMarkdown({ title, text, sourceTaskId: getOption(argv.slice(1), "--task") || "unknown", evidence: (getOption(argv.slice(1), "--evidence") || "").split(";").map((item) => item.trim()).filter(Boolean) }));
     return;
   }
-  throw new Error("Usage: ai-memory-hub skill list|scan|import|install|show|update|rollback|enable|disable|sync|doctor|diff|remove|gc|gc-rollback|search|attach|render|usage");
+  throw new Error("Usage: ai-memory-hub skill list|scan|import|install|show|group|update|rollback|enable|disable|sync|doctor|diff|remove|gc|gc-rollback|search|attach|render|usage");
+}
+
+async function syncProjectSkillTargets(project, manifest, packages, targets) {
+  const selected = selectProjectSkillsForTargets(manifest, packages, targets);
+  const results = [];
+  for (const target of targets) results.push(...await syncSkillProjections(project, selected[target], [target]));
+  return results;
+}
+
+function projectionTargets(args, manifest) {
+  const tool = getOption(args, "--tool");
+  if (tool) return [tool];
+  return manifest.targets.length ? manifest.targets : ["codex", "claude", "gemini", "opencode", "antigravity"];
+}
+
+async function skillGroupCommand(argv, memoryDir) {
+  const action = argv[0] || "list";
+  const args = argv.slice(1);
+  const project = getOption(args, "--project") || process.cwd();
+
+  if (action === "list") {
+    const manifest = await loadProjectSkillManifest(project);
+    console.log(JSON.stringify(manifest.groups, null, 2));
+    return;
+  }
+  if (action === "show") {
+    const id = getOption(args, "--id") || args[0] || "";
+    const manifest = await loadProjectSkillManifest(project);
+    const group = manifest.groups[id];
+    if (!group) throw new Error(`Skill group not found: ${id}`);
+    const packages = await listSharedSkillPackages(memoryDir);
+    console.log(JSON.stringify({
+      id,
+      group,
+      selected: Object.fromEntries(["codex", "claude", "gemini", "opencode", "antigravity"]
+        .map((target) => [target, selectProjectSkills(manifest, packages, target)
+          .filter((item) => Object.keys(group.skills).includes(item.id))
+          .map((item) => `${item.id}@${item.version}`)]))
+    }, null, 2));
+    return;
+  }
+  if (action === "set") {
+    const id = getOption(args, "--id") || args[0] || "";
+    const skills = parseListOption(getOption(args, "--skills"));
+    if (!id || !skills.length) throw new Error("Usage: ai-memory-hub skill group set <id> --skills id@constraint,id2 [--description text] [--target codex,claude] [--project path]");
+    const manifest = await setProjectSkillGroup(project, id, skills, {
+      description: getOption(args, "--description"),
+      targets: parseListOption(getOption(args, "--target") || getOption(args, "--targets")),
+      enabled: !args.includes("--disabled")
+    });
+    console.log(JSON.stringify(manifest, null, 2));
+    return;
+  }
+  if (action === "enable" || action === "disable") {
+    const id = getOption(args, "--id") || args[0] || "";
+    if (!id) throw new Error(`Usage: ai-memory-hub skill group ${action} <id> --project <path>`);
+    console.log(JSON.stringify(await setProjectSkillGroupEnabled(project, id, action === "enable"), null, 2));
+    return;
+  }
+  if (action === "remove") {
+    const id = getOption(args, "--id") || args[0] || "";
+    if (!id) throw new Error("Usage: ai-memory-hub skill group remove <id> --project <path>");
+    console.log(JSON.stringify(await removeProjectSkillGroup(project, id), null, 2));
+    return;
+  }
+  throw new Error("Usage: ai-memory-hub skill group list|show|set|enable|disable|remove [options]");
+}
+
+function parseListOption(value) {
+  return String(value || "").split(",").map((item) => item.trim()).filter(Boolean);
 }
 
 function skillUsageCommand(argv, memoryDir) {

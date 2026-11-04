@@ -1,6 +1,6 @@
 import { diffSkillExtensions, removeSkillExtension } from "../extension-sync.js";
 import { renderSkillMarkdown } from "../external-integrations.js";
-import { getOption, positionalArgs } from "../lib/cli.js";
+import { getOption, parsePositiveIntegerOption, positionalArgs } from "../lib/cli.js";
 import { doctorSkillProjections, syncSkillProjections } from "../shared-skill-materializer.js";
 import { loadProjectSkillManifest, removeProjectSkill, selectProjectSkills, setProjectSkill } from "../shared-skill-project.js";
 import { defaultSkillRoots, scanSkillRoots } from "../shared-skill-scan.js";
@@ -9,6 +9,7 @@ import { findSharedSkillPackage, importSharedSkill, listSharedSkillPackages } fr
 import { applySkillGarbageCollection, planSkillGarbageCollection, rollbackSkillGarbageCollection } from "../skill-gc.js";
 import { applyCandidateDecision } from "../skill-mining.js";
 import { listSkills, searchSkills } from "../skill-registry.js";
+import { buildSkillUsageReport, listSkillUsageEvents, SKILL_USAGE_SIGNALS, recordSkillUsage } from "../skill-usage.js";
 
 // skill command cluster. Cross-cutting helpers injected via deps so this
 // module never imports src/index.js (keeps the dependency graph acyclic).
@@ -70,7 +71,7 @@ export function skillCandidateCommand(argv, deps) {
 export async function skillCommand(argv, deps) {
   const action = argv[0] || "list";
   if (action === "--help" || action === "-h") {
-    console.log("Usage: ai-memory-hub skill list|scan|import|install|show|update|rollback|enable|disable|sync|doctor|diff|remove|gc|gc-rollback|search|attach|render [--app <client>] [--all] [--apply] [--force]");
+    console.log("Usage: ai-memory-hub skill list|scan|import|install|show|update|rollback|enable|disable|sync|doctor|diff|remove|gc|gc-rollback|search|attach|render|usage [--app <client>] [--all] [--apply] [--force]");
     return;
   }
   const config = deps.loadConfig();
@@ -166,6 +167,7 @@ export async function skillCommand(argv, deps) {
     console.log(JSON.stringify(await removeSkillExtension(config.memoryDir, { projectRoot: project, id }), null, 2)); return;
   }
   if (action === "search") { console.log(JSON.stringify(searchSkills(config.memoryDir, argv.slice(1).join(" "),), null, 2)); return; }
+  if (action === "usage") return skillUsageCommand(argv.slice(1), config.memoryDir);
   if (action === "attach") {
     const skillId = getOption(argv.slice(1), "--skill") || argv[1] || "";
     const taskId = getOption(argv.slice(1), "--task") || "";
@@ -182,7 +184,67 @@ export async function skillCommand(argv, deps) {
     console.log(renderSkillMarkdown({ title, text, sourceTaskId: getOption(argv.slice(1), "--task") || "unknown", evidence: (getOption(argv.slice(1), "--evidence") || "").split(";").map((item) => item.trim()).filter(Boolean) }));
     return;
   }
-  throw new Error("Usage: ai-memory-hub skill list|scan|import|install|show|update|rollback|enable|disable|sync|doctor|diff|remove|gc|gc-rollback|search|attach|render");
+  throw new Error("Usage: ai-memory-hub skill list|scan|import|install|show|update|rollback|enable|disable|sync|doctor|diff|remove|gc|gc-rollback|search|attach|render|usage");
+}
+
+function skillUsageCommand(argv, memoryDir) {
+  const action = argv[0] || "report";
+  if (action === "--help" || action === "-h") {
+    console.log("Usage: ai-memory-hub skill usage record|report|list [options]");
+    return;
+  }
+  const args = argv.slice(1);
+
+  if (action === "record") {
+    const skill = getOption(args, "--skill") || args[0] || "";
+    const agent = getOption(args, "--agent") || "";
+    if (!skill || !agent) {
+      throw new Error("Usage: ai-memory-hub skill usage record --skill <id> --agent <agent> [--project <name>] [--signal search_hit|loaded|adopted|pinned|unpinned] [--session <id>]");
+    }
+    const result = recordSkillUsage(memoryDir, {
+      skill,
+      agent,
+      project: getOption(args, "--project"),
+      signal: getOption(args, "--signal") || "loaded",
+      source: getOption(args, "--source") || "cli",
+      sessionId: getOption(args, "--session"),
+      version: getOption(args, "--version"),
+      evidence: getOption(args, "--evidence"),
+      ts: getOption(args, "--ts")
+    });
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  if (action === "report") {
+    const limit = getOption(args, "--limit");
+    const budget = getOption(args, "--budget");
+    const halfLifeDays = getOption(args, "--half-life-days");
+    const report = buildSkillUsageReport(memoryDir, {
+      agent: getOption(args, "--agent"),
+      project: getOption(args, "--project"),
+      limit: limit ? parsePositiveIntegerOption(limit, "--limit") : undefined,
+      budget: budget ? parsePositiveIntegerOption(budget, "--budget") : undefined,
+      halfLifeDays: halfLifeDays ? parsePositiveIntegerOption(halfLifeDays, "--half-life-days") : undefined,
+      now: getOption(args, "--as-of") || undefined
+    });
+    console.log(JSON.stringify(report, null, 2));
+    return;
+  }
+
+  if (action === "list") {
+    const limit = getOption(args, "--limit");
+    const events = listSkillUsageEvents(memoryDir, {
+      agent: getOption(args, "--agent"),
+      project: getOption(args, "--project"),
+      skill: getOption(args, "--skill"),
+      limit: limit ? parsePositiveIntegerOption(limit, "--limit") : undefined
+    });
+    console.log(JSON.stringify(events, null, 2));
+    return;
+  }
+
+  throw new Error(`Usage: ai-memory-hub skill usage record|report|list [options]. Signals: ${SKILL_USAGE_SIGNALS.join(", ")}.`);
 }
 
 export function skillDeltaCommand(argv, deps) {

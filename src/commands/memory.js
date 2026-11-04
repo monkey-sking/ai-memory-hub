@@ -9,6 +9,7 @@ import {
   positionalArgs,
 } from "../lib/cli.js";
 import { readEvents } from "../lib/io.js";
+import { scanNativeMemorySources } from "../lib/native-memory-scan.js";
 import { auditMemories } from "../memory-audit.js";
 import { execSync } from "node:child_process";
 import fs from "node:fs";
@@ -126,10 +127,22 @@ export function memoryCommand(argv, deps) {
   if (subcommand === "version") {
     return memoryVersionCommand(rest, deps);
   }
+  if (subcommand === "native-scan" || subcommand === "native-candidates") {
+    return memoryNativeScanCommand(rest, deps);
+  }
   if (subcommand === "audit") {
     return memoryAuditCommand(rest, deps);
   }
-  throw new Error("Usage: ai-memory-hub memory <search|snapshot|archive|audit|op|hook|version> [options]");
+  throw new Error("Usage: ai-memory-hub memory <search|snapshot|archive|audit|op|hook|version|native-scan> [options]");
+}
+
+export function memoryNativeScanCommand(argv, deps) {
+  const config = deps.loadConfig();
+  deps.ensureHub(config.memoryDir);
+  const home = getOption(argv, "--home") || undefined;
+  const result = scanNativeMemorySources(home ? { home } : {});
+  console.log(JSON.stringify(result, null, 2));
+  return result;
 }
 
 

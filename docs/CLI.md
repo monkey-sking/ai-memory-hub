@@ -168,6 +168,27 @@ ai-memory-hub memory snapshot [--limit <n>] [--project <name>] [--tag <tag>|--ta
 - `--project` - Include only memories for a normalized project
 - `--tag` / `--tags` - Include only memories matching all requested tags
 
+### `memory native-scan`
+
+Index local, Agent-native memory files without importing their content into
+the AMH ledger.
+
+```bash
+ai-memory-hub memory native-scan
+ai-memory-hub memory native-candidates
+ai-memory-hub memory native-scan --home /Users/<name>
+```
+
+`native-candidates` is an alias. The command returns JSON containing each
+source path, size, mtime, SHA-256, and disposition. It is read-only: AMH does
+not interpret native memory as current facts and does not automatically merge
+it. A reviewed source must be promoted through the normal memory workflow with
+only selected, durable facts.
+
+Current built-in sources are Codex native memory summaries and WorkBuddy
+memory files. Files larger than 16 MiB are reported for manual inspection and
+skipped.
+
 ### `memory op`
 
 Lifecycle edits use append-only memory operations instead of editing
@@ -1622,6 +1643,11 @@ ai-memory-hub skill list
 ai-memory-hub skill import --path <directory|archive.zip|git-url> --version <version> [--project <path>]
 ai-memory-hub skill install --path <directory|archive.zip|git-url> --version <version> [--project <path>]
 ai-memory-hub skill diff --project <path> [--app <client>] [--all]
+ai-memory-hub skill group list --project <path>
+ai-memory-hub skill group show <id> --project <path>
+ai-memory-hub skill group set <id> --skills id@constraint,id2 --project <path> [--description text] [--target codex,claude] [--disabled]
+ai-memory-hub skill group enable|disable <id> --project <path>
+ai-memory-hub skill group remove <id> --project <path>
 ai-memory-hub skill sync --project <path> [--app <client>] [--all]
 ai-memory-hub skill doctor --project <path> [--app <client>] [--all]
 ai-memory-hub skill usage record --skill <id> --agent <agent> [--project <project>] [--signal search_hit|loaded|adopted|pinned|unpinned] [--session <id>]
@@ -1633,6 +1659,18 @@ ai-memory-hub skill usage list [--agent <agent>] [--project <project>] [--skill 
 `--project` defaults to the current working directory. `--app` selects one
 client, while `--all` selects Claude, Codex, Gemini, and OpenCode. Skill
 projection commands do not use MCP's `--apply`/`--force` preview semantics.
+
+Project selections are stored in `.amh/skills.json`. A direct selection has
+project-wide scope. A group is a cross-pack logical set with its own member
+constraints and optional Agent targets. During projection, enabled group
+members are combined with direct selections; a disabled direct selection
+blocks that Skill even if a group would enable it. A group with non-empty
+targets applies only to those targets; an empty target list applies to every
+target.
+
+Group member constraints use the same version rules as direct selections. For
+example, `release@^1.0.0,review` means the newest matching `release` 1.x and
+any `review` version.
 
 Skill usage events are append-only JSONL records under
 `skill-usage/events.jsonl` in the AMH memory directory. Recording is idempotent

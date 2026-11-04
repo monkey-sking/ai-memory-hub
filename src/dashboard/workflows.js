@@ -1,3 +1,5 @@
+import { normalizeProjectLabel } from "../lib/project-resolver.js";
+
 export function createDashboardWorkflowsApi({
   appendJsonl,
   assertWorkflowStatus,
@@ -32,7 +34,7 @@ export function createDashboardWorkflowsApi({
     let workflow = createWorkflow({
       title: body.title,
       createdBy: body.from || body.createdBy || body.by || "dashboard",
-      project: body.project || getDefaultProjectName(),
+      project: normalizeProjectLabel(memoryDir, body.project || getDefaultProjectName(memoryDir)),
       priority: body.priority || "normal",
       planner: body.planner || "",
       executor: body.executor || "",

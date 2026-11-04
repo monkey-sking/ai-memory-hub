@@ -39,6 +39,7 @@ import {
   renderTurnText,
   stripInjectedBlocks
 } from "../lib/capture-sources.js";
+import { loadProjectIndex, normalizeProjectLabel } from "../lib/project-resolver.js";
 
 const DEFAULT_SCAN_LIMIT = 200;
 const DEFAULT_RECALL_LIMIT = 8;
@@ -143,6 +144,7 @@ export function runCaptureScan(argv, deps) {
   const rawLimit = getOption(argv, "--limit");
   const limit = rawLimit ? parsePositiveIntegerOption(rawLimit, "--limit") : DEFAULT_SCAN_LIMIT;
   const tools = resolveTools(argv);
+  const projectIndex = loadProjectIndex(config.memoryDir);
 
   const state = readCaptureState(config.memoryDir);
   const inboxPath = path.join(config.memoryDir, "inbox", "events.jsonl");
@@ -197,7 +199,7 @@ export function runCaptureScan(argv, deps) {
     text: renderTurnText(turn),
     metadata: {
       kind: "turn",
-      project: projectOverride || turn.project || "",
+      project: normalizeProjectLabel(config.memoryDir, projectOverride || turn.project || "", projectIndex),
       tags: ["auto-capture", turn.tool],
       scope: "",
       confidence: 0.6,
@@ -260,6 +262,7 @@ export function runSkillUsageCapture({
   findCaptureFiles: findFiles = findCaptureFiles
 }) {
   const state = readSkillUsageCaptureState(memoryDir);
+  const projectIndex = loadProjectIndex(memoryDir);
   const perTool = [];
   let eventsFound = 0;
   let eventsRecorded = 0;
@@ -293,7 +296,7 @@ export function runSkillUsageCapture({
         for (const event of pending) {
           const result = recordSkillUsage(memoryDir, {
             ...event,
-            project: projectOverride || event.project
+            project: normalizeProjectLabel(memoryDir, projectOverride || event.project, projectIndex)
           });
           if (result.recorded) {
             toolEventsRecorded += 1;

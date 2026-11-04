@@ -7,6 +7,7 @@ import {
   hasFlag,
   positionalArgs,
 } from "../lib/cli.js";
+import { normalizeProjectLabel } from "../lib/project-resolver.js";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -45,7 +46,7 @@ export function radioSendCommand(argv, deps) {
     text,
     thread: getOption(argv, "--thread") || "",
     replyTo: getOption(argv, "--reply-to") || "",
-    project: getOption(argv, "--project") || path.basename(process.cwd())
+    project: normalizeProjectLabel(config.memoryDir, getOption(argv, "--project") || process.cwd())
   });
   appendJsonl(path.join(config.memoryDir, "radio", "messages.jsonl"), message);
   console.log(JSON.stringify(message, null, 2));

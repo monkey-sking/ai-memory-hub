@@ -1,6 +1,7 @@
 import path from "node:path";
 import fs from "node:fs";
 import { mirrorDelete } from "../sqlite-dualwrite.js";
+import { normalizeProjectLabel } from "../lib/project-resolver.js";
 
 export function createDashboardActionsApi({
   appendIfMissing,
@@ -60,7 +61,7 @@ export function createDashboardActionsApi({
       text: body.text,
       thread: body.thread || "",
       replyTo: body.replyTo || "",
-      project: body.project || getDefaultProjectName()
+      project: normalizeProjectLabel(config.memoryDir, body.project || getDefaultProjectName(config.memoryDir))
     });
     appendJsonl(getRadioMessagesFile(config.memoryDir), message);
     return { ok: true, message, status: getStatusObject() };
@@ -75,7 +76,7 @@ export function createDashboardActionsApi({
         description: body.description || "",
         handoff: body.handoff || "",
         createdBy: body.from || "dashboard",
-        project: body.project || getDefaultProjectName(),
+        project: normalizeProjectLabel(config.memoryDir, body.project || getDefaultProjectName(config.memoryDir)),
         priority: body.priority || "normal"
       });
       tasks.push(task);
@@ -221,7 +222,7 @@ export function createDashboardActionsApi({
 
   function dispatchDashboardMarvis(config, body = {}) {
     const from = body.from || "unknown";
-    const project = body.project || getDefaultProjectName();
+    const project = normalizeProjectLabel(config.memoryDir, body.project || getDefaultProjectName(config.memoryDir));
     const dispatchType = body.type || "handoff";
     const message = createRadioMessage({
       from,

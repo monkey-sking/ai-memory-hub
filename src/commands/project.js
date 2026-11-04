@@ -1,6 +1,7 @@
 import { getOption, hasFlag, positionalArgs } from "../lib/cli.js";
 import { parseProjectListOption, uniqueStringList } from "../lib/entity-models.js";
 import { readProjects, writeProjects } from "../lib/entity-repo.js";
+import { loadProjectIndex, normalizeProjectLabel, resolveProject, resolveProjectRoot } from "../lib/project-resolver.js";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -20,6 +21,8 @@ export function projectCommand(argv, deps) {
       return projectUpdateCommand(actionArgs, deps);
     case "show":
       return projectShowCommand(actionArgs, deps);
+    case "resolve":
+      return projectResolveCommand(actionArgs, deps);
     case "alias":
       return projectAliasCommand(actionArgs, deps);
     case "relate":
@@ -30,7 +33,7 @@ export function projectCommand(argv, deps) {
     case "migrate":
       return projectMigrateCommand(actionArgs, deps);
     default:
-      throw new Error("Usage: ai-memory-hub project <list|add|update|show|alias|relate|archive|migrate> ...");
+      throw new Error("Usage: ai-memory-hub project <list|add|update|show|resolve|alias|relate|archive|migrate> ...");
   }
 }
 
@@ -125,6 +128,30 @@ export function projectShowCommand(argv, deps) {
     throw new Error(`Project not found: ${id}`);
   }
   console.log(JSON.stringify(project, null, 2));
+}
+
+
+export function projectResolveCommand(argv, deps) {
+  const input = positionalArgs(argv)[0] || getOption(argv, "--input") || "";
+  if (!input) {
+    throw new Error("Usage: ai-memory-hub project resolve <id|alias|path>");
+  }
+  const config = deps.loadConfig();
+  deps.ensureHub(config.memoryDir);
+  const index = loadProjectIndex(config.memoryDir);
+  const resolved = resolveProject(config.memoryDir, input, index);
+  const root = resolveProjectRoot(config.memoryDir, input, index);
+  const normalizedLabel = normalizeProjectLabel(config.memoryDir, input, index);
+  const project = resolved
+    ? index.projects.find((item) => item.id === resolved.id) || null
+    : null;
+  console.log(JSON.stringify({
+    input,
+    resolved,
+    root,
+    normalizedLabel,
+    project
+  }, null, 2));
 }
 
 

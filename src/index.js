@@ -103,6 +103,7 @@ import { readEvents, parseJsonlLine, countJsonlLines, readToolDeclarations, read
 import { getEntityEventsFile, getEntityProjectionFile, readEntityEvents, bootstrapEntityEventsFromProjection, writeEntityRecords, appendEntityRecord, deleteEntityRecord, appendEntityEvents, createEntityEvent, replayEntityEvents, materializeEntityProjection, isEntityRecordNewerOrSame } from "./lib/entity-store.js";
 import { PROJECT_STATUSES, RECIPE_GATE_STRING_ARRAY_FIELDS, RECIPE_GATE_FIELDS, extractQualityGate, normalizeQualityGate, normalizeVerifyCommand, normalizeNonNegativeInteger, normalizeMinimalImplementation, normalizeDependencyBudget, normalizePriority, normalizeDispatchWorktreeMetadata, normalizeWorkflowRole, parseProjectListOption, uniqueStringList, isTaskStatus, isWorkflowStatus, normalizeRecipeMetadata, normalizeRecipeStepMetadata, normalizeProjectStatus, normalizeProjectResources, normalizeProject, normalizeWorkflow, normalizeTask, normalizePrompt, getTaskEventStoreDefinition, getProjectEventStoreDefinition, getWorkflowEventStoreDefinition, getPromptEventStoreDefinition, rebuildEventSourcedProjections, updateProject, updateWorkflow, updateTask, assertTaskStatus, assertWorkflowStatus, mergeQualityGates, getSeedProjects, mergeSeedProjects, parseProjectResourceOptions, ensureHub } from "./lib/entity-models.js";
 import { projectRoot, recipeReadLocations, recipeListLocations, readRecipe, listRecipes } from "./lib/paths.js";
+import { normalizeProjectLabel } from "./lib/project-resolver.js";
 import { POLICY_OPERATIONS, APP_NAME, DEFAULT_DISPATCH_ACK_TIMEOUT_MS, ASYNC_CALL_STATES, summarizeWorkflowLinkedTaskDelivery, isDispatchSourceComplete, isValidAsyncCallState, isRelayTimedOut, isRelayRetryCandidate, areTaskRecipeDependenciesSatisfied, ASYNC_CALL_TRANSITIONS, isValidAsyncCallTransition } from "./lib/constants.js";
 import { MODEL_CACHE_STALE_MS } from "./lib/constants.js";
 import { containsCorruptionMarker, isCorruptedRadioMessage, readRadioMessages, updateRadioMessage, getUnreadRadioMessages } from "./lib/radio-messages.js";
@@ -266,7 +267,7 @@ const dashboardWorkflows = createDashboardWorkflowsApi({
   createWorkflow,
   deleteEntityRecord,
   findWorkflowIndex,
-  getDefaultProjectName: () => path.basename(process.cwd()),
+  getDefaultProjectName: (memoryDir) => normalizeProjectLabel(memoryDir, process.cwd()),
   getRadioMessagesFile: (memoryDir) => path.join(memoryDir, "radio", "messages.jsonl"),
   getWorkflowEventStoreDefinition,
   normalizePriority,
@@ -437,7 +438,7 @@ const dashboardActions = createDashboardActionsApi({
   ensureDir,
   executeDispatch,
   findTaskIndex,
-  getDefaultProjectName: () => path.basename(process.cwd()),
+  getDefaultProjectName: (memoryDir) => normalizeProjectLabel(memoryDir, process.cwd()),
   getEntityEventsFile,
   getEntityProjectionFile,
   getInstallTargets,

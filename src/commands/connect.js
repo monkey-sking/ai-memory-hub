@@ -1,6 +1,7 @@
 import { appendJsonl } from "../event-writer.js";
 import { ensureDir, getOption, hasFlag, positionalArgs } from "../lib/cli.js";
 import { readTasks, writeTasks } from "../lib/entity-repo.js";
+import { normalizeProjectLabel } from "../lib/project-resolver.js";
 import path from "node:path";
 
 // connect command cluster. Cross-cutting helpers injected via deps so this
@@ -79,7 +80,7 @@ export async function connectSendCommand(argv, defaultType, deps) {
   const from = getOption(argv, "--from") || getOption(argv, "--by") || "manual";
   const to = getOption(argv, "--to") || "codex";
   const type = getOption(argv, "--type") || defaultType || "request";
-  const project = getOption(argv, "--project") || path.basename(process.cwd());
+  const project = normalizeProjectLabel(config.memoryDir, getOption(argv, "--project") || process.cwd());
   const priority = getOption(argv, "--priority") || (type === "review" ? "high" : "normal");
   const shouldCreateTask = hasFlag(argv, "--task") || hasFlag(argv, "--create-task");
   let task = null;
@@ -131,6 +132,6 @@ export async function connectSendCommand(argv, defaultType, deps) {
     message,
     task,
     dispatch,
-    hint: dispatch ? "" : `Run ai-memory-hub dispatch --to ${to} --project ${project} --run to trigger a verified runner.`
+    hint: dispatch ? "" : `Run ai-memory-hub dispatch --to ${to} --project ${project || "<project>"} --run to trigger a verified runner.`
   }, null, 2));
 }

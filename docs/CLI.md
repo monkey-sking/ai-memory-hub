@@ -504,6 +504,18 @@ Resolve a project by id, name, display name, or alias.
 ai-memory-hub project show <id-or-alias>
 ```
 
+### `project resolve`
+
+Resolve a project id, alias, or local path to the canonical registry identity.
+
+```bash
+ai-memory-hub project resolve <id|alias|path>
+```
+
+The output includes `input`, `resolved`, `root`, `normalizedLabel`, and the
+full `project` record. Path resolution uses longest-root-prefix matching, so a
+subdirectory of a registered repository resolves to that repository's project.
+
 ### `project alias`
 
 Add an alias.
@@ -1650,15 +1662,18 @@ ai-memory-hub skill group enable|disable <id> --project <path>
 ai-memory-hub skill group remove <id> --project <path>
 ai-memory-hub skill sync --project <path> [--app <client>] [--all]
 ai-memory-hub skill doctor --project <path> [--app <client>] [--all]
-ai-memory-hub skill usage record --skill <id> --agent <agent> [--project <project>] [--signal search_hit|loaded|adopted|pinned|unpinned] [--session <id>]
-ai-memory-hub skill usage report [--agent <agent>] [--project <project>] [--limit <n>] [--budget <chars>]
-ai-memory-hub skill usage list [--agent <agent>] [--project <project>] [--skill <id>] [--limit <n>]
+ai-memory-hub skill usage record --skill <id> --agent <agent> [--project <id|alias|path>] [--signal search_hit|loaded|adopted|pinned|unpinned] [--session <id>]
+ai-memory-hub skill usage report [--agent <agent>] [--project <id|alias|path>] [--limit <n>] [--budget <chars>]
+ai-memory-hub skill usage list [--agent <agent>] [--project <id|alias|path>] [--skill <id>] [--limit <n>]
 ```
 
 `skill sync` writes the selected project packages to the target projections;
-`--project` defaults to the current working directory. `--app` selects one
-client, while `--all` selects Claude, Codex, Gemini, and OpenCode. Skill
-projection commands do not use MCP's `--apply`/`--force` preview semantics.
+`--project` accepts a registered project id, alias, or local directory and
+defaults to the current working directory. `--app` selects one client, while
+`--all` selects Claude, Codex, Gemini, and OpenCode. Skill projection commands
+do not use MCP's `--apply`/`--force` preview semantics. Skill usage
+`--project` values are normalized to registry ids before they are recorded or
+filtered.
 
 Project selections are stored in `.amh/skills.json`. A direct selection has
 project-wide scope. A group is a cross-pack logical set with its own member

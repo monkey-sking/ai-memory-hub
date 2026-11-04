@@ -111,13 +111,21 @@ Groups). A high-frequency recommendation from usage statistics can influence
 which Skills are promoted into a Group, but usage alone never bypasses a
 project constraint, safety rule, or explicit user decision.
 
+Project identity is resolved before a manifest is written or a usage event is
+recorded. A Skill command accepts a registered project id, alias, or local
+directory; paths use longest-root-prefix matching against the project registry.
+The manifest records the resolved registry id in `projectId`, so data-layer
+records stay aligned with `project resolve` even when the caller passes an
+alias, a different letter case, or a subdirectory of the repository.
+
 ```bash
+ai-memory-hub project resolve ./aion/AionWebsite
 ai-memory-hub skill group set delivery \
   --skills "release@^1.0.0,review" \
   --target codex,claude \
   --description "Delivery workflow" \
-  --project <path>
-ai-memory-hub skill sync --project <path> --all
+  --project <id|alias|path>
+ai-memory-hub skill sync --project <id|alias|path> --all
 ```
 
 Enabled group members are combined with enabled direct selections. A disabled

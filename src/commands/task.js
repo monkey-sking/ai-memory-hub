@@ -12,6 +12,7 @@ import { getTaskEventStoreDefinition, normalizePriority } from "../lib/entity-mo
 import { readTasks, writeTasks } from "../lib/entity-repo.js";
 import { getEntityEventsFile, getEntityProjectionFile, materializeEntityProjection, readEntityEvents } from "../lib/entity-store.js";
 import { readEvents } from "../lib/io.js";
+import { loadProjectIndex, normalizeProjectLabel } from "../lib/project-resolver.js";
 import { mineSkillCandidates } from "../skill-mining.js";
 import fs from "node:fs";
 import path from "node:path";
@@ -147,12 +148,14 @@ export function taskAddCommand(argv, deps) {
   deps.ensureHub(config.memoryDir);
   return deps.withHubLock(config.memoryDir, "task-add", () => {
     const tasks = readTasks(config.memoryDir);
+    // Full cwd (not basename) keeps registry path-prefix matching available.
+    const rawProject = getOption(argv, "--project") || process.cwd();
     const task = deps.createTask({
       title,
       description: getOption(argv, "--description") || "",
       handoff: getOption(argv, "--handoff") || "",
       createdBy: getOption(argv, "--from") || getOption(argv, "--by") || "manual",
-      project: getOption(argv, "--project") || path.basename(process.cwd()),
+      project: normalizeProjectLabel(config.memoryDir, rawProject),
       priority: getOption(argv, "--priority") || "normal"
     });
     tasks.push(task);
@@ -166,7 +169,7 @@ export function taskListCommand(argv, deps) {
   const config = deps.loadConfig();
   deps.ensureHub(config.memoryDir);
   const status = getOption(argv, "--status") || "active";
-  const project = getOption(argv, "--project") || "";
+  const project = normalizeProjectLabel(config.memoryDir, getOption(argv, "--project") || "");
   const assignee = getOption(argv, "--assignee") || "";
   const limit = Number(getOption(argv, "--limit") || 20);
   const includeCancelled = hasFlag(argv, "--all");
@@ -815,13 +818,16 @@ export function taskUpdateCommand(argv, deps) {
   if (Object.keys(patch).length === 0) {
     throw new Error("task update requires at least one field: --title, --description, --handoff, --priority, --status, or --project");
   }
+  const config = deps.loadConfig();
   if (patch.priority) {
     patch.priority = normalizePriority(patch.priority);
+  }
+  if (patch.project) {
+    patch.project = normalizeProjectLabel(config.memoryDir, patch.project);
   }
   if (patch.status) {
     deps.assertTaskStatus(patch.status);
   }
-  const config = deps.loadConfig();
   deps.ensureHub(config.memoryDir);
   return deps.withHubLock(config.memoryDir, "task-update", () => {
     const updated = deps.updateTask(config.memoryDir, id, (task) => {

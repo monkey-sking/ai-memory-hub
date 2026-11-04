@@ -8,7 +8,7 @@ export async function loadProjectSkillManifest(projectRoot) {
   const root = path.resolve(projectRoot || process.cwd());
   const file = path.join(root, ".amh", "skills.json");
   const value = await fs.readFile(file, "utf8").then(JSON.parse).catch((error) => {
-    if (error.code === "ENOENT") return { version: PROJECT_SKILL_MANIFEST_VERSION, skills: {}, groups: {}, targets: [] };
+    if (error.code === "ENOENT") return { version: PROJECT_SKILL_MANIFEST_VERSION, projectId: "", skills: {}, groups: {}, targets: [] };
     throw new Error(`Invalid project Skill manifest ${file}: ${error.message}`);
   });
   return normalizeManifest(value, root);
@@ -21,6 +21,7 @@ export async function saveProjectSkillManifest(projectRoot, manifest) {
   await fs.mkdir(dir, { recursive: true });
   await fs.writeFile(path.join(dir, "skills.json"), `${JSON.stringify({
     version: normalized.version,
+    projectId: normalized.projectId,
     skills: normalized.skills,
     groups: normalized.groups,
     targets: normalized.targets
@@ -28,16 +29,18 @@ export async function saveProjectSkillManifest(projectRoot, manifest) {
   return normalized;
 }
 
-export async function setProjectSkill(projectRoot, id, constraint = "*") {
+export async function setProjectSkill(projectRoot, id, constraint = "*", projectId = "") {
   const manifest = await loadProjectSkillManifest(projectRoot);
   const skillId = normalizeSkillId(id);
+  if (projectId) manifest.projectId = projectId;
   manifest.skills[skillId] = { constraint: normalizeConstraint(constraint), enabled: true };
   return saveProjectSkillManifest(projectRoot, manifest);
 }
 
-export async function disableProjectSkill(projectRoot, id) {
+export async function disableProjectSkill(projectRoot, id, projectId = "") {
   const manifest = await loadProjectSkillManifest(projectRoot);
   const skillId = normalizeSkillId(id);
+  if (projectId) manifest.projectId = projectId;
   manifest.skills[skillId] = { constraint: manifest.skills[skillId]?.constraint || "*", enabled: false };
   return saveProjectSkillManifest(projectRoot, manifest);
 }
@@ -46,8 +49,9 @@ export async function selectProjectSkillVersion(projectRoot, id, constraint = "*
   return setProjectSkill(projectRoot, id, constraint);
 }
 
-export async function removeProjectSkill(projectRoot, id) {
+export async function removeProjectSkill(projectRoot, id, projectId = "") {
   const manifest = await loadProjectSkillManifest(projectRoot);
+  if (projectId) manifest.projectId = projectId;
   delete manifest.skills[normalizeSkillId(id)];
   return saveProjectSkillManifest(projectRoot, manifest);
 }
@@ -55,6 +59,7 @@ export async function removeProjectSkill(projectRoot, id) {
 export async function setProjectSkillGroup(projectRoot, id, skills, options = {}) {
   const manifest = await loadProjectSkillManifest(projectRoot);
   const groupId = normalizeGroupId(id);
+  if (options.projectId) manifest.projectId = options.projectId;
   manifest.groups[groupId] = normalizeGroup({
     description: options.description || "",
     targets: options.targets || [],
@@ -64,16 +69,18 @@ export async function setProjectSkillGroup(projectRoot, id, skills, options = {}
   return saveProjectSkillManifest(projectRoot, manifest);
 }
 
-export async function setProjectSkillGroupEnabled(projectRoot, id, enabled) {
+export async function setProjectSkillGroupEnabled(projectRoot, id, enabled, projectId = "") {
   const manifest = await loadProjectSkillManifest(projectRoot);
   const groupId = normalizeGroupId(id);
   if (!manifest.groups[groupId]) throw new Error(`Skill group not found: ${groupId}`);
+  if (projectId) manifest.projectId = projectId;
   manifest.groups[groupId].enabled = Boolean(enabled);
   return saveProjectSkillManifest(projectRoot, manifest);
 }
 
-export async function removeProjectSkillGroup(projectRoot, id) {
+export async function removeProjectSkillGroup(projectRoot, id, projectId = "") {
   const manifest = await loadProjectSkillManifest(projectRoot);
+  if (projectId) manifest.projectId = projectId;
   delete manifest.groups[normalizeGroupId(id)];
   return saveProjectSkillManifest(projectRoot, manifest);
 }
@@ -131,6 +138,7 @@ function normalizeManifest(value, root) {
   return {
     projectRoot: root,
     version: Number(value.version || PROJECT_SKILL_MANIFEST_VERSION),
+    projectId: String(value.projectId || "").trim(),
     skills,
     groups,
     targets: Array.isArray(value.targets) ? value.targets.map(String) : []

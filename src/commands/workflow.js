@@ -9,6 +9,7 @@ import {
   readWorkflows,
   writeWorkflows,
 } from "../lib/entity-repo.js";
+import { normalizeProjectLabel } from "../lib/project-resolver.js";
 import { normalizeReviewDimensions } from "../review-config.js";
 import path from "node:path";
 
@@ -58,7 +59,7 @@ export function workflowCreateCommand(argv, deps) {
     const workflow = deps.createWorkflow({
       title,
       createdBy: getOption(argv, "--from") || getOption(argv, "--by") || "manual",
-      project: getOption(argv, "--project") || path.basename(process.cwd()),
+      project: normalizeProjectLabel(config.memoryDir, getOption(argv, "--project") || process.cwd()),
       priority: getOption(argv, "--priority") || "normal",
       planner: getOption(argv, "--planner") || "",
       executor: getOption(argv, "--executor") || "",
@@ -93,7 +94,7 @@ export function workflowListCommand(argv, deps) {
   const config = deps.loadConfig();
   deps.ensureHub(config.memoryDir);
   const status = getOption(argv, "--status") || "active";
-  const project = getOption(argv, "--project") || "";
+  const project = normalizeProjectLabel(config.memoryDir, getOption(argv, "--project") || "");
   const limit = Number(getOption(argv, "--limit") || 20);
   const workflows = readWorkflows(config.memoryDir)
     .filter((workflow) => status === "all" ? true : status === "active" ? !["done", "cancelled"].includes(workflow.status) : workflow.status === status)

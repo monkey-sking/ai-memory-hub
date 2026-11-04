@@ -46,7 +46,7 @@ const NOISE_PATTERNS = [
 /**
  * Canonical slug for an arbitrary project label. Mirrors the memory layer's
  * normalizeMemoryProject (lowercase + spaces to dashes) but also trims path
- * separators so "/Users/runking/dev/LifeOS/" does not become a label.
+ * separators so a project root with a trailing slash does not become a label.
  */
 export function slugifyProjectLabel(value) {
   return String(value ?? "")

@@ -41,7 +41,7 @@ test("extracts Skill usage from Codex function calls", () => {
       type: "response_item",
       payload: {
         type: "function_call",
-        arguments: JSON.stringify({ cmd: "cat /Users/example/.codex/skills/magpie-quota/SKILL.md" })
+        arguments: JSON.stringify({ cmd: `cat ${path.join("home", ".codex", "skills", "magpie-quota", "SKILL.md")}` })
       }
     })
   ];
@@ -66,7 +66,7 @@ test("capture scan records Skill usage and skips unchanged files", async () => {
         type: "response_item",
         payload: {
           type: "function_call",
-          arguments: JSON.stringify({ cmd: "cat /Users/example/.codex/skills/magpie-quota/SKILL.md" })
+          arguments: JSON.stringify({ cmd: `cat ${path.join("home", ".codex", "skills", "magpie-quota", "SKILL.md")}` })
         }
       }),
       ""

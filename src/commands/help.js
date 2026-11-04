@@ -35,6 +35,7 @@ Commands:
   rpc        Synchronous request-response RPC calls between tools.
   notify     Send cross-platform notifications with severity-based routing.
   context    Generate task-specific memory bundles for focused context.
+  vault      Search a Markdown knowledge vault and cite sources (read-only).
   queue      Manage dispatch queue with priority and retry controls.
   recipe     Manage workflow recipes for reusable collaboration templates.
   task-spec  List, validate, and run project-declared task commands.

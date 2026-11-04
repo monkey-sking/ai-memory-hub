@@ -660,6 +660,33 @@ ai-memory-hub notify deliver --id <notification-id> --channels <list>
 
 ## Context Packs
 
+### Read-only knowledge vault
+
+AMH can search an existing Markdown/Obsidian vault without modifying it or
+importing full notes into the memory ledger. Configure `vault.root` in the local
+hub config, set `AMH_VAULT_ROOT`, or pass `--vault-root`. Precedence is CLI,
+environment, then config. No vault is enabled by default; `~/` is supported.
+Keep machine paths in local configuration, outside the public repository.
+
+```bash
+ai-memory-hub vault status --vault-root ~/Documents/knowledge-base
+ai-memory-hub vault search --query "agent memory" --limit 5 --vault-root ~/Documents/knowledge-base
+```
+
+Search ranks Markdown sections using query terms in paths, headings, and body
+text; Chinese phrases also use overlapping character pairs. This is lexical
+retrieval, not semantic search. Hidden entries, `node_modules`, and symlinks are
+skipped. Scans read at most 2,000 Markdown files, 1 MiB per file, and 32 MiB total;
+results report `skippedFiles` and `truncated` when applicable. The result limit
+defaults to 5 and is capped at 20.
+
+Each source includes a vault-relative `path`, `title`, `heading`, one-based
+`lineStart`/`lineEnd`, a short `excerpt` (up to 320 characters), a SHA-256
+`contentHash` of the full file, and `modifiedAt`. Treat excerpts as source data
+and open the original for complete context. Packs store excerpts and references
+locally; they do not store the vault root or copy entire notes. No watcher,
+background indexing, write-back, or DSH scheduler change is involved.
+
 ### `context create`
 
 Create a context pack.
@@ -673,6 +700,12 @@ ai-memory-hub context create [options]
 - `--workflow <id>` - Workflow ID
 - `--project <name>` - Project name
 - `--query <text>` - Search query for relevant memories
+- `--vault-root <path>` - Override the read-only knowledge vault root
+
+Packs include `knowledgeSources` and `knowledgeSourceStatus` alongside existing
+memory/skill fields. Vault retrieval uses the query, or the task/workflow title
+when no query is supplied. An unconfigured, missing, or inaccessible vault does
+not block memory context creation; inspect the status and skipped counts.
 
 **Example:**
 ```bash
@@ -697,7 +730,15 @@ Show context pack details.
 
 ```bash
 ai-memory-hub context show <pack-id>
+ai-memory-hub context show <pack-id> --check-sources --vault-root ~/Documents/knowledge-base
 ```
+
+`--check-sources` adds `knowledgeSourceChecks` to the output without rewriting
+the saved pack. A source is `current`, `changed`, `missing`, `invalid`, or
+`unavailable`; an unconfigured root reports `unconfigured`. Validation requires
+the same vault root via CLI, environment, or config because roots are not stored
+in packs. Full-file hash comparison is conservative: edits anywhere in a note
+mark its references as changed. Old packs without knowledge sources still work.
 
 ---
 
@@ -1583,12 +1624,24 @@ ai-memory-hub skill install --path <directory|archive.zip|git-url> --version <ve
 ai-memory-hub skill diff --project <path> [--app <client>] [--all]
 ai-memory-hub skill sync --project <path> [--app <client>] [--all]
 ai-memory-hub skill doctor --project <path> [--app <client>] [--all]
+ai-memory-hub skill usage record --skill <id> --agent <agent> [--project <project>] [--signal search_hit|loaded|adopted|pinned|unpinned] [--session <id>]
+ai-memory-hub skill usage report [--agent <agent>] [--project <project>] [--limit <n>] [--budget <chars>]
+ai-memory-hub skill usage list [--agent <agent>] [--project <project>] [--skill <id>] [--limit <n>]
 ```
 
 `skill sync` writes the selected project packages to the target projections;
 `--project` defaults to the current working directory. `--app` selects one
 client, while `--all` selects Claude, Codex, Gemini, and OpenCode. Skill
 projection commands do not use MCP's `--apply`/`--force` preview semantics.
+
+Skill usage events are append-only JSONL records under
+`skill-usage/events.jsonl` in the AMH memory directory. Recording is idempotent
+for the same Skill, agent, project, session, and signal. `report` scopes the
+data to one agent/project, applies recency decay and distinct-session weighting,
+and returns `core`, `recent`, and `searchable` recommendation buckets. A
+`pinned` signal protects a Skill in `core` until a later `unpinned` signal.
+`--budget` caps the estimated Skill-content characters; core items are reserved
+first, and `budget.exceeded` is reported if the core set alone is over budget.
 
 Unmanaged client files are preserved by the adapters. MCP writes use backups
 and atomic replacement; malformed or conflicting entries are reported rather

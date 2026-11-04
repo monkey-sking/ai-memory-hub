@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { projectFromCwd } from "./capture-sources.js";
+import { decompressZstdFrames, projectFromCwd } from "./capture-sources.js";
 
 const SKILL_FILE_PATTERN = /([A-Za-z0-9][A-Za-z0-9._-]*)\/SKILL\.md/gi;
 
@@ -24,7 +24,7 @@ export function extractSkillUsageEvents(tool, lines, filePath) {
       continue;
     }
     updateContext(context, record);
-    const ts = normalizeTimestamp(record.timestamp) || context.lastTs;
+    const ts = normalizeTimestamp(record.timestamp) || normalizeTimestamp(record.time) || context.lastTs;
     if (ts) context.lastTs = ts;
 
     const payload = record.payload || {};
@@ -41,6 +41,10 @@ export function extractSkillUsageEvents(tool, lines, filePath) {
         events.push(...eventsFromMcpArguments(item.arguments, context, ts, fileKey));
       }
     }
+
+    if (record.type === "tool/call") {
+      events.push(...eventsFromDshToolCall(record.data, context, ts, fileKey));
+    }
   }
 
   return events;
@@ -49,7 +53,10 @@ export function extractSkillUsageEvents(tool, lines, filePath) {
 export function extractSkillUsageEventsFromFile(tool, filePath) {
   let raw = "";
   try {
-    raw = fs.readFileSync(filePath, "utf8");
+    const buffer = fs.readFileSync(filePath);
+    raw = filePath.endsWith(".zstd")
+      ? decompressZstdFrames(buffer)
+      : buffer.toString("utf8");
   } catch {
     return [];
   }
@@ -64,8 +71,36 @@ function updateContext(context, record) {
     if (payload.id) context.sessionId = String(payload.id);
     if (payload.cwd) context.cwd = String(payload.cwd);
   }
+  if (record.type === "session") {
+    if (record.id) context.sessionId = String(record.id);
+    if (record.cwd) context.cwd = String(record.cwd);
+  }
   if (record.type === "event_msg" && payload.thread_id) context.sessionId = String(payload.thread_id);
   context.project = projectFromCwd(context.cwd);
+}
+
+function eventsFromDshToolCall(data, context, ts, fileKey) {
+  if (!data || typeof data !== "object") return [];
+
+  const events = [];
+  const argumentsValue = data.arguments;
+  if (typeof argumentsValue === "string") {
+    events.push(...eventsFromCommand(argumentsValue, context, ts, fileKey));
+    let parsed;
+    try {
+      parsed = JSON.parse(argumentsValue);
+    } catch {
+      parsed = null;
+    }
+    if (parsed && typeof parsed === "object") {
+      events.push(...eventsFromMcpArguments(parsed, context, ts, fileKey));
+    }
+  } else if (argumentsValue && typeof argumentsValue === "object") {
+    events.push(...eventsFromMcpArguments(argumentsValue, context, ts, fileKey));
+    events.push(...eventsFromCommand(JSON.stringify(argumentsValue), context, ts, fileKey));
+  }
+
+  return dedupeEvents(events);
 }
 
 function commandFromFunctionCall(payload) {

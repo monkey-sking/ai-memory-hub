@@ -4,8 +4,9 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import zlib from "node:zlib";
 import test from "node:test";
-import { extractSkillUsageEvents } from "../src/lib/skill-usage-extract.js";
+import { extractSkillUsageEvents, extractSkillUsageEventsFromFile } from "../src/lib/skill-usage-extract.js";
 import { getSkillUsageFile } from "../src/skill-usage.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -33,6 +34,12 @@ function runCli({ home, memoryDir }, args) {
   return JSON.parse(result.stdout);
 }
 
+function compressedJsonl(records) {
+  return Buffer.concat(records.map((record) => zlib.zstdCompressSync(
+    Buffer.from(`${JSON.stringify(record)}\n`, "utf8")
+  )));
+}
+
 test("extracts Skill usage from Codex function calls", () => {
   const lines = [
     JSON.stringify({ timestamp: "2026-11-04T01:00:00.000Z", type: "session_meta", payload: { id: "session-1", cwd: "/tmp/alpha" } }),
@@ -53,6 +60,46 @@ test("extracts Skill usage from Codex function calls", () => {
   assert.equal(events[0].project, "alpha");
   assert.equal(events[0].signal, "loaded");
   assert.equal(events[0].sessionId, "session-1");
+});
+
+test("extracts Skill usage from DSH zstd tool calls", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "amh-dsh-skill-usage-"));
+  const transcript = path.join(dir, "session.v4.jsonl.zstd");
+  const records = [
+    {
+      type: "session",
+      id: "dsh-session-1",
+      cwd: path.join("home", "dev", "LifeOS"),
+      time: 1793709430000
+    },
+    {
+      type: "tool/call",
+      time: 1793709431000,
+      data: {
+        name: "shell",
+        arguments: JSON.stringify({
+          cmd: `cat ${path.join("home", ".dsh", "skills", "swiftui-design-principles", "SKILL.md")}`,
+          skill: "ios-design-system"
+        })
+      }
+    }
+  ];
+
+  try {
+    await fs.writeFile(transcript, compressedJsonl(records));
+    const events = extractSkillUsageEventsFromFile("dsh", transcript);
+    assert.equal(events.length, 2);
+    assert.deepEqual(events.map((event) => [event.skill, event.signal]).sort(), [
+      ["ios-design-system", "adopted"],
+      ["swiftui-design-principles", "loaded"]
+    ]);
+    assert.equal(events[0].agent, "dsh");
+    assert.equal(events[0].project, "LifeOS");
+    assert.equal(events[0].sessionId, "dsh-session-1");
+    assert.equal(events[0].ts, new Date(1793709431000).toISOString());
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
 });
 
 test("capture scan records Skill usage and skips unchanged files", async () => {

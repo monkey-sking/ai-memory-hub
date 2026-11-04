@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import zlib from "node:zlib";
 import {
   assignTurnIds,
   cleanCaptureText,
+  findCaptureFiles,
   isCaptureWorthy,
+  parseCaptureFile,
   renderTurnText
 } from "../src/lib/capture-sources.js";
 import {
@@ -25,6 +28,12 @@ function withTempDir(fn) {
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+}
+
+function compressedJsonl(records) {
+  return Buffer.concat(records.map((record) => zlib.zstdCompressSync(
+    Buffer.from(`${JSON.stringify(record)}\n`, "utf8")
+  )));
 }
 
 test("cleanCaptureText strips injected context blocks and redacts secrets", () => {
@@ -124,6 +133,73 @@ test("assignTurnIds is deterministic per file and unique across files", () => {
 test("renderTurnText joins user request and assistant answer", () => {
   assert.equal(renderTurnText({ userText: "问", assistantText: "答" }), "问\n\n→ 答");
   assert.equal(renderTurnText({ userText: "问", assistantText: "" }), "问");
+});
+
+test("parses DSH multi-frame zstd transcripts and filters injected messages", () => {
+  withTempDir((dir) => {
+    const home = path.join(dir, "home");
+    const transcript = path.join(home, ".dsh", "sessions", "lifeos", "session.v4.jsonl.zstd");
+    fs.mkdirSync(path.dirname(transcript), { recursive: true });
+    fs.writeFileSync(transcript, compressedJsonl([
+      {
+        type: "session",
+        id: "dsh-session-1",
+        cwd: path.join("home", "dev", "LifeOS"),
+        time: 1793709430000
+      },
+      {
+        type: "user/message",
+        time: 1793709430500,
+        data: {
+          source: { kind: "agent-instructions" },
+          content: [{ type: "text", text: "You are a coding agent." }]
+        }
+      },
+      {
+        type: "user/message",
+        time: 1793709431000,
+        data: {
+          source: { kind: "user" },
+          content: [{ type: "text", text: "帮 LifeOS 修复捕获问题" }]
+        }
+      },
+      {
+        type: "assistant/message",
+        time: 1793709432000,
+        data: {
+          message: {
+            content: [
+              { type: "reasoning", text: "internal reasoning" },
+              { type: "tool-call", name: "shell" }
+            ]
+          }
+        }
+      },
+      {
+        type: "assistant/message",
+        time: 1793709433000,
+        data: {
+          message: {
+            content: [{ type: "text", text: "已修复并补充回归测试。" }]
+          }
+        }
+      }
+    ]));
+
+    const files = findCaptureFiles("dsh", { home });
+    assert.equal(files.length, 1);
+
+    const turns = parseCaptureFile("dsh", transcript);
+    assert.equal(turns.length, 1);
+    assert.equal(turns[0].tool, "dsh");
+    assert.equal(turns[0].sessionId, "dsh-session-1");
+    assert.equal(turns[0].cwd, path.join("home", "dev", "LifeOS"));
+    assert.equal(turns[0].project, "LifeOS");
+    assert.equal(turns[0].userText, "帮 LifeOS 修复捕获问题");
+    assert.equal(turns[0].assistantText, "已修复并补充回归测试。");
+    assert.equal(turns[0].ts, new Date(1793709431000).toISOString());
+    assert.equal(turns[0].tsEnd, new Date(1793709433000).toISOString());
+  });
 });
 
 test("capture state tracks per-file consumption and survives a round-trip", () => {

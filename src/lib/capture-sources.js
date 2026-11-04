@@ -15,6 +15,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import zlib from "node:zlib";
 
 // 单条文本上限：用户请求留得多、助手回复留得少，与 Memmy 的 4000/2000 一致。
 const USER_TEXT_LIMIT = 4000;
@@ -54,6 +55,12 @@ export const CAPTURE_SOURCE_DEFS = {
     label: "Gemini / Antigravity",
     roots: [".gemini"],
     match: (filePath) => path.basename(filePath) === "transcript.jsonl"
+  },
+  dsh: {
+    tool: "dsh",
+    label: "DSH",
+    roots: [".dsh/sessions"],
+    match: (filePath) => path.basename(filePath) === "session.v4.jsonl.zstd"
   }
 };
 
@@ -286,6 +293,65 @@ function toIsoTimestamp(value) {
   return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString();
 }
 
+const ZSTD_MAGIC = Buffer.from([0x28, 0xb5, 0x2f, 0xfd]);
+
+function u24(buffer, offset) {
+  return buffer[offset] | (buffer[offset + 1] << 8) | (buffer[offset + 2] << 16);
+}
+
+/**
+ * Decompress a concatenation of zstd frames.
+ *
+ * Node's zstdDecompressSync stops after the first frame. DSH writes one frame
+ * per JSONL record, so the frame boundaries must be parsed before decompressing
+ * each slice. The parser intentionally handles only standard zstd frames; DSH
+ * does not emit skippable frames.
+ */
+export function decompressZstdFrames(buffer) {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 5) return "";
+
+  const chunks = [];
+  let offset = 0;
+  while (offset < buffer.length) {
+    if (offset + 4 > buffer.length || !buffer.subarray(offset, offset + 4).equals(ZSTD_MAGIC)) {
+      throw new Error(`Invalid zstd frame boundary at byte ${offset}`);
+    }
+
+    const headerDescriptor = buffer[offset + 4];
+    const frameContentSizeFlag = headerDescriptor >> 6;
+    const singleSegment = (headerDescriptor >> 5) & 1;
+    const checksum = (headerDescriptor >> 2) & 1;
+    const dictionaryIdFlag = headerDescriptor & 3;
+    let cursor = offset + 5;
+
+    if (!singleSegment) cursor += 1;
+    cursor += [0, 1, 2, 4][dictionaryIdFlag];
+    if (frameContentSizeFlag === 1) cursor += 2;
+    else if (frameContentSizeFlag === 2) cursor += 4;
+    else if (frameContentSizeFlag === 3) cursor += 8;
+    else if (singleSegment) cursor += 1;
+
+    let lastBlock = false;
+    while (!lastBlock) {
+      if (cursor + 3 > buffer.length) throw new Error("Truncated zstd block header");
+      const blockHeader = u24(buffer, cursor);
+      cursor += 3;
+      lastBlock = (blockHeader & 1) === 1;
+      const blockType = (blockHeader >> 1) & 3;
+      const blockSize = blockHeader >>> 3;
+      const dataSize = blockType === 1 ? 1 : blockSize;
+      if (cursor + dataSize > buffer.length) throw new Error("Truncated zstd block data");
+      cursor += dataSize;
+    }
+
+    if (checksum) cursor += 4;
+    chunks.push(zlib.zstdDecompressSync(buffer.subarray(offset, cursor)));
+    offset = cursor;
+  }
+
+  return Buffer.concat(chunks).toString("utf8");
+}
+
 // ─── 各工具适配器 ───
 // 每个适配器返回 turn 数组：{ turnId, tool, sessionId, project, cwd, ts, userText, assistantText }
 
@@ -472,11 +538,74 @@ function geminiAdapter(lines) {
   return turns;
 }
 
+function dshTextFromContent(content) {
+  if (!Array.isArray(content)) return typeof content === "string" ? content : "";
+  return content
+    .map((item) => {
+      if (typeof item === "string") return item;
+      if (item?.type === "text") return item.text || "";
+      return "";
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+function dshAdapter(lines, filePath) {
+  const turns = [];
+  let current = null;
+  let sessionId = path.basename(filePath, ".jsonl.zstd");
+  let cwd = "";
+
+  for (const line of lines) {
+    let record;
+    try {
+      record = JSON.parse(line);
+    } catch {
+      continue;
+    }
+
+    if (record.type === "session") {
+      if (record.id) sessionId = String(record.id);
+      if (record.cwd) cwd = String(record.cwd);
+      continue;
+    }
+
+    if (record.type === "user/message") {
+      if (record.data?.source?.kind !== "user") continue;
+      const text = cleanCaptureText(dshTextFromContent(record.data.content));
+      if (!isCaptureWorthy(text)) continue;
+      if (current && current.assistantText) turns.push(current);
+      current = {
+        tool: "dsh",
+        sessionId,
+        cwd,
+        project: projectFromCwd(cwd),
+        ts: toIsoTimestamp(record.time),
+        userText: truncate(text, USER_TEXT_LIMIT),
+        assistantText: ""
+      };
+      continue;
+    }
+
+    if (record.type === "assistant/message" && current) {
+      const text = cleanCaptureText(dshTextFromContent(record.data?.message?.content));
+      if (text) {
+        current.assistantText = truncate(text, ASSISTANT_TEXT_LIMIT);
+        current.tsEnd = toIsoTimestamp(record.time);
+      }
+    }
+  }
+
+  if (current && current.assistantText) turns.push(current);
+  return turns;
+}
+
 const ADAPTERS = {
   claude: claudeAdapter,
   codex: codexAdapter,
   workbuddy: workbuddyAdapter,
-  gemini: geminiAdapter
+  gemini: geminiAdapter,
+  dsh: dshAdapter
 };
 
 /** 解析单个 transcript 文件，返回完整 turn 列表（不带 turnId，由调用方补）。 */
@@ -484,8 +613,12 @@ export function parseCaptureFile(tool, filePath) {
   const adapter = ADAPTERS[tool];
   if (!adapter) throw new Error(`Unknown capture source "${tool}".`);
   let raw = "";
+  let buffer;
   try {
-    raw = fs.readFileSync(filePath, "utf8");
+    buffer = fs.readFileSync(filePath);
+    raw = filePath.endsWith(".zstd")
+      ? decompressZstdFrames(buffer)
+      : buffer.toString("utf8");
   } catch {
     return [];
   }
